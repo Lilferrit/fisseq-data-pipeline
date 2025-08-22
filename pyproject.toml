@@ -1,0 +1,28 @@
+[project]
+name = "fisseq-data-pipeline"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { email = "gwenneth.straub@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "polars>=1.32.3",
+    "pyyaml>=6.0.2",
+    "scikit-learn>=1.7.1",
+]
+
+[project.scripts]
+fisseq-data-pipeline = "fisseq_data_pipeline:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "pytest>=8.4.1",
+]
