@@ -22,7 +22,7 @@ def normalize(
     data_df: pl.DataFrame,
     normalizer: SklearnNormalizer | str,
     control_sample_query: str,
-    feature_cols: Collection[str],
+    feature_cols: Collection[str] | str,
 ) -> pl.DataFrame:
     if isinstance(normalizer, str):
         try:
@@ -33,6 +33,7 @@ def normalize(
         normalizer = normalizer_cls()
 
     control_df = data_df.sql(control_sample_query)
+    control_df = pl.select(pl.col(feature_cols))
     control_features = control_df.select(feature_cols).to_numpy()
     normalizer.fit(control_features)
 
@@ -63,3 +64,5 @@ def normalize_from_file(
         control_sample_query=config["control_sample_query"],
         feature_cols=config["feature_col_pattern"]
     )
+    
+    norm_df.write_parquet(output_dir / "normalized.parquet")
