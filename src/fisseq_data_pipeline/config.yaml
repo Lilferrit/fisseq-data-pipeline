@@ -1,0 +1,14 @@
+# Cell profiler columns start with an uppercase
+# this can also be a set of strings
+feature_cols: "^[A-Z].*"
+
+# SQL like WHERE clause to select control samples, where rhe query will be of
+# the form "SELECT {cell_id_col_name} FROM self WHERE 
+# {control_sample_query}".
+control_sample_query: "variant_class = WT"
+
+# The name of the column containing the batch
+batch_col_name: "exp_well_name"
+
+# Column containing biological labels
+label_col_name: "aaChanges"

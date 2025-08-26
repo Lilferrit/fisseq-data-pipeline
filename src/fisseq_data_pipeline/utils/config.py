@@ -1,46 +1,60 @@
+import logging
 import pathlib
-from typing import Any
+from typing import Any, Dict, Optional
+from os import PathLike
 
 import yaml
 
-from .types import PathLike
+
+DEFAULT_CFG_PATH = pathlib.Path(__file__).parent.parent / "config.yaml"
+ConfigDict = Dict[str, Any]
+
 
 class Config:
-    """Configuration loader with strict attribute access.
+    def __init__(self, config: Optional[PathLike | "Config"]):
+        if config is None:
+            logging.info("No config provided, using default config")
+            config = DEFAULT_CFG_PATH
 
-    Loads key/value pairs from a YAML file and exposes them
-    as attributes. Accessing a missing attribute raises an
-    AttributeError.
-    """
+        if isinstance(config, Config):
+            data = config._data
+        else:
+            config = pathlib.Path(config)
+            with config.open("r") as f:
+                data = yaml.safe_load(f)
 
-    def __init__(self, yaml_path: PathLike):
-        yaml_path = pathlib.Path(yaml_path)
-        if not yaml_path.exists():
-            raise FileNotFoundError(f"Config file not found: {yaml_path}")
+            data = self._verify_config(data)
 
-        with yaml_path.open("r") as f:
-            data = yaml.safe_load(f) or {}
-
-        if not isinstance(data, dict):
-            raise ValueError("YAML root must be a mapping (dict).")
-
-        self._config = data
+        self._data = data
 
     def __getattr__(self, name: str) -> Any:
-        if name in self._config:
-            return self._config[name]
-        raise AttributeError(
-            f"Config key '{name}' not found in YAML file. "
-            "Available keys: " + ", ".join(self._config.keys())
-        )
+        return self._data[name]
 
     def __getitem__(self, key: str) -> Any:
-        # Allow dict-like access
         return self.__getattr__(key)
 
-    def keys(self):
-        return self._config.keys()
+    def _verify_config(self, cfg_data: ConfigDict) -> ConfigDict:
+        with DEFAULT_CFG_PATH.open("r") as f:
+            default_data = yaml.safe_load(f)
 
-    def as_dict(self):
-        return dict(self._config)
+        for key in cfg_data.keys():
+            if key in default_data:
+                continue
 
+            logging.warning(
+                "Removing invalid config option %s from provided config", key
+            )
+            del cfg_data[key]
+
+        for key in default_data.keys():
+            if key in cfg_data:
+                continue
+
+            logging.warning(
+                "Key %s not in provided config using default value of %s",
+                key,
+                default_data[key],
+            )
+            cfg_data[key] = default_data[key]
+
+        return cfg_data
