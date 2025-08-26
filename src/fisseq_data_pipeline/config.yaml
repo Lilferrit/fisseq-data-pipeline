@@ -2,9 +2,8 @@
 # this can also be a set of strings
 feature_cols: "^[A-Z].*"
 
-# SQL like WHERE clause to select control samples, where rhe query will be of
-# the form "SELECT {cell_id_col_name} FROM self WHERE 
-# {control_sample_query}".
+# SQL like WHERE clause to select control samples, where the query will be of
+# the form "SELECT * FROM self WHERE {control_sample_query}".
 control_sample_query: "variant_class = WT"
 
 # The name of the column containing the batch
