@@ -10,7 +10,7 @@ ConfigDict = Dict[str, Any]
 
 
 class Config:
-    def __init__(self, config: Optional[PathLike]):
+    def __init__(self, config: Optional[PathLike | ConfigDict | "Config"]):
         if config is None:
             logging.info("No config provided, using default config")
             config = DEFAULT_CFG_PATH
@@ -18,9 +18,12 @@ class Config:
         if isinstance(config, Config):
             data = config._data
         else:
-            config = pathlib.Path(config)
-            with config.open("r") as f:
-                data = yaml.safe_load(f)
+            if isinstance(config, dict):
+                data = config
+            else:
+                config = pathlib.Path(config)
+                with config.open("r") as f:
+                    data = yaml.safe_load(f)
 
             data = self._verify_config(data)
 

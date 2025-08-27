@@ -10,7 +10,7 @@ Harmonizer = Dict[str, Any]
 
 
 def fit_harmonizer(
-    train_data_df: pl.DataFrame,
+    train_data_df: pl.LazyFrame,
     config: Optional[PathLike | Config],
 ) -> Harmonizer:
     config = Config(config)
@@ -18,20 +18,20 @@ def fit_harmonizer(
     _, control_feature_matrix = get_feature_matrix(control_df, config)
     control_covar_df = control_df.select(pl.col(config.batch_col_name).alias("SITE"))
     model, _ = neuroHarmonize.harmonizationLearn(
-        control_feature_matrix, control_covar_df.to_pandas()
+        control_feature_matrix, control_covar_df.collect().to_pandas()
     )
 
     return model
 
 
 def harmonize(
-    data_df: pl.DataFrame, config: Optional[PathLike | Config], harmonizer: Harmonizer
-) -> pl.DataFrame:
+    data_df: pl.LazyFrame, config: Optional[PathLike | Config], harmonizer: Harmonizer
+) -> pl.LazyFrame:
     config = Config(config)
     feature_cols, data_feature_matrix = get_feature_matrix(data_df, config)
     data_covar_df = data_df.select(pl.col(config.batch_col_name).alias("SITE"))
     harmonized_data_matrix = neuroHarmonize.harmonizationApply(
-        data_feature_matrix, data_covar_df.to_pandas(), harmonizer
+        data_feature_matrix, data_covar_df.collect().to_pandas(), harmonizer
     )
     data_df = set_feature_matrix(data_df, feature_cols, harmonized_data_matrix)
 

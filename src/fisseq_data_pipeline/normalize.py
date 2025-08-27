@@ -10,7 +10,7 @@ Normalizer = sklearn.preprocessing.StandardScaler
 
 
 def fit_normalizer(
-    train_data_df: pl.DataFrame,
+    train_data_df: pl.LazyFrame,
     config: Optional[PathLike | Config],
 ) -> Normalizer:
     config = Config(config)
@@ -23,10 +23,10 @@ def fit_normalizer(
 
 
 def normalize(
-    data_df: pl.DataFrame,
+    data_df: pl.LazyFrame,
     config: Optional[PathLike | Config],
     normalizer: Normalizer,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     config = Config(config)
     feature_cols, data_feature_matrix = get_feature_matrix(data_df, config)
     data_feature_matrix = normalizer.transform(data_feature_matrix)
