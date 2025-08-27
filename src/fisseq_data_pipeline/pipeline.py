@@ -1,17 +1,17 @@
 import pathlib
 import pickle
 import shutil
-from typing import Optional
 from os import PathLike
+from typing import Optional
 
-import sklearn.model_selection
-import polars as pl
 import fire
+import polars as pl
+import sklearn.model_selection
 
+from .harmonize import fit_harmonizer, harmonize
+from .normalize import fit_normalizer, normalize
 from .utils import Config
 from .utils.config import DEFAULT_CFG_PATH
-from .normalize import fit_normalizer, normalize
-from .harmonize import fit_harmonizer, harmonize
 
 
 def validate(

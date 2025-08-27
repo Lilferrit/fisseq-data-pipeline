@@ -1,7 +1,7 @@
-from typing import Tuple, List
+from typing import List, Tuple
 
-import polars as pl
 import numpy as np
+import polars as pl
 
 from .config import Config
 

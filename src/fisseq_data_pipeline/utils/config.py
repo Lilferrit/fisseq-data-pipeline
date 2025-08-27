@@ -1,10 +1,9 @@
 import logging
 import pathlib
-from typing import Any, Dict, Optional
 from os import PathLike
+from typing import Any, Dict, Optional
 
 import yaml
-
 
 DEFAULT_CFG_PATH = pathlib.Path(__file__).parent.parent / "config.yaml"
 ConfigDict = Dict[str, Any]

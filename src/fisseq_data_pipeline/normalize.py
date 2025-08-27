@@ -1,5 +1,5 @@
-from typing import Optional
 from os import PathLike
+from typing import Optional
 
 import polars as pl
 import sklearn.preprocessing
