@@ -10,7 +10,7 @@ ConfigDict = Dict[str, Any]
 
 
 class Config:
-    def __init__(self, config: Optional[PathLike | "Config"]):
+    def __init__(self, config: Optional[PathLike]):
         if config is None:
             logging.info("No config provided, using default config")
             config = DEFAULT_CFG_PATH
@@ -36,7 +36,7 @@ class Config:
         with DEFAULT_CFG_PATH.open("r") as f:
             default_data = yaml.safe_load(f)
 
-        for key in cfg_data.keys():
+        for key in list(cfg_data.keys()):
             if key in default_data:
                 continue
 
@@ -45,7 +45,7 @@ class Config:
             )
             del cfg_data[key]
 
-        for key in default_data.keys():
+        for key in list(default_data.keys()):
             if key in cfg_data:
                 continue
 

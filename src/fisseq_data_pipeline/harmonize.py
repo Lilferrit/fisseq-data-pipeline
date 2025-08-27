@@ -31,7 +31,7 @@ def harmonize(
     feature_cols, data_feature_matrix = get_feature_matrix(data_df, config)
     data_covar_df = data_df.select(pl.col(config.batch_col_name).alias("SITE"))
     harmonized_data_matrix = neuroHarmonize.harmonizationApply(
-        data_feature_matrix, data_covar_df.to_pandas, harmonizer
+        data_feature_matrix, data_covar_df.to_pandas(), harmonizer
     )
     data_df = set_feature_matrix(data_df, feature_cols, harmonized_data_matrix)
 

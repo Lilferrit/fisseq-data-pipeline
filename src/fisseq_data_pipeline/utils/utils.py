@@ -2,6 +2,7 @@ from typing import List, Tuple
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 
 from .config import Config
 
@@ -13,7 +14,12 @@ def get_control_samples(data_df: pl.DataFrame, config: Config) -> pl.DataFrame:
 def get_feature_matrix(
     data_df: pl.DataFrame, config: Config
 ) -> Tuple[List[str], np.ndarray]:
-    data_df = data_df.select(pl.col(config.feature_cols))
+    if isinstance(config.feature_cols, str):
+        selector = cs.matches(config.feature_cols)
+    else:
+        selector = pl.col(list(config.feature_cols))
+
+    data_df = data_df.select(selector)
     return data_df.columns, data_df.to_numpy()
 
 
