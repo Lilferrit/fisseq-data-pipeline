@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import polars as pl
 import pytest
@@ -8,6 +10,8 @@ from fisseq_data_pipeline.utils import (
     get_feature_matrix,
     get_rows_by_idx,
     set_feature_matrix,
+    get_feature_selector,
+    get_feature_columns,
 )
 
 
@@ -101,3 +105,63 @@ def test_set_feature_matrix_replaces_columns(small_lf: pl.LazyFrame):
     # Expect the two columns to match our replacements
     assert np.allclose(out["f_a"].to_numpy(), new_features[:, 0])
     assert np.allclose(out["f_b"].to_numpy(), new_features[:, 1])
+
+
+def test_get_feature_selector_regex_matches_columns(small_lf: pl.LazyFrame):
+    cfg = Config({"feature_cols": r"^f_", "control_sample_query": "label = 1"})
+    selector = get_feature_selector(small_lf, cfg)
+    out = small_lf.select(selector).collect(streaming=True)
+    assert out.columns == ["f_a", "f_b"]
+
+
+def test_get_feature_selector_list_warns_and_filters_missing(
+    small_lf: pl.LazyFrame, caplog
+):
+    cfg = Config(
+        {"feature_cols": ["f_a", "missing_col"], "control_sample_query": "label = 1"}
+    )
+
+    caplog.set_level(logging.WARNING)
+    selector = get_feature_selector(small_lf, cfg)
+    assert any(
+        "ignored" in rec.message or "missing" in rec.message for rec in caplog.records
+    )
+    out = small_lf.select(selector).collect(streaming=True)
+    assert out.columns == ["f_a"]
+
+
+def test_get_feature_selector_list_preserves_requested_order(small_lf: pl.LazyFrame):
+    cfg = Config({"feature_cols": ["f_b", "f_a"], "control_sample_query": "label = 1"})
+    selector = get_feature_selector(small_lf, cfg)
+    out = small_lf.select(selector).collect(streaming=True)
+    assert out.columns == ["f_b", "f_a"]
+
+
+def test_get_feature_columns_with_regex_returns_only_feature_cols(
+    small_lf: pl.LazyFrame,
+):
+    cfg = Config({"feature_cols": r"^f_", "control_sample_query": "batch = 'A'"})
+    out = get_feature_columns(small_lf, cfg).collect(streaming=True)
+    assert out.columns == ["f_a", "f_b"]
+
+
+def test_get_feature_columns_with_list_orders_and_logs_missing(
+    small_lf: pl.LazyFrame, caplog
+):
+    cfg = Config(
+        {
+            "feature_cols": ["f_b", "missing_col", "f_a"],
+            "control_sample_query": "batch = 'A'",
+        }
+    )
+    caplog.set_level(logging.WARNING)
+
+    out = get_feature_columns(small_lf, cfg).collect(streaming=True)
+
+    # Check that the warning was logged
+    assert any(
+        "ignored" in rec.message or "missing" in rec.message for rec in caplog.records
+    )
+
+    # Should keep only the existing feature columns, in requested order
+    assert out.columns == ["f_b", "f_a"]

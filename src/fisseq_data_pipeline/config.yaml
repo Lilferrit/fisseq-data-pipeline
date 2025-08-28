@@ -1,10 +1,10 @@
-# Cell profiler columns start with an uppercase
-# this can also be a set of strings
-feature_cols: "^[A-Z].*"
+# Regex or list to select feature columns
+# (Cell profiler columns start with an uppercase and contain an underscore)
+feature_cols: "^[A-Z][A-Za-z0-9]*_.*"
 
 # SQL like WHERE clause to select control samples, where the query will be of
 # the form "SELECT * FROM self WHERE {control_sample_query}".
-control_sample_query: "variantClass = WT"
+control_sample_query: "variantClass = 'WT'"
 
 # The name of the column containing the batch
 batch_col_name: "tile_experiment_well"

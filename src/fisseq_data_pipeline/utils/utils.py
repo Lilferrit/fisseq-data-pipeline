@@ -1,3 +1,4 @@
+import logging
 from typing import Collection, List, Tuple
 
 import numpy as np
@@ -7,11 +8,13 @@ from polars.datatypes.classes import FloatType
 
 from .config import Config
 
+PlSelector = cs.Selector | pl.Expr
+
 
 def get_control_samples(data_df: pl.LazyFrame, config: Config) -> pl.LazyFrame:
     """
-    Filter the input LazyFrame to include only control samples based on the query
-    specified in the configuration.
+    Filter the input LazyFrame to include only control samples based on the
+    query specified in the configuration.
 
     Parameters
     ----------
@@ -26,7 +29,81 @@ def get_control_samples(data_df: pl.LazyFrame, config: Config) -> pl.LazyFrame:
     pl.LazyFrame
         A LazyFrame containing only the control samples.
     """
-    return data_df.sql(f"SELECT * FROM self WHERE {config.control_sample_query}")
+    query = f"SELECT * FROM self WHERE {config.control_sample_query}"
+    logging.debug("Running query: %s", query)
+    return data_df.sql(query)
+
+
+def get_feature_selector(data_df: pl.LazyFrame, config: Config) -> PlSelector:
+    """
+    Get feature column feature selector based on config
+
+    Parameters
+    ----------
+    data_df : pl.LazyFrame
+        The input data as a Polars LazyFrame.
+    config : Config
+        Configuration object containing a ``feature_cols`` attribute, which may
+        be either:
+          - str : A regex pattern to match column names.
+          - list[str] : A list of explicit column names to select.
+
+    Returns
+    -------
+    PlSelector
+        A selector that can be used to select feature columns in ``.select``
+        call.
+    """
+    if isinstance(config.feature_cols, str):
+        selector_type = "regex"
+        selector = cs.matches(config.feature_cols)
+    else:
+        selector_type = "list"
+        feature_cols = set(config.feature_cols)
+        missing = feature_cols - set(data_df.columns)
+
+        if len(missing) != 0:
+            logging.warning(
+                "Some columns are specified in the config but are not currently"
+                " present in the dataframe, this can happen if columns are"
+                " removed during data cleaning. The following columns will be"
+                " ignored: %s",
+                missing,
+            )
+
+        # Column order must be preserved
+        not_missing = feature_cols - missing
+        selector = pl.col(
+            col for col in list(config.feature_cols) if col in not_missing
+        )
+
+    logging.debug("Using feature %s selector: %s", selector_type, config.feature_cols)
+    return selector
+
+
+def get_feature_columns(data_df: pl.LazyFrame, config: Config) -> pl.LazyFrame:
+    """
+    Select feature columns from a Polars LazyFrame based on the configuration
+
+    Parameters
+    ----------
+    data_df : pl.LazyFrame
+        The input data as a Polars LazyFrame.
+    config : Config
+        Configuration object containing a ``feature_cols`` attribute, which may
+        be either:
+          - str : A regex pattern to match column names.
+          - list[str] : A list of explicit column names to select.
+
+    Returns
+    -------
+    pl.LazyFrame
+        A Polars LazyFrame containing only the selected feature columns, cast to
+        the given dtype.
+    """
+    selector = get_feature_selector(data_df, config)
+    data_df = data_df.select(selector)
+    return data_df
 
 
 def get_feature_matrix(
@@ -53,12 +130,8 @@ def get_feature_matrix(
     feature_matrix : numpy.ndarray
         A 2D NumPy array containing the feature values.
     """
-    if isinstance(config.feature_cols, str):
-        selector = cs.matches(config.feature_cols)
-    else:
-        selector = pl.col(list(config.feature_cols))
-
-    data_df = data_df.select(selector).cast(dtype)
+    data_df = get_feature_columns(data_df, config)
+    data_df = data_df.cast(dtype)
     feature_cols = list(data_df.schema.keys())
     data_df = data_df.collect()
 
@@ -90,6 +163,7 @@ def set_feature_matrix(
         A LazyFrame containing the updated feature columns alongside
         all non-feature columns from the original input.
     """
+    logging.debug("Updating feature columns %s", feature_cols)
     feature_df = pl.LazyFrame(new_features, schema=feature_cols)
     data_df = data_df.drop(feature_df.columns)
     return pl.concat((feature_df, data_df), how="horizontal")
@@ -118,6 +192,7 @@ def get_rows_by_idx(
         A LazyFrame containing only the specified rows, with the
         temporary index column removed.
     """
+    logging.debug("Selecting row indices: %s", rows)
     rows = set(rows)
     data_df = data_df.with_row_index(idx_col_name)
     data_df = data_df.filter(pl.col(idx_col_name).is_in(rows))

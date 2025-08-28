@@ -59,6 +59,7 @@ class Config:
 
             data = self._verify_config(data)
 
+        logging.debug("Using config %s", config)
         self._data = data
 
     def __getattr__(self, name: str) -> Any:
