@@ -4,7 +4,7 @@ feature_cols: "^[A-Z].*"
 
 # SQL like WHERE clause to select control samples, where the query will be of
 # the form "SELECT * FROM self WHERE {control_sample_query}".
-control_sample_query: "variant_class = WT"
+control_sample_query: "variantClass = WT"
 
 # The name of the column containing the batch
 batch_col_name: "tile_experiment_well"
