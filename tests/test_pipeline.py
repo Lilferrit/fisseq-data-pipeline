@@ -57,12 +57,12 @@ def test_run_smoke(
     assert (outdir / "harmonizer.pkl").is_file()
 
 
-@pytest.mark.parametrize("n_folds", [2, 3, 4])
+@pytest.mark.parametrize("test_size", [0.3, 0.4])
 def test_validate_smoke(
     tmp_path: pathlib.Path,
     toy_parquet: pathlib.Path,
     toy_config_yaml: pathlib.Path,
-    n_folds: int,
+    test_size: float,
 ):
     outdir = tmp_path / "cv_out"
     outdir.mkdir(parents=True, exist_ok=True)
@@ -71,16 +71,14 @@ def test_validate_smoke(
         input_data_path=toy_parquet,
         config=toy_config_yaml,
         output_dir=outdir,
-        n_folds=n_folds,
+        test_size=test_size,
     )
 
-    for fold in range(1, n_folds + 1):
-        tag = f"{fold:05}"
-        assert (outdir / f"unmodified.fold_{tag}.parquet").is_file()
-        assert (outdir / f"normalized.fold_{tag}.parquet").is_file()
-        assert (outdir / f"harmonized.fold_{tag}.parquet").is_file()
-        assert (outdir / f"normalizer.fold_{tag}.pkl").is_file()
-        assert (outdir / f"harmonizer.fold_{tag}.pkl").is_file()
+    assert (outdir / f"unmodified.test.parquet").is_file()
+    assert (outdir / f"normalized.test.parquet").is_file()
+    assert (outdir / f"harmonized.test.parquet").is_file()
+    assert (outdir / f"normalizer.test.pkl").is_file()
+    assert (outdir / f"harmonizer.test.pkl").is_file()
 
 
 def test_configure_writes_file(tmp_path: pathlib.Path):

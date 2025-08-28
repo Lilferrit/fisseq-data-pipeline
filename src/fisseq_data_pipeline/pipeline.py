@@ -8,14 +8,16 @@ from os import PathLike
 from typing import Optional
 
 import fire
-import numpy as np
 import polars as pl
 import sklearn.model_selection
 
+from .filter import run_sequential_filters
 from .harmonize import fit_harmonizer, harmonize
 from .normalize import fit_normalizer, normalize
 from .utils import Config, get_rows_by_idx
 from .utils.config import DEFAULT_CFG_PATH
+
+RANDOM_STATE = os.getenv("FISSEQ_PIPELINE_RAND_STATE", 42)
 
 
 def setup_logging(log_dir: Optional[PathLike] = None) -> None:
@@ -67,7 +69,8 @@ def validate(
     input_data_path: PathLike,
     config: Optional[Config | PathLike] = None,
     output_dir: Optional[PathLike] = None,
-    n_folds: int = 5,
+    test_size: float = 0.8,
+    idx_col_name: str = "_fisseq_data_pipeline_cell_idx",
 ) -> None:
     """
     Perform cross-validated normalization and harmonization on input data.
@@ -103,11 +106,9 @@ def validate(
     output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
     logging.info("Output directory set to: %s", output_dir)
 
+    logging.info("Cleaning data")
     config = Config(config)
-    skf = sklearn.model_selection.StratifiedKFold(
-        n_splits=n_folds, shuffle=True, random_state=42
-    )
-    logging.info("Initialized StratifiedKFold with %d folds", n_folds)
+    data_df = run_sequential_filters(data_df, config)
 
     strata = (
         data_df.select(
@@ -120,42 +121,40 @@ def validate(
         .agg("_".join, axis=1)
     )
 
-    for fold, (train_idx, test_idx) in enumerate(
-        skf.split(np.empty(len(strata)), strata), 1
-    ):
-        logging.info(
-            "Processing fold %d: train size=%d, test size=%d",
-            fold,
-            len(train_idx),
-            len(test_idx),
-        )
+    idx = (
+        data_df.with_row_index(idx_col_name)
+        .select(idx_col_name)
+        .collect()
+        .to_numpy()
+        .flatten()
+    )
+    train_idx, test_idx = sklearn.model_selection.train_test_split(
+        idx, test_size=test_size, stratify=strata, random_state=RANDOM_STATE
+    )
 
-        train_df = get_rows_by_idx(data_df, train_idx)
-        test_df = get_rows_by_idx(data_df, test_idx)
+    train_df = get_rows_by_idx(data_df, train_idx)
+    test_df = get_rows_by_idx(data_df, test_idx)
 
-        logging.debug("Fitting normalizer for fold %d", fold)
-        normalizer = fit_normalizer(train_df, config)
+    logging.info("Fitting normalizer on test data")
+    normalizer = fit_normalizer(train_df, config)
+    logging.info("Normalizing test data")
+    normalized_data = normalize(test_df, config, normalizer)
+    logging.info("Fitting harmonizer on test data")
+    harmonizer = fit_harmonizer(normalized_data, config)
+    logging.info("Harmonizing test data")
+    harmonized_data = harmonize(normalized_data, config, harmonizer)
 
-        logging.debug("Normalizing test data for fold %d", fold)
-        normalized_data = normalize(test_df, config, normalizer)
+    # write outputs
+    logging.info("Writing outputs to %s", output_dir)
+    test_df.sink_parquet(output_dir / f"unmodified.test.parquet")
+    normalized_data.sink_parquet(output_dir / f"normalized.test.parquet")
+    harmonized_data.sink_parquet(output_dir / f"harmonized.test.parquet")
+    with open(output_dir / f"normalizer.test.pkl", "wb") as f:
+        pickle.dump(normalizer, f)
+    with open(output_dir / f"harmonizer.test.pkl", "wb") as f:
+        pickle.dump(harmonizer, f)
 
-        logging.debug("Fitting harmonizer for fold %d", fold)
-        harmonizer = fit_harmonizer(normalized_data, config)
-
-        logging.debug("Harmonizing test data for fold %d", fold)
-        harmonized_data = harmonize(normalized_data, config, harmonizer)
-
-        # write outputs
-        logging.info("Writing output files for fold %d", fold)
-        test_df.sink_parquet(output_dir / f"unmodified.fold_{fold:05}.parquet")
-        normalized_data.sink_parquet(output_dir / f"normalized.fold_{fold:05}.parquet")
-        harmonized_data.sink_parquet(output_dir / f"harmonized.fold_{fold:05}.parquet")
-        with open(output_dir / f"normalizer.fold_{fold:05}.pkl", "wb") as f:
-            pickle.dump(normalizer, f)
-        with open(output_dir / f"harmonizer.fold_{fold:05}.pkl", "wb") as f:
-            pickle.dump(harmonizer, f)
-
-    logging.info("Validation finished successfully with %d folds", n_folds)
+    logging.info("Validation finished successfully")
 
 
 def run(
@@ -194,7 +193,10 @@ def run(
     output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
     logging.info("Output directory set to: %s", output_dir)
 
+    logging.info("Cleaning data")
     config = Config(config)
+    data_df = run_sequential_filters(data_df, config)
+
     logging.debug("Fitting normalizer on full dataset")
     normalizer = fit_normalizer(data_df, config)
 

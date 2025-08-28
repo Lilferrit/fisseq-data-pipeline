@@ -1,10 +1,12 @@
 import logging
-from typing import Optional
 from os import PathLike
+from typing import Callable, List, Optional
 
 import polars as pl
 
-from .utils import Config, get_feature_selector, get_feature_columns
+from .utils import Config, get_feature_columns, get_feature_selector
+
+FilterFun = Callable[[pl.LazyFrame, Optional[PathLike | Config]], pl.LazyFrame]
 
 
 def drop_feature_null(
@@ -28,7 +30,7 @@ def drop_feature_null(
         selected feature columns.
     """
     config = Config(config)
-    selector = get_feature_selector(config)
+    selector = get_feature_selector(data_df, config)
     return data_df.drop_nulls(subset=selector)
 
 
@@ -72,3 +74,35 @@ def drop_feature_zero_var(
 
     data_df = data_df.drop(feature_cols)
     return pl.concat((data_df, feature_df), how="horizontal")
+
+
+def run_sequential_filters(
+    data_df: pl.LazyFrame,
+    config: Optional[PathLike | Config],
+    filter_funs: List[FilterFun] = [drop_feature_null, drop_feature_zero_var],
+) -> pl.LazyFrame:
+    """
+    Apply a list of filter functions to a LazyFrame in order.
+
+    Parameters
+    ----------
+    data_df : pl.LazyFrame
+        The input dataset in lazy mode.
+    config : PathLike | Config, optional
+        Pipeline configuration (or path) to pass through to each filter
+        function.
+    filter_funs : list[FilterFun],
+    default=[drop_feature_null, drop_feature_zero_var]
+        An ordered list of filter functions to run.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The transformed LazyFrame after all filters have been applied in
+        sequence.
+    """
+    for curr_filter_fun in filter_funs:
+        data_df = curr_filter_fun(data_df, config)
+        print(data_df)
+
+    return data_df

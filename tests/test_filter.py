@@ -23,7 +23,7 @@ def patch_helpers(monkeypatch):
 
     # default feature set for tests; individual tests can monkeypatch again
     monkeypatch.setattr(
-        mod, "get_feature_selector", lambda cfg: ["f1", "f2"], raising=True
+        mod, "get_feature_selector", lambda df, cfg: ["f1", "f2"], raising=True
     )
 
     def _get_feature_columns(lf: pl.LazyFrame, cfg: DummyConfig) -> pl.LazyFrame:
@@ -59,7 +59,9 @@ def test_drop_feature_null_drops_rows_with_nan_in_selected_features():
 
 def test_drop_feature_null_ignores_nans_outside_selected_features(monkeypatch):
     # Only f1 is a feature this time; NaN in f2 shouldn't trigger a drop.
-    monkeypatch.setattr(mod, "get_feature_selector", lambda cfg: ["f1"], raising=True)
+    monkeypatch.setattr(
+        mod, "get_feature_selector", lambda df, cfg: ["f1"], raising=True
+    )
 
     df = pl.DataFrame(
         {
@@ -145,3 +147,89 @@ def test_drop_feature_zero_var_only_checks_feature_columns(monkeypatch):
     )
     out = out.select(expected.columns)
     assert_frame_equal(out, expected)
+
+
+def test_run_sequential_filters_applies_in_order():
+    call_order = []
+
+    def f1(df: pl.LazyFrame, cfg):
+        call_order.append("null")
+        return mod.drop_feature_null(df, cfg)
+
+    def f2(df: pl.LazyFrame, cfg):
+        call_order.append("zero")
+        return mod.drop_feature_zero_var(df, cfg)
+
+    lf = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4],
+            "f1": [1.0, None, 3.0, 4.0],  # null so drop_feature_null does work
+            "f2": [0.0, 1.0, 2.0, 3.0],
+            "meta": ["a", "b", "c", "d"],
+        }
+    ).lazy()
+
+    _ = mod.run_sequential_filters(lf, config=None, filter_funs=[f1, f2]).schema
+    assert call_order == ["null", "zero"]
+
+
+def test_run_sequential_filters_default_pipeline_runs_and_drops_nulls():
+    lf = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4],
+            "f1": [1.0, None, 3.0, 4.0],  # null → row 2 should be dropped
+            "f2": [5.0, 6.0, 7.0, 8.0],
+            "meta": ["a", "b", "c", "d"],
+        }
+    ).lazy()
+
+    out = mod.run_sequential_filters(lf, config=None).collect()
+
+    # No nulls in feature columns (f1, f2) after the default pipeline
+    assert out["f1"].null_count() == 0
+    assert out["f2"].null_count() == 0
+    # Still a DataFrame with remaining rows
+    assert isinstance(out, pl.DataFrame)
+
+
+def test_run_sequential_filters_with_custom_filters():
+    def add_flag(df: pl.LazyFrame, cfg):
+        return df.with_columns(pl.lit(1).alias("flag"))
+
+    def keep_even_ids(df: pl.LazyFrame, cfg):
+        return df.filter((pl.col("id") % 2) == 0)
+
+    lf = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4],
+            "f1": [1.0, 2.0, 3.0, 4.0],
+            "f2": [10.0, 20.0, 30.0, 40.0],
+            "meta": ["a", "b", "c", "d"],
+        }
+    ).lazy()
+
+    out = mod.run_sequential_filters(
+        lf, config=None, filter_funs=[add_flag, keep_even_ids]
+    ).collect()
+    assert "flag" in out.columns
+    assert out["id"].to_list() == [2, 4]
+
+
+def test_run_sequential_filters_passes_config_through():
+    seen = []
+
+    def spy(df: pl.LazyFrame, cfg):
+        seen.append(cfg)
+        return df
+
+    cfg = {"sentinel": 42}
+    lf = pl.DataFrame(
+        {
+            "id": [1, 2],
+            "f1": [1.0, 2.0],
+            "f2": [10.0, 20.0],
+        }
+    ).lazy()
+
+    _ = mod.run_sequential_filters(lf, cfg, [spy, spy, spy]).schema
+    assert seen == [cfg, cfg, cfg]
