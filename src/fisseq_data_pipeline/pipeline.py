@@ -109,7 +109,6 @@ def validate(
     )
     logging.info("Initialized StratifiedKFold with %d folds", n_folds)
 
-    # build strata
     strata = (
         data_df.select(
             pl.col(config.batch_col_name),
@@ -120,7 +119,6 @@ def validate(
         .astype(str)
         .agg("_".join, axis=1)
     )
-    logging.info("Strata built with %d samples", len(strata))
 
     for fold, (train_idx, test_idx) in enumerate(
         skf.split(np.empty(len(strata)), strata), 1

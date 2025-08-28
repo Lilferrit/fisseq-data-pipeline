@@ -57,7 +57,7 @@ def test_run_smoke(
     assert (outdir / "harmonizer.pkl").is_file()
 
 
-@pytest.mark.parametrize("n_folds", [3])
+@pytest.mark.parametrize("n_folds", [2, 3, 4])
 def test_validate_smoke(
     tmp_path: pathlib.Path,
     toy_parquet: pathlib.Path,
@@ -76,6 +76,7 @@ def test_validate_smoke(
 
     for fold in range(1, n_folds + 1):
         tag = f"{fold:05}"
+        assert (outdir / f"unmodified.fold_{tag}.parquet").is_file()
         assert (outdir / f"normalized.fold_{tag}.parquet").is_file()
         assert (outdir / f"harmonized.fold_{tag}.parquet").is_file()
         assert (outdir / f"normalizer.fold_{tag}.pkl").is_file()
