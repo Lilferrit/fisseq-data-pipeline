@@ -69,16 +69,18 @@ def validate(
     input_data_path: PathLike,
     config: Optional[Config | PathLike] = None,
     output_dir: Optional[PathLike] = None,
-    test_size: float = 0.8,
+    test_size: float = 0.2,
     idx_col_name: str = "_fisseq_data_pipeline_cell_idx",
 ) -> None:
     """
-    Perform cross-validated normalization and harmonization on input data.
+    Perform a single train/test split, normalize, and harmonize the test
+    dataset.
 
-    The dataset is stratified by batch and label columns, split into
-    ``n_folds`` folds, and each fold is processed to generate unmodified,
-    normalized, and harmonized versions of the test set. Corresponding
-    normalizer and harmonizer models are serialized to disk.
+    The dataset is first cleaned using the configured feature filters, then
+    stratified by the batch and label columns defined in the config. A
+    train/test split is performed, after which normalization and harmonization
+    models are trained on the training portion and applied to the test portion.
+    Both the transformed test data and the fitted models are serialized to disk.
 
     Parameters
     ----------
@@ -90,14 +92,21 @@ def validate(
     output_dir : PathLike, optional
         Directory in which to write output files.
         Defaults to the current working directory.
-    n_folds : int, default=5
-        Number of stratified cross-validation folds to perform.
+    test_size : float, default=0.2
+        Proportion of the dataset to reserve for the test split. The remainder
+        is used for training the normalizer and harmonizer models.
+    idx_col_name : str, default="_fisseq_data_pipeline_cell_idx"
+        Temporary column name used to track row indices during splitting.
 
     Returns
     -------
     None
-        Writes Parquet files and pickled model objects for each fold to
-        ``output_dir``.
+        Writes the following files to ``output_dir``:
+          - ``unmodified.test.parquet`` : the raw test set
+          - ``normalized.test.parquet`` : test set after normalization
+          - ``harmonized.test.parquet`` : test set after harmonization
+          - ``normalizer.test.pkl`` : pickled normalizer model
+          - ``harmonizer.test.pkl`` : pickled harmonizer model
     """
     setup_logging(output_dir)
     logging.info("Starting validation with input path: %s", input_data_path)
