@@ -21,7 +21,7 @@ pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
 
 
 ```bash
-python -m fisseq_data_pipeline validate \
+fisseq-data-pipeline validate \
 --input_data_path /path/to/cells.parquet \
 --config /path/to/config.yaml \
 --output_dir ./results/ \
@@ -41,7 +41,7 @@ python -m fisseq_data_pipeline validate \
 
 
 ```bash
-python -m fisseq_data_pipeline run \
+fisseq-data-pipeline run \
 --input_data_path /path/to/cells.parquet \
 --config /path/to/config.yaml \
 --output_dir ./results/

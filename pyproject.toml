@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-fisseq-data-pipeline = "fisseq_data_pipeline:main"
+fisseq-data-pipeline = "fisseq_data_pipeline.pipeline:main"
 
 [build-system]
 requires = ["hatchling"]

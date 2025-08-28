@@ -65,7 +65,7 @@ def setup_logging(log_dir: Optional[PathLike] = None) -> None:
 
 def validate(
     input_data_path: PathLike,
-    config: Optional[Config | PathLike],
+    config: Optional[Config | PathLike] = None,
     output_dir: Optional[PathLike] = None,
     n_folds: int = 5,
 ) -> None:
@@ -160,7 +160,7 @@ def validate(
 
 def run(
     input_data_path: PathLike,
-    config: Optional[Config | PathLike],
+    config: Optional[Config | PathLike] = None,
     output_dir: Optional[PathLike] = None,
 ) -> None:
     """

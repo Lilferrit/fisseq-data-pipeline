@@ -7,7 +7,7 @@ feature_cols: "^[A-Z].*"
 control_sample_query: "variant_class = WT"
 
 # The name of the column containing the batch
-batch_col_name: "exp_well_name"
+batch_col_name: "tile_experiment_well"
 
 # Column containing biological labels
 label_col_name: "aaChanges"
