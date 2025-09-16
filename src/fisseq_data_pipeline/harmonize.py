@@ -2,73 +2,94 @@ from os import PathLike
 from typing import Any, Dict, Optional
 
 import neuroHarmonize
-import polars as pl
+import numpy as np
+import pandas as pd
 
-from .utils import Config, get_control_samples, get_feature_matrix, set_feature_matrix
+from .utils import Config
 
 Harmonizer = Dict[str, Any]
 
 
 def fit_harmonizer(
-    train_data_df: pl.LazyFrame,
+    feature_matrix: np.ndarray,
+    batch_idx: np.ndarray,
     config: Optional[PathLike | Config],
+    is_control: Optional[np.ndarray] = None,
 ) -> Harmonizer:
     """
-    Fit a harmonization model using control samples from the training data.
+    Fit a harmonization model to remove batch effects.
+
+    The function learns a batch-effect correction model using the provided
+    feature matrix and batch assignments. If a control mask is given, only the
+    subset of control samples is used to fit the harmonizer.
 
     Parameters
     ----------
-    train_data_df : pl.LazyFrame
-        The training data as a Polars LazyFrame.
+    feature_matrix : np.ndarray
+        2D array of shape (n_samples, n_features) containing the feature data.
+    batch_idx : np.ndarray
+        1D array of length n_samples with integer or categorical batch labels.
     config : PathLike or Config, optional
-        Configuration object or path. Must contain the attribute
-        ``batch_col_name`` specifying the batch column.
+        Configuration object or path to a config file. Must contain the
+        attribute ``batch_col_name`` specifying the batch column.
+    is_control : np.ndarray, optional
+        Boolean mask of shape (n_samples,) indicating which samples are
+        controls. If provided, only control samples are used to fit the model.
 
     Returns
     -------
-    Harmonizer : dict
-        A harmonization model dictionary learned by
-        ``neuroHarmonize.harmonizationLearn``.
+    Harmonizer
+        A harmonization model learned by
+        ``neuroHarmonize.harmonizationLearn`` that can later be applied
+        to correct batch effects in new data.
     """
     config = Config(config)
-    control_df = get_control_samples(train_data_df, config)
-    _, control_feature_matrix = get_feature_matrix(control_df, config)
-    control_covar_df = control_df.select(pl.col(config.batch_col_name).alias("SITE"))
-    model, _ = neuroHarmonize.harmonizationLearn(
-        control_feature_matrix, control_covar_df.collect().to_pandas()
-    )
+    if is_control is not None:
+        feature_matrix = feature_matrix[is_control]
+        batch_idx = batch_idx[is_control]
 
+    covar_df = pd.DataFrame(batch_idx, columns=["SITE"])
+    model, _ = neuroHarmonize.harmonizationLearn(feature_matrix, covar_df)
     return model
 
 
 def harmonize(
-    data_df: pl.LazyFrame, config: Optional[PathLike | Config], harmonizer: Harmonizer
-) -> pl.LazyFrame:
+    feature_matrix: np.ndarray,
+    batch_idx: np.ndarray,
+    config: Optional[PathLike | Config],
+    harmonizer: Harmonizer,
+) -> np.ndarray:
     """
-    Apply a previously fitted harmonization model to new data.
+    Apply a fitted harmonization model to feature data.
+
+    This function uses a pre-trained harmonizer to correct for batch effects
+    in a new feature matrix, given the associated batch assignments.
 
     Parameters
     ----------
-    data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
+    feature_matrix : np.ndarray
+        2D array of shape (n_samples, n_features) containing the feature data
+        to be harmonized.
+    batch_idx : np.ndarray
+        1D array of length n_samples with integer or categorical batch labels.
     config : PathLike or Config, optional
-        Configuration object or path. Must contain the attribute
-        ``batch_col_name`` specifying the batch column.
-    harmonizer : dict
-        A harmonization model produced by ``fit_harmonizer``.
+        Configuration object or path to a config file. Must contain the
+        attribute ``batch_col_name`` specifying the batch column.
+    harmonizer : Harmonizer
+        A harmonization model previously learned by
+        ``fit_harmonizer`` (wrapper around
+        ``neuroHarmonize.harmonizationLearn``).
 
     Returns
     -------
-    pl.LazyFrame
-        A LazyFrame containing the original data with feature columns replaced
-        by the harmonized feature values.
+    np.ndarray
+        Harmonized feature matrix of shape (n_samples, n_features),
+        corrected for batch effects.
     """
     config = Config(config)
-    feature_cols, data_feature_matrix = get_feature_matrix(data_df, config)
-    data_covar_df = data_df.select(pl.col(config.batch_col_name).alias("SITE"))
-    harmonized_data_matrix = neuroHarmonize.harmonizationApply(
-        data_feature_matrix, data_covar_df.collect().to_pandas(), harmonizer
+    covar_df = pd.DataFrame(batch_idx, columns=["SITE"])
+    harmonized_matrix = neuroHarmonize.harmonizationApply(
+        feature_matrix, covar_df, harmonizer
     )
-    data_df = set_feature_matrix(data_df, feature_cols, harmonized_data_matrix)
 
-    return data_df
+    return harmonized_matrix

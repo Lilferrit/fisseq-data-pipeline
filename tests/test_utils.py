@@ -1,167 +1,154 @@
-import logging
+# test_features_utils.py
+from typing import Any, Dict
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 import pytest
 
-from fisseq_data_pipeline.utils import (
-    Config,
-    get_control_samples,
-    get_feature_columns,
-    get_feature_matrix,
-    get_feature_selector,
-    get_rows_by_idx,
-    set_feature_matrix,
-)
+import fisseq_data_pipeline.utils.utils as mod_under_test
 
 
-@pytest.fixture()
-def small_df() -> pl.DataFrame:
-    return pl.DataFrame(
+class DummyConfig:
+    """Minimal config stub with only the fields the functions use."""
+
+    def __init__(
+        self,
+        feature_cols,
+        batch_col_name: str = "batch",
+        label_col_name: str = "label",
+        control_sample_query: str = "qc",
+    ):
+        self.feature_cols = feature_cols
+        self.batch_col_name = batch_col_name
+        self.label_col_name = label_col_name
+        # Interpreted by pl.sql_expr; here we use a simple boolean column name.
+        self.control_sample_query = control_sample_query
+
+
+# ----------------------- get_feature_selector --------------------------------
+
+
+def test_get_feature_selector_with_regex():
+    df = pl.DataFrame({"f1": [1], "f2": [2], "x": [3]}).lazy()
+    cfg = DummyConfig(feature_cols=r"^f\d+$")  # regex for f1, f2
+
+    sel = mod_under_test.get_feature_selector(df, cfg)
+    # Apply selector to see the resulting columns
+    out_cols = df.select(sel).collect().columns
+    assert out_cols == ["f1", "f2"]
+
+
+def test_get_feature_selector_with_list_preserves_order_and_warns_missing(caplog):
+    df = pl.DataFrame({"b": [0], "a": [1], "c": [2]}).lazy()
+    # Include a missing column 'z' and out-of-order selection
+    cfg = DummyConfig(feature_cols=["a", "z", "b"])
+
+    with caplog.at_level("WARNING"):
+        sel = mod_under_test.get_feature_selector(df, cfg)
+        # After selection, only existing columns in requested order
+        out_cols = df.select(sel).collect().columns
+        assert out_cols == ["a", "b"]
+
+        # Warning mentions missing column
+        assert any("ignored" in rec.message for rec in caplog.records)
+
+
+# ----------------------- get_feature_columns ---------------------------------
+
+
+def test_get_feature_columns_returns_only_selected_columns():
+    df = pl.DataFrame({"f1": [1, 2], "f2": [3, 4], "meta": [9, 9]}).lazy()
+    cfg = DummyConfig(feature_cols=["f2", "f1"])  # order should be respected
+
+    out_lf = mod_under_test.get_feature_columns(df, cfg)
+    out = out_lf.collect()
+    assert out.columns == ["f2", "f1"]
+    assert out.shape == (2, 2)
+
+
+def test_get_feature_columns_with_regex():
+    df = pl.DataFrame({"a1": [1], "a2": [2], "b": [3]}).lazy()
+    cfg = DummyConfig(feature_cols=r"^a\d$")
+    out = mod_under_test.get_feature_columns(df, cfg).collect()
+    assert out.columns == ["a1", "a2"]
+
+
+# ----------------------- get_data_dfs ---------------------------------------
+
+
+def test_get_data_dfs_shapes_and_columns():
+    # Build a small dataset with features, batch, label, and qc (for controls)
+    data = pl.DataFrame(
         {
-            "batch": ["A", "A", "B", "B", "A"],
-            "label": [1, 0, 1, 0, 1],
-            "f_a": [0.1, 0.2, 0.3, 0.4, 0.5],
-            "f_b": [10, 20, 30, 40, 50],
-            "other": ["x", "y", "z", "w", "v"],
+            "f1": [0.0, 1.0, 2.0, 3.0],
+            "f2": [10.0, 11.0, 12.0, 13.0],
+            "batch": ["A", "A", "B", "B"],
+            "label": ["x", "y", "x", "y"],
+            "qc": [True, False, True, True],  # control mask query = "qc"
         }
+    ).lazy()
+
+    cfg = DummyConfig(
+        feature_cols=["f2", "f1"],  # order matters
+        batch_col_name="batch",
+        label_col_name="label",
+        control_sample_query="qc",
     )
 
+    feat_df, meta_df = mod_under_test.get_data_dfs(data, cfg, dtype=pl.Float32)
 
-@pytest.fixture()
-def small_lf(small_df: pl.DataFrame) -> pl.LazyFrame:
-    return small_df.lazy()
+    # Feature DataFrame keeps only the specified features in order, cast to f32
+    assert feat_df.columns == ["f2", "f1"]
+    assert all(feat_df.schema[c] == pl.Float32 for c in feat_df.columns)
+    assert feat_df.shape == (4, 2)
 
-
-# ---- Tests ----
-
-
-def test_get_control_samples_sql_filters_rows(small_lf: pl.LazyFrame):
-    cfg = Config(
-        {"feature_cols": ["f_a"], "control_sample_query": "batch = 'A' AND label = 1"}
-    )
-    out = get_control_samples(small_lf, cfg).collect(streaming=True)
-    # Expect rows: indices 0 and 4 from the original fixture
-    assert out.height == 2
-    assert set(out.get_column("batch").to_list()) == {"A"}
-    assert set(out.get_column("label").to_list()) == {1}
+    # Meta DataFrame has required columns
+    assert meta_df.columns == ["_batch", "_label", "_is_control", "_sample_idx"]
+    assert meta_df.shape == (4, 4)
+    # Check that _is_control equals the qc column values
+    assert meta_df["_is_control"].to_list() == [True, False, True, True]
+    # sample_idx is a simple range starting at 0
+    assert meta_df["_sample_idx"].to_list() == [0, 1, 2, 3]
 
 
-def test_get_feature_matrix_regex_selects_and_orders_columns(small_lf: pl.LazyFrame):
-    cfg = Config({"feature_cols": "^f_", "control_sample_query": "label = 1"})
-    cols, mat = get_feature_matrix(small_lf, cfg)
-    # Should grab ["f_a", "f_b"] in schema order
-    assert cols == ["f_a", "f_b"]
-    # Matrix must have N rows equal to the source (no filter applied here) and 2 cols
-    n = small_lf.select(pl.len()).collect(streaming=True).item()
-    assert mat.shape == (n, 2)
-    # Spot-check values for first row
-    assert np.isclose(mat[0, 0], 0.1)
-    assert np.isclose(mat[0, 1], 10.0)
+# ----------------------- set_feature_matrix ----------------------------------
 
 
-def test_get_feature_matrix_list_selects_exact_columns(small_lf: pl.LazyFrame):
-    cfg = Config({"feature_cols": ["f_b", "f_a"], "control_sample_query": "label = 1"})
-    cols, mat = get_feature_matrix(small_lf, cfg)
-    # Order should match the provided list
-    assert cols == ["f_b", "f_a"]
-    n = small_lf.select(pl.len()).collect(streaming=True).item()
-    assert mat.shape == (n, 2)
-    assert np.isclose(mat[0, 0], 10.0)
-    assert np.isclose(mat[0, 1], 0.1)
-
-
-def test_get_rows_by_idx_returns_correct_rows(
-    small_df: pl.DataFrame, small_lf: pl.LazyFrame
-):
-    # Ask for rows 1 and 3 (zero-based), then compare to eager slice for truth
-    wanted = [1, 3]
-    out = get_rows_by_idx(small_lf, wanted).collect(streaming=True)
-
-    expected = (
-        small_df.select(pl.all())
-        .slice(1, 1)
-        .vstack(small_df.select(pl.all()).slice(3, 1))
-    )
-    # Order should follow the filter's order (set membership; may not guarantee order unless you sort)
-    # Compare as sets of row tuples to be robust to order
-    assert set(map(tuple, out.rows())) == set(map(tuple, expected.rows()))
-
-
-def test_set_feature_matrix_replaces_columns(small_lf: pl.LazyFrame):
-    # Create a replacement matrix for two feature columns
-    feature_cols = ["f_a", "f_b"]
-    n = small_lf.select(pl.len()).collect(streaming=True).item()
-    new_features = np.vstack(
-        [
-            np.linspace(1.0, 2.0, n),
-            np.linspace(100.0, 200.0, n),
-        ]
-    ).T  # shape (n, 2)
-
-    out_lf = set_feature_matrix(small_lf, feature_cols, new_features)
-    out = out_lf.collect(streaming=True)
-
-    # Expect the two columns to match our replacements
-    assert np.allclose(out["f_a"].to_numpy(), new_features[:, 0])
-    assert np.allclose(out["f_b"].to_numpy(), new_features[:, 1])
-
-
-def test_get_feature_selector_regex_matches_columns(small_lf: pl.LazyFrame):
-    cfg = Config({"feature_cols": r"^f_", "control_sample_query": "label = 1"})
-    selector = get_feature_selector(small_lf, cfg)
-    out = small_lf.select(selector).collect(streaming=True)
-    assert out.columns == ["f_a", "f_b"]
-
-
-def test_get_feature_selector_list_warns_and_filters_missing(
-    small_lf: pl.LazyFrame, caplog
-):
-    cfg = Config(
-        {"feature_cols": ["f_a", "missing_col"], "control_sample_query": "label = 1"}
-    )
-
-    caplog.set_level(logging.WARNING)
-    selector = get_feature_selector(small_lf, cfg)
-    assert any(
-        "ignored" in rec.message or "missing" in rec.message for rec in caplog.records
-    )
-    out = small_lf.select(selector).collect(streaming=True)
-    assert out.columns == ["f_a"]
-
-
-def test_get_feature_selector_list_preserves_requested_order(small_lf: pl.LazyFrame):
-    cfg = Config({"feature_cols": ["f_b", "f_a"], "control_sample_query": "label = 1"})
-    selector = get_feature_selector(small_lf, cfg)
-    out = small_lf.select(selector).collect(streaming=True)
-    assert out.columns == ["f_b", "f_a"]
-
-
-def test_get_feature_columns_with_regex_returns_only_feature_cols(
-    small_lf: pl.LazyFrame,
-):
-    cfg = Config({"feature_cols": r"^f_", "control_sample_query": "batch = 'A'"})
-    out = get_feature_columns(small_lf, cfg).collect(streaming=True)
-    assert out.columns == ["f_a", "f_b"]
-
-
-def test_get_feature_columns_with_list_orders_and_logs_missing(
-    small_lf: pl.LazyFrame, caplog
-):
-    cfg = Config(
+def test_set_feature_matrix_replaces_feature_columns(monkeypatch):
+    """
+    set_feature_matrix uses pl.LazyFrame(new_features, schema=feature_cols)
+    which may not be a public constructor. Patch it to a safe equivalent
+    for the purpose of testing behavior.
+    """
+    # Metadata LazyFrame (3 rows)
+    meta_lf = pl.DataFrame(
         {
-            "feature_cols": ["f_b", "missing_col", "f_a"],
-            "control_sample_query": "batch = 'A'",
+            "_batch": ["A", "B", "B"],
+            "_label": ["x", "x", "y"],
+            "_is_control": [True, False, True],
+            "_sample_idx": [0, 1, 2],
+            "keep": [42, 43, 44],  # some extra non-feature column
         }
+    ).lazy()
+
+    feature_cols = ["f1", "f2"]
+    new_feats = np.array([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]], dtype=float)
+
+    out_lf = mod_under_test.set_feature_matrix(
+        meta_data_df=meta_lf,
+        feature_cols=feature_cols,
+        new_features=new_feats,
     )
-    caplog.set_level(logging.WARNING)
+    out = out_lf.collect()
 
-    out = get_feature_columns(small_lf, cfg).collect(streaming=True)
+    # All metadata columns are preserved + new feature columns appended
+    for c in ["_batch", "_label", "_is_control", "_sample_idx", "keep", "f1", "f2"]:
+        assert c in out.columns
 
-    # Check that the warning was logged
-    assert any(
-        "ignored" in rec.message or "missing" in rec.message for rec in caplog.records
-    )
+    # Feature values match the provided matrix
+    assert out["f1"].to_list() == [1.0, 2.0, 3.0]
+    assert out["f2"].to_list() == [10.0, 20.0, 30.0]
 
-    # Should keep only the existing feature columns, in requested order
-    assert out.columns == ["f_b", "f_a"]
+    # Row count preserved
+    assert out.shape[0] == 3

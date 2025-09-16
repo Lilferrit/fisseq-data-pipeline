@@ -5,22 +5,23 @@ import pathlib
 import pickle
 import shutil
 from os import PathLike
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import fire
+import numpy as np
 import polars as pl
 import sklearn.model_selection
 
-from .filter import run_sequential_filters
+from .filter import get_clean_masks
 from .harmonize import fit_harmonizer, harmonize
 from .normalize import fit_normalizer, normalize
-from .utils import Config, get_rows_by_idx
+from .utils import Config, get_data_dfs, set_feature_matrix
 from .utils.config import DEFAULT_CFG_PATH
 
 RANDOM_STATE = os.getenv("FISSEQ_PIPELINE_RAND_STATE", 42)
 
 
-def setup_logging(log_dir: Optional[PathLike] = None) -> None:
+def _setup_logging(log_dir: Optional[PathLike] = None) -> None:
     """
     Configure logging for the pipeline.
 
@@ -65,99 +66,276 @@ def setup_logging(log_dir: Optional[PathLike] = None) -> None:
     )
 
 
+def _clean(
+    feature_df: pl.DataFrame, meta_data_df: pl.DataFrame
+) -> Tuple[pl.DataFrame, pl.DataFrame]:
+    """
+    Remove unusable rows/columns from features and align metadata.
+
+    This function computes masks for:
+      - columns that are entirely NaN,
+      - columns with (near) zero variance, and
+      - rows containing NaNs in any non-all-NaN column.
+
+    It then drops flagged rows/columns from the feature matrix and applies the
+    same row filtering to the metadata so the two remain aligned.
+
+    Parameters
+    ----------
+    feature_df : pl.DataFrame
+        Feature columns only; shape (n_samples, n_features).
+    meta_data_df : pl.DataFrame
+        Metadata columns (e.g., _batch, _label, _is_control), aligned by rows
+        with `feature_df`.
+
+    Returns
+    -------
+    Tuple[pl.DataFrame, pl.DataFrame]
+        Cleaned `(feature_df, meta_data_df)` with invalid rows/columns removed
+        and row alignment preserved.
+    """
+    logging.info("Cleaning data")
+    feature_matrix = feature_df.to_numpy()
+    col_all_nan, col_zero_var, row_contains_nan = get_clean_masks(feature_matrix)
+    row_mask = ~row_contains_nan
+    col_mask = ~col_all_nan & ~col_zero_var
+
+    # Columns to keep (preserve order)
+    keep_cols = [c for c, keep in zip(feature_df.columns, col_mask) if keep]
+
+    # Apply masks (rows via filter; columns via select)
+    feature_df = feature_df.filter(pl.Series(row_mask)).select(keep_cols)
+    meta_data_df = meta_data_df.filter(pl.Series(row_mask))
+
+    return feature_df, meta_data_df
+
+
+def _get_train_test(
+    feature_df: pl.DataFrame,
+    meta_data_df: pl.DataFrame,
+    test_size: float,
+) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """
+    Stratify by batch+label and split features/metadata into train/test sets.
+
+    A 1D stratification vector is built by concatenating ``_batch`` and
+    ``_label``; indices are split with sklearn's `train_test_split`, then the
+    corresponding rows are selected from both the feature and metadata frames.
+
+    Parameters
+    ----------
+    feature_df : pl.DataFrame
+        Cleaned feature frame; shape (n_samples, n_features).
+    meta_data_df : pl.DataFrame
+        Cleaned metadata frame aligned to `feature_df`.
+    test_size : float
+        Proportion of samples to assign to the test split.
+
+    Returns
+    -------
+    Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]
+        train_feature_df, train_meta_data_df, test_feature_df, test_meta_data_df
+    """
+    stratify = meta_data_df.select(
+        pl.concat_str(
+            (pl.col("_batch").cast(pl.Utf8), pl.col("_label").cast(pl.Utf8)),
+            separator="_",
+        ).alias("_stratify")
+    )["_stratify"].to_list()
+
+    train_idx, test_idx = sklearn.model_selection.train_test_split(
+        np.arange(len(meta_data_df)),
+        test_size=test_size,
+        stratify=stratify,
+        random_state=RANDOM_STATE,
+    )
+
+    train_feature_df = feature_df[train_idx, :]
+    train_meta_data_df = meta_data_df[train_idx, :]
+    test_feature_df = feature_df[test_idx, :]
+    test_meta_data_df = meta_data_df[test_idx, :]
+
+    return train_feature_df, train_meta_data_df, test_feature_df, test_meta_data_df
+
+
+def _write_output(
+    unmodified_matrix: np.ndarray,
+    normalized_matrix: np.ndarray,
+    harmonized_matrix: np.ndarray,
+    meta_data: pl.LazyFrame,
+    feature_cols: List[str],
+    output_dir: pathlib.Path,
+    split_name: str,
+) -> None:
+    """
+    Write unmodified, normalized, and harmonized splits to Parquet files.
+
+    Uses `set_feature_matrix` to pair a feature matrix with the provided
+    metadata (as a LazyFrame) and writes three Parquet files named with the
+    given split suffix.
+
+    Parameters
+    ----------
+    unmodified_matrix : np.ndarray
+        Raw features for the split; shape (n_split, n_features_kept).
+    normalized_matrix : np.ndarray
+        Normalized features for the split; same shape as `unmodified_matrix`.
+    harmonized_matrix : np.ndarray
+        Harmonized features for the split; same shape as above.
+    meta_data : pl.LazyFrame
+        Metadata rows corresponding to the split.
+    feature_cols : list[str]
+        Column names matching the feature matrices' column order.
+    output_dir : pathlib.Path
+        Destination directory; must exist prior to writing.
+    split_name : str
+        Suffix used in filenames (e.g., ``"train"`` or ``"test"``).
+
+    Returns
+    -------
+    None
+        Writes:
+          - ``unmodified.<split_name>.parquet``
+          - ``normalized.<split_name>.parquet``
+          - ``harmonized.<split_name>.parquet``
+    """
+    set_feature_matrix(
+        meta_data,
+        feature_cols,
+        unmodified_matrix,
+    ).sink_parquet(output_dir / f"unmodified.{split_name}.parquet")
+
+    set_feature_matrix(
+        meta_data,
+        feature_cols,
+        normalized_matrix,
+    ).sink_parquet(output_dir / f"normalized.{split_name}.parquet")
+
+    set_feature_matrix(
+        meta_data,
+        feature_cols,
+        harmonized_matrix,
+    ).sink_parquet(output_dir / f"harmonized.{split_name}.parquet")
+
+
 def validate(
     input_data_path: PathLike,
     config: Optional[Config | PathLike] = None,
     output_dir: Optional[PathLike] = None,
     test_size: float = 0.2,
-    idx_col_name: str = "_fisseq_data_pipeline_cell_idx",
+    write_train_results: bool = True,
 ) -> None:
     """
-    Perform a single train/test split, normalize, and harmonize the test
-    dataset.
+    Run a stratified train/test validation with normalization and harmonization.
 
-    The dataset is first cleaned using the configured feature filters, then
-    stratified by the batch and label columns defined in the config. A
-    train/test split is performed, after which normalization and harmonization
-    models are trained on the training portion and applied to the test portion.
-    Both the transformed test data and the fitted models are serialized to disk.
+    Pipeline:
+      1) Load dataset, derive feature/metadata frames, and clean invalid
+         rows/columns.
+      2) Build a stratification vector from ``_batch`` and ``_label`` and
+         perform a single stratified train/test split.
+      3) Fit a normalizer on the training split; transform train and test.
+      4) Fit a harmonizer (e.g., ComBat) on normalized training data; apply
+         to normalized test (and optionally train).
+      5) Write unmodified/normalized/harmonized Parquet outputs and save
+         fitted models.
 
     Parameters
     ----------
     input_data_path : PathLike
-        Path to the input Parquet file containing the dataset.
+        Path to a Parquet file to scan and process.
     config : Config or PathLike, optional
-        Configuration object or path to a config file.
-        Must specify at least ``batch_col_name`` and ``label_col_name``.
+        Configuration object or path. Must define feature columns and the
+        names of ``_batch``, ``_label``, and ``_is_control`` metadata fields.
     output_dir : PathLike, optional
-        Directory in which to write output files.
-        Defaults to the current working directory.
+        Directory for outputs. Defaults to the current working directory.
     test_size : float, default=0.2
-        Proportion of the dataset to reserve for the test split. The remainder
-        is used for training the normalizer and harmonizer models.
-    idx_col_name : str, default="_fisseq_data_pipeline_cell_idx"
-        Temporary column name used to track row indices during splitting.
+        Fraction of samples assigned to the test split.
+    write_train_results : bool, default=True
+        If True, also write the train split's unmodified/normalized/harmonized
+        outputs.
 
     Returns
     -------
     None
-        Writes the following files to ``output_dir``:
-          - ``unmodified.test.parquet`` : the raw test set
-          - ``normalized.test.parquet`` : test set after normalization
-          - ``harmonized.test.parquet`` : test set after harmonization
-          - ``normalizer.test.pkl`` : pickled normalizer model
-          - ``harmonizer.test.pkl`` : pickled harmonizer model
+        Writes Parquet files and model artifacts to ``output_dir``:
+          - ``unmodified.test.parquet``
+          - ``normalized.test.parquet``
+          - ``harmonized.test.parquet``
+          - (optionally) the corresponding ``*.train.parquet`` files
+          - ``normalizer.test.pkl``
+          - ``harmonizer.test.pkl``
     """
-    setup_logging(output_dir)
+    _setup_logging(output_dir)
     logging.info("Starting validation with input path: %s", input_data_path)
 
     data_df = pl.scan_parquet(input_data_path)
     output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
     logging.info("Output directory set to: %s", output_dir)
 
-    logging.info("Cleaning data")
+    logging.info("Collecting data matrices")
     config = Config(config)
-    data_df = run_sequential_filters(data_df, config)
-
-    strata = (
-        data_df.select(
-            pl.col(config.batch_col_name),
-            pl.col(config.label_col_name),
-        )
-        .collect()
-        .to_pandas()
-        .astype(str)
-        .agg("_".join, axis=1)
+    feature_df, meta_data_df = get_data_dfs(data_df, config)
+    feature_df, meta_data_df = _clean(feature_df, meta_data_df)
+    train_feature_df, train_meta_data, test_feature_df, test_meta_data = (
+        _get_train_test(feature_df, meta_data_df, test_size)
     )
 
-    idx = (
-        data_df.with_row_index(idx_col_name)
-        .select(idx_col_name)
-        .collect()
-        .to_numpy()
-        .flatten()
-    )
-    train_idx, test_idx = sklearn.model_selection.train_test_split(
-        idx, test_size=test_size, stratify=strata, random_state=RANDOM_STATE
+    logging.info("Fitting normalizer on train data")
+    train_matrix = train_feature_df.to_numpy()
+    test_matrix = test_feature_df.to_numpy()
+    normalizer = fit_normalizer(
+        train_matrix, config, is_control=train_meta_data["_is_control"].to_numpy()
     )
 
-    train_df = get_rows_by_idx(data_df, train_idx)
-    test_df = get_rows_by_idx(data_df, test_idx)
+    logging.info("Running normalizer on train/test data")
+    normalized_train = normalize(train_matrix, normalizer)
+    normalized_test = normalize(test_matrix, normalizer)
 
-    logging.info("Fitting normalizer on test data")
-    normalizer = fit_normalizer(train_df, config)
-    logging.info("Normalizing test data")
-    normalized_data = normalize(test_df, config, normalizer)
-    logging.info("Fitting harmonizer on test data")
-    harmonizer = fit_harmonizer(normalized_data, config)
+    logging.info("Fitting harmonizer on train data")
+    harmonizer = fit_harmonizer(
+        normalized_train,
+        train_meta_data["_batch"].to_numpy(),
+        config,
+        is_control=train_meta_data["_is_control"].to_numpy(),
+    )
+
     logging.info("Harmonizing test data")
-    harmonized_data = harmonize(normalized_data, config, harmonizer)
+    harmonized_test = harmonize(
+        normalized_test, test_meta_data["_batch"].to_numpy(), config, harmonizer
+    )
+
+    harmonized_train = None
+    if write_train_results:
+        harmonized_train = harmonize(
+            normalized_train, test_meta_data["_batch"].to_numpy(), config, harmonizer
+        )
 
     # write outputs
     logging.info("Writing outputs to %s", output_dir)
-    test_df.sink_parquet(output_dir / f"unmodified.test.parquet")
-    normalized_data.sink_parquet(output_dir / f"normalized.test.parquet")
-    harmonized_data.sink_parquet(output_dir / f"harmonized.test.parquet")
+    test_meta_data = test_meta_data.lazy()
+    feature_cols = feature_df.columns
+
+    _write_output(
+        unmodified_matrix=test_matrix,
+        normalized_matrix=normalized_test,
+        harmonized_matrix=harmonized_test,
+        meta_data=test_meta_data,
+        feature_cols=feature_cols,
+        output_dir=output_dir,
+        split_name="test",
+    )
+
+    if write_train_results:
+        _write_output(
+            unmodified_matrix=train_matrix,
+            normalized_matrix=normalized_train,
+            harmonized_matrix=harmonized_train,
+            meta_data=train_meta_data,
+            feature_cols=feature_cols,
+            output_dir=output_dir,
+            split_name="train",
+        )
+
     with open(output_dir / f"normalizer.test.pkl", "wb") as f:
         pickle.dump(normalizer, f)
     with open(output_dir / f"harmonizer.test.pkl", "wb") as f:
@@ -166,67 +344,9 @@ def validate(
     logging.info("Validation finished successfully")
 
 
-def run(
-    input_data_path: PathLike,
-    config: Optional[Config | PathLike] = None,
-    output_dir: Optional[PathLike] = None,
-) -> None:
-    """
-    Perform normalization and harmonization on the full dataset.
-
-    The dataset is normalized using a fitted StandardScaler and harmonized
-    using neuroHarmonize. Both transformed datasets and the fitted models
-    are saved to disk.
-
-    Parameters
-    ----------
-    input_data_path : PathLike
-        Path to the input Parquet file containing the dataset.
-    config : Config or PathLike, optional
-        Configuration object or path to a config file.
-        Must specify at least ``batch_col_name`` and ``feature_cols``.
-    output_dir : PathLike, optional
-        Directory in which to write output files.
-        Defaults to the current working directory.
-
-    Returns
-    -------
-    None
-        Writes normalized and harmonized Parquet files, along with pickled
-        normalizer and harmonizer models, to ``output_dir``.
-    """
-    setup_logging(output_dir)
-    logging.info("Starting run with input path: %s", input_data_path)
-
-    data_df = pl.scan_parquet(input_data_path)
-    output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
-    logging.info("Output directory set to: %s", output_dir)
-
-    logging.info("Cleaning data")
-    config = Config(config)
-    data_df = run_sequential_filters(data_df, config)
-
-    logging.debug("Fitting normalizer on full dataset")
-    normalizer = fit_normalizer(data_df, config)
-
-    logging.debug("Normalizing dataset")
-    normalized_data = normalize(data_df, config, normalizer)
-
-    logging.debug("Fitting harmonizer on normalized dataset")
-    harmonizer = fit_harmonizer(normalized_data, config)
-
-    logging.debug("Harmonizing dataset")
-    harmonized_data = harmonize(normalized_data, config, harmonizer)
-
-    logging.info("Writing output files")
-    normalized_data.sink_parquet(output_dir / "normalized.parquet")
-    harmonized_data.sink_parquet(output_dir / "harmonized.parquet")
-    with open(output_dir / "normalizer.pkl", "wb") as f:
-        pickle.dump(normalizer, f)
-    with open(output_dir / "harmonizer.pkl", "wb") as f:
-        pickle.dump(harmonizer, f)
-
-    logging.info("Run finished successfully")
+def run(*args, **kwargs) -> None:
+    # TODO: implement run
+    raise NotImplementedError()
 
 
 def configure(output_path: Optional[PathLike] = None) -> None:

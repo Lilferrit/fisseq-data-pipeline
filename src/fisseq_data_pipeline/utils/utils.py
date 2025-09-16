@@ -1,37 +1,13 @@
 import logging
-from typing import Collection, List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-from polars.datatypes.classes import FloatType
 
 from .config import Config
 
 PlSelector = cs.Selector | pl.Expr
-
-
-def get_control_samples(data_df: pl.LazyFrame, config: Config) -> pl.LazyFrame:
-    """
-    Filter the input LazyFrame to include only control samples based on the
-    query specified in the configuration.
-
-    Parameters
-    ----------
-    data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
-    config : Config
-        Configuration object containing a ``control_sample_query`` attribute
-        with a SQL WHERE clause fragment.
-
-    Returns
-    -------
-    pl.LazyFrame
-        A LazyFrame containing only the control samples.
-    """
-    query = f"SELECT * FROM self WHERE {config.control_sample_query}"
-    logging.debug("Running query: %s", query)
-    return data_df.sql(query)
 
 
 def get_feature_selector(data_df: pl.LazyFrame, config: Config) -> PlSelector:
@@ -106,56 +82,132 @@ def get_feature_columns(data_df: pl.LazyFrame, config: Config) -> pl.LazyFrame:
     return data_df
 
 
-def get_feature_matrix(
-    data_df: pl.LazyFrame, config: Config, dtype: FloatType = pl.Float32
-) -> Tuple[List[str], np.ndarray]:
+def get_data_dfs(
+    data_df: pl.LazyFrame,
+    config: Config,
+    dtype: pl.DataType = pl.Float32,
+) -> Tuple[pl.DataFrame, pl.DataFrame]:
     """
-    Extract the feature matrix from the LazyFrame based on columns defined in
-    the configuration.
+    Construct a numeric feature matrix and a metadata DataFrame from a
+    Polars LazyFrame.
+
+    The computation graph:
+      1. Adds a row index column (``_sample_idx``) for stable sample
+         tracking.
+      2. Selects feature columns defined in ``config.feature_cols`` and
+         casts them to ``dtype``.
+      3. Extracts the batch column (``_batch``), the label column
+         (``_label``), and a boolean control mask (``_is_control``) using
+         ``config.control_sample_query``.
+      4. Collects the LazyFrame once and returns NumPy features plus
+         eager Polars metadata.
 
     Parameters
     ----------
     data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
+        Input dataset as a Polars LazyFrame.
     config : Config
-        Configuration object containing a ``feature_cols`` attribute
-        (string regex pattern or list of column names).
-    dtype : polars.datatypes.DataType, default=pl.Float32
-        The data type to cast the feature columns to.
+        Configuration object containing:
+          - ``feature_cols``: regex or list of feature column names.
+          - ``batch_col_name``: column name to be exposed as ``_batch``.
+          - ``label_col_name``: column name to be exposed as ``_label``.
+          - ``control_sample_query``: SQL WHERE clause fragment defining
+            control samples (used to produce ``_is_control``).
+    dtype : pl.DataType, optional
+        Target dtype for feature columns (default: ``pl.Float32``).
 
     Returns
     -------
-    feature_cols : list of str
-        The list of selected feature column names.
-    feature_matrix : numpy.ndarray
-        A 2D NumPy array containing the feature values.
+    Tuple[np.ndarray, pl.DataFrame]
+        - Feature matrix: ``np.ndarray`` of shape ``(n_samples, n_features)``,
+          with columns from ``config.feature_cols`` cast to ``dtype``.
+        - Metadata DataFrame: eager ``pl.DataFrame`` with columns:
+            * ``_batch``: values from ``config.batch_col_name``.
+            * ``_label``: values from ``config.label_col_name``.
+            * ``_is_control``: bool mask indicating control samples.
+            * ``_sample_idx``: integer row index for reference.
     """
-    data_df = get_feature_columns(data_df, config)
-    data_df = data_df.cast(dtype)
-    feature_cols = list(data_df.schema.keys())
-    data_df = data_df.collect()
+    logging.info(
+        "Starting get_data_matrices for batch_col=%s, dtype=%s",
+        config.batch_col_name,
+        dtype,
+    )
 
-    return feature_cols, data_df.to_numpy()
+    # Attach row indices to preserve mapping later
+    base = data_df.with_row_index(name="_sample_idx").cache()
+
+    # Build feature selector
+    feature_expr = get_feature_selector(base, config).cast(dtype=dtype)
+    logging.debug("Feature selector resolved: %s", feature_expr)
+
+    # Control mask expr
+    logging.debug("Parsing control sample query: %s", config.control_sample_query)
+
+    control_mask_expr = pl.sql_expr(config.control_sample_query).alias("_is_control")
+    batch_expr = pl.col(config.batch_col_name).alias("_batch")
+    label_expr = pl.col(config.label_col_name).alias("_label")
+
+    # Execute the full plan
+    logging.info("Collecting LazyFrame into DataFrame")
+    df = (
+        base.with_columns(
+            label_expr,
+            batch_expr,
+            control_mask_expr,
+        )
+        .select(
+            feature_expr,
+            pl.col("_batch"),
+            pl.col("_is_control"),
+            pl.col("_sample_idx"),
+            pl.col("_label"),
+        )
+        .collect()
+    )
+    logging.info("Collection complete: shape=%s", df.shape)
+
+    # Get feature dataframe
+    feature_df = df.select(feature_expr)
+    logging.debug("Feature dataframe shape: %s", feature_df.shape)
+
+    meta_data_df = df.select(
+        pl.col("_batch"), pl.col("_label"), pl.col("_is_control"), pl.col("_sample_idx")
+    )
+
+    logging.debug("Meta data dataframe: shape=%s", meta_data_df.shape)
+    logging.info("Finished get_data_matrices")
+
+    return feature_df, meta_data_df
 
 
 def set_feature_matrix(
-    data_df: pl.LazyFrame,
+    meta_data_df: pl.LazyFrame,
     feature_cols: List[str],
     new_features: np.ndarray,
 ) -> pl.LazyFrame:
     """
-    Replace the feature columns in a LazyFrame with new values provided
-    as a NumPy array.
+    Replace selected feature columns in a LazyFrame with new values.
+
+    This function constructs a new LazyFrame from the provided feature
+    matrix and replaces the specified feature columns in the metadata
+    frame. If a boolean feature mask is provided, only the subset of
+    feature columns where the mask is True will be replaced.
 
     Parameters
     ----------
-    data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
+    meta_data_df : pl.LazyFrame
+        Input dataset as a Polars LazyFrame containing metadata and
+        original feature columns.
     feature_cols : list of str
-        The names of the feature columns to replace.
-    new_features : numpy.ndarray
-        A 2D NumPy array of replacement feature values with shape
-        (n_rows, len(feature_cols)).
+        Names of the feature columns to replace.
+    new_features : np.ndarray
+        2D NumPy array of replacement values with shape
+        (n_rows, n_selected_features). The number of columns must
+        match the number of feature columns being replaced.
+    feature_mask : np.ndarray, optional
+        Boolean mask of shape (len(feature_cols),). If provided,
+        only the feature columns corresponding to True entries in
+        the mask are replaced.
 
     Returns
     -------
@@ -165,35 +217,4 @@ def set_feature_matrix(
     """
     logging.debug("Updating feature columns %s", feature_cols)
     feature_df = pl.LazyFrame(new_features, schema=feature_cols)
-    data_df = data_df.drop(feature_df.columns)
-    return pl.concat((feature_df, data_df), how="horizontal")
-
-
-def get_rows_by_idx(
-    data_df: pl.LazyFrame,
-    rows: Collection[int],
-    idx_col_name: str = "_fisseq_data_pipeline_cell_idx",
-) -> pl.LazyFrame:
-    """
-    Select specific rows from a LazyFrame by integer indices.
-
-    Parameters
-    ----------
-    data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
-    rows : collection of int
-        The integer indices of the rows to retrieve.
-    idx_col_name : str, default="_fisseq_data_pipeline_cell_idx"
-        The temporary name for the index column added to the LazyFrame.
-
-    Returns
-    -------
-    pl.LazyFrame
-        A LazyFrame containing only the specified rows, with the
-        temporary index column removed.
-    """
-    logging.debug("Selecting row indices: %s", rows)
-    rows = set(rows)
-    data_df = data_df.with_row_index(idx_col_name)
-    data_df = data_df.filter(pl.col(idx_col_name).is_in(rows))
-    return data_df.drop(idx_col_name)
+    return pl.concat((feature_df, meta_data_df), how="horizontal")
