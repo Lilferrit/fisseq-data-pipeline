@@ -1,95 +1,76 @@
-from os import PathLike
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import neuroHarmonize
-import numpy as np
 import pandas as pd
-
-from .utils import Config
+import polars as pl
 
 Harmonizer = Dict[str, Any]
 
 
 def fit_harmonizer(
-    feature_matrix: np.ndarray,
-    batch_idx: np.ndarray,
-    config: Optional[PathLike | Config],
-    is_control: Optional[np.ndarray] = None,
+    feature_df: pl.DataFrame,
+    meta_data_df: pl.DataFrame,
+    fit_only_on_control: bool = False,
 ) -> Harmonizer:
     """
-    Fit a harmonization model to remove batch effects.
-
-    The function learns a batch-effect correction model using the provided
-    feature matrix and batch assignments. If a control mask is given, only the
-    subset of control samples is used to fit the harmonizer.
+    Fit a ComBat-based harmonization model using `neuroHarmonize`.
 
     Parameters
     ----------
-    feature_matrix : np.ndarray
-        2D array of shape (n_samples, n_features) containing the feature data.
-    batch_idx : np.ndarray
-        1D array of length n_samples with integer or categorical batch labels.
-    config : PathLike or Config, optional
-        Configuration object or path to a config file. Must contain the
-        attribute ``batch_col_name`` specifying the batch column.
-    is_control : np.ndarray, optional
-        Boolean mask of shape (n_samples,) indicating which samples are
-        controls. If provided, only control samples are used to fit the model.
+    feature_df : pl.DataFrame
+        Feature matrix with shape (n_samples, n_features), numeric only.
+    meta_data_df : pl.DataFrame
+        Metadata aligned with rows in `feature_df`. Must contain a `_batch`
+        column indicating batch membership. If `fit_only_on_control=True`,
+        must also contain a boolean `_is_control` column.
+    fit_only_on_control : bool, default=False
+        If True, compute the harmonization model only from control samples
+        (rows where `_is_control` is True).
 
     Returns
     -------
     Harmonizer
-        A harmonization model learned by
-        ``neuroHarmonize.harmonizationLearn`` that can later be applied
-        to correct batch effects in new data.
+        A fitted harmonization model dictionary returned by
+        ``neuroHarmonize.harmonizationLearn``.
     """
-    config = Config(config)
-    if is_control is not None:
-        feature_matrix = feature_matrix[is_control]
-        batch_idx = batch_idx[is_control]
+    if fit_only_on_control:
+        feature_df = feature_df.filter(meta_data_df.get_column("_is_control"))
+        meta_data_df = meta_data_df.filter(meta_data_df.get_column("_is_control"))
 
-    covar_df = pd.DataFrame(batch_idx, columns=["SITE"])
-    model, _ = neuroHarmonize.harmonizationLearn(feature_matrix, covar_df)
+    covar_df = meta_data_df.select(pl.col("_batch").alias("SITE")).to_pandas()
+    model, _ = neuroHarmonize.harmonizationLearn(feature_df.to_numpy(), covar_df)
+
     return model
 
 
 def harmonize(
-    feature_matrix: np.ndarray,
-    batch_idx: np.ndarray,
-    config: Optional[PathLike | Config],
+    feature_df: pl.DataFrame,
+    meta_data_df: pl.DataFrame,
     harmonizer: Harmonizer,
-) -> np.ndarray:
+) -> pl.DataFrame:
     """
-    Apply a fitted harmonization model to feature data.
-
-    This function uses a pre-trained harmonizer to correct for batch effects
-    in a new feature matrix, given the associated batch assignments.
+    Apply a fitted harmonization model to adjust features for batch effects.
 
     Parameters
     ----------
-    feature_matrix : np.ndarray
-        2D array of shape (n_samples, n_features) containing the feature data
-        to be harmonized.
-    batch_idx : np.ndarray
-        1D array of length n_samples with integer or categorical batch labels.
-    config : PathLike or Config, optional
-        Configuration object or path to a config file. Must contain the
-        attribute ``batch_col_name`` specifying the batch column.
+    feature_df : pl.DataFrame
+        Feature matrix to harmonize; shape (n_samples, n_features).
+    meta_data_df : pl.DataFrame
+        Metadata aligned with rows in `feature_df`. Must contain a `_batch`
+        column indicating batch membership.
     harmonizer : Harmonizer
-        A harmonization model previously learned by
-        ``fit_harmonizer`` (wrapper around
-        ``neuroHarmonize.harmonizationLearn``).
+        A fitted model dictionary produced by ``fit_harmonizer``.
 
     Returns
     -------
-    np.ndarray
-        Harmonized feature matrix of shape (n_samples, n_features),
-        corrected for batch effects.
+    pl.DataFrame
+        Harmonized feature matrix with the same shape and column names
+        as the input `feature_df`.
     """
-    config = Config(config)
-    covar_df = pd.DataFrame(batch_idx, columns=["SITE"])
+    covar_df = meta_data_df.select(pl.col("_batch").alias("SITE")).to_pandas()
     harmonized_matrix = neuroHarmonize.harmonizationApply(
-        feature_matrix, covar_df, harmonizer
+        feature_df.to_numpy(), covar_df, harmonizer
     )
+    feature_df = pl.DataFrame(harmonized_matrix, schema=feature_df.columns)
 
-    return harmonized_matrix
+    return feature_df

@@ -1,154 +1,162 @@
-# test_features_utils.py
-from typing import Any, Dict
-
+# test_pipeline_utils.py
 import numpy as np
 import polars as pl
 import polars.selectors as cs
 import pytest
 
-import fisseq_data_pipeline.utils.utils as mod_under_test
+from fisseq_data_pipeline.utils.utils import (
+    get_data_dfs,
+    get_feature_columns,
+    get_feature_selector,
+    train_test_split,
+)
 
 
 class DummyConfig:
-    """Minimal config stub with only the fields the functions use."""
-
     def __init__(
         self,
         feature_cols,
-        batch_col_name: str = "batch",
-        label_col_name: str = "label",
-        control_sample_query: str = "qc",
+        batch_col_name="_batch_src",
+        label_col_name="_label_src",
+        control_sample_query="_is_ctrl_src",
     ):
         self.feature_cols = feature_cols
         self.batch_col_name = batch_col_name
         self.label_col_name = label_col_name
-        # Interpreted by pl.sql_expr; here we use a simple boolean column name.
+        # Polars SQL expression string; should evaluate to a boolean per-row.
         self.control_sample_query = control_sample_query
 
 
-# ----------------------- get_feature_selector --------------------------------
-
-
-def test_get_feature_selector_with_regex():
-    df = pl.DataFrame({"f1": [1], "f2": [2], "x": [3]}).lazy()
-    cfg = DummyConfig(feature_cols=r"^f\d+$")  # regex for f1, f2
-
-    sel = mod_under_test.get_feature_selector(df, cfg)
-    # Apply selector to see the resulting columns
-    out_cols = df.select(sel).collect().columns
-    assert out_cols == ["f1", "f2"]
-
-
-def test_get_feature_selector_with_list_preserves_order_and_warns_missing(caplog):
-    df = pl.DataFrame({"b": [0], "a": [1], "c": [2]}).lazy()
-    # Include a missing column 'z' and out-of-order selection
-    cfg = DummyConfig(feature_cols=["a", "z", "b"])
-
-    with caplog.at_level("WARNING"):
-        sel = mod_under_test.get_feature_selector(df, cfg)
-        # After selection, only existing columns in requested order
-        out_cols = df.select(sel).collect().columns
-        assert out_cols == ["a", "b"]
-
-        # Warning mentions missing column
-        assert any("ignored" in rec.message for rec in caplog.records)
-
-
-# ----------------------- get_feature_columns ---------------------------------
-
-
-def test_get_feature_columns_returns_only_selected_columns():
-    df = pl.DataFrame({"f1": [1, 2], "f2": [3, 4], "meta": [9, 9]}).lazy()
-    cfg = DummyConfig(feature_cols=["f2", "f1"])  # order should be respected
-
-    out_lf = mod_under_test.get_feature_columns(df, cfg)
-    out = out_lf.collect()
-    assert out.columns == ["f2", "f1"]
-    assert out.shape == (2, 2)
-
-
-def test_get_feature_columns_with_regex():
-    df = pl.DataFrame({"a1": [1], "a2": [2], "b": [3]}).lazy()
-    cfg = DummyConfig(feature_cols=r"^a\d$")
-    out = mod_under_test.get_feature_columns(df, cfg).collect()
-    assert out.columns == ["a1", "a2"]
-
-
-# ----------------------- get_data_dfs ---------------------------------------
-
-
-def test_get_data_dfs_shapes_and_columns():
-    # Build a small dataset with features, batch, label, and qc (for controls)
-    data = pl.DataFrame(
+def test_get_feature_selector_regex():
+    lf = pl.LazyFrame(
         {
-            "f1": [0.0, 1.0, 2.0, 3.0],
-            "f2": [10.0, 11.0, 12.0, 13.0],
-            "batch": ["A", "A", "B", "B"],
-            "label": ["x", "y", "x", "y"],
-            "qc": [True, False, True, True],  # control mask query = "qc"
+            "f_a": [1, 2],
+            "f_b": [3, 4],
+            "meta": [0, 1],
         }
-    ).lazy()
+    )
+    cfg = DummyConfig(feature_cols=r"^f_")
+    sel = get_feature_selector(lf, cfg)
 
+    # Apply the selector to ensure it picks only f_a and f_b
+    out = lf.select(sel).collect()
+    assert out.columns == ["f_a", "f_b"]
+
+
+def test_get_feature_selector_list_preserves_order_and_ignores_missing():
+    lf = pl.LazyFrame(
+        {
+            "a": [1, 2],
+            "b": [3, 4],
+        }
+    )
+    cfg = DummyConfig(feature_cols=["a", "missing", "b"])
+    sel = get_feature_selector(lf, cfg)
+
+    out = lf.select(sel).collect()
+    # Missing column gets ignored; order of present ones is preserved
+    assert out.columns == ["a", "b"]
+
+
+def test_get_feature_columns_from_lazyframe():
+    lf = pl.LazyFrame(
+        {
+            "x1": [1, 2, 3],
+            "x2": [4, 5, 6],
+            "other": [0, 1, 0],
+        }
+    )
+    cfg = DummyConfig(feature_cols=["x2", "x1"])
+    out_lf = get_feature_columns(lf, cfg)
+    out = out_lf.collect()
+    # Only feature columns, in requested order
+    assert out.columns == ["x2", "x1"]
+    assert out.shape == (3, 2)
+
+
+def test_get_data_dfs_basic():
+    # Build a small LazyFrame with all required columns
+    lf = pl.LazyFrame(
+        {
+            "a": [1.0, 2.0, 3.0, 4.0],
+            "b": [10.0, 20.0, 30.0, 40.0],
+            "site": ["S1", "S1", "S2", "S2"],
+            "y": ["A", "B", "A", "B"],
+            "_is_ctrl_src": [True, False, True, False],  # used by control_sample_query
+        }
+    )
     cfg = DummyConfig(
-        feature_cols=["f2", "f1"],  # order matters
-        batch_col_name="batch",
-        label_col_name="label",
-        control_sample_query="qc",
+        feature_cols=["a", "b"],
+        batch_col_name="site",
+        label_col_name="y",
+        control_sample_query="_is_ctrl_src",
     )
 
-    feat_df, meta_df = mod_under_test.get_data_dfs(data, cfg, dtype=pl.Float32)
+    feature_df, meta_df = get_data_dfs(lf, cfg, dtype=pl.Float32)
 
-    # Feature DataFrame keeps only the specified features in order, cast to f32
-    assert feat_df.columns == ["f2", "f1"]
-    assert all(feat_df.schema[c] == pl.Float32 for c in feat_df.columns)
-    assert feat_df.shape == (4, 2)
+    # Feature frame has only a,b with requested dtype
+    assert feature_df.columns == ["a", "b"]
+    assert feature_df.dtypes == [pl.Float32, pl.Float32]
+    assert feature_df.shape == (4, 2)
 
-    # Meta DataFrame has required columns
+    # Meta frame has expected columns
     assert meta_df.columns == ["_batch", "_label", "_is_control", "_sample_idx"]
-    assert meta_df.shape == (4, 4)
-    # Check that _is_control equals the qc column values
-    assert meta_df["_is_control"].to_list() == [True, False, True, True]
-    # sample_idx is a simple range starting at 0
+    assert meta_df["_batch"].to_list() == ["S1", "S1", "S2", "S2"]
+    assert meta_df["_label"].to_list() == ["A", "B", "A", "B"]
+    assert meta_df["_is_control"].to_list() == [True, False, True, False]
     assert meta_df["_sample_idx"].to_list() == [0, 1, 2, 3]
 
 
-# ----------------------- set_feature_matrix ----------------------------------
-
-
-def test_set_feature_matrix_replaces_feature_columns(monkeypatch):
-    """
-    set_feature_matrix uses pl.LazyFrame(new_features, schema=feature_cols)
-    which may not be a public constructor. Patch it to a safe equivalent
-    for the purpose of testing behavior.
-    """
-    # Metadata LazyFrame (3 rows)
-    meta_lf = pl.DataFrame(
+def test_train_test_split_stratified_on_label_and_batch():
+    # Create 8 samples with 4 groups: A:S1, A:S2, B:S1, B:S2 (2 samples each)
+    feature_df = pl.DataFrame(
         {
-            "_batch": ["A", "B", "B"],
-            "_label": ["x", "x", "y"],
-            "_is_control": [True, False, True],
-            "_sample_idx": [0, 1, 2],
-            "keep": [42, 43, 44],  # some extra non-feature column
+            "f1": np.arange(8, dtype=float),
+            "f2": np.arange(8, dtype=float) * 10.0,
         }
-    ).lazy()
-
-    feature_cols = ["f1", "f2"]
-    new_feats = np.array([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]], dtype=float)
-
-    out_lf = mod_under_test.set_feature_matrix(
-        meta_data_df=meta_lf,
-        feature_cols=feature_cols,
-        new_features=new_feats,
     )
-    out = out_lf.collect()
+    labels = ["A", "A", "A", "A", "B", "B", "B", "B"]
+    batches = ["S1", "S1", "S2", "S2", "S1", "S1", "S2", "S2"]
+    meta_df = pl.DataFrame(
+        {
+            "_label": labels,
+            "_batch": batches,
+        }
+    )
 
-    # All metadata columns are preserved + new feature columns appended
-    for c in ["_batch", "_label", "_is_control", "_sample_idx", "keep", "f1", "f2"]:
-        assert c in out.columns
+    # With test_size=0.5 and 2 per group, we expect 1 per group in test
+    trX, trM, teX, teM = train_test_split(feature_df, meta_df, test_size=0.5)
 
-    # Feature values match the provided matrix
-    assert out["f1"].to_list() == [1.0, 2.0, 3.0]
-    assert out["f2"].to_list() == [10.0, 20.0, 30.0]
+    assert trX.shape[1] == feature_df.shape[1]
+    assert teX.shape[1] == feature_df.shape[1]
+    assert trX.shape[0] + teX.shape[0] == feature_df.shape[0]
+    assert trM.shape[0] + teM.shape[0] == meta_df.shape[0]
 
-    # Row count preserved
-    assert out.shape[0] == 3
+    # Check stratification: each (label,batch) appears once in test and once in train
+    def counts(df):
+        return (
+            pl.DataFrame({"_label": df["_label"], "_batch": df["_batch"]})
+            .group_by(["_label", "_batch"])
+            .len()
+            .sort(by=["_label", "_batch"])
+            .to_dict(as_series=False)
+        )
+
+    train_counts = counts(trM)
+    test_counts = counts(teM)
+
+    # Expected keys
+    expected_keys = {
+        ("A", "S1"),
+        ("A", "S2"),
+        ("B", "S1"),
+        ("B", "S2"),
+    }
+    got_keys_train = set(zip(train_counts["_label"], train_counts["_batch"]))
+    got_keys_test = set(zip(test_counts["_label"], test_counts["_batch"]))
+    assert got_keys_train == expected_keys
+    assert got_keys_test == expected_keys
+
+    # Each group should have exactly 1 sample in train and 1 in test
+    assert all(n == 1 for n in train_counts["len"])
+    assert all(n == 1 for n in test_counts["len"])

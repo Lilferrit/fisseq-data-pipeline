@@ -1,69 +1,72 @@
-from os import PathLike
+import dataclasses
 from typing import Optional
 
-import numpy as np
-import sklearn.preprocessing
+import polars as pl
 
-from .utils import Config
 
-Normalizer = sklearn.preprocessing.StandardScaler
+@dataclasses.dataclass
+class Normalizer:
+    """
+    Container for normalization statistics.
+
+    Attributes
+    ----------
+    means : pl.DataFrame
+        A 1×n DataFrame containing the mean value of each column.
+    stds : pl.DataFrame
+        A 1×n DataFrame containing the standard deviation of each column.
+    """
+
+    means: pl.DataFrame
+    stds: pl.DataFrame
 
 
 def fit_normalizer(
-    feature_matrix: np.ndarray,
-    config: Optional[PathLike | Config],
-    is_control: Optional[np.ndarray] = None,
+    feature_df: pl.DataFrame,
+    meta_data_df: Optional[pl.DataFrame] = None,
+    fit_only_on_control: bool = False,
 ) -> Normalizer:
     """
-    Fit a normalization model (scikit-learn StandardScaler) on feature data.
-
-    If a control mask is provided, the normalizer is fit only on the subset
-    of control samples. Otherwise, all samples are used.
+    Compute column-wise means and standard deviations for feature normalization.
 
     Parameters
     ----------
-    feature_matrix : np.ndarray
-        2D array of shape (n_samples, n_features) containing the feature data.
-    config : PathLike or Config, optional
-        Configuration object or path. Currently unused for fitting but
-        included for API consistency with other functions.
-    is_control : np.ndarray, optional
-        Boolean mask of shape (n_samples,) indicating which samples are
-        controls. If provided, only control samples are used to fit the
-        normalizer.
+    feature_df : pl.DataFrame
+        Feature matrix with samples as rows and features as columns.
+    meta_data_df : Optional[pl.DataFrame], default=None
+        Metadata aligned row-wise with `feature_df`. Required if
+        ``fit_only_on_control=True``.
+    fit_only_on_control : bool, default=False
+        If True, compute normalization statistics only from control samples
+        indicated by the ``_is_control`` column in `meta_data_df`.
 
     Returns
     -------
     Normalizer
-        A fitted ``sklearn.preprocessing.StandardScaler`` instance that stores
-        the mean and variance used for centering and scaling.
+        Object containing per-column means and standard deviations.
     """
-    config = Config(config)
-    if is_control is not None:
-        feature_matrix = feature_matrix[is_control]
+    if fit_only_on_control and meta_data_df is None:
+        raise ValueError("Meta data required to fit to control samples")
+    elif fit_only_on_control:
+        feature_df = feature_df.filter(meta_data_df.get_column("_is_control"))
 
-    normalizer = sklearn.preprocessing.StandardScaler()
-    normalizer.fit(feature_matrix)
-    return normalizer
+    return Normalizer(means=feature_df.mean(), stds=feature_df.std())
 
 
-def normalize(feature_matrix: np.ndarray, normalizer: Normalizer) -> np.ndarray:
+def normalize(feature_df: pl.DataFrame, normalizer: Normalizer) -> pl.DataFrame:
     """
-    Apply a fitted normalization model (StandardScaler) to feature data.
+    Apply z-score normalization to features using precomputed statistics.
 
     Parameters
     ----------
-    feature_matrix : np.ndarray
-        2D array of shape (n_samples, n_features) containing the feature data
-        to be normalized.
+    feature_df : pl.DataFrame
+        Feature matrix to normalize; shape (n_samples, n_features).
     normalizer : Normalizer
-        A fitted ``sklearn.preprocessing.StandardScaler`` instance returned by
-        ``fit_normalizer``.
+        Precomputed means and standard deviations to use for scaling.
 
     Returns
     -------
-    np.ndarray
-        Normalized feature matrix of shape (n_samples, n_features), where each
-        feature has been centered and scaled according to the fitted normalizer.
+    pl.DataFrame
+        Normalized feature matrix with the same shape as `feature_df`.
     """
-    return normalizer.transform(feature_matrix)
+    return (feature_df - normalizer.means) / normalizer.stds

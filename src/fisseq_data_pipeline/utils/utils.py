@@ -1,13 +1,17 @@
 import logging
-from typing import List, Optional, Tuple
+import os
+from typing import Tuple
 
 import numpy as np
 import polars as pl
 import polars.selectors as cs
+import sklearn.model_selection
 
 from .config import Config
 
 PlSelector = cs.Selector | pl.Expr
+
+RANDOM_STATE = os.getenv("FISSEQ_PIPELINE_RAND_STATE", 42)
 
 
 def get_feature_selector(data_df: pl.LazyFrame, config: Config) -> PlSelector:
@@ -180,41 +184,59 @@ def get_data_dfs(
     return feature_df, meta_data_df
 
 
-def set_feature_matrix(
-    meta_data_df: pl.LazyFrame,
-    feature_cols: List[str],
-    new_features: np.ndarray,
-) -> pl.LazyFrame:
+def train_test_split(
+    feature_df: pl.DataFrame,
+    meta_data_df: pl.DataFrame,
+    test_size: float,
+) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    Replace selected feature columns in a LazyFrame with new values.
-
-    This function constructs a new LazyFrame from the provided feature
-    matrix and replaces the specified feature columns in the metadata
-    frame. If a boolean feature mask is provided, only the subset of
-    feature columns where the mask is True will be replaced.
+    Split feature and metadata DataFrames into stratified train and test sets.
 
     Parameters
     ----------
-    meta_data_df : pl.LazyFrame
-        Input dataset as a Polars LazyFrame containing metadata and
-        original feature columns.
-    feature_cols : list of str
-        Names of the feature columns to replace.
-    new_features : np.ndarray
-        2D NumPy array of replacement values with shape
-        (n_rows, n_selected_features). The number of columns must
-        match the number of feature columns being replaced.
-    feature_mask : np.ndarray, optional
-        Boolean mask of shape (len(feature_cols),). If provided,
-        only the feature columns corresponding to True entries in
-        the mask are replaced.
+    feature_df : pl.DataFrame
+        Feature matrix with shape (n_samples, n_features).
+    meta_data_df : pl.DataFrame
+        Metadata aligned row-wise with ``feature_df``. Must contain columns
+        ``_label`` (class labels) and ``_batch`` (batch identifiers).
+    test_size : float
+        Proportion of the dataset to include in the test split. Should be a
+        float between 0.0 and 1.0.
 
     Returns
     -------
-    pl.LazyFrame
-        A LazyFrame containing the updated feature columns alongside
-        all non-feature columns from the original input.
+    train_feature_df : pl.DataFrame
+        Features for the training set.
+    train_meta_data_df : pl.DataFrame
+        Metadata for the training set.
+    test_feature_df : pl.DataFrame
+        Features for the test set.
+    test_meta_data_df : pl.DataFrame
+        Metadata for the test set.
+
+    Notes
+    -----
+    - Each ``(_label, _batch)`` group must have at least two samples for
+      stratification to succeed.
+    - The split is reproducible if ``RANDOM_STATE`` is fixed.
     """
-    logging.debug("Updating feature columns %s", feature_cols)
-    feature_df = pl.LazyFrame(new_features, schema=feature_cols)
-    return pl.concat((feature_df, meta_data_df), how="horizontal")
+    stratify = [
+        f"{label}:{batch}"
+        for label, batch in zip(
+            meta_data_df.get_column("_label"), meta_data_df.get_column("_batch")
+        )
+    ]
+
+    train_idx, test_idx = sklearn.model_selection.train_test_split(
+        np.arange(len(meta_data_df)),
+        test_size=test_size,
+        stratify=stratify,
+        random_state=RANDOM_STATE,
+    )
+
+    train_feature_df = feature_df[train_idx, :]
+    train_meta_data_df = meta_data_df[train_idx, :]
+    test_feature_df = feature_df[test_idx, :]
+    test_meta_data_df = meta_data_df[test_idx, :]
+
+    return train_feature_df, train_meta_data_df, test_feature_df, test_meta_data_df
