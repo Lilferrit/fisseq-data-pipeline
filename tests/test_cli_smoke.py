@@ -54,8 +54,8 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
         "features.test.parquet",
         "normalized.test.parquet",
         "harmonized.test.parquet",
-        "normalizer.test.pkl",
-        "harmonizer.test.pkl",
+        "normalizer.pkl",
+        "harmonizer.pkl",
     ]
     for fname in expected_test_files:
         assert (output_dir / fname).exists(), f"Missing expected output: {fname}"

@@ -55,3 +55,22 @@ def test_fit_only_on_control_requires_meta():
 
     with pytest.raises(ValueError):
         fit_normalizer(feature_df, meta_data_df=None, fit_only_on_control=True)
+
+
+def test_normalize_applies_zscore():
+    feature_df = make_feature_df()
+    normalizer = fit_normalizer(feature_df)
+    normalized_df = normalize(feature_df, normalizer)
+
+    # Column means after normalization should be ~0
+    col_means = normalized_df.mean().to_dicts()[0]
+    for mean in col_means.values():
+        assert np.isclose(mean, 0.0, atol=1e-8)
+
+    # Column stds after normalization should be ~1
+    col_stds = normalized_df.std().to_dicts()[0]
+    for std in col_stds.values():
+        assert np.isclose(std, 1.0, atol=1e-8)
+
+    # Shape should be preserved
+    assert normalized_df.shape == feature_df.shape

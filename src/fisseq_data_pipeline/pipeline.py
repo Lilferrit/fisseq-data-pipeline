@@ -10,7 +10,7 @@ from typing import Optional
 import fire
 import polars as pl
 
-from .filter import clean_data
+from .filter import clean_data, drop_infrequent_pairs
 from .harmonize import fit_harmonizer, harmonize
 from .normalize import fit_normalizer, normalize
 from .utils import Config, get_data_dfs, train_test_split
@@ -128,6 +128,7 @@ def validate(
     config = Config(config)
     feature_df, meta_data_df = get_data_dfs(data_df, config)
     feature_df, meta_data_df = clean_data(feature_df, meta_data_df)
+    feature_df, meta_data_df = drop_infrequent_pairs(feature_df, meta_data_df)
     train_feature_df, train_meta_df, test_feature_df, test_meta_df = train_test_split(
         feature_df, meta_data_df, test_size=test_size
     )
@@ -159,9 +160,9 @@ def validate(
     test_harmonized_df.write_parquet(output_dir / "harmonized.test.parquet")
 
     logging.info("Writing fitted parameters to %s", output_dir)
-    with open(output_dir / f"normalizer.test.pkl", "wb") as f:
+    with open(output_dir / f"normalizer.pkl", "wb") as f:
         pickle.dump(normalizer, f)
-    with open(output_dir / f"harmonizer.test.pkl", "wb") as f:
+    with open(output_dir / f"harmonizer.pkl", "wb") as f:
         pickle.dump(harmonizer, f)
 
     if write_train_results:

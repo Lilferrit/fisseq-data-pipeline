@@ -69,4 +69,11 @@ def normalize(feature_df: pl.DataFrame, normalizer: Normalizer) -> pl.DataFrame:
     pl.DataFrame
         Normalized feature matrix with the same shape as `feature_df`.
     """
-    return (feature_df - normalizer.means) / normalizer.stds
+    means = normalizer.means.row(0, named=True)
+    stds = normalizer.stds.row(0, named=True)
+    feature_df = feature_df.with_columns(
+        ((pl.col(c) - pl.lit(means[c])) / pl.lit(stds[c])).alias(c)
+        for c in feature_df.columns
+    )
+
+    return feature_df

@@ -238,5 +238,10 @@ def train_test_split(
     train_meta_data_df = meta_data_df[train_idx, :]
     test_feature_df = feature_df[test_idx, :]
     test_meta_data_df = meta_data_df[test_idx, :]
+    logging.info(
+        "Created train set containing %d samples and test set containing %d samples",
+        len(train_idx),
+        len(test_idx),
+    )
 
     return train_feature_df, train_meta_data_df, test_feature_df, test_meta_data_df
