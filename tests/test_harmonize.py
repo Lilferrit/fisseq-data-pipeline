@@ -35,6 +35,7 @@ def test_fit_and_harmonize_shapes():
 
     # Apply harmonization
     harmonized_df = harmonize(feature_df, meta_df, harmonizer)
+    assert harmonized_df.select(pl.all().is_finite()).to_numpy().all()
 
     # Check shape and column alignment
     assert harmonized_df.shape == feature_df.shape
@@ -53,3 +54,4 @@ def test_harmonization_changes_values():
 
     # At least some values should be different after harmonization
     assert not np.allclose(feature_df.to_numpy(), harmonized_df.to_numpy())
+    assert harmonized_df.select(pl.all().is_finite()).to_numpy().all()

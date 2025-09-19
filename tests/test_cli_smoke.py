@@ -1,18 +1,21 @@
 # test_validate_smoke.py
 import pathlib
 
+import numpy as np
 import polars as pl
 import pytest
 
 from fisseq_data_pipeline.pipeline import Config, configure, validate
+
+np.random.seed(42)
 
 
 def make_toy_dataset(path: pathlib.Path):
     # 8 samples: balanced across batch/label, some controls
     df = pl.DataFrame(
         {
-            "f1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] * 10,
-            "f2": [2.0, 1.0, 4.0, 3.0, 6.0, 5.0, 8.0, 7.0] * 10,
+            "f1": np.random.rand(80),
+            "f2": np.random.rand(80),
             "batch": ["B1", "B1", "B1", "B1", "B2", "B2", "B2", "B2"] * 10,
             "label": ["A", "A", "B", "B", "A", "A", "B", "B"] * 10,
             "is_ctrl": [True, False, True, False, True, False, True, False] * 10,
@@ -58,7 +61,12 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
         "harmonizer.pkl",
     ]
     for fname in expected_test_files:
-        assert (output_dir / fname).exists(), f"Missing expected output: {fname}"
+        path = output_dir / fname
+        assert path.exists(), f"Missing expected output: {fname}"
+
+        if ".parquet" in fname and "meta_data" not in fname:
+            df = pl.read_parquet(path)
+            assert df.select(pl.all().is_finite()).to_numpy().all()
 
     # Train outputs only if requested
     expected_train_files = [
@@ -71,6 +79,10 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
         path = output_dir / fname
         if write_train_results:
             assert path.exists(), f"Missing expected train output: {fname}"
+
+            if ".parquet" in fname and "meta_data" not in fname:
+                df = pl.read_parquet(path)
+                assert df.select(pl.all().is_finite()).to_numpy().all()
         else:
             assert not path.exists(), f"Unexpected train output: {fname}"
 

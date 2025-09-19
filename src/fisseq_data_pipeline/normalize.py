@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 from typing import Optional
 
 import polars as pl
@@ -12,9 +13,9 @@ class Normalizer:
     Attributes
     ----------
     means : pl.DataFrame
-        A 1×n DataFrame containing the mean value of each column.
+        A 1xn DataFrame containing the mean value of each column.
     stds : pl.DataFrame
-        A 1×n DataFrame containing the standard deviation of each column.
+        A 1xn DataFrame containing the standard deviation of each column.
     """
 
     means: pl.DataFrame
@@ -48,9 +49,21 @@ def fit_normalizer(
     if fit_only_on_control and meta_data_df is None:
         raise ValueError("Meta data required to fit to control samples")
     elif fit_only_on_control:
+        logging.info(
+            "Filtering control samples, number of samples before filtering=%d",
+            len(feature_df),
+        )
         feature_df = feature_df.filter(meta_data_df.get_column("_is_control"))
+        logging.info(
+            "Filtering complete, remaining train set samples shape=%s",
+            len(feature_df.shape),
+        )
 
-    return Normalizer(means=feature_df.mean(), stds=feature_df.std())
+    logging.info("Fitting Normalizer")
+    normalizer = Normalizer(means=feature_df.mean(), stds=feature_df.std())
+    logging.info("Done")
+
+    return normalizer
 
 
 def normalize(feature_df: pl.DataFrame, normalizer: Normalizer) -> pl.DataFrame:
@@ -69,11 +82,15 @@ def normalize(feature_df: pl.DataFrame, normalizer: Normalizer) -> pl.DataFrame:
     pl.DataFrame
         Normalized feature matrix with the same shape as `feature_df`.
     """
+    logging.info("Setting up normalization, data shape=%s", feature_df.shape)
     means = normalizer.means.row(0, named=True)
     stds = normalizer.stds.row(0, named=True)
+
+    logging.info("Running normalization")
     feature_df = feature_df.with_columns(
         ((pl.col(c) - pl.lit(means[c])) / pl.lit(stds[c])).alias(c)
         for c in feature_df.columns
     )
 
+    logging.info("Done")
     return feature_df

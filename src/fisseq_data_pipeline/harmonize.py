@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict
 
 import neuroHarmonize
@@ -34,11 +35,21 @@ def fit_harmonizer(
         ``neuroHarmonize.harmonizationLearn``.
     """
     if fit_only_on_control:
+        logging.info(
+            "Filtering control samples, number of samples before filtering=%d",
+            len(feature_df),
+        )
         feature_df = feature_df.filter(meta_data_df.get_column("_is_control"))
         meta_data_df = meta_data_df.filter(meta_data_df.get_column("_is_control"))
+        logging.info(
+            "Filtering complete, remaining train set samples shape=%s",
+            len(feature_df.shape),
+        )
 
+    logging.info("Fitting harmonizer")
     covar_df = meta_data_df.select(pl.col("_batch").alias("SITE")).to_pandas()
     model, _ = neuroHarmonize.harmonizationLearn(feature_df.to_numpy(), covar_df)
+    logging.info("Done")
 
     return model
 
@@ -67,10 +78,15 @@ def harmonize(
         Harmonized feature matrix with the same shape and column names
         as the input `feature_df`.
     """
+    logging.info("Setting up harmonization")
     covar_df = meta_data_df.select(pl.col("_batch").alias("SITE")).to_pandas()
+
+    logging.info("Fitting harmonizer")
     harmonized_matrix = neuroHarmonize.harmonizationApply(
         feature_df.to_numpy(), covar_df, harmonizer
     )
+    logging.info("Copying data")
     feature_df = pl.DataFrame(harmonized_matrix, schema=feature_df.columns)
+    logging.info("Done")
 
     return feature_df

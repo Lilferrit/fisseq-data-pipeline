@@ -220,6 +220,7 @@ def train_test_split(
       stratification to succeed.
     - The split is reproducible if ``RANDOM_STATE`` is fixed.
     """
+    logging.info("Creating train test split")
     stratify = [
         f"{label}:{batch}"
         for label, batch in zip(
@@ -234,6 +235,7 @@ def train_test_split(
         random_state=RANDOM_STATE,
     )
 
+    logging.info("Created splits, copying data")
     train_feature_df = feature_df[train_idx, :]
     train_meta_data_df = meta_data_df[train_idx, :]
     test_feature_df = feature_df[test_idx, :]
