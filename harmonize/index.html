@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Harmonize - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Harmonize";
+        var mkdocs_page_input_path = "harmonize.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../pipeline/">Pipeline</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../filter/">Filter</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../normalize/">Normalize</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Harmonize</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#example-usage">Example usage</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#api-reference">API Reference</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.harmonize.fit_harmonizer">fit_harmonizer</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.harmonize.harmonize">harmonize</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../utils/config/">Config</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../utils/utils/">Utils</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Harmonize</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="harmonization-utilities">Harmonization utilities</h1>
+<p>The <code>fisseq_data_pipeline.harmonize</code> module provides utilities for
+<strong>batch-effect correction</strong> using <a href="https://pubmed.ncbi.nlm.nih.gov/16632515/">ComBat</a>
+via the <a href="https://github.com/rpomponio/neuroHarmonize"><code>neuroHarmonize</code></a> package.</p>
+<p>Harmonization is an essential step when combining data from multiple
+experiments or sources, ensuring that technical variation (batch effects)
+does not obscure biological signal.</p>
+<hr />
+<h2 id="overview">Overview</h2>
+<ul>
+<li><strong><code>fit_harmonizer</code></strong>: Learn a ComBat-based harmonization model from feature
+  and metadata DataFrames.</li>
+<li><strong><code>harmonize</code></strong>: Apply a fitted harmonization model to adjust new feature
+  matrices for batch effects.</li>
+</ul>
+<hr />
+<h2 id="example-usage">Example usage</h2>
+<pre><code class="language-python">import polars as pl
+from fisseq_data_pipeline.harmonize import fit_harmonizer, harmonize
+
+# Example feature matrix
+feature_df = pl.DataFrame({
+    &quot;gene1&quot;: [1.0, 2.0, 3.0, 4.0],
+    &quot;gene2&quot;: [2.0, 3.0, 4.0, 5.0],
+})
+
+# Example metadata with batch column
+meta_data_df = pl.DataFrame({
+    &quot;_batch&quot;: [0, 0, 1, 1],
+    &quot;_is_control&quot;: [True, True, True, False],
+})
+
+# Fit harmonizer (on control samples only)
+harmonizer = fit_harmonizer(feature_df, meta_data_df, fit_only_on_control=True)
+
+# Apply harmonization to full dataset
+harmonized_df = harmonize(feature_df, meta_data_df, harmonizer)
+
+print(harmonized_df)
+</code></pre>
+<h2 id="api-reference">API Reference</h2>
+<hr />
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="fisseq_data_pipeline.harmonize.fit_harmonizer" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">harmonize</span><span class="o">.</span><span class="n">fit_harmonizer</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Fit a ComBat-based harmonization model using <code>neuroHarmonize</code>.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>feature_df</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Feature matrix with shape (n_samples, n_features), numeric only.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>meta_data_df</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Metadata aligned with rows in <code>feature_df</code>. Must contain a <code>_batch</code>
+column indicating batch membership. If <code>fit_only_on_control=True</code>,
+must also contain a boolean <code>_is_control</code> column.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>fit_only_on_control</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>False</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>If True, compute the harmonization model only from control samples
+(rows where <code>_is_control</code> is True).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="fisseq_data_pipeline.harmonize.Harmonizer">Harmonizer</span></code>
+              –
+              <div class="doc-md-description">
+                <p>A fitted harmonization model dictionary returned by
+<code>neuroHarmonize.harmonizationLearn</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/fisseq_data_pipeline/harmonize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fit_harmonizer</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">fit_only_on_control</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Harmonizer</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fit a ComBat-based harmonization model using `neuroHarmonize`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    feature_df : pl.DataFrame</span>
+<span class="sd">        Feature matrix with shape (n_samples, n_features), numeric only.</span>
+<span class="sd">    meta_data_df : pl.DataFrame</span>
+<span class="sd">        Metadata aligned with rows in `feature_df`. Must contain a `_batch`</span>
+<span class="sd">        column indicating batch membership. If `fit_only_on_control=True`,</span>
+<span class="sd">        must also contain a boolean `_is_control` column.</span>
+<span class="sd">    fit_only_on_control : bool, default=False</span>
+<span class="sd">        If True, compute the harmonization model only from control samples</span>
+<span class="sd">        (rows where `_is_control` is True).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Harmonizer</span>
+<span class="sd">        A fitted harmonization model dictionary returned by</span>
+<span class="sd">        ``neuroHarmonize.harmonizationLearn``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">fit_only_on_control</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering control samples, number of samples before filtering=</span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">feature_df</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">meta_data_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;_is_control&quot;</span><span class="p">))</span>
+        <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">meta_data_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;_is_control&quot;</span><span class="p">))</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering complete, remaining train set samples shape=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">feature_df</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting harmonizer&quot;</span><span class="p">)</span>
+    <span class="n">covar_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;SITE&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
+    <span class="n">model</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">neuroHarmonize</span><span class="o">.</span><span class="n">harmonizationLearn</span><span class="p">(</span><span class="n">feature_df</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(),</span> <span class="n">covar_df</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">model</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="fisseq_data_pipeline.harmonize.harmonize" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">harmonize</span><span class="o">.</span><span class="n">harmonize</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">harmonizer</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Apply a fitted harmonization model to adjust features for batch effects.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>feature_df</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Feature matrix to harmonize; shape (n_samples, n_features).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>meta_data_df</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Metadata aligned with rows in <code>feature_df</code>. Must contain a <code>_batch</code>
+column indicating batch membership.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>harmonizer</code></b>
+                  (<code><span title="fisseq_data_pipeline.harmonize.Harmonizer">Harmonizer</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A fitted model dictionary produced by <code>fit_harmonizer</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.DataFrame">DataFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Harmonized feature matrix with the same shape and column names
+as the input <code>feature_df</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/fisseq_data_pipeline/harmonize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span>
+<span class="normal">82</span>
+<span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span>
+<span class="normal">89</span>
+<span class="normal">90</span>
+<span class="normal">91</span>
+<span class="normal">92</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">harmonize</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">harmonizer</span><span class="p">:</span> <span class="n">Harmonizer</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply a fitted harmonization model to adjust features for batch effects.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    feature_df : pl.DataFrame</span>
+<span class="sd">        Feature matrix to harmonize; shape (n_samples, n_features).</span>
+<span class="sd">    meta_data_df : pl.DataFrame</span>
+<span class="sd">        Metadata aligned with rows in `feature_df`. Must contain a `_batch`</span>
+<span class="sd">        column indicating batch membership.</span>
+<span class="sd">    harmonizer : Harmonizer</span>
+<span class="sd">        A fitted model dictionary produced by ``fit_harmonizer``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.DataFrame</span>
+<span class="sd">        Harmonized feature matrix with the same shape and column names</span>
+<span class="sd">        as the input `feature_df`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Setting up harmonization&quot;</span><span class="p">)</span>
+    <span class="n">covar_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;SITE&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting harmonizer&quot;</span><span class="p">)</span>
+    <span class="n">harmonized_matrix</span> <span class="o">=</span> <span class="n">neuroHarmonize</span><span class="o">.</span><span class="n">harmonizationApply</span><span class="p">(</span>
+        <span class="n">feature_df</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(),</span> <span class="n">covar_df</span><span class="p">,</span> <span class="n">harmonizer</span>
+    <span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying data&quot;</span><span class="p">)</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">harmonized_matrix</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">feature_df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">feature_df</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../normalize/" class="btn btn-neutral float-left" title="Normalize"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../utils/config/" class="btn btn-neutral float-right" title="Config">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../normalize/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../utils/config/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
