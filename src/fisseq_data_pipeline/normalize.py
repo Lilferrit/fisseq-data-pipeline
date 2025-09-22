@@ -67,7 +67,7 @@ def fit_normalizer(
     means = feature_df.mean()
     stds = feature_df.std()
     zero_var_cols = [
-        c for c in stds.columns if float(stds[c]) < np.finfo(np.float32).eps
+        k for k, v in stds.row(0, named=True).items() if v < np.finfo(np.float32).eps
     ]
 
     if len(zero_var_cols) > 0:
