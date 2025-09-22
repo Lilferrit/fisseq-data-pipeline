@@ -64,6 +64,8 @@ FISSEQ_PIPELINE_LOG_LEVEL=debug fisseq-data-pipeline validate \
 
 ## Documentation
 
+Full documentation can be found here: [https://lilferrit.github.io/fisseq-data-pipeline/](https://lilferrit.github.io/fisseq-data-pipeline)
+
 ## License
 
 [MIT](LICENSE.txt)
