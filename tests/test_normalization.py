@@ -74,3 +74,41 @@ def test_normalize_applies_zscore():
 
     # Shape should be preserved
     assert normalized_df.shape == feature_df.shape
+
+
+def test_fit_normalizer_drops_zero_variance_columns():
+    # Add a constant column 'z' (zero variance)
+    feature_df = make_feature_df().with_columns(pl.Series("z", [5.0, 5.0, 5.0]))
+
+    normalizer = fit_normalizer(feature_df)
+
+    # 'z' should be excluded from normalizer (dropped as zero variance)
+    assert "z" not in normalizer.stds.columns
+    assert "z" not in normalizer.means.columns
+
+    # Normalizing should return only x and y
+    normalized_df = normalize(feature_df, normalizer)
+    assert set(normalized_df.columns) == {"x", "y"}
+    assert normalized_df.shape == (3, 2)
+
+
+def test_normalize_drops_columns_not_in_normalizer():
+    # Fit the normalizer on only a subset of columns (x)
+    train_df = make_feature_df().select(["x"])
+    normalizer = fit_normalizer(train_df)
+
+    # At inference time we have extra columns (y, w) not seen during fitting
+    feature_df = make_feature_df().with_columns(pl.Series("w", [10.0, 20.0, 30.0]))
+
+    normalized_df = normalize(feature_df, normalizer)
+
+    # Only 'x' should be present after normalization
+    assert set(normalized_df.columns) == {"x"}
+    assert normalized_df.shape == (3, 1)
+
+    # Check values are correct z-scores for 'x'
+    x = np.array([1.0, 2.0, 3.0])
+    x_mean = np.mean(x)
+    x_std = np.std(x, ddof=1)
+    expected = (x - x_mean) / x_std
+    assert np.allclose(normalized_df["x"].to_numpy(), expected, atol=1e-12)
