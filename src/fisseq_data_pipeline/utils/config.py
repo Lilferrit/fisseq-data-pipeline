@@ -25,24 +25,6 @@ class Config:
     """
 
     def __init__(self, config: Optional[PathLike | ConfigDict | "Config"]):
-        """
-        Retrieve a configuration value as an attribute.
-
-        Parameters
-        ----------
-        name : str
-            The name of the configuration option.
-
-        Returns
-        -------
-        Any
-            The value of the requested configuration option.
-
-        Raises
-        ------
-        KeyError
-            If the key does not exist in the configuration.
-        """
         if config is None:
             logging.info("No config provided, using default config")
             config = DEFAULT_CFG_PATH

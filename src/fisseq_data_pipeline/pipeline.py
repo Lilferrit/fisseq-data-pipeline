@@ -70,18 +70,19 @@ def validate(
     write_train_results: bool = True,
 ) -> None:
     """
-    Run a stratified train/test validation with normalization and harmonization.
+    Train pipeline parameters and run on a stratified train/test split.
 
-    Pipeline:
-      1) Load dataset, derive feature/metadata frames, and clean invalid
-         rows/columns.
-      2) Build a stratification vector from ``_batch`` and ``_label`` and
-         perform a single stratified train/test split.
-      3) Fit a normalizer on the training split; transform train and test.
-      4) Fit a harmonizer (e.g., ComBat) on normalized training data; apply
-         to normalized test (and optionally train).
-      5) Write unmodified/normalized/harmonized Parquet outputs and save
-         fitted models.
+    Validation Pipeline steps
+    --------------
+    1. Load dataset, derive feature/metadata frames, and clean invalid
+       rows/columns.
+    2. Build a stratification vector from ``_batch`` and ``_label`` and
+       perform a single stratified train/test split.
+    3. Fit a normalizer on the training split; transform train and test.
+    4. Fit ComBat harmonizer on normalized training data; apply to the
+       normalized test (and optionally train).
+    5. Write unmodified, normalized, and harmonized Parquet outputs, and
+       save fitted models.
 
     Parameters
     ----------
@@ -89,33 +90,45 @@ def validate(
         Path to a Parquet file to scan and process.
     config : Config or PathLike, optional
         Configuration object or path. Must define feature columns and the
-        names of ``_batch``, ``_label``, and ``_is_control`` metadata fields.
+        names of ``_batch``, ``_label``, and ``_is_control`` fields.
     output_dir : PathLike, optional
-        Directory for outputs. Defaults to the current working directory.
+        Output directory. Defaults to the current working directory.
     test_size : float, default=0.2
         Fraction of samples assigned to the test split.
     write_train_results : bool, default=True
-        If True, also write the train split's unmodified/normalized/harmonized
-        outputs.
+        If True, also write the train split's unmodified/normalized/
+        harmonized outputs.
 
-     Returns
+    Outputs
     -------
-    None
+    Written to ``output_dir``:
 
-    Side Effects
-    ------------
-    Writes the following files into ``output_dir``:
-      - ``meta_data.test.parquet``
-      - ``features.test.parquet``
-      - ``normalized.test.parquet``
-      - ``harmonized.test.parquet``
-      - ``normalizer.pkl`
-      - ``harmonizer.pkl``
-      - If ``write_train_results=True``:
-        - ``meta_data.train.parquet``
-        - ``features.train.parquet``
-        - ``normalized.train.parquet``
-        - ``harmonized.train.parquet``
+    - ``meta_data.test.parquet``
+    - ``features.test.parquet``
+    - ``normalized.test.parquet``
+    - ``harmonized.test.parquet``
+    - ``normalizer.pkl``
+    - ``harmonizer.pkl``
+
+    If ``write_train_results=True``:
+
+    - ``meta_data.train.parquet``
+    - ``features.train.parquet``
+    - ``normalized.train.parquet``
+    - ``harmonized.train.parquet``
+
+    CLI
+    ---
+    Exposed via Fire at the ``fisseq-data-pipeline`` entry point, e.g.::
+
+    ```bash
+    fisseq-data-pipeline validate
+        --input_data_path data.parquet
+        --config config.yaml
+        --output_dir out
+        --test_size 0.2
+        --write_train_results true
+    ```
     """
     setup_logging(output_dir)
     logging.info("Starting validation with input path: %s", input_data_path)
@@ -175,24 +188,54 @@ def validate(
 
 
 def run(*args, **kwargs) -> None:
+    """
+    Run the production pipeline on a full dataset.
+
+    This function is a placeholder for a single-pass production run
+    (no train/test split). It is not implemented yet.
+
+    Raises
+    ------
+    NotImplementedError
+        Always raised. The function body is not implemented.
+
+    CLI
+    ---
+    Registered subcommand (placeholder)::
+
+    ```bash
+    fisseq-data-pipeline run
+    ```
+    """
     # TODO: implement run
     raise NotImplementedError()
 
 
 def configure(output_path: Optional[PathLike] = None) -> None:
     """
-    Create a copy of the default configuration file at the specified location.
+    Write a copy of the default configuration to ``output_path``.
 
     Parameters
     ----------
     output_path : PathLike, optional
-        Path where the configuration file should be written.
-        Defaults to ``config.yaml`` in the current working directory.
+        Target path for the configuration file. If ``None``, writes
+        ``config.yaml`` to the current working directory.
 
     Returns
     -------
     None
-        Writes the default configuration YAML file to ``output_path``.
+
+    CLI
+    ---
+    Exposed via Fire at the ``fisseq-data-pipeline`` entry point
+
+    ```bash
+    # Write config.yaml to CWD
+    fisseq-data-pipeline configure
+
+    # Write to a custom location
+    fisseq-data-pipeline configure --output_path path/to/config.yaml
+    ```
     """
     if output_path is None:
         output_path = pathlib.Path.cwd() / "config.yaml"
@@ -201,7 +244,21 @@ def configure(output_path: Optional[PathLike] = None) -> None:
 
 
 def main() -> None:
-    """CLI Entry"""
+    """
+    CLI entry that registers Fire subcommands.
+
+    Subcommands
+    -----------
+    - ``validate``  : Train/validate on a stratified split and write outputs.
+    - ``run``       : Production, single-pass run (not yet implemented).
+    - ``configure`` : Write a default configuration file.
+
+    CLI
+    ---
+    Invoked as the ``fisseq-data-pipeline`` console script. For example::
+
+        fisseq-data-pipeline validate --input_data_path data.parquet
+    """
     try:
         fire.Fire({"validate": validate, "run": run, "configure": configure})
     except:

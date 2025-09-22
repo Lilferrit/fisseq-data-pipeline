@@ -1,0 +1,25 @@
+site_name: Fisseq Data Pipeline
+nav:
+  - Home: index.md
+  - Pipeline: pipeline.md
+  - Configuration: configuration.md
+  - Filter: filter.md
+  - Normalize: normalize.md
+  - Harmonize: harmonize.md
+  - Config: utils/config.md
+  - Utils: utils/utils.md
+theme:
+  name: readthedocs
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            show_root_heading: true
+            show_signature: true
+            separate_signature: false
+            show_source: true
+            heading_level: 3

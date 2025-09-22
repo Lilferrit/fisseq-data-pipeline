@@ -1,14 +1,27 @@
 # FISSEQ Data Pipeline
 
+The **FISSEQ Data Pipeline** provides a reproducible, configurable workflow for processing **FISSEQ cell profiling data**.
+It handles data cleaning, normalization, harmonization, and stratified evaluation, making it easier to analyze experiments across batches and biological conditions.
 
-The **FISSEQ Data Pipeline** is a command-line tool designed to perform normalization and harmonization of cell-level data extracted from **FISSEQ** experiments.
+## Features
 
-## Usage
+### Command-line interface (CLI)
 
+Access the pipeline with a single entry point:
 
-The CLI is powered by [Python Fire](https://github.com/google/python-fire). The entry points are `validate`, `run`, and `configure`.
+```bash
+fisseq-data-pipeline [validate|run|configure]
+```
+
+- **Data cleaning**: Remove problematic data from the dataset.
+- **Normalization**: Z-score normalization with reusable statistics.
+- **Harmonization**: Batch-effect correction using ComBat via [neuroHarmonize](https://github.com/rpomponio/neuroHarmonize).
+- **Config-driven**: YAML configuration specifies feature selection, control sample queries, and metadata fields.
+- **Reproducible train/test splits**:Stratified by label and batch, controlled via a random seed.
 
 ## Installation
+
+Clone the repository and install dependencies:
 
 This package in its current state should be considered experimental, and is thus not hosted on PyPI.
 However, the package may be installed directly from Github using the command:
@@ -17,79 +30,40 @@ However, the package may be installed directly from Github using the command:
 pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
 ```
 
-### 1. Validate with Cross-Validation
+You may also clone the repository and install dependencies:
 
+```bash
+git clone https://github.com/your-org/fisseq-data-pipeline.git
+cd fisseq-data-pipeline
+pip install -e .
+```
+
+## Quick start
+
+Write a default configuration file:
+
+```bash
+fisseq-data-pipeline configure
+```
+
+Run validation on your dataset:
 
 ```bash
 fisseq-data-pipeline validate \
---input_data_path /path/to/cells.parquet \
---config /path/to/config.yaml \
---output_dir ./results/ \
---n_folds 5
+  --input_data_path data.parquet \
+  --config config.yaml \
+  --output_dir results
 ```
 
-
-**Outputs (per fold):**
-- `unmodified.fold_00001.parquet`
-- `normalized.fold_00001.parquet`
-- `harmonized.fold_00001.parquet`
-- `normalizer.fold_00001.pkl`
-- `harmonizer.fold_00001.pkl`
-
-
-### 2. Run on Full Dataset
-
+Adjust logging level via environment variable:
 
 ```bash
-fisseq-data-pipeline run \
---input_data_path /path/to/cells.parquet \
---config /path/to/config.yaml \
---output_dir ./results/
+FISSEQ_PIPELINE_LOG_LEVEL=debug fisseq-data-pipeline validate \
+  --input_data_path data.parquet
 ```
 
+## Documentation
 
-**Outputs:**
-- `normalized.parquet`
-- `harmonized.parquet`
-- `normalizer.pkl`
-- `harmonizer.pkl`
+## License
 
-
-### 3. Configure
-
-Get a template configuration file:
-
-
-```bash
-python -m fisseq_data_pipeline configure --output_path ./config.yaml
-```
-
-## Configuration
-
-
-The pipeline expects a YAML configuration file with at least the following keys:
-
-
-```yaml
-batch_col_name: batch
-label_col_name: label
-feature_cols: ^f_ # regex or explicit list of features
-control_sample_query: "batch = 'control'"
-```
-
-## Logging
-
-
-Logs are written both to console and to a timestamped log file in the chosen output directory:
-
-
-```
-fisseq-data-pipeline-YYYYMMDD:HHMMSS.log
-```
-
-
-The log level defaults to `info`, but can be set via the `FISSEQ_PIPELINE_LOG_LEVEL` environmental variable.
-
-```bash
-export FISSEQ_PIPELINE_LOG_LEVEL=debug
-```
+[MIT](LICENSE.txt)
