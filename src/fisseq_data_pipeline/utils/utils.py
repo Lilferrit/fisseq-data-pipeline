@@ -5,7 +5,6 @@ from typing import Tuple
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-import sklearn.model_selection
 
 from .config import Config
 
@@ -221,25 +220,36 @@ def train_test_split(
     - The split is reproducible if ``RANDOM_STATE`` is fixed.
     """
     logging.info("Creating train test split")
-    stratify = [
-        f"{label}:{batch}"
-        for label, batch in zip(
-            meta_data_df.get_column("_label"), meta_data_df.get_column("_batch")
+    meta_data_df = meta_data_df.with_row_index("row_id")
+    test_idx = (
+        meta_data_df
+        .with_columns(
+            pl.concat_str(
+                [
+                    pl.col("_label").cast(pl.Utf8),
+                    pl.lit(":"),
+                    pl.col("_batch").cast(pl.Utf8)
+                ]
+            )
+            .alias("grp")
         )
-    ]
+        .group_by("grp")
+        .agg(pl.col("row_id").sample(fraction=test_size, seed=RANDOM_STATE))
+        .explode("row_id")
+        .get_column("row_id")
+        .to_numpy()
+    )
 
-    train_idx, test_idx = sklearn.model_selection.train_test_split(
-        np.arange(len(meta_data_df)),
-        test_size=test_size,
-        stratify=stratify,
-        random_state=RANDOM_STATE,
+    train_idx = np.setdiff1d(
+        meta_data_df.get_column("row_id").to_numpy(), test_idx, assume_unique=True
     )
 
     logging.info("Created splits, copying data")
-    train_feature_df = feature_df[train_idx, :]
-    train_meta_data_df = meta_data_df[train_idx, :]
-    test_feature_df = feature_df[test_idx, :]
-    test_meta_data_df = meta_data_df[test_idx, :]
+    train_feature_df = feature_df[train_idx]
+    test_feature_df = feature_df[test_idx]
+    train_meta_data_df = meta_data_df[train_idx]
+    test_meta_data_df = meta_data_df[test_idx]
+
     logging.info(
         "Created train set containing %d samples and test set containing %d samples",
         len(train_idx),
