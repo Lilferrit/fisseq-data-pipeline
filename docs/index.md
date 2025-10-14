@@ -1,7 +1,6 @@
 # FISSEQ Data Pipeline
 
-Welcome to the **FISSEQ Data Pipeline** documentation.  
-This project provides a reproducible, configurable pipeline for processing FISSEQ cell profiling data, including cleaning, normalization, harmonization, and stratified evaluation.
+Welcome to the **FISSEQ Data Pipeline** documentation.
 
 ## Features
 
@@ -17,17 +16,23 @@ For more details on command line usage see [Pipeline](./pipeline.md).
 
 ### Data cleaning
 
-Remove invalid rows/columns and rare label–batch pairs.
+Remove invalid rows/columns and rare label–batch pairs, namely columns that contain all NaN values, followed by rows that contain any remaining NaN values.
+
 See [Filter](./filter.md).
 
 ### Normalization
 
 Compute z-score normalization statistics on control samples and apply them across the dataset.
+By default z-score normalization is fit only to control samples.
+Fitting only to control samples ensures that biological variation is captured even in the case where biological covariants are largely disjoint across batches.
+
 See [Normalize](./normalize.md).
 
 ### Harmonization
 
-Apply ComBat batch correction via `neuroHarmonize.`
+The harmonization step applies batch correction using the `neuroHarmonize` library.
+Similar to the normalization stage, by default the harmonizer's batch parameters are fit just the control (wild type) samples in the input data, and these parameters are then used to apply batch correction to all samples.
+
 See [Harmonize](./harmonize.md).
 
 ## Installation
