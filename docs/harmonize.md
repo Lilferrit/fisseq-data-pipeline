@@ -1,6 +1,6 @@
 # Harmonization utilities
 
-The `fisseq_data_pipeline.harmonize` module provides utilities for
+The `fisseq_data_pipeline.combat` module provides utilities for
 **batch-effect correction** using [ComBat](https://pubmed.ncbi.nlm.nih.gov/16632515/)
 via the [`neuroHarmonize`](https://github.com/rpomponio/neuroHarmonize) package.
 
@@ -23,7 +23,7 @@ does not obscure biological signal.
 
 ```python
 import polars as pl
-from fisseq_data_pipeline.harmonize import fit_harmonizer, harmonize
+from fisseq_data_pipeline.combat import fit_harmonizer, harmonize
 
 # Example feature matrix
 feature_df = pl.DataFrame({
@@ -50,10 +50,10 @@ print(harmonized_df)
 
 ---
 
-::: fisseq_data_pipeline.harmonize.fit_harmonizer
+::: fisseq_data_pipeline.combat.fit_harmonizer
 
 ---
 
-::: fisseq_data_pipeline.harmonize.harmonize
+::: fisseq_data_pipeline.combat.harmonize
 
 ---
