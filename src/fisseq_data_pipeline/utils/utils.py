@@ -222,16 +222,14 @@ def train_test_split(
     logging.info("Creating train test split")
     meta_data_df = meta_data_df.with_row_index("row_id")
     test_idx = (
-        meta_data_df
-        .with_columns(
+        meta_data_df.with_columns(
             pl.concat_str(
                 [
                     pl.col("_label").cast(pl.Utf8),
                     pl.lit(":"),
-                    pl.col("_batch").cast(pl.Utf8)
+                    pl.col("_batch").cast(pl.Utf8),
                 ]
-            )
-            .alias("grp")
+            ).alias("grp")
         )
         .group_by("grp")
         .agg(pl.col("row_id").sample(fraction=test_size, seed=RANDOM_STATE))
