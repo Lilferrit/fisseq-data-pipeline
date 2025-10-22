@@ -86,6 +86,7 @@ def fit_normalizer(
             len(feature_df),
         )
         feature_df = feature_df.filter(meta_data_df.get_column("_is_control"))
+        meta_data_df = meta_data_df.filter(meta_data_df.get_column("_is_control"))
         logging.info(
             "Filtering complete, remaining train set samples shape=%s",
             len(feature_df.shape),

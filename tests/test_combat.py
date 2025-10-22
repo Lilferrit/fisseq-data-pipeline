@@ -3,7 +3,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from fisseq_data_pipeline.harmonize import fit_harmonizer, harmonize
+from fisseq_data_pipeline.combat import fit_harmonizer, harmonize
 
 
 def make_toy_data(n_samples=6, n_features=3):
