@@ -69,9 +69,9 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#api-reference">API Reference</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.harmonize.fit_harmonizer">fit_harmonizer</a>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.combat.fit_harmonizer">fit_harmonizer</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.harmonize.harmonize">harmonize</a>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.combat.harmonize">harmonize</a>
     </li>
         </ul>
     </li>
@@ -110,7 +110,7 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="harmonization-utilities">Harmonization utilities</h1>
-<p>The <code>fisseq_data_pipeline.harmonize</code> module provides utilities for
+<p>The <code>fisseq_data_pipeline.combat</code> module provides utilities for
 <strong>batch-effect correction</strong> using <a href="https://pubmed.ncbi.nlm.nih.gov/16632515/">ComBat</a>
 via the <a href="https://github.com/rpomponio/neuroHarmonize"><code>neuroHarmonize</code></a> package.</p>
 <p>Harmonization is an essential step when combining data from multiple
@@ -127,7 +127,7 @@ does not obscure biological signal.</p>
 <hr />
 <h2 id="example-usage">Example usage</h2>
 <pre><code class="language-python">import polars as pl
-from fisseq_data_pipeline.harmonize import fit_harmonizer, harmonize
+from fisseq_data_pipeline.combat import fit_harmonizer, harmonize
 
 # Example feature matrix
 feature_df = pl.DataFrame({
@@ -156,8 +156,8 @@ print(harmonized_df)
 <div class="doc doc-object doc-function">
 
 
-<h3 id="fisseq_data_pipeline.harmonize.fit_harmonizer" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">harmonize</span><span class="o">.</span><span class="n">fit_harmonizer</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+<h3 id="fisseq_data_pipeline.combat.fit_harmonizer" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">combat</span><span class="o">.</span><span class="n">fit_harmonizer</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
 </h3>
 
@@ -223,7 +223,7 @@ must also contain a boolean <code>_is_control</code> column.</p>
       <td class="field-body">
         <ul class="first simple">
             <li>
-                  <code><span title="fisseq_data_pipeline.harmonize.Harmonizer">Harmonizer</span></code>
+                  <code><span title="fisseq_data_pipeline.combat.Harmonizer">Harmonizer</span></code>
               –
               <div class="doc-md-description">
                 <p>A fitted harmonization model dictionary returned by
@@ -237,7 +237,7 @@ must also contain a boolean <code>_is_control</code> column.</p>
 </table>
 
             <details class="quote">
-              <summary>Source code in <code>src/fisseq_data_pipeline/harmonize.py</code></summary>
+              <summary>Source code in <code>src/fisseq_data_pipeline/combat.py</code></summary>
               <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">11</span>
 <span class="normal">12</span>
 <span class="normal">13</span>
@@ -335,8 +335,8 @@ must also contain a boolean <code>_is_control</code> column.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="fisseq_data_pipeline.harmonize.harmonize" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">harmonize</span><span class="o">.</span><span class="n">harmonize</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">harmonizer</span><span class="p">)</span></code>
+<h3 id="fisseq_data_pipeline.combat.harmonize" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">combat</span><span class="o">.</span><span class="n">harmonize</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">harmonizer</span><span class="p">)</span></code>
 
 </h3>
 
@@ -375,7 +375,7 @@ column indicating batch membership.</p>
             </li>
             <li>
               <b><code>harmonizer</code></b>
-                  (<code><span title="fisseq_data_pipeline.harmonize.Harmonizer">Harmonizer</span></code>)
+                  (<code><span title="fisseq_data_pipeline.combat.Harmonizer">Harmonizer</span></code>)
               –
               <div class="doc-md-description">
                 <p>A fitted model dictionary produced by <code>fit_harmonizer</code>.</p>
@@ -412,7 +412,7 @@ as the input <code>feature_df</code>.</p>
 </table>
 
             <details class="quote">
-              <summary>Source code in <code>src/fisseq_data_pipeline/harmonize.py</code></summary>
+              <summary>Source code in <code>src/fisseq_data_pipeline/combat.py</code></summary>
               <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">57</span>
 <span class="normal">58</span>
 <span class="normal">59</span>

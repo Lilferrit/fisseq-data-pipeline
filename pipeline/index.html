@@ -408,7 +408,16 @@ harmonized outputs.</p>
 <span class="normal">184</span>
 <span class="normal">185</span>
 <span class="normal">186</span>
-<span class="normal">187</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span>
     <span class="n">input_data_path</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">,</span>
     <span class="n">config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Config</span> <span class="o">|</span> <span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -492,6 +501,10 @@ harmonized outputs.</p>
         <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="n">test_size</span>
     <span class="p">)</span>
 
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing feature matrices&quot;</span><span class="p">)</span>
+    <span class="n">test_meta_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;meta_data.test.parquet&quot;</span><span class="p">)</span>
+    <span class="n">test_feature_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;features.test.parquet&quot;</span><span class="p">)</span>
+
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting normalizer on train data&quot;</span><span class="p">)</span>
     <span class="n">normalizer</span> <span class="o">=</span> <span class="n">fit_normalizer</span><span class="p">(</span>
         <span class="n">train_feature_df</span><span class="p">,</span>
@@ -500,8 +513,17 @@ harmonized outputs.</p>
     <span class="p">)</span>
 
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running normalizer on train/test data&quot;</span><span class="p">)</span>
-    <span class="n">train_normalized_df</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">train_feature_df</span><span class="p">,</span> <span class="n">normalizer</span><span class="p">)</span>
-    <span class="n">test_normalized_df</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">test_feature_df</span><span class="p">,</span> <span class="n">normalizer</span><span class="p">)</span>
+    <span class="n">train_normalized_df</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span>
+        <span class="n">train_feature_df</span><span class="p">,</span> <span class="n">normalizer</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="o">=</span><span class="n">train_meta_df</span>
+    <span class="p">)</span>
+    <span class="n">test_normalized_df</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span>
+        <span class="n">test_feature_df</span><span class="p">,</span> <span class="n">normalizer</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="o">=</span><span class="n">test_meta_df</span>
+    <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing normalizer outputs&quot;</span><span class="p">)</span>
+    <span class="n">test_normalized_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalized.test.parquet&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;normalizer.pkl&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">normalizer</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
 
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting harmonizer on train data&quot;</span><span class="p">)</span>
     <span class="n">harmonizer</span> <span class="o">=</span> <span class="n">fit_harmonizer</span><span class="p">(</span>
@@ -511,25 +533,21 @@ harmonized outputs.</p>
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Harmonizing test data&quot;</span><span class="p">)</span>
     <span class="n">test_harmonized_df</span> <span class="o">=</span> <span class="n">harmonize</span><span class="p">(</span><span class="n">test_normalized_df</span><span class="p">,</span> <span class="n">test_meta_df</span><span class="p">,</span> <span class="n">harmonizer</span><span class="p">)</span>
 
-    <span class="c1"># write outputs</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing test outputs to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">)</span>
-    <span class="n">test_meta_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;meta_data.test.parquet&quot;</span><span class="p">)</span>
-    <span class="n">test_feature_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;features.test.parquet&quot;</span><span class="p">)</span>
-    <span class="n">test_normalized_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalized.test.parquet&quot;</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing harmonization outputs&quot;</span><span class="p">)</span>
     <span class="n">test_harmonized_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;harmonized.test.parquet&quot;</span><span class="p">)</span>
-
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing fitted parameters to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">)</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;normalizer.pkl&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">normalizer</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;harmonizer.pkl&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">harmonizer</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">write_train_results</span><span class="p">:</span>
-        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Harmonizing train data&quot;</span><span class="p">)</span>
-        <span class="n">train_harmonized_df</span> <span class="o">=</span> <span class="n">harmonize</span><span class="p">(</span><span class="n">train_normalized_df</span><span class="p">,</span> <span class="n">train_meta_df</span><span class="p">,</span> <span class="n">harmonizer</span><span class="p">)</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing train output up to the normalization stage&quot;</span><span class="p">)</span>
         <span class="n">train_meta_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;meta_data.train.parquet&quot;</span><span class="p">)</span>
         <span class="n">train_feature_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;features.train.parquet&quot;</span><span class="p">)</span>
         <span class="n">train_normalized_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalized.train.parquet&quot;</span><span class="p">)</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Harmonizing train data&quot;</span><span class="p">)</span>
+        <span class="n">train_harmonized_df</span> <span class="o">=</span> <span class="n">harmonize</span><span class="p">(</span><span class="n">train_normalized_df</span><span class="p">,</span> <span class="n">train_meta_df</span><span class="p">,</span> <span class="n">harmonizer</span><span class="p">)</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing harmonized train data&quot;</span><span class="p">)</span>
         <span class="n">train_harmonized_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;harmonized.train.parquet&quot;</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -587,16 +605,7 @@ harmonized outputs.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/pipeline.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">190</span>
-<span class="normal">191</span>
-<span class="normal">192</span>
-<span class="normal">193</span>
-<span class="normal">194</span>
-<span class="normal">195</span>
-<span class="normal">196</span>
-<span class="normal">197</span>
-<span class="normal">198</span>
-<span class="normal">199</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">199</span>
 <span class="normal">200</span>
 <span class="normal">201</span>
 <span class="normal">202</span>
@@ -608,7 +617,16 @@ harmonized outputs.</p>
 <span class="normal">208</span>
 <span class="normal">209</span>
 <span class="normal">210</span>
-<span class="normal">211</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Run the production pipeline on a full dataset.</span>
 
@@ -719,16 +737,7 @@ fisseq-data-pipeline configure --output_path path/to/config.yaml
 
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/pipeline.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">214</span>
-<span class="normal">215</span>
-<span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">223</span>
 <span class="normal">224</span>
 <span class="normal">225</span>
 <span class="normal">226</span>
@@ -748,7 +757,16 @@ fisseq-data-pipeline configure --output_path path/to/config.yaml
 <span class="normal">240</span>
 <span class="normal">241</span>
 <span class="normal">242</span>
-<span class="normal">243</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">configure</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">configure</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Write a copy of the default configuration to ``output_path``.</span>
 
@@ -964,16 +982,7 @@ If <code>None</code>, the current working directory is used.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/pipeline.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">255</span>
 <span class="normal">256</span>
 <span class="normal">257</span>
 <span class="normal">258</span>
@@ -984,7 +993,16 @@ If <code>None</code>, the current working directory is used.</p>
 <span class="normal">263</span>
 <span class="normal">264</span>
 <span class="normal">265</span>
-<span class="normal">266</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    CLI entry that registers Fire subcommands.</span>
 
