@@ -30,27 +30,6 @@ def test_removes_all_null_columns():
     assert cleaned_meta.height == 3
 
 
-def test_removes_zero_variance_columns():
-    feature_df = pl.DataFrame(
-        {
-            "constant": [5.0, 5.0, 5.0],
-            "varying": [1.0, 2.0, 3.0],
-        }
-    )
-    meta_df = pl.DataFrame(
-        {
-            "id": [1, 2, 3],
-            "_label": ["A", "A", "A"],
-            "_batch": ["B1", "B1", "B1"],
-        }
-    )
-
-    cleaned_features, _ = clean_data(feature_df, meta_df)
-
-    assert "constant" not in cleaned_features.columns
-    assert "varying" in cleaned_features.columns
-
-
 def test_drops_rows_with_nulls():
     feature_df = pl.DataFrame(
         {
@@ -99,7 +78,7 @@ def test_combined_cleaning():
     cleaned_features, cleaned_meta = clean_data(feature_df, meta_df)
 
     assert "all_null" not in cleaned_features.columns
-    assert "constant" not in cleaned_features.columns
+    assert "constant" in cleaned_features.columns
     assert "valid" in cleaned_features.columns
     assert cleaned_features.height == 3
     assert cleaned_meta.height == 3

@@ -14,13 +14,12 @@ def clean_data(
     """
     Clean feature and metadata tables and keep them row-aligned.
 
-    The cleaning pipeline performs four passes:
+    The cleaning pipeline performs the following passes:
 
     1) Drop feature columns that are entirely non-finite.
-    2) Drop rows that contain any remaining non-finite value across.
-    3) Drop feature columns with (near) zero variance.
+    2) Drop rows that contain any remaining non-finite value.
 
-    All feature columns must be numeric
+    All feature columns must be numeric.
 
     Parameters
     ----------
@@ -36,33 +35,32 @@ def clean_data(
         The cleaned ``(feature_df, meta_data_df)``, with invalid rows/columns
         removed and row alignment preserved.
     """
-    # Drop columns containing all non-finite values
-    feature_df = feature_df.fill_null(float("nan"))
-    n_rows = feature_df.height
-    is_all_nonfinite = feature_df.select(~pl.all().is_finite().any())
-    all_nonfinite_cols = [
-        c for c in feature_df.columns if is_all_nonfinite.get_column(c).item()
-    ]
-    feature_df = feature_df.select(pl.exclude(all_nonfinite_cols))
+    logging.info("Creating data cleaning query")
+    lf = feature_df.lazy()
+
+    # Pass 1: Drop columns that are entirely non-finite
+    finite_summary = lf.select(
+        [pl.col(c).is_finite().any().alias(c) for c in feature_df.columns]
+    ).collect()
+    non_finite_cols = [c for c in feature_df.columns if not finite_summary[c][0]]
+    lf = lf.select(pl.exclude(non_finite_cols))
     logging.info(
-        "Removed %d columns containing only non-finite values", len(all_nonfinite_cols)
+        "Removing %d columns containing only non-finite values",
+        len(non_finite_cols),
     )
 
-    # Drop rows containing remaining non-finite values
-    row_mask = feature_df.select(pl.all_horizontal(pl.all().is_finite())).to_series()
-    feature_df = feature_df.filter(row_mask)
+    # Pass 2: Drop rows containing any non-finite values
+    row_mask = lf.select(pl.all_horizontal(pl.all().is_finite())).collect().to_series()
+    lf = lf.filter(row_mask)
     meta_data_df = meta_data_df.filter(row_mask)
-    logging.debug(
-        "Dropped %d rows containing non-finite values", n_rows - feature_df.height
+    logging.info(
+        "Dropping %d rows containing non-finite values",
+        feature_df.height - int(row_mask.sum()),
     )
 
-    # Drop rows that have 0 variance
-    variances = feature_df.var().row(0, named=True)
-    zero_var_cols = [
-        c for c in feature_df.columns if float(variances[c]) < np.finfo(np.float32).eps
-    ]
-    feature_df = feature_df.select(pl.exclude(zero_var_cols))
-    logging.info("Removed %d columns containing zero variance", len(zero_var_cols))
+    # Execute query
+    logging.info("Executing query")
+    feature_df = lf.collect()
 
     return feature_df, meta_data_df
 
@@ -89,23 +87,34 @@ def drop_infrequent_pairs(
     -------
     (pl.DataFrame, pl.DataFrame)
         A tuple ``(feature_df, meta_data_df)`` with rows from
-        infrequent label–batch groups removed. Alignment is preserved.
+        infrequent label-batch groups removed. Alignment is preserved.
     """
-    # Drop rows that have infrequent (batch, label) batch pairs
     n_rows = feature_df.height
-    label_batch = (
-        meta_data_df.get_column("_label") + "_" + meta_data_df.get_column("_batch")
-    ).alias("_label_batch")
-    label_batch_counts = label_batch.value_counts().filter(
-        pl.col("count") >= MINIMUM_CLASS_MEMBERS
+
+    # Compute label_batch frequencies lazily
+    lf = meta_data_df.lazy().with_columns(
+        (pl.col("_label") + "_" + pl.col("_batch")).alias("_label_batch")
     )
-    label_batch_freq_mask = label_batch.is_in(
-        label_batch_counts.get_column("_label_batch")
+
+    # Get per-combo counts and join back to metadata
+    lf = lf.join(
+        lf.group_by("_label_batch").agg(pl.count().alias("_count")),
+        on="_label_batch",
+        how="left",
     )
-    feature_df = feature_df.filter(label_batch_freq_mask)
-    meta_data_df = meta_data_df.filter(label_batch_freq_mask)
+
+    # Boolean mask for frequent pairs
+    mask_df = lf.select(
+        (pl.col("_count") >= MINIMUM_CLASS_MEMBERS).alias("_keep")
+    ).collect()
+    mask = mask_df["_keep"]
+
+    # Apply to both tables (row-aligned)
+    feature_df = feature_df.filter(mask)
+    meta_data_df = meta_data_df.filter(mask)
+
     logging.info(
-        "Dropped %d rows containing batch label pairs with frequency less than %d",
+        "Dropped %d rows containing rare (batch, label) pairs (<%d)",
         n_rows - feature_df.height,
         MINIMUM_CLASS_MEMBERS,
     )

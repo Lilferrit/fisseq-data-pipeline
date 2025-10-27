@@ -236,10 +236,13 @@ def train_test_split(
         .explode("row_id")
         .get_column("row_id")
         .to_numpy()
+        .astype(int)
     )
 
     train_idx = np.setdiff1d(
-        meta_data_df.get_column("row_id").to_numpy(), test_idx, assume_unique=True
+        meta_data_df.get_column("row_id").to_numpy().astype(int),
+        test_idx,
+        assume_unique=True,
     )
 
     logging.info("Created splits, copying data")
