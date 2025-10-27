@@ -2,7 +2,6 @@ import logging
 import os
 from typing import Tuple
 
-import numpy as np
 import polars as pl
 import polars.selectors as cs
 
@@ -152,33 +151,29 @@ def get_data_dfs(
 
     # Execute the full plan
     logging.info("Collecting LazyFrame into DataFrame")
-    df = (
-        base.with_columns(
-            label_expr,
-            batch_expr,
-            control_mask_expr,
-        )
-        .select(
-            feature_expr,
-            pl.col("_batch"),
-            pl.col("_is_control"),
-            pl.col("_sample_idx"),
-            pl.col("_label"),
-        )
-        .collect()
+    lf = base.with_columns(
+        label_expr,
+        batch_expr,
+        control_mask_expr,
+    ).select(
+        feature_expr,
+        pl.col("_batch"),
+        pl.col("_is_control"),
+        pl.col("_sample_idx"),
+        pl.col("_label"),
     )
-    logging.info("Collection complete: shape=%s", df.shape)
 
     # Get feature dataframe
-    feature_df = df.select(feature_expr)
+    feature_df = lf.select(feature_expr).collect()
     logging.debug("Feature dataframe shape: %s", feature_df.shape)
 
-    meta_data_df = df.select(
-        pl.col("_batch"), pl.col("_label"), pl.col("_is_control"), pl.col("_sample_idx")
-    )
-
+    meta_data_df = lf.select(
+        pl.col("_batch"),
+        pl.col("_label"),
+        pl.col("_is_control"),
+        pl.col("_sample_idx"),
+    ).collect()
     logging.debug("Meta data dataframe: shape=%s", meta_data_df.shape)
-    logging.info("Finished get_data_matrices")
 
     return feature_df, meta_data_df
 
@@ -219,10 +214,11 @@ def train_test_split(
       stratification to succeed.
     - The split is reproducible if ``RANDOM_STATE`` is fixed.
     """
-    logging.info("Creating train test split")
-    meta_data_df = meta_data_df.with_row_index("row_id")
-    test_idx = (
-        meta_data_df.with_columns(
+    logging.info("Creating lazy stratified train/test split query")
+    lf_meta = (
+        meta_data_df.lazy()
+        .with_row_index("row_id")
+        .with_columns(
             pl.concat_str(
                 [
                     pl.col("_label").cast(pl.Utf8),
@@ -231,30 +227,32 @@ def train_test_split(
                 ]
             ).alias("grp")
         )
-        .group_by("grp")
+    )
+
+    lf_test_idx = (
+        lf_meta.group_by("grp")
         .agg(pl.col("row_id").sample(fraction=test_size, seed=RANDOM_STATE))
         .explode("row_id")
-        .get_column("row_id")
-        .to_numpy()
-        .astype(int)
     )
 
-    train_idx = np.setdiff1d(
-        meta_data_df.get_column("row_id").to_numpy().astype(int),
-        test_idx,
-        assume_unique=True,
+    lf_mask = (
+        lf_meta.join(lf_test_idx, on="row_id", how="left")
+        .with_columns(pl.col("grp_right").is_not_null().alias("_is_test"))
+        .select(["row_id", "_is_test"])
     )
 
-    logging.info("Created splits, copying data")
-    train_feature_df = feature_df[train_idx]
-    test_feature_df = feature_df[test_idx]
-    train_meta_data_df = meta_data_df[train_idx]
-    test_meta_data_df = meta_data_df[test_idx]
+    logging.info("Split created, executing query")
+    is_test = lf_mask.select(pl.col("_is_test")).collect().get_column("_is_test")
+    is_train = ~is_test
 
     logging.info(
-        "Created train set containing %d samples and test set containing %d samples",
-        len(train_idx),
-        len(test_idx),
+        "Split completed: %d train / %d test samples", is_train.sum(), is_test.sum()
     )
+
+    logging.info("Copying data")
+    train_feature_df = feature_df.filter(is_train)
+    test_feature_df = feature_df.filter(is_test)
+    train_meta_data_df = meta_data_df.filter(is_train)
+    test_meta_data_df = meta_data_df.filter(is_test)
 
     return train_feature_df, train_meta_data_df, test_feature_df, test_meta_data_df
