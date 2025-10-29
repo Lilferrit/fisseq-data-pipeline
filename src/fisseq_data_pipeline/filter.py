@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Tuple, TypeAlias, Iterable, Callable
+from typing import Callable, Iterable, Tuple, TypeAlias
 
 import polars as pl
 

@@ -1,6 +1,8 @@
 import dataclasses
 import logging
-from typing import Dict, Optional
+import pickle
+from os import PathLike
+from typing import Optional
 
 import numpy as np
 import polars as pl
@@ -30,12 +32,57 @@ class Normalizer:
 
     means: pl.DataFrame
     stds: pl.DataFrame
-    mapping: Optional[Dict[str, int]]
+    is_batch_wise: bool
+
+    def save(self, save_path: PathLike) -> None:
+        with open(save_path, "wb") as f:
+            pickle.dump(self, f)
+
+
+def _add_batch_col(
+    feature_df: pl.LazyFrame, meta_data_df: Optional[pl.LazyFrame], is_batch_wise: bool
+) -> pl.LazyFrame:
+    """
+    Attach a `_batch` column to the feature LazyFrame.
+
+    Parameters
+    ----------
+    feature_df : pl.LazyFrame
+        LazyFrame containing per-sample features to which the `_batch`
+        column should be added.
+    meta_data_df : pl.LazyFrame or None
+        Row-aligned metadata LazyFrame containing the `_batch` column.
+        Required if `is_batch_wise` is True.
+    is_batch_wise : bool
+        If True, add the actual `_batch` column from the metadata.
+        If False, assign a dummy `_batch = 0` to all rows.
+
+    Returns
+    -------
+    pl.LazyFrame
+        The input feature LazyFrame augmented with a `_batch` column,
+        suitable for downstream grouping or normalization.
+    """
+    if is_batch_wise:
+        feature_df = (
+            feature_df.with_row_index(name="_idx")
+            .join(
+                meta_data_df.with_row_index(name="_idx").select(
+                    pl.col("_idx"), pl.col("_batch")
+                ),
+                on="_idx",
+            )
+            .select(pl.exclude("_idx"))
+        )
+    else:
+        feature_df = feature_df.with_columns(pl.lit(0).cast(pl.Int8).alias("_batch"))
+
+    return feature_df
 
 
 def fit_normalizer(
-    feature_df: pl.DataFrame,
-    meta_data_df: Optional[pl.DataFrame] = None,
+    feature_df: pl.LazyFrame,
+    meta_data_df: Optional[pl.LazyFrame] = None,
     fit_only_on_control: bool = False,
     fit_batch_wise: bool = True,
 ) -> Normalizer:
@@ -80,49 +127,45 @@ def fit_normalizer(
     if (fit_only_on_control or fit_batch_wise) and meta_data_df is None:
         raise ValueError("Meta data required to fit to control samples or by batch")
 
-    # Convert both to lazy frames immediately
-    lf_features = feature_df.lazy()
-
-    # Filter to control samples (if needed)
     if fit_only_on_control:
-        logging.info("Filtering control samples")
-        mask = meta_data_df.get_column("_is_control")
-        lf_features = lf_features.filter(mask)
-        meta_data_df = meta_data_df.filter(mask)
+        logging.info("Adding query to filter for control samples")
+        feature_df = (
+            feature_df.with_row_index(name="_idx")
+            .join(
+                meta_data_df.with_row_index(name="_idx").select(
+                    pl.col("_idx"), pl.col("_is_control")
+                ),
+                on="_idx",
+            )
+            .filter(pl.col("_is_control"))
+            .select(pl.exclude(["_idx", "_is_control"]))
+        )
+        meta_data_df = meta_data_df.filter(pl.col("_is_control"))
 
     # Handle batch column (batch-wise vs global)
-    if fit_batch_wise:
-        batch_col = meta_data_df["_batch"].cast(pl.Categorical)
-        mapping = {cat: i for i, cat in enumerate(batch_col.cat.get_categories())}
-        lf_features = lf_features.with_columns(
-            pl.lit(batch_col.to_physical()).alias("_batch_idx")
-        )
-    else:
-        mapping = None
-        lf_features = lf_features.with_columns(
-            pl.lit(0).cast(pl.Int8).alias("_batch_idx")
-        )
-
+    feature_df = _add_batch_col(feature_df, meta_data_df, fit_batch_wise)
     agg_exprs = []
     for c in feature_df.columns:
-        if c in ("_batch_idx", "_is_control"):
+        if c == "_batch":
             continue
-
         agg_exprs.append(pl.col(c).mean().alias(f"{c}_mean"))
         agg_exprs.append(pl.col(c).std().alias(f"{c}_std"))
 
-    logging.info("Computing per-batch means and stds lazily")
-    agg_df = (
-        lf_features.group_by("_batch_idx").agg(agg_exprs).sort("_batch_idx").collect()
-    )
-
+    agg_df = feature_df.group_by("_batch").agg(agg_exprs)
     mean_cols = [c for c in agg_df.columns if c.endswith("_mean")]
     std_cols = [c for c in agg_df.columns if c.endswith("_std")]
-    means = agg_df.select([pl.col(c).alias(c.removesuffix("_mean")) for c in mean_cols])
-    stds = agg_df.select([pl.col(c).alias(c.removesuffix("_std")) for c in std_cols])
+
+    means, stds = (
+        agg_df.select(
+            [pl.col(c).alias(c.removesuffix(sfx)) for c in cols] + [pl.col("_batch")]
+        ).collect()
+        for cols, sfx in [(mean_cols, "_mean"), (std_cols, "_std")]
+    )
 
     zero_var_cols = [
-        c for c in stds.columns if (stds[c] <= np.finfo(np.float32).eps).any()
+        c
+        for c in stds.columns
+        if c != "_batch" and (stds[c] <= np.finfo(np.float32).eps).any()
     ]
     if zero_var_cols:
         logging.warning("Dropping %d zero-variance columns", len(zero_var_cols))
@@ -130,14 +173,14 @@ def fit_normalizer(
         stds = stds.select(pl.exclude(zero_var_cols))
 
     logging.info("Normalization statistics computed successfully")
-    return Normalizer(means=means, stds=stds, mapping=mapping)
+    return Normalizer(means=means, stds=stds, is_batch_wise=fit_batch_wise)
 
 
 def normalize(
-    feature_df: pl.DataFrame,
+    feature_df: pl.LazyFrame,
     normalizer: Normalizer,
-    meta_data_df: Optional[pl.DataFrame] = None,
-) -> pl.DataFrame:
+    meta_data_df: Optional[pl.LazyFrame] = None,
+) -> pl.LazyFrame:
     """
     Apply z-score normalization to a feature matrix.
 
@@ -171,49 +214,30 @@ def normalize(
         Normalized feature matrix of shape (n_samples, n_retained_features),
         where columns with zero variance during fitting are omitted.
     """
-    if normalizer.mapping is not None and meta_data_df is None:
+    if normalizer.is_batch_wise and meta_data_df is None:
         raise ValueError("Meta data required to use batch-wise normalizer")
 
-    logging.info("Setting up normalization, data shape=%s", feature_df.shape)
-    if normalizer.mapping is None:
-        batch_idx = pl.Series("_batch_idx", [0] * len(feature_df), dtype=pl.UInt8)
-    else:
-        try:
-            batch_idx = (
-                meta_data_df.get_column("_batch")
-                .map_elements(lambda x: normalizer.mapping[x], return_dtype=pl.UInt32)
-                .alias("_batch_idx")
-            )
-        except KeyError as e:
-            new_exc = KeyError(
-                "Batch row mapping failed - this is likely caused by a batch that is in"
-                " meta_data_df but was not in the meta data used to fit the normalizer."
-            )
-            raise new_exc from e
-
     logging.info("Creating normalization query")
-    lf = feature_df.lazy()
+    feature_df = _add_batch_col(feature_df, meta_data_df, normalizer.is_batch_wise)
     feature_cols = feature_df.columns
     norm_cols = normalizer.stds.columns
 
     if set(norm_cols) != set(feature_cols):
-        lf = lf.select(norm_cols)
+        feature_df = feature_df.select(norm_cols)
         logging.warning(
             "Dropped %d columns from feature_df not present in normalizer",
             len(feature_cols) - len(norm_cols),
         )
 
-    lf = lf.with_columns(batch_idx)
-    lf_means = normalizer.means.lazy().with_columns(pl.row_index("_batch_idx"))
-    lf_stds = normalizer.stds.lazy().with_columns(pl.row_index("_batch_idx"))
-    lf = lf.join(lf_means, on="_batch_idx", how="left", suffix="_mean")
-    lf = lf.join(lf_stds, on="_batch_idx", how="left", suffix="_std")
+    for suffix, df in [("_mean", normalizer.means), ("_std", normalizer.stds)]:
+        feature_df = feature_df.join(df.lazy(), on="_batch", how="left", suffix=suffix)
 
-    exprs = [
-        ((pl.col(c) - pl.col(f"{c}_mean")) / pl.col(f"{c}_std")).alias(c)
-        for c in norm_cols
-    ]
-    lf = lf.select(exprs)
+    feature_df = feature_df.select(
+        [
+            ((pl.col(c) - pl.col(f"{c}_mean")) / pl.col(f"{c}_std")).alias(c)
+            for c in norm_cols
+            if c != "_batch"
+        ]
+    )
 
-    logging.info("Resolving normalization query")
-    return lf.collect()
+    return feature_df

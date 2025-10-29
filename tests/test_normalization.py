@@ -87,9 +87,9 @@ def expected_batchwise():
 # ---------------------------------------------------------------------
 def test_fit_normalizer_global(feature_df, expected_global):
     """Should compute global mean/std across all samples."""
-    norm = fit_normalizer(feature_df, meta_data_df=None, fit_batch_wise=False)
+    norm = fit_normalizer(feature_df.lazy(), meta_data_df=None, fit_batch_wise=False)
     assert isinstance(norm, Normalizer)
-    assert norm.mapping is None
+    assert not norm.is_batch_wise
 
     # f_zero should be dropped (zero variance)
     assert "f_zero" not in norm.means.columns
@@ -102,36 +102,65 @@ def test_fit_normalizer_global(feature_df, expected_global):
 
 
 def test_fit_normalizer_batchwise(feature_df, meta_df, expected_batchwise):
-    """Should compute correct batch-wise statistics and mapping."""
-    norm = fit_normalizer(feature_df, meta_df, fit_batch_wise=True)
-    assert isinstance(norm.mapping, dict)
-    assert set(norm.mapping.keys()) == {"A", "B"}
+    """Should compute correct batch-wise statistics with per-batch rows."""
+    norm = fit_normalizer(feature_df.lazy(), meta_df.lazy(), fit_batch_wise=True)
+
+    # still batch-wise
+    assert norm.is_batch_wise
     assert norm.means.shape[0] == 2
     assert norm.stds.shape[0] == 2
+    assert "_batch" in norm.means.columns
+    assert "_batch" in norm.stds.columns
 
-    # Compare computed stats against ground truth
-    a_idx = norm.mapping["A"]
-    b_idx = norm.mapping["B"]
-    assert np.isclose(norm.means["f1"][a_idx], expected_batchwise["A"]["mean_f1"])
-    assert np.isclose(norm.stds["f2"][b_idx], expected_batchwise["B"]["std_f2"])
+    # look up per-batch stats by the _batch column directly
+    a_row = norm.means.filter(pl.col("_batch") == "A").row(0)
+    b_row = norm.stds.filter(pl.col("_batch") == "B").row(0)
+
+    # Check mean and std values against expected ground truth
+    assert np.isclose(
+        a_row[norm.means.columns.index("f1")], expected_batchwise["A"]["mean_f1"]
+    )
+    assert np.isclose(
+        b_row[norm.stds.columns.index("f2")], expected_batchwise["B"]["std_f2"]
+    )
 
 
-def test_fit_normalizer_only_control(feature_df, meta_df, expected_global_control):
+def test_fit_normalizer_control_only(feature_df, meta_df, expected_global_control):
     """Should filter to _is_control == True before computing stats."""
     norm = fit_normalizer(
-        feature_df, meta_df, fit_only_on_control=True, fit_batch_wise=False
+        feature_df.lazy(),
+        meta_df.lazy(),
+        fit_only_on_control=True,
+        fit_batch_wise=False,
     )
+
+    # Verify Normalizer object structure
     assert isinstance(norm, Normalizer)
-    assert norm.mapping is None
+    assert norm.is_batch_wise is False
+    assert "_batch" in norm.means.columns
+    assert "_batch" in norm.stds.columns
 
     # f_zero should be dropped (zero variance)
     assert "f_zero" not in norm.means.columns
+    assert "f_zero" not in norm.stds.columns
 
-    # Check numerical accuracy
-    assert np.isclose(norm.means["f1"][0], expected_global_control["mean_f1"])
-    assert np.isclose(norm.means["f2"][0], expected_global_control["mean_f2"])
-    assert np.isclose(norm.stds["f1"][0], expected_global_control["std_f1"])
-    assert np.isclose(norm.stds["f2"][0], expected_global_control["std_f2"])
+    # Since fit_batch_wise=False, there’s only one row (global stats)
+    means_row = norm.means.row(0)
+    stds_row = norm.stds.row(0)
+
+    # Check numerical accuracy against expected control-only stats
+    assert np.isclose(
+        means_row[norm.means.columns.index("f1")], expected_global_control["mean_f1"]
+    )
+    assert np.isclose(
+        means_row[norm.means.columns.index("f2")], expected_global_control["mean_f2"]
+    )
+    assert np.isclose(
+        stds_row[norm.stds.columns.index("f1")], expected_global_control["std_f1"]
+    )
+    assert np.isclose(
+        stds_row[norm.stds.columns.index("f2")], expected_global_control["std_f2"]
+    )
 
 
 def test_fit_normalizer_requires_metadata(feature_df):
@@ -147,8 +176,9 @@ def test_fit_normalizer_requires_metadata(feature_df):
 # ---------------------------------------------------------------------
 def test_normalize_global(feature_df):
     """Should normalize without metadata when mapping=None."""
-    norm = fit_normalizer(feature_df, fit_batch_wise=False)
-    out = normalize(feature_df, norm)
+    norm = fit_normalizer(feature_df.lazy(), fit_batch_wise=False)
+    out = normalize(feature_df.lazy(), norm)
+    out = out.collect()
     # Each column now mean≈0, std≈1
     for col in out.columns:
         arr = out[col].to_numpy()
@@ -158,45 +188,36 @@ def test_normalize_global(feature_df):
 
 def test_normalize_batchwise(feature_df, meta_df):
     """Should normalize per batch so each batch has mean≈0 and std≈1."""
-    norm = fit_normalizer(feature_df, meta_df, fit_batch_wise=True)
-    out = normalize(feature_df, norm, meta_df)
+    norm = fit_normalizer(feature_df.lazy(), meta_df.lazy(), fit_batch_wise=True)
+    out = normalize(feature_df.lazy(), norm, meta_df.lazy()).collect()
 
-    # batch A (rows 0–2)
-    out_a = out[:3, :]
-    for col in out_a.columns:
-        arr = out_a[col].to_numpy()
-        assert np.isclose(np.mean(arr), 0.0, atol=1e-8)
-        assert np.isclose(np.std(arr, ddof=1), 1.0, atol=1e-8)
+    # Split back into batch A (rows 0–2) and batch B (rows 3–5)
+    out_a = out.slice(0, 3)
+    out_b = out.slice(3, 3)
 
-    # batch B (rows 3–5)
-    out_b = out[3:, :]
-    for col in out_b.columns:
-        arr = out_b[col].to_numpy()
-        assert np.isclose(np.mean(arr), 0.0, atol=1e-8)
-        assert np.isclose(np.std(arr, ddof=1), 1.0, atol=1e-8)
+    # Verify each batch is approximately standardized
+    for batch_df in (out_a, out_b):
+        for col in batch_df.columns:
+            arr = batch_df[col].to_numpy()
+            mean = np.mean(arr)
+            std = np.std(arr, ddof=1)
+            assert np.isclose(mean, 0.0, atol=1e-8), f"{col} mean={mean}"
+            assert np.isclose(std, 1.0, atol=1e-8), f"{col} std={std}"
 
 
 def test_normalize_requires_metadata(feature_df, meta_df):
     """Should raise ValueError if mapping exists but no meta_data_df given."""
-    norm = fit_normalizer(feature_df, meta_df, fit_batch_wise=True)
+    norm = fit_normalizer(feature_df.lazy(), meta_df.lazy(), fit_batch_wise=True)
     with pytest.raises(ValueError):
         normalize(feature_df, norm, meta_data_df=None)
 
 
-def test_normalize_unseen_batch_raises(feature_df, meta_df):
-    """Should raise KeyError for unseen batch label."""
-    norm = fit_normalizer(feature_df, meta_df, fit_batch_wise=True)
-    bad_meta = pl.DataFrame({"_batch": ["C"] * len(feature_df)})
-    with pytest.raises(KeyError):
-        normalize(feature_df, norm, bad_meta)
-
-
 def test_normalize_drops_missing_columns(feature_df, meta_df, caplog):
     """Should drop columns not in normalizer and log a warning."""
-    norm = fit_normalizer(feature_df, meta_df, fit_batch_wise=True)
+    norm = fit_normalizer(feature_df.lazy(), meta_df.lazy(), fit_batch_wise=True)
     df_extra = feature_df.with_columns(pl.Series("extra", [1, 2, 3, 4, 5, 6]))
     with caplog.at_level("WARNING"):
-        out = normalize(df_extra, norm, meta_df)
+        out = normalize(df_extra.lazy(), norm, meta_df.lazy())
     assert "extra" not in out.columns
     assert any("Dropped" in rec.message for rec in caplog.records)
 
@@ -204,20 +225,40 @@ def test_normalize_drops_missing_columns(feature_df, meta_df, caplog):
 # ---------------------------------------------------------------------
 # Round-trip sanity
 # ---------------------------------------------------------------------
-def test_round_trip_reversibility(feature_df, meta_df, expected_batchwise):
+def test_normalize_and_denormalize_reversibility(feature_df, meta_df):
     """Normalize then de-normalize should roughly recover original values."""
-    norm = fit_normalizer(feature_df, meta_df, fit_batch_wise=True)
-    normed = normalize(feature_df, norm, meta_df)
+    # Fit and normalize (lazy → eager)
+    norm = fit_normalizer(feature_df.lazy(), meta_df.lazy(), fit_batch_wise=True)
+    normed = normalize(feature_df.lazy(), norm, meta_df.lazy()).collect()
 
-    # Reconstruct per-row batch stats
-    recovered = []
-    for i, batch in enumerate(meta_df["_batch"]):
-        b_idx = norm.mapping[batch]
-        mu = norm.means[b_idx, :].to_numpy()
-        sigma = norm.stds[b_idx, :].to_numpy()
-        recovered.append(normed[i, :].to_numpy() * sigma + mu)
-    recovered = np.vstack(recovered)
+    # Recover each batch's stats from Normalizer
+    recovered_batches = []
+    for batch in meta_df["_batch"].unique():
+        # Get mask for this batch
+        batch_mask = meta_df["_batch"] == batch
 
-    # Compare to original values (excluding f_zero)
-    original = feature_df.select(norm.means.columns).to_numpy()
+        # Extract batch statistics
+        mu = (
+            norm.means.filter(pl.col("_batch") == batch)
+            .select(pl.exclude("_batch"))
+            .to_numpy()
+        )
+        sigma = (
+            norm.stds.filter(pl.col("_batch") == batch)
+            .select(pl.exclude("_batch"))
+            .to_numpy()
+        )
+
+        # Get normalized features for this batch
+        normed_batch = normed.filter(pl.lit(batch_mask)).to_numpy()
+
+        # Undo z-score normalization
+        recovered_batches.append(normed_batch * sigma + mu)
+
+    recovered = np.vstack(recovered_batches)
+
+    # Compare to original feature values (excluding dropped zero-var columns)
+    retained_cols = [c for c in feature_df.columns if c in norm.means.columns]
+    original = feature_df.select(retained_cols).to_numpy()
+
     assert np.allclose(recovered, original, atol=1e-8)

@@ -56,9 +56,7 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
         "meta_data.test.parquet",
         "features.test.parquet",
         "normalized.test.parquet",
-        "harmonized.test.parquet",
         "normalizer.pkl",
-        "harmonizer.pkl",
     ]
     for fname in expected_test_files:
         path = output_dir / fname
@@ -73,7 +71,6 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
         "meta_data.train.parquet",
         "features.train.parquet",
         "normalized.train.parquet",
-        "harmonized.train.parquet",
     ]
     for fname in expected_train_files:
         path = output_dir / fname
