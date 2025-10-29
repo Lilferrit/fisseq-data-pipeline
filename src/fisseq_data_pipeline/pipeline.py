@@ -10,7 +10,7 @@ from typing import Optional
 import fire
 import polars as pl
 
-from .filter import clean_data, drop_infrequent_pairs
+from .filter import clean_data
 from .combat import fit_harmonizer, harmonize
 from .normalize import fit_normalizer, normalize
 from .utils import Config, get_data_dfs, train_test_split

@@ -200,18 +200,14 @@ def train_test_split(
     - The split is reproducible if ``RANDOM_STATE`` is fixed.
     """
     logging.info("Creating lazy stratified train/test split query")
-    lf_meta = (
-        meta_data_df
-        .with_row_index("row_id")
-        .with_columns(
-            pl.concat_str(
-                [
-                    pl.col("_label").cast(pl.Utf8),
-                    pl.lit(":"),
-                    pl.col("_batch").cast(pl.Utf8),
-                ]
-            ).alias("grp")
-        )
+    lf_meta = meta_data_df.with_row_index("row_id").with_columns(
+        pl.concat_str(
+            [
+                pl.col("_label").cast(pl.Utf8),
+                pl.lit(":"),
+                pl.col("_batch").cast(pl.Utf8),
+            ]
+        ).alias("grp")
     )
 
     lf_test_idx = (
