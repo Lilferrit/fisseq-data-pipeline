@@ -1,12 +1,9 @@
 # test_pipeline_utils.py
 import numpy as np
 import polars as pl
-import polars.selectors as cs
-import pytest
 
 from fisseq_data_pipeline.utils.utils import (
     get_data_dfs,
-    get_feature_columns,
     get_feature_selector,
     train_test_split,
 )
@@ -58,22 +55,6 @@ def test_get_feature_selector_list_preserves_order_and_ignores_missing():
     assert out.columns == ["a", "b"]
 
 
-def test_get_feature_columns_from_lazyframe():
-    lf = pl.LazyFrame(
-        {
-            "x1": [1, 2, 3],
-            "x2": [4, 5, 6],
-            "other": [0, 1, 0],
-        }
-    )
-    cfg = DummyConfig(feature_cols=["x2", "x1"])
-    out_lf = get_feature_columns(lf, cfg)
-    out = out_lf.collect()
-    # Only feature columns, in requested order
-    assert out.columns == ["x2", "x1"]
-    assert out.shape == (3, 2)
-
-
 def test_get_data_dfs_basic():
     # Build a small LazyFrame with all required columns
     lf = pl.LazyFrame(
@@ -93,6 +74,8 @@ def test_get_data_dfs_basic():
     )
 
     feature_df, meta_df = get_data_dfs(lf, cfg, dtype=pl.Float32)
+    feature_df = feature_df.collect()
+    meta_df = meta_df.collect()
 
     # Feature frame has only a,b with requested dtype
     assert feature_df.columns == ["a", "b"]
@@ -114,7 +97,7 @@ def test_train_test_split_stratified_on_label_and_batch():
             "f1": np.arange(8, dtype=float),
             "f2": np.arange(8, dtype=float) * 10.0,
         }
-    )
+    ).lazy()
     labels = ["A", "A", "A", "A", "B", "B", "B", "B"]
     batches = ["S1", "S1", "S2", "S2", "S1", "S1", "S2", "S2"]
     meta_df = pl.DataFrame(
@@ -122,10 +105,16 @@ def test_train_test_split_stratified_on_label_and_batch():
             "_label": labels,
             "_batch": batches,
         }
-    )
+    ).lazy()
 
     # With test_size=0.5 and 2 per group, we expect 1 per group in test
     trX, trM, teX, teM = train_test_split(feature_df, meta_df, test_size=0.5)
+    trX = trX.collect()
+    trM = trM.collect()
+    teX = teX.collect()
+    teM = teM.collect()
+    feature_df = feature_df.collect()
+    meta_df = meta_df.collect()
 
     assert trX.shape[1] == feature_df.shape[1]
     assert teX.shape[1] == feature_df.shape[1]

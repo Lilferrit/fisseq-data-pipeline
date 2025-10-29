@@ -14,23 +14,35 @@ RANDOM_STATE = os.getenv("FISSEQ_PIPELINE_RAND_STATE", 42)
 
 def get_feature_selector(data_df: pl.LazyFrame, config: Config) -> PlSelector:
     """
-    Get feature column feature selector based on config
+    Build a Polars column selector for feature columns based on the config.
+
+    This utility interprets ``config.feature_cols`` and returns a Polars
+    selector expression usable in ``.select()`` or ``.with_columns()`` calls.
+
+    Selection modes:
+      - **Regex**: if ``feature_cols`` is a string, all column names matching
+        the regex are selected.
+      - **Explicit list**: if ``feature_cols`` is a list of strings, those
+        columns are selected in the given order. Missing columns are ignored
+        with a warning.
 
     Parameters
     ----------
     data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
+        Input dataset containing feature columns.
     config : Config
-        Configuration object containing a ``feature_cols`` attribute, which may
-        be either:
-          - str : A regex pattern to match column names.
-          - list[str] : A list of explicit column names to select.
+        Configuration object with a ``feature_cols`` attribute defining which
+        columns to select (regex pattern or explicit list).
 
     Returns
     -------
     PlSelector
-        A selector that can be used to select feature columns in ``.select``
-        call.
+        A Polars selector expression suitable for use in ``.select()`` calls.
+
+    Notes
+    -----
+    - Missing columns are ignored but logged as a warning.
+    - Column order is preserved when using an explicit list.
     """
     if isinstance(config.feature_cols, str):
         selector_type = "regex"
@@ -59,75 +71,48 @@ def get_feature_selector(data_df: pl.LazyFrame, config: Config) -> PlSelector:
     return selector
 
 
-def get_feature_columns(data_df: pl.LazyFrame, config: Config) -> pl.LazyFrame:
-    """
-    Select feature columns from a Polars LazyFrame based on the configuration
-
-    Parameters
-    ----------
-    data_df : pl.LazyFrame
-        The input data as a Polars LazyFrame.
-    config : Config
-        Configuration object containing a ``feature_cols`` attribute, which may
-        be either:
-          - str : A regex pattern to match column names.
-          - list[str] : A list of explicit column names to select.
-
-    Returns
-    -------
-    pl.LazyFrame
-        A Polars LazyFrame containing only the selected feature columns, cast to
-        the given dtype.
-    """
-    selector = get_feature_selector(data_df, config)
-    data_df = data_df.select(selector)
-    return data_df
-
-
 def get_data_dfs(
     data_df: pl.LazyFrame,
     config: Config,
     dtype: pl.DataType = pl.Float32,
-) -> Tuple[pl.DataFrame, pl.DataFrame]:
+) -> Tuple[pl.LazyFrame, pl.LazyFrame]:
     """
-    Construct a numeric feature matrix and a metadata DataFrame from a
-    Polars LazyFrame.
+    Construct separate feature and metadata DataFrames from a Polars LazyFrame.
 
-    The computation graph:
-      1. Adds a row index column (``_sample_idx``) for stable sample
-         tracking.
-      2. Selects feature columns defined in ``config.feature_cols`` and
-         casts them to ``dtype``.
-      3. Extracts the batch column (``_batch``), the label column
-         (``_label``), and a boolean control mask (``_is_control``) using
-         ``config.control_sample_query``.
-      4. Collects the LazyFrame once and returns NumPy features plus
-         eager Polars metadata.
+    This function builds a complete computation graph that:
+      1. Adds a row index (``_sample_idx``) for reproducible sample tracking.
+      2. Selects and casts feature columns defined in ``config.feature_cols``.
+      3. Extracts metadata columns:
+         - ``_batch`` from ``config.batch_col_name``
+         - ``_label`` from ``config.label_col_name``
+         - ``_is_control`` by evaluating ``config.control_sample_query``
+      4. Materializes the LazyFrame once to produce a feature matrix
+         and an eager metadata DataFrame.
 
     Parameters
     ----------
     data_df : pl.LazyFrame
-        Input dataset as a Polars LazyFrame.
+        Input dataset containing both features and metadata.
     config : Config
-        Configuration object containing:
-          - ``feature_cols``: regex or list of feature column names.
-          - ``batch_col_name``: column name to be exposed as ``_batch``.
-          - ``label_col_name``: column name to be exposed as ``_label``.
-          - ``control_sample_query``: SQL WHERE clause fragment defining
-            control samples (used to produce ``_is_control``).
+        Configuration object
     dtype : pl.DataType, optional
-        Target dtype for feature columns (default: ``pl.Float32``).
+        Data type to cast feature columns to. Defaults to ``pl.Float32``.
 
     Returns
     -------
-    Tuple[np.ndarray, pl.DataFrame]
-        - Feature matrix: ``np.ndarray`` of shape ``(n_samples, n_features)``,
-          with columns from ``config.feature_cols`` cast to ``dtype``.
-        - Metadata DataFrame: eager ``pl.DataFrame`` with columns:
-            * ``_batch``: values from ``config.batch_col_name``.
-            * ``_label``: values from ``config.label_col_name``.
-            * ``_is_control``: bool mask indicating control samples.
-            * ``_sample_idx``: integer row index for reference.
+    (pl.DataFrame, pl.DataFrame)
+        A tuple containing:
+          - **feature_df** : eager ``pl.DataFrame`` of numerical features, shape
+            ``(n_samples, n_features)``, with values cast to ``dtype``.
+          - **meta_data_df** : eager ``pl.DataFrame`` with columns:
+                * ``_batch`` — batch labels
+                * ``_label`` — class labels
+                * ``_is_control`` — boolean control mask
+                * ``_sample_idx`` — stable sample index
+
+    Notes
+    -----
+    - The returned feature and metadata frames share identical row ordering.
     """
     logging.info(
         "Starting get_data_matrices for batch_col=%s, dtype=%s",
@@ -150,7 +135,7 @@ def get_data_dfs(
     label_expr = pl.col(config.label_col_name).alias("_label")
 
     # Execute the full plan
-    logging.info("Collecting LazyFrame into DataFrame")
+    logging.info("Creating combined dataframe query")
     lf = base.with_columns(
         label_expr,
         batch_expr,
@@ -164,33 +149,33 @@ def get_data_dfs(
     )
 
     # Get feature dataframe
-    feature_df = lf.select(feature_expr).collect()
-    logging.debug("Feature dataframe shape: %s", feature_df.shape)
+    logging.info("Creating feature dataframe query")
+    feature_df = lf.select(feature_expr)
 
+    logging.info("Creating metadata frame query")
     meta_data_df = lf.select(
         pl.col("_batch"),
         pl.col("_label"),
         pl.col("_is_control"),
         pl.col("_sample_idx"),
-    ).collect()
-    logging.debug("Meta data dataframe: shape=%s", meta_data_df.shape)
+    )
 
     return feature_df, meta_data_df
 
 
 def train_test_split(
-    feature_df: pl.DataFrame,
-    meta_data_df: pl.DataFrame,
+    feature_df: pl.LazyFrame,
+    meta_data_df: pl.LazyFrame,
     test_size: float,
-) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+) -> Tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]:
     """
     Split feature and metadata DataFrames into stratified train and test sets.
 
     Parameters
     ----------
-    feature_df : pl.DataFrame
+    feature_df : pl.LazyFrame
         Feature matrix with shape (n_samples, n_features).
-    meta_data_df : pl.DataFrame
+    meta_data_df : pl.LazyFrame
         Metadata aligned row-wise with ``feature_df``. Must contain columns
         ``_label`` (class labels) and ``_batch`` (batch identifiers).
     test_size : float
@@ -199,13 +184,13 @@ def train_test_split(
 
     Returns
     -------
-    train_feature_df : pl.DataFrame
+    train_feature_df : pl.LazyFrame
         Features for the training set.
-    train_meta_data_df : pl.DataFrame
+    train_meta_data_df : pl.LazyFrame
         Metadata for the training set.
-    test_feature_df : pl.DataFrame
+    test_feature_df : pl.LazyFrame
         Features for the test set.
-    test_meta_data_df : pl.DataFrame
+    test_meta_data_df : pl.LazyFrame
         Metadata for the test set.
 
     Notes
@@ -216,7 +201,7 @@ def train_test_split(
     """
     logging.info("Creating lazy stratified train/test split query")
     lf_meta = (
-        meta_data_df.lazy()
+        meta_data_df
         .with_row_index("row_id")
         .with_columns(
             pl.concat_str(
