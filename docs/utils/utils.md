@@ -6,8 +6,6 @@ The `fisseq_data_pipeline.utils.utils` module provides helper functions for feat
 
 - **`get_feature_selector`**: Build a Polars selector expression for feature
   columns based on the pipeline configuration.
-- **`get_feature_columns`**: Select feature columns from a `LazyFrame` using a
-  config.
 - **`get_data_dfs`**: Build aligned feature and metadata DataFrames from a
   Polars `LazyFrame`.
 - **`train_test_split`**: Create stratified train/test splits for features and
@@ -64,10 +62,6 @@ train_f, train_m, test_f, test_m = train_test_split(feature_df, meta_data_df, te
 ---
 
 ::: fisseq_data_pipeline.utils.utils.get_feature_selector
-
----
-
-::: fisseq_data_pipeline.utils.utils.get_feature_columns
 
 ---
 

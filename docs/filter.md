@@ -60,6 +60,14 @@ feature_df, meta_df = drop_infrequent_pairs(feature_df, meta_df)
 
 ---
 
-::: fisseq_data_pipeline.filter.drop_infrequent_pairs
+::: fisseq_data_pipeline.filter.drop_rows_infrequent_pairs
+
+---
+
+::: fisseq_data_pipeline.filter.drop_cols_all_nonfinite
+
+---
+
+::: fisseq_data_pipeline.filter.drop_rows_any_nonfinite
 
 ---

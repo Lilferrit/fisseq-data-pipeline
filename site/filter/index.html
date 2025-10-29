@@ -67,7 +67,11 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.filter.clean_data">clean_data</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.filter.drop_infrequent_pairs">drop_infrequent_pairs</a>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.filter.drop_rows_infrequent_pairs">drop_rows_infrequent_pairs</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.filter.drop_cols_all_nonfinite">drop_cols_all_nonfinite</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.filter.drop_rows_any_nonfinite">drop_rows_any_nonfinite</a>
     </li>
         </ul>
     </li>
@@ -76,10 +80,6 @@
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../normalize/">Normalize</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../harmonize/">Harmonize</a>
                 </li>
               </ul>
               <ul>
@@ -166,19 +166,17 @@ feature_df, meta_df = drop_infrequent_pairs(feature_df, meta_df)
 
 
 <h3 id="fisseq_data_pipeline.filter.clean_data" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">filter</span><span class="o">.</span><span class="n">clean_data</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">filter</span><span class="o">.</span><span class="n">clean_data</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">,</span> <span class="n">stages</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;drop_cols_all_nonfinite&#39;</span><span class="p">,</span> <span class="s1">&#39;drop_rows_any_nonfinite&#39;</span><span class="p">,</span> <span class="s1">&#39;drop_rows_infrequent_pairs&#39;</span><span class="p">])</span></code>
 
 </h3>
 
 
     <div class="doc doc-contents first">
 
-        <p>Clean feature and metadata tables and keep them row-aligned.</p>
-<p>The cleaning pipeline performs four passes:</p>
-<p>1) Drop feature columns that are entirely non-finite.
-2) Drop rows that contain any remaining non-finite value across.
-3) Drop feature columns with (near) zero variance.</p>
-<p>All feature columns must be numeric</p>
+        <p>Sequentially apply a series of filters to feature and metadata LazyFrames.</p>
+<p>Each stage may be specified by name or as a callable implementing
+the <code>FilterFun</code> signature. Stages are executed in order, and each
+must return updated (feature_df, meta_data_df) pairs.</p>
 
 
 <table class="field-list">
@@ -193,19 +191,31 @@ feature_df, meta_df = drop_infrequent_pairs(feature_df, meta_df)
         <ul class="first simple">
             <li>
               <b><code>feature_df</code></b>
-                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
-                <p>Feature-only table, shape (n_samples, n_features).</p>
+                <p>LazyFrame containing numerical features.</p>
               </div>
             </li>
             <li>
               <b><code>meta_data_df</code></b>
-                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
-                <p>Metadata aligned row-wise with <code>feature_df</code>. Must contain <code>"_label"</code>
-and <code>"_batch"</code> columns.</p>
+                <p>LazyFrame containing associated metadata.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>stages</code></b>
+                  (<code><span title="typing.Iterable">Iterable</span>[<span title="str">str</span> | <span title="fisseq_data_pipeline.filter.FilterFun">FilterFun</span>]</code>, default:
+                      <code>[&#39;drop_cols_all_nonfinite&#39;, &#39;drop_rows_any_nonfinite&#39;, &#39;drop_rows_infrequent_pairs&#39;]</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Ordered list of stage names or callables. The default pipeline includes:
+  - <code>"drop_cols_all_nonfinite"</code> — remove columns that are all NaN/inf
+  - <code>"drop_rows_any_nonfinite"</code> — drop rows with any non-finite values
+  - <code>"drop_rows_infrequent_pairs"</code> — drop small (label,batch) groups</p>
               </div>
             </li>
         </ul>
@@ -225,11 +235,203 @@ and <code>"_batch"</code> columns.</p>
       <td class="field-body">
         <ul class="first simple">
             <li>
-                  <code>(<span title="polars.DataFrame">DataFrame</span>, <span title="polars.DataFrame">DataFrame</span>)</code>
+                  <code>(<span title="polars.LazyFrame">LazyFrame</span>, <span title="polars.LazyFrame">LazyFrame</span>)</code>
               –
               <div class="doc-md-description">
-                <p>The cleaned <code>(feature_df, meta_data_df)</code>, with invalid rows/columns
-removed and row alignment preserved.</p>
+                <p>The cleaned feature and metadata LazyFrames.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li>Invalid stage names are skipped with a warning.</li>
+</ul>
+</details>
+
+            <details class="quote">
+              <summary>Source code in <code>src/fisseq_data_pipeline/filter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clean_data</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+    <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+    <span class="n">stages</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="n">FilterFun</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;drop_cols_all_nonfinite&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;drop_rows_any_nonfinite&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;drop_rows_infrequent_pairs&quot;</span><span class="p">,</span>
+    <span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Sequentially apply a series of filters to feature and metadata LazyFrames.</span>
+
+<span class="sd">    Each stage may be specified by name or as a callable implementing</span>
+<span class="sd">    the ``FilterFun`` signature. Stages are executed in order, and each</span>
+<span class="sd">    must return updated (feature_df, meta_data_df) pairs.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    feature_df : pl.LazyFrame</span>
+<span class="sd">        LazyFrame containing numerical features.</span>
+<span class="sd">    meta_data_df : pl.LazyFrame</span>
+<span class="sd">        LazyFrame containing associated metadata.</span>
+<span class="sd">    stages : Iterable[str | FilterFun], optional</span>
+<span class="sd">        Ordered list of stage names or callables. The default pipeline includes:</span>
+<span class="sd">          - ``&quot;drop_cols_all_nonfinite&quot;`` — remove columns that are all NaN/inf</span>
+<span class="sd">          - ``&quot;drop_rows_any_nonfinite&quot;`` — drop rows with any non-finite values</span>
+<span class="sd">          - ``&quot;drop_rows_infrequent_pairs&quot;`` — drop small (label,batch) groups</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    (pl.LazyFrame, pl.LazyFrame)</span>
+<span class="sd">        The cleaned feature and metadata LazyFrames.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - Invalid stage names are skipped with a warning.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">stage_lookup</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">FilterFun</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;drop_cols_all_nonfinite&quot;</span><span class="p">:</span> <span class="n">drop_cols_all_nonfinite</span><span class="p">,</span>
+        <span class="s2">&quot;drop_rows_any_nonfinite&quot;</span><span class="p">:</span> <span class="n">drop_rows_any_nonfinite</span><span class="p">,</span>
+        <span class="s2">&quot;drop_rows_infrequent_pairs&quot;</span><span class="p">:</span> <span class="n">drop_rows_infrequent_pairs</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">stage</span> <span class="ow">in</span> <span class="n">stages</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stage</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">stage</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">stage_lookup</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Skipping invalid filtering stage: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">stage</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="n">stage</span> <span class="o">=</span> <span class="n">stage_lookup</span><span class="p">[</span><span class="n">stage</span><span class="p">]</span>
+        <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">stage</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="fisseq_data_pipeline.filter.drop_rows_infrequent_pairs" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">filter</span><span class="o">.</span><span class="n">drop_rows_infrequent_pairs</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Remove rows belonging to rare (<code>_label</code>, <code>_batch</code>) groups.</p>
+<p>Rows are grouped by the concatenation of <code>_label</code> and <code>_batch</code>.
+Any group with a sample count less than
+<code>MINIMUM_CLASS_MEMBERS</code> is dropped.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>feature_df</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Feature-only table of shape (n_samples, n_features).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>meta_data_df</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Metadata table row-aligned with <code>feature_df</code>.
+Must include <code>"_label"</code> and <code>"_batch"</code> columns.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code>(<span title="polars.LazyFrame">LazyFrame</span>, <span title="polars.LazyFrame">LazyFrame</span>)</code>
+              –
+              <div class="doc-md-description">
+                <p>LazyFrames with infrequent (label, batch) groups removed.
+Row order and alignment are preserved.</p>
               </div>
             </li>
         </ul>
@@ -240,10 +442,7 @@ removed and row alignment preserved.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/filter.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">11</span>
-<span class="normal">12</span>
-<span class="normal">13</span>
-<span class="normal">14</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">14</span>
 <span class="normal">15</span>
 <span class="normal">16</span>
 <span class="normal">17</span>
@@ -295,62 +494,57 @@ removed and row alignment preserved.</p>
 <span class="normal">63</span>
 <span class="normal">64</span>
 <span class="normal">65</span>
-<span class="normal">66</span>
-<span class="normal">67</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clean_data</span><span class="p">(</span>
-    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+<span class="normal">66</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">drop_rows_infrequent_pairs</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Clean feature and metadata tables and keep them row-aligned.</span>
+<span class="sd">    Remove rows belonging to rare (``_label``, ``_batch``) groups.</span>
 
-<span class="sd">    The cleaning pipeline performs four passes:</span>
-
-<span class="sd">    1) Drop feature columns that are entirely non-finite.</span>
-<span class="sd">    2) Drop rows that contain any remaining non-finite value across.</span>
-<span class="sd">    3) Drop feature columns with (near) zero variance.</span>
-
-<span class="sd">    All feature columns must be numeric</span>
+<span class="sd">    Rows are grouped by the concatenation of ``_label`` and ``_batch``.</span>
+<span class="sd">    Any group with a sample count less than</span>
+<span class="sd">    ``MINIMUM_CLASS_MEMBERS`` is dropped.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    feature_df : pl.DataFrame</span>
-<span class="sd">        Feature-only table, shape (n_samples, n_features).</span>
-<span class="sd">    meta_data_df : pl.DataFrame</span>
-<span class="sd">        Metadata aligned row-wise with ``feature_df``. Must contain ``&quot;_label&quot;``</span>
-<span class="sd">        and ``&quot;_batch&quot;`` columns.</span>
+<span class="sd">    feature_df : pl.LazyFrame</span>
+<span class="sd">        Feature-only table of shape (n_samples, n_features).</span>
+<span class="sd">    meta_data_df : pl.LazyFrame</span>
+<span class="sd">        Metadata table row-aligned with ``feature_df``.</span>
+<span class="sd">        Must include ``&quot;_label&quot;`` and ``&quot;_batch&quot;`` columns.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    (pl.DataFrame, pl.DataFrame)</span>
-<span class="sd">        The cleaned ``(feature_df, meta_data_df)``, with invalid rows/columns</span>
-<span class="sd">        removed and row alignment preserved.</span>
+<span class="sd">    (pl.LazyFrame, pl.LazyFrame)</span>
+<span class="sd">        LazyFrames with infrequent (label, batch) groups removed.</span>
+<span class="sd">        Row order and alignment are preserved.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># Drop columns containing all non-finite values</span>
-    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">))</span>
-    <span class="n">n_rows</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">height</span>
-    <span class="n">is_all_nonfinite</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">~</span><span class="n">pl</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">is_finite</span><span class="p">()</span><span class="o">.</span><span class="n">any</span><span class="p">())</span>
-    <span class="n">all_nonfinite_cols</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">is_all_nonfinite</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-    <span class="p">]</span>
-    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">all_nonfinite_cols</span><span class="p">))</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-        <span class="s2">&quot;Removed </span><span class="si">%d</span><span class="s2"> columns containing only non-finite values&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_nonfinite_cols</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding query to remove infrequent batch/variant pairs&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Add combined key + stable row index</span>
+    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;_idx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_label_batch&quot;</span><span class="p">)</span>
     <span class="p">)</span>
 
-    <span class="c1"># Drop rows containing remaining non-finite values</span>
-    <span class="n">row_mask</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">all_horizontal</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">is_finite</span><span class="p">()))</span><span class="o">.</span><span class="n">to_series</span><span class="p">()</span>
-    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">row_mask</span><span class="p">)</span>
-    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">row_mask</span><span class="p">)</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
-        <span class="s2">&quot;Dropped </span><span class="si">%d</span><span class="s2"> rows containing non-finite values&quot;</span><span class="p">,</span> <span class="n">n_rows</span> <span class="o">-</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">height</span>
+    <span class="c1"># Compute per-(label,batch) counts and join back</span>
+    <span class="n">counts_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;_label_batch&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_count&quot;</span><span class="p">))</span>
+
+    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">counts_df</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;_label_batch&quot;</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;left&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Attach matching index to feature_df</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;_idx&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Join count info to feature_df via _idx (so we can filter both)</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="n">meta_data_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;_idx&quot;</span><span class="p">,</span> <span class="s2">&quot;_count&quot;</span><span class="p">),</span>
+        <span class="n">on</span><span class="o">=</span><span class="s2">&quot;_idx&quot;</span><span class="p">,</span>
+        <span class="n">how</span><span class="o">=</span><span class="s2">&quot;left&quot;</span><span class="p">,</span>
     <span class="p">)</span>
 
-    <span class="c1"># Drop rows that have 0 variance</span>
-    <span class="n">variances</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">var</span><span class="p">()</span><span class="o">.</span><span class="n">row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">named</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="n">zero_var_cols</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="nb">float</span><span class="p">(</span><span class="n">variances</span><span class="p">[</span><span class="n">c</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span>
-    <span class="p">]</span>
-    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">zero_var_cols</span><span class="p">))</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Removed </span><span class="si">%d</span><span class="s2"> columns containing zero variance&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">zero_var_cols</span><span class="p">))</span>
+    <span class="c1"># Filter both lazily</span>
+    <span class="n">keep_expr</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_count&quot;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">MINIMUM_CLASS_MEMBERS</span>
+    <span class="n">exclude_cols</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">exclude</span><span class="p">([</span><span class="s2">&quot;_count&quot;</span><span class="p">,</span> <span class="s2">&quot;_idx&quot;</span><span class="p">])</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">keep_expr</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">exclude_cols</span><span class="p">)</span>
+    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">keep_expr</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">exclude_cols</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span>
 </code></pre></div></td></tr></table></div>
@@ -363,18 +557,17 @@ removed and row alignment preserved.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="fisseq_data_pipeline.filter.drop_infrequent_pairs" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">filter</span><span class="o">.</span><span class="n">drop_infrequent_pairs</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">)</span></code>
+<h3 id="fisseq_data_pipeline.filter.drop_cols_all_nonfinite" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">filter</span><span class="o">.</span><span class="n">drop_cols_all_nonfinite</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">)</span></code>
 
 </h3>
 
 
     <div class="doc doc-contents first">
 
-        <p>Remove rows belonging to rare (<code>_label</code>, <code>_batch</code>) groups.</p>
-<p>Rows are grouped by the concatenation of <code>_label</code> and <code>_batch</code>.
-Any group with a sample count less than
-<code>FISSEQ_PIPELINE_MIN_CLASS_MEMBERS</code> (default: 2) is dropped.</p>
+        <p>Remove feature columns that contain only non-finite values.</p>
+<p>Any column in <code>feature_df</code> where all entries are NaN, +inf, or -inf
+is excluded from the output.</p>
 
 
 <table class="field-list">
@@ -389,19 +582,18 @@ Any group with a sample count less than
         <ul class="first simple">
             <li>
               <b><code>feature_df</code></b>
-                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
-                <p>Feature-only table of shape (n_samples, n_features).</p>
+                <p>LazyFrame containing numerical feature columns.</p>
               </div>
             </li>
             <li>
               <b><code>meta_data_df</code></b>
-                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
-                <p>Metadata table row-aligned with <code>feature_df</code>.
-Must include <code>"_label"</code> and <code>"_batch"</code> columns.</p>
+                <p>LazyFrame containing sample-level metadata (returned unchanged).</p>
               </div>
             </li>
         </ul>
@@ -421,11 +613,11 @@ Must include <code>"_label"</code> and <code>"_batch"</code> columns.</p>
       <td class="field-body">
         <ul class="first simple">
             <li>
-                  <code>(<span title="polars.DataFrame">DataFrame</span>, <span title="polars.DataFrame">DataFrame</span>)</code>
+                  <code>(<span title="polars.LazyFrame">LazyFrame</span>, <span title="polars.LazyFrame">LazyFrame</span>)</code>
               –
               <div class="doc-md-description">
-                <p>A tuple <code>(feature_df, meta_data_df)</code> with rows from
-infrequent label–batch groups removed. Alignment is preserved.</p>
+                <p>Tuple of (feature_df, meta_data_df) where feature_df excludes
+all columns consisting solely of non-finite values.</p>
               </div>
             </li>
         </ul>
@@ -436,7 +628,8 @@ infrequent label–batch groups removed. Alignment is preserved.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/filter.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 70</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 69</span>
+<span class="normal"> 70</span>
 <span class="normal"> 71</span>
 <span class="normal"> 72</span>
 <span class="normal"> 73</span>
@@ -469,58 +662,197 @@ infrequent label–batch groups removed. Alignment is preserved.</p>
 <span class="normal">100</span>
 <span class="normal">101</span>
 <span class="normal">102</span>
-<span class="normal">103</span>
-<span class="normal">104</span>
-<span class="normal">105</span>
-<span class="normal">106</span>
+<span class="normal">103</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">drop_cols_all_nonfinite</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Remove feature columns that contain only non-finite values.</span>
+
+<span class="sd">    Any column in ``feature_df`` where all entries are NaN, +inf, or -inf</span>
+<span class="sd">    is excluded from the output.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    feature_df : pl.LazyFrame</span>
+<span class="sd">        LazyFrame containing numerical feature columns.</span>
+<span class="sd">    meta_data_df : pl.LazyFrame</span>
+<span class="sd">        LazyFrame containing sample-level metadata (returned unchanged).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    (pl.LazyFrame, pl.LazyFrame)</span>
+<span class="sd">        Tuple of (feature_df, meta_data_df) where feature_df excludes</span>
+<span class="sd">        all columns consisting solely of non-finite values.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO: Can this also be a lazy expression?</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding query to remove columns containing all non-finite values&quot;</span><span class="p">)</span>
+    <span class="n">finite_summary</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">is_finite</span><span class="p">()</span><span class="o">.</span><span class="n">any</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="n">non_finite_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">finite_summary</span><span class="p">[</span><span class="n">c</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">non_finite_cols</span><span class="p">))</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Removing </span><span class="si">%d</span><span class="s2"> columns containing only non-finite values&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">non_finite_cols</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="fisseq_data_pipeline.filter.drop_rows_any_nonfinite" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">filter</span><span class="o">.</span><span class="n">drop_rows_any_nonfinite</span><span class="p">(</span><span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Remove rows that contain any non-finite feature values.</p>
+<p>This step filters out all samples where at least one feature value
+is NaN, +inf, or -inf. Row alignment between the feature and metadata
+tables is preserved.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>feature_df</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>LazyFrame of numerical features.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>meta_data_df</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Row-aligned LazyFrame of metadata.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code>(<span title="polars.LazyFrame">LazyFrame</span>, <span title="polars.LazyFrame">LazyFrame</span>)</code>
+              –
+              <div class="doc-md-description">
+                <p>LazyFrames excluding all rows with any non-finite feature values.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="quote">
+              <summary>Source code in <code>src/fisseq_data_pipeline/filter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">106</span>
 <span class="normal">107</span>
 <span class="normal">108</span>
 <span class="normal">109</span>
 <span class="normal">110</span>
 <span class="normal">111</span>
 <span class="normal">112</span>
-<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">drop_infrequent_pairs</span><span class="p">(</span>
-    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">drop_rows_any_nonfinite</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Remove rows belonging to rare (``_label``, ``_batch``) groups.</span>
+<span class="sd">    Remove rows that contain any non-finite feature values.</span>
 
-<span class="sd">    Rows are grouped by the concatenation of ``_label`` and ``_batch``.</span>
-<span class="sd">    Any group with a sample count less than</span>
-<span class="sd">    ``FISSEQ_PIPELINE_MIN_CLASS_MEMBERS`` (default: 2) is dropped.</span>
+<span class="sd">    This step filters out all samples where at least one feature value</span>
+<span class="sd">    is NaN, +inf, or -inf. Row alignment between the feature and metadata</span>
+<span class="sd">    tables is preserved.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    feature_df : pl.DataFrame</span>
-<span class="sd">        Feature-only table of shape (n_samples, n_features).</span>
-<span class="sd">    meta_data_df : pl.DataFrame</span>
-<span class="sd">        Metadata table row-aligned with ``feature_df``.</span>
-<span class="sd">        Must include ``&quot;_label&quot;`` and ``&quot;_batch&quot;`` columns.</span>
+<span class="sd">    feature_df : pl.LazyFrame</span>
+<span class="sd">        LazyFrame of numerical features.</span>
+<span class="sd">    meta_data_df : pl.LazyFrame</span>
+<span class="sd">        Row-aligned LazyFrame of metadata.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    (pl.DataFrame, pl.DataFrame)</span>
-<span class="sd">        A tuple ``(feature_df, meta_data_df)`` with rows from</span>
-<span class="sd">        infrequent label–batch groups removed. Alignment is preserved.</span>
+<span class="sd">    (pl.LazyFrame, pl.LazyFrame)</span>
+<span class="sd">        LazyFrames excluding all rows with any non-finite feature values.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># Drop rows that have infrequent (batch, label) batch pairs</span>
-    <span class="n">n_rows</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">height</span>
-    <span class="n">label_batch</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">meta_data_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">)</span>
-    <span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_label_batch&quot;</span><span class="p">)</span>
-    <span class="n">label_batch_counts</span> <span class="o">=</span> <span class="n">label_batch</span><span class="o">.</span><span class="n">value_counts</span><span class="p">()</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
-        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;count&quot;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">MINIMUM_CLASS_MEMBERS</span>
-    <span class="p">)</span>
-    <span class="n">label_batch_freq_mask</span> <span class="o">=</span> <span class="n">label_batch</span><span class="o">.</span><span class="n">is_in</span><span class="p">(</span>
-        <span class="n">label_batch_counts</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;_label_batch&quot;</span><span class="p">)</span>
-    <span class="p">)</span>
-    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">label_batch_freq_mask</span><span class="p">)</span>
-    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">label_batch_freq_mask</span><span class="p">)</span>
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-        <span class="s2">&quot;Dropped </span><span class="si">%d</span><span class="s2"> rows containing batch label pairs with frequency less than </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span>
-        <span class="n">n_rows</span> <span class="o">-</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">height</span><span class="p">,</span>
-        <span class="n">MINIMUM_CLASS_MEMBERS</span><span class="p">,</span>
+        <span class="s2">&quot;Adding query to remove any remaining rows that contain non-finite&quot;</span>
+        <span class="s2">&quot; feature values&quot;</span>
     <span class="p">)</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;_idx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">all_horizontal</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">is_finite</span><span class="p">())</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_all_finite&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;_idx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_idx&quot;</span><span class="p">),</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_all_finite&quot;</span><span class="p">)),</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;_idx&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_all_finite&quot;</span><span class="p">)</span>
+    <span class="n">exclude_expr</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">exclude</span><span class="p">([</span><span class="s2">&quot;_all_finite&quot;</span><span class="p">,</span> <span class="s2">&quot;_idx&quot;</span><span class="p">])</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">exclude_expr</span><span class="p">)</span>
+    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">exclude_expr</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span>
 </code></pre></div></td></tr></table></div>

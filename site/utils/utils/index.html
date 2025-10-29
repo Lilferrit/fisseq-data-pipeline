@@ -61,10 +61,6 @@
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../../harmonize/">Harmonize</a>
-                </li>
-              </ul>
-              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../config/">Config</a>
                 </li>
               </ul>
@@ -84,8 +80,6 @@
     <li class="toctree-l2"><a class="reference internal" href="#api-reference">API Reference</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.utils.utils.get_feature_selector">get_feature_selector</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.utils.utils.get_feature_columns">get_feature_columns</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.utils.utils.get_data_dfs">get_data_dfs</a>
     </li>
@@ -125,8 +119,6 @@
 <ul>
 <li><strong><code>get_feature_selector</code></strong>: Build a Polars selector expression for feature
   columns based on the pipeline configuration.</li>
-<li><strong><code>get_feature_columns</code></strong>: Select feature columns from a <code>LazyFrame</code> using a
-  config.</li>
 <li><strong><code>get_data_dfs</code></strong>: Build aligned feature and metadata DataFrames from a
   Polars <code>LazyFrame</code>.</li>
 <li><strong><code>train_test_split</code></strong>: Create stratified train/test splits for features and
@@ -187,7 +179,15 @@ train_f, train_m, test_f, test_m = train_test_split(feature_df, meta_data_df, te
 
     <div class="doc doc-contents first">
 
-        <p>Get feature column feature selector based on config</p>
+        <p>Build a Polars column selector for feature columns based on the config.</p>
+<p>This utility interprets <code>config.feature_cols</code> and returns a Polars
+selector expression usable in <code>.select()</code> or <code>.with_columns()</code> calls.</p>
+<p>Selection modes:
+  - <strong>Regex</strong>: if <code>feature_cols</code> is a string, all column names matching
+    the regex are selected.
+  - <strong>Explicit list</strong>: if <code>feature_cols</code> is a list of strings, those
+    columns are selected in the given order. Missing columns are ignored
+    with a warning.</p>
 
 
 <table class="field-list">
@@ -205,7 +205,7 @@ train_f, train_m, test_f, test_m = train_test_split(feature_df, meta_data_df, te
                   (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
-                <p>The input data as a Polars LazyFrame.</p>
+                <p>Input dataset containing feature columns.</p>
               </div>
             </li>
             <li>
@@ -213,10 +213,8 @@ train_f, train_m, test_f, test_m = train_test_split(feature_df, meta_data_df, te
                   (<code><a class="autorefs autorefs-internal" title="fisseq_data_pipeline.utils.config.Config" href="../config/#fisseq_data_pipeline.utils.config.Config">Config</a></code>)
               –
               <div class="doc-md-description">
-                <p>Configuration object containing a <code>feature_cols</code> attribute, which may
-be either:
-  - str : A regex pattern to match column names.
-  - list[str] : A list of explicit column names to select.</p>
+                <p>Configuration object with a <code>feature_cols</code> attribute defining which
+columns to select (regex pattern or explicit list).</p>
               </div>
             </li>
         </ul>
@@ -239,8 +237,7 @@ be either:
                   <code><span title="fisseq_data_pipeline.utils.utils.PlSelector">PlSelector</span></code>
               –
               <div class="doc-md-description">
-                <p>A selector that can be used to select feature columns in <code>.select</code>
-call.</p>
+                <p>A Polars selector expression suitable for use in <code>.select()</code> calls.</p>
               </div>
             </li>
         </ul>
@@ -249,9 +246,18 @@ call.</p>
   </tbody>
 </table>
 
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li>Missing columns are ignored but logged as a warning.</li>
+<li>Column order is preserved when using an explicit list.</li>
+</ul>
+</details>
+
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/utils/utils.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">16</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">15</span>
+<span class="normal">16</span>
 <span class="normal">17</span>
 <span class="normal">18</span>
 <span class="normal">19</span>
@@ -295,25 +301,48 @@ call.</p>
 <span class="normal">57</span>
 <span class="normal">58</span>
 <span class="normal">59</span>
-<span class="normal">60</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_feature_selector</span><span class="p">(</span><span class="n">data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PlSelector</span><span class="p">:</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_feature_selector</span><span class="p">(</span><span class="n">data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PlSelector</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Get feature column feature selector based on config</span>
+<span class="sd">    Build a Polars column selector for feature columns based on the config.</span>
+
+<span class="sd">    This utility interprets ``config.feature_cols`` and returns a Polars</span>
+<span class="sd">    selector expression usable in ``.select()`` or ``.with_columns()`` calls.</span>
+
+<span class="sd">    Selection modes:</span>
+<span class="sd">      - **Regex**: if ``feature_cols`` is a string, all column names matching</span>
+<span class="sd">        the regex are selected.</span>
+<span class="sd">      - **Explicit list**: if ``feature_cols`` is a list of strings, those</span>
+<span class="sd">        columns are selected in the given order. Missing columns are ignored</span>
+<span class="sd">        with a warning.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    data_df : pl.LazyFrame</span>
-<span class="sd">        The input data as a Polars LazyFrame.</span>
+<span class="sd">        Input dataset containing feature columns.</span>
 <span class="sd">    config : Config</span>
-<span class="sd">        Configuration object containing a ``feature_cols`` attribute, which may</span>
-<span class="sd">        be either:</span>
-<span class="sd">          - str : A regex pattern to match column names.</span>
-<span class="sd">          - list[str] : A list of explicit column names to select.</span>
+<span class="sd">        Configuration object with a ``feature_cols`` attribute defining which</span>
+<span class="sd">        columns to select (regex pattern or explicit list).</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    PlSelector</span>
-<span class="sd">        A selector that can be used to select feature columns in ``.select``</span>
-<span class="sd">        call.</span>
+<span class="sd">        A Polars selector expression suitable for use in ``.select()`` calls.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - Missing columns are ignored but logged as a warning.</span>
+<span class="sd">    - Column order is preserved when using an explicit list.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">feature_cols</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
         <span class="n">selector_type</span> <span class="o">=</span> <span class="s2">&quot;regex&quot;</span>
@@ -350,133 +379,6 @@ call.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="fisseq_data_pipeline.utils.utils.get_feature_columns" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">get_feature_columns</span><span class="p">(</span><span class="n">data_df</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span></code>
-
-</h3>
-
-
-    <div class="doc doc-contents first">
-
-        <p>Select feature columns from a Polars LazyFrame based on the configuration</p>
-
-
-<table class="field-list">
-  <colgroup>
-    <col class="field-name" />
-    <col class="field-body" />
-  </colgroup>
-  <tbody valign="top">
-    <tr class="field">
-      <th class="field-name">Parameters:</th>
-      <td class="field-body">
-        <ul class="first simple">
-            <li>
-              <b><code>data_df</code></b>
-                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
-              –
-              <div class="doc-md-description">
-                <p>The input data as a Polars LazyFrame.</p>
-              </div>
-            </li>
-            <li>
-              <b><code>config</code></b>
-                  (<code><a class="autorefs autorefs-internal" title="fisseq_data_pipeline.utils.config.Config" href="../config/#fisseq_data_pipeline.utils.config.Config">Config</a></code>)
-              –
-              <div class="doc-md-description">
-                <p>Configuration object containing a <code>feature_cols</code> attribute, which may
-be either:
-  - str : A regex pattern to match column names.
-  - list[str] : A list of explicit column names to select.</p>
-              </div>
-            </li>
-        </ul>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-<table class="field-list">
-  <colgroup>
-    <col class="field-name" />
-    <col class="field-body" />
-  </colgroup>
-  <tbody valign="top">
-    <tr class="field">
-      <th class="field-name">Returns:</th>
-      <td class="field-body">
-        <ul class="first simple">
-            <li>
-                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
-              –
-              <div class="doc-md-description">
-                <p>A Polars LazyFrame containing only the selected feature columns, cast to
-the given dtype.</p>
-              </div>
-            </li>
-        </ul>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-            <details class="quote">
-              <summary>Source code in <code>src/fisseq_data_pipeline/utils/utils.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">63</span>
-<span class="normal">64</span>
-<span class="normal">65</span>
-<span class="normal">66</span>
-<span class="normal">67</span>
-<span class="normal">68</span>
-<span class="normal">69</span>
-<span class="normal">70</span>
-<span class="normal">71</span>
-<span class="normal">72</span>
-<span class="normal">73</span>
-<span class="normal">74</span>
-<span class="normal">75</span>
-<span class="normal">76</span>
-<span class="normal">77</span>
-<span class="normal">78</span>
-<span class="normal">79</span>
-<span class="normal">80</span>
-<span class="normal">81</span>
-<span class="normal">82</span>
-<span class="normal">83</span>
-<span class="normal">84</span>
-<span class="normal">85</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_feature_columns</span><span class="p">(</span><span class="n">data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Select feature columns from a Polars LazyFrame based on the configuration</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    data_df : pl.LazyFrame</span>
-<span class="sd">        The input data as a Polars LazyFrame.</span>
-<span class="sd">    config : Config</span>
-<span class="sd">        Configuration object containing a ``feature_cols`` attribute, which may</span>
-<span class="sd">        be either:</span>
-<span class="sd">          - str : A regex pattern to match column names.</span>
-<span class="sd">          - list[str] : A list of explicit column names to select.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    pl.LazyFrame</span>
-<span class="sd">        A Polars LazyFrame containing only the selected feature columns, cast to</span>
-<span class="sd">        the given dtype.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">selector</span> <span class="o">=</span> <span class="n">get_feature_selector</span><span class="p">(</span><span class="n">data_df</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
-    <span class="n">data_df</span> <span class="o">=</span> <span class="n">data_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">selector</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">data_df</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div><hr />
-
-
-<div class="doc doc-object doc-function">
-
-
 <h3 id="fisseq_data_pipeline.utils.utils.get_data_dfs" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">get_data_dfs</span><span class="p">(</span><span class="n">data_df</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">pl</span><span class="o">.</span><span class="n">Float32</span><span class="p">)</span></code>
 
@@ -485,18 +387,16 @@ the given dtype.</p>
 
     <div class="doc doc-contents first">
 
-        <p>Construct a numeric feature matrix and a metadata DataFrame from a
-Polars LazyFrame.</p>
-<p>The computation graph:
-  1. Adds a row index column (<code>_sample_idx</code>) for stable sample
-     tracking.
-  2. Selects feature columns defined in <code>config.feature_cols</code> and
-     casts them to <code>dtype</code>.
-  3. Extracts the batch column (<code>_batch</code>), the label column
-     (<code>_label</code>), and a boolean control mask (<code>_is_control</code>) using
-     <code>config.control_sample_query</code>.
-  4. Collects the LazyFrame once and returns NumPy features plus
-     eager Polars metadata.</p>
+        <p>Construct separate feature and metadata DataFrames from a Polars LazyFrame.</p>
+<p>This function builds a complete computation graph that:
+  1. Adds a row index (<code>_sample_idx</code>) for reproducible sample tracking.
+  2. Selects and casts feature columns defined in <code>config.feature_cols</code>.
+  3. Extracts metadata columns:
+     - <code>_batch</code> from <code>config.batch_col_name</code>
+     - <code>_label</code> from <code>config.label_col_name</code>
+     - <code>_is_control</code> by evaluating <code>config.control_sample_query</code>
+  4. Materializes the LazyFrame once to produce a feature matrix
+     and an eager metadata DataFrame.</p>
 
 
 <table class="field-list">
@@ -514,7 +414,7 @@ Polars LazyFrame.</p>
                   (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
-                <p>Input dataset as a Polars LazyFrame.</p>
+                <p>Input dataset containing both features and metadata.</p>
               </div>
             </li>
             <li>
@@ -522,12 +422,7 @@ Polars LazyFrame.</p>
                   (<code><a class="autorefs autorefs-internal" title="fisseq_data_pipeline.utils.config.Config" href="../config/#fisseq_data_pipeline.utils.config.Config">Config</a></code>)
               –
               <div class="doc-md-description">
-                <p>Configuration object containing:
-  - <code>feature_cols</code>: regex or list of feature column names.
-  - <code>batch_col_name</code>: column name to be exposed as <code>_batch</code>.
-  - <code>label_col_name</code>: column name to be exposed as <code>_label</code>.
-  - <code>control_sample_query</code>: SQL WHERE clause fragment defining
-    control samples (used to produce <code>_is_control</code>).</p>
+                <p>Configuration object</p>
               </div>
             </li>
             <li>
@@ -537,7 +432,7 @@ Polars LazyFrame.</p>
 )
               –
               <div class="doc-md-description">
-                <p>Target dtype for feature columns (default: <code>pl.Float32</code>).</p>
+                <p>Data type to cast feature columns to. Defaults to <code>pl.Float32</code>.</p>
               </div>
             </li>
         </ul>
@@ -557,20 +452,17 @@ Polars LazyFrame.</p>
       <td class="field-body">
         <ul class="first simple">
             <li>
-                  <code><span title="typing.Tuple">Tuple</span>[<span title="numpy.ndarray">ndarray</span>, <span title="polars.DataFrame">DataFrame</span>]</code>
+                  <code>(<span title="polars.DataFrame">DataFrame</span>, <span title="polars.DataFrame">DataFrame</span>)</code>
               –
               <div class="doc-md-description">
-                <ul>
-<li>Feature matrix: <code>np.ndarray</code> of shape <code>(n_samples, n_features)</code>,
-  with columns from <code>config.feature_cols</code> cast to <code>dtype</code>.</li>
-<li>Metadata DataFrame: eager <code>pl.DataFrame</code> with columns:<ul>
-<li><code>_batch</code>: values from <code>config.batch_col_name</code>.</li>
-<li><code>_label</code>: values from <code>config.label_col_name</code>.</li>
-<li><code>_is_control</code>: bool mask indicating control samples.</li>
-<li><code>_sample_idx</code>: integer row index for reference.</li>
-</ul>
-</li>
-</ul>
+                <p>A tuple containing:
+  - <strong>feature_df</strong> : eager <code>pl.DataFrame</code> of numerical features, shape
+    <code>(n_samples, n_features)</code>, with values cast to <code>dtype</code>.
+  - <strong>meta_data_df</strong> : eager <code>pl.DataFrame</code> with columns:
+        * <code>_batch</code> — batch labels
+        * <code>_label</code> — class labels
+        * <code>_is_control</code> — boolean control mask
+        * <code>_sample_idx</code> — stable sample index</p>
               </div>
             </li>
         </ul>
@@ -579,9 +471,30 @@ Polars LazyFrame.</p>
   </tbody>
 </table>
 
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li>The returned feature and metadata frames share identical row ordering.</li>
+</ul>
+</details>
+
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/utils/utils.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 88</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
 <span class="normal"> 89</span>
 <span class="normal"> 90</span>
 <span class="normal"> 91</span>
@@ -656,70 +569,48 @@ Polars LazyFrame.</p>
 <span class="normal">160</span>
 <span class="normal">161</span>
 <span class="normal">162</span>
-<span class="normal">163</span>
-<span class="normal">164</span>
-<span class="normal">165</span>
-<span class="normal">166</span>
-<span class="normal">167</span>
-<span class="normal">168</span>
-<span class="normal">169</span>
-<span class="normal">170</span>
-<span class="normal">171</span>
-<span class="normal">172</span>
-<span class="normal">173</span>
-<span class="normal">174</span>
-<span class="normal">175</span>
-<span class="normal">176</span>
-<span class="normal">177</span>
-<span class="normal">178</span>
-<span class="normal">179</span>
-<span class="normal">180</span>
-<span class="normal">181</span>
-<span class="normal">182</span>
-<span class="normal">183</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_data_dfs</span><span class="p">(</span>
+<span class="normal">163</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_data_dfs</span><span class="p">(</span>
     <span class="n">data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
     <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">,</span>
     <span class="n">dtype</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataType</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float32</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Construct a numeric feature matrix and a metadata DataFrame from a</span>
-<span class="sd">    Polars LazyFrame.</span>
+<span class="sd">    Construct separate feature and metadata DataFrames from a Polars LazyFrame.</span>
 
-<span class="sd">    The computation graph:</span>
-<span class="sd">      1. Adds a row index column (``_sample_idx``) for stable sample</span>
-<span class="sd">         tracking.</span>
-<span class="sd">      2. Selects feature columns defined in ``config.feature_cols`` and</span>
-<span class="sd">         casts them to ``dtype``.</span>
-<span class="sd">      3. Extracts the batch column (``_batch``), the label column</span>
-<span class="sd">         (``_label``), and a boolean control mask (``_is_control``) using</span>
-<span class="sd">         ``config.control_sample_query``.</span>
-<span class="sd">      4. Collects the LazyFrame once and returns NumPy features plus</span>
-<span class="sd">         eager Polars metadata.</span>
+<span class="sd">    This function builds a complete computation graph that:</span>
+<span class="sd">      1. Adds a row index (``_sample_idx``) for reproducible sample tracking.</span>
+<span class="sd">      2. Selects and casts feature columns defined in ``config.feature_cols``.</span>
+<span class="sd">      3. Extracts metadata columns:</span>
+<span class="sd">         - ``_batch`` from ``config.batch_col_name``</span>
+<span class="sd">         - ``_label`` from ``config.label_col_name``</span>
+<span class="sd">         - ``_is_control`` by evaluating ``config.control_sample_query``</span>
+<span class="sd">      4. Materializes the LazyFrame once to produce a feature matrix</span>
+<span class="sd">         and an eager metadata DataFrame.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    data_df : pl.LazyFrame</span>
-<span class="sd">        Input dataset as a Polars LazyFrame.</span>
+<span class="sd">        Input dataset containing both features and metadata.</span>
 <span class="sd">    config : Config</span>
-<span class="sd">        Configuration object containing:</span>
-<span class="sd">          - ``feature_cols``: regex or list of feature column names.</span>
-<span class="sd">          - ``batch_col_name``: column name to be exposed as ``_batch``.</span>
-<span class="sd">          - ``label_col_name``: column name to be exposed as ``_label``.</span>
-<span class="sd">          - ``control_sample_query``: SQL WHERE clause fragment defining</span>
-<span class="sd">            control samples (used to produce ``_is_control``).</span>
+<span class="sd">        Configuration object</span>
 <span class="sd">    dtype : pl.DataType, optional</span>
-<span class="sd">        Target dtype for feature columns (default: ``pl.Float32``).</span>
+<span class="sd">        Data type to cast feature columns to. Defaults to ``pl.Float32``.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    Tuple[np.ndarray, pl.DataFrame]</span>
-<span class="sd">        - Feature matrix: ``np.ndarray`` of shape ``(n_samples, n_features)``,</span>
-<span class="sd">          with columns from ``config.feature_cols`` cast to ``dtype``.</span>
-<span class="sd">        - Metadata DataFrame: eager ``pl.DataFrame`` with columns:</span>
-<span class="sd">            * ``_batch``: values from ``config.batch_col_name``.</span>
-<span class="sd">            * ``_label``: values from ``config.label_col_name``.</span>
-<span class="sd">            * ``_is_control``: bool mask indicating control samples.</span>
-<span class="sd">            * ``_sample_idx``: integer row index for reference.</span>
+<span class="sd">    (pl.DataFrame, pl.DataFrame)</span>
+<span class="sd">        A tuple containing:</span>
+<span class="sd">          - **feature_df** : eager ``pl.DataFrame`` of numerical features, shape</span>
+<span class="sd">            ``(n_samples, n_features)``, with values cast to ``dtype``.</span>
+<span class="sd">          - **meta_data_df** : eager ``pl.DataFrame`` with columns:</span>
+<span class="sd">                * ``_batch`` — batch labels</span>
+<span class="sd">                * ``_label`` — class labels</span>
+<span class="sd">                * ``_is_control`` — boolean control mask</span>
+<span class="sd">                * ``_sample_idx`` — stable sample index</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - The returned feature and metadata frames share identical row ordering.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
         <span class="s2">&quot;Starting get_data_matrices for batch_col=</span><span class="si">%s</span><span class="s2">, dtype=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
@@ -742,34 +633,30 @@ Polars LazyFrame.</p>
     <span class="n">label_expr</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">label_col_name</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">)</span>
 
     <span class="c1"># Execute the full plan</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Collecting LazyFrame into DataFrame&quot;</span><span class="p">)</span>
-    <span class="n">df</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">base</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
-            <span class="n">label_expr</span><span class="p">,</span>
-            <span class="n">batch_expr</span><span class="p">,</span>
-            <span class="n">control_mask_expr</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="o">.</span><span class="n">select</span><span class="p">(</span>
-            <span class="n">feature_expr</span><span class="p">,</span>
-            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">),</span>
-            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_is_control&quot;</span><span class="p">),</span>
-            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_sample_idx&quot;</span><span class="p">),</span>
-            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">),</span>
-        <span class="p">)</span>
-        <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating combined dataframe query&quot;</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">base</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">label_expr</span><span class="p">,</span>
+        <span class="n">batch_expr</span><span class="p">,</span>
+        <span class="n">control_mask_expr</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">feature_expr</span><span class="p">,</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_is_control&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_sample_idx&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">),</span>
     <span class="p">)</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Collection complete: shape=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 
     <span class="c1"># Get feature dataframe</span>
-    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_expr</span><span class="p">)</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Feature dataframe shape: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating feature dataframe query&quot;</span><span class="p">)</span>
+    <span class="n">feature_df</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_expr</span><span class="p">)</span>
 
-    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
-        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">),</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">),</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_is_control&quot;</span><span class="p">),</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_sample_idx&quot;</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating metadata frame query&quot;</span><span class="p">)</span>
+    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_is_control&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_sample_idx&quot;</span><span class="p">),</span>
     <span class="p">)</span>
-
-    <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Meta data dataframe: shape=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Finished get_data_matrices&quot;</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">feature_df</span><span class="p">,</span> <span class="n">meta_data_df</span>
 </code></pre></div></td></tr></table></div>
@@ -805,7 +692,7 @@ Polars LazyFrame.</p>
         <ul class="first simple">
             <li>
               <b><code>feature_df</code></b>
-                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
                 <p>Feature matrix with shape (n_samples, n_features).</p>
@@ -813,7 +700,7 @@ Polars LazyFrame.</p>
             </li>
             <li>
               <b><code>meta_data_df</code></b>
-                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
               –
               <div class="doc-md-description">
                 <p>Metadata aligned row-wise with <code>feature_df</code>. Must contain columns
@@ -846,28 +733,28 @@ float between 0.0 and 1.0.</p>
       <td class="field-body">
         <ul class="first simple">
             <li>
-<b><code>train_feature_df</code></b>(                  <code><span title="polars.DataFrame">DataFrame</span></code>
+<b><code>train_feature_df</code></b>(                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
 )              –
               <div class="doc-md-description">
                 <p>Features for the training set.</p>
               </div>
             </li>
             <li>
-<b><code>train_meta_data_df</code></b>(                  <code><span title="polars.DataFrame">DataFrame</span></code>
+<b><code>train_meta_data_df</code></b>(                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
 )              –
               <div class="doc-md-description">
                 <p>Metadata for the training set.</p>
               </div>
             </li>
             <li>
-<b><code>test_feature_df</code></b>(                  <code><span title="polars.DataFrame">DataFrame</span></code>
+<b><code>test_feature_df</code></b>(                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
 )              –
               <div class="doc-md-description">
                 <p>Features for the test set.</p>
               </div>
             </li>
             <li>
-<b><code>test_meta_data_df</code></b>(                  <code><span title="polars.DataFrame">DataFrame</span></code>
+<b><code>test_meta_data_df</code></b>(                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
 )              –
               <div class="doc-md-description">
                 <p>Metadata for the test set.</p>
@@ -890,7 +777,27 @@ float between 0.0 and 1.0.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/fisseq_data_pipeline/utils/utils.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">186</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
 <span class="normal">187</span>
 <span class="normal">188</span>
 <span class="normal">189</span>
@@ -943,37 +850,19 @@ float between 0.0 and 1.0.</p>
 <span class="normal">236</span>
 <span class="normal">237</span>
 <span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span>
-<span class="normal">241</span>
-<span class="normal">242</span>
-<span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">train_test_split</span><span class="p">(</span>
-    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
-    <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+<span class="normal">239</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">train_test_split</span><span class="p">(</span>
+    <span class="n">feature_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+    <span class="n">meta_data_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
     <span class="n">test_size</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Split feature and metadata DataFrames into stratified train and test sets.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    feature_df : pl.DataFrame</span>
+<span class="sd">    feature_df : pl.LazyFrame</span>
 <span class="sd">        Feature matrix with shape (n_samples, n_features).</span>
-<span class="sd">    meta_data_df : pl.DataFrame</span>
+<span class="sd">    meta_data_df : pl.LazyFrame</span>
 <span class="sd">        Metadata aligned row-wise with ``feature_df``. Must contain columns</span>
 <span class="sd">        ``_label`` (class labels) and ``_batch`` (batch identifiers).</span>
 <span class="sd">    test_size : float</span>
@@ -982,13 +871,13 @@ float between 0.0 and 1.0.</p>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    train_feature_df : pl.DataFrame</span>
+<span class="sd">    train_feature_df : pl.LazyFrame</span>
 <span class="sd">        Features for the training set.</span>
-<span class="sd">    train_meta_data_df : pl.DataFrame</span>
+<span class="sd">    train_meta_data_df : pl.LazyFrame</span>
 <span class="sd">        Metadata for the training set.</span>
-<span class="sd">    test_feature_df : pl.DataFrame</span>
+<span class="sd">    test_feature_df : pl.LazyFrame</span>
 <span class="sd">        Features for the test set.</span>
-<span class="sd">    test_meta_data_df : pl.DataFrame</span>
+<span class="sd">    test_meta_data_df : pl.LazyFrame</span>
 <span class="sd">        Metadata for the test set.</span>
 
 <span class="sd">    Notes</span>
@@ -997,40 +886,42 @@ float between 0.0 and 1.0.</p>
 <span class="sd">      stratification to succeed.</span>
 <span class="sd">    - The split is reproducible if ``RANDOM_STATE`` is fixed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating train test split&quot;</span><span class="p">)</span>
-    <span class="n">meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;row_id&quot;</span><span class="p">)</span>
-    <span class="n">test_idx</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">meta_data_df</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
-            <span class="n">pl</span><span class="o">.</span><span class="n">concat_str</span><span class="p">(</span>
-                <span class="p">[</span>
-                    <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
-                    <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">),</span>
-                    <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
-                <span class="p">]</span>
-            <span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;grp&quot;</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;grp&quot;</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating lazy stratified train/test split query&quot;</span><span class="p">)</span>
+    <span class="n">lf_meta</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;row_id&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">concat_str</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_label&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">),</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_batch&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
+            <span class="p">]</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;grp&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">lf_test_idx</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf_meta</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;grp&quot;</span><span class="p">)</span>
         <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;row_id&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">fraction</span><span class="o">=</span><span class="n">test_size</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="n">RANDOM_STATE</span><span class="p">))</span>
         <span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="s2">&quot;row_id&quot;</span><span class="p">)</span>
-        <span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;row_id&quot;</span><span class="p">)</span>
-        <span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
     <span class="p">)</span>
 
-    <span class="n">train_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">setdiff1d</span><span class="p">(</span>
-        <span class="n">meta_data_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;row_id&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(),</span> <span class="n">test_idx</span><span class="p">,</span> <span class="n">assume_unique</span><span class="o">=</span><span class="kc">True</span>
+    <span class="n">lf_mask</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf_meta</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lf_test_idx</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">&quot;row_id&quot;</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;left&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;grp_right&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_not_null</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_is_test&quot;</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">select</span><span class="p">([</span><span class="s2">&quot;row_id&quot;</span><span class="p">,</span> <span class="s2">&quot;_is_test&quot;</span><span class="p">])</span>
     <span class="p">)</span>
 
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Created splits, copying data&quot;</span><span class="p">)</span>
-    <span class="n">train_feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="p">[</span><span class="n">train_idx</span><span class="p">]</span>
-    <span class="n">test_feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="p">[</span><span class="n">test_idx</span><span class="p">]</span>
-    <span class="n">train_meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="p">[</span><span class="n">train_idx</span><span class="p">]</span>
-    <span class="n">test_meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="p">[</span><span class="n">test_idx</span><span class="p">]</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Split created, executing query&quot;</span><span class="p">)</span>
+    <span class="n">is_test</span> <span class="o">=</span> <span class="n">lf_mask</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_is_test&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;_is_test&quot;</span><span class="p">)</span>
+    <span class="n">is_train</span> <span class="o">=</span> <span class="o">~</span><span class="n">is_test</span>
 
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-        <span class="s2">&quot;Created train set containing </span><span class="si">%d</span><span class="s2"> samples and test set containing </span><span class="si">%d</span><span class="s2"> samples&quot;</span><span class="p">,</span>
-        <span class="nb">len</span><span class="p">(</span><span class="n">train_idx</span><span class="p">),</span>
-        <span class="nb">len</span><span class="p">(</span><span class="n">test_idx</span><span class="p">),</span>
+        <span class="s2">&quot;Split completed: </span><span class="si">%d</span><span class="s2"> train / </span><span class="si">%d</span><span class="s2"> test samples&quot;</span><span class="p">,</span> <span class="n">is_train</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="n">is_test</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
     <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying data&quot;</span><span class="p">)</span>
+    <span class="n">train_feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">is_train</span><span class="p">)</span>
+    <span class="n">test_feature_df</span> <span class="o">=</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">is_test</span><span class="p">)</span>
+    <span class="n">train_meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">is_train</span><span class="p">)</span>
+    <span class="n">test_meta_data_df</span> <span class="o">=</span> <span class="n">meta_data_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">is_test</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">train_feature_df</span><span class="p">,</span> <span class="n">train_meta_data_df</span><span class="p">,</span> <span class="n">test_feature_df</span><span class="p">,</span> <span class="n">test_meta_data_df</span>
 </code></pre></div></td></tr></table></div>

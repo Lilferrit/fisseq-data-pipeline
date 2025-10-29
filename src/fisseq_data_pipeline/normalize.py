@@ -23,11 +23,8 @@ class Normalizer:
         A DataFrame of shape (n_batches, n_features) containing the standard
         deviation of each feature for each batch. When batch-wise normalization
         is not used, this has shape (1, n_features).
-    mapping : dict[str, int] or None
-        Optional mapping from batch label strings (from the `_batch` column of
-        the metadata) to the corresponding integer batch indices used in
-        `means` and `stds`. If `None`, all samples are assumed to belong to
-        a single batch.
+    is_batch_wise : dict[str, int] or None
+        Whether statistics were computed batch-wise or globally
     """
 
     means: pl.DataFrame
@@ -35,6 +32,37 @@ class Normalizer:
     is_batch_wise: bool
 
     def save(self, save_path: PathLike) -> None:
+        """
+        Serialize and save the Normalizer object to disk using pickle.
+
+        This method stores the fitted normalization statistics — per-feature
+        means, standard deviations, and batch-wise configuration flag — as a
+        single binary file that can later be reloaded to reproduce the same
+        normalization behavior.
+
+        Parameters
+        ----------
+        save_path : PathLike
+            Destination file path for the serialized Normalizer object. The file
+            is written in binary format (typically named ``normalizer.pkl``).
+
+        Notes
+        -----
+        - The file can be reloaded using ``pickle.load(open(path, "rb"))``.
+        - Only the Normalizer object and its attributes are serialized; any
+        external references (e.g., LazyFrames) are not included.
+        - The resulting file is Python-version dependent and not guaranteed
+        to be portable across major interpreter versions.
+
+        Examples
+        --------
+        >>> normalizer = fit_normalizer(feature_df, meta_data_df)
+        >>> normalizer.save("output/normalizer.pkl")
+
+        To reload later:
+        >>> with open("output/normalizer.pkl", "rb") as f:
+        ...     normalizer = pickle.load(f)
+        """
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
 

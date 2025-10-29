@@ -28,13 +28,6 @@ Fitting only to control samples ensures that biological variation is captured ev
 
 See [Normalize](./normalize.md).
 
-### Harmonization
-
-The harmonization step applies batch correction using the `neuroHarmonize` library.
-Similar to the normalization stage, by default the harmonizer's batch parameters are fit just the control (wild type) samples in the input data, and these parameters are then used to apply batch correction to all samples.
-
-See [Harmonize](./harmonize.md).
-
 ## Installation
 
 This package in its current state should be considered experimental, and is thus not hosted on PyPI.
