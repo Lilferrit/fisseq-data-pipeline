@@ -51,8 +51,6 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#normalization">Normalization</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#harmonization">Harmonization</a>
-    </li>
         </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
@@ -133,10 +131,6 @@
 By default z-score normalization is fit only to control samples.
 Fitting only to control samples ensures that biological variation is captured even in the case where biological covariants are largely disjoint across batches.</p>
 <p>See <a href="normalize/">Normalize</a>.</p>
-<h3 id="harmonization">Harmonization</h3>
-<p>The harmonization step applies batch correction using the <code>neuroHarmonize</code> library.
-Similar to the normalization stage, by default the harmonizer's batch parameters are fit just the control (wild type) samples in the input data, and these parameters are then used to apply batch correction to all samples.</p>
-<p>See <a href="./harmonize.md">Harmonize</a>.</p>
 <h2 id="installation">Installation</h2>
 <p>This package in its current state should be considered experimental, and is thus not hosted on PyPI.
 However, the package may be installed directly from Github using the command:</p>
@@ -201,5 +195,5 @@ For more details see <a href="configuration/">Configuration</a>.</p>
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2025-10-29 21:55:27.709901+00:00
+Build Date UTC : 2025-10-29 21:56:13.889630+00:00
 -->
