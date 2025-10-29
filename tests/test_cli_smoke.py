@@ -5,7 +5,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from fisseq_data_pipeline.pipeline import Config, configure, validate
+from fisseq_data_pipeline.pipeline import Config, configure, run, validate
 
 np.random.seed(42)
 
@@ -82,6 +82,31 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
                 assert df.select(pl.all().is_finite()).to_numpy().all()
         else:
             assert not path.exists(), f"Unexpected train output: {fname}"
+
+
+def test_run(tmp_path: pathlib.Path):
+    # Create toy dataset
+    data_path = tmp_path / "toy.parquet"
+    make_toy_dataset(data_path)
+
+    # Build config
+    cfg = Config(
+        {
+            "feature_cols": ["f1", "f2"],
+            "batch_col_name": "batch",
+            "label_col_name": "label",
+            "control_sample_query": "is_ctrl",
+        }
+    )
+
+    run(data_path, cfg, output_dir=tmp_path)
+    for fname in [
+        "meta_data.parquet",
+        "features.parquet",
+        "normalized.parquet",
+        "normalizer.pkl",
+    ]:
+        assert (tmp_path / fname).is_file()
 
 
 def test_configure(tmp_path: pathlib.Path):

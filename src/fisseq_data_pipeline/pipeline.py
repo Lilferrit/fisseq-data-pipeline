@@ -173,28 +173,103 @@ def validate(
         train_normalized_df.sink_parquet(output_dir / "normalized.train.parquet")
 
 
-def run(*args, **kwargs) -> None:
+def run(
+    input_data_path: PathLike,
+    config: Optional[Config | PathLike] = None,
+    output_dir: Optional[PathLike] = None,
+) -> None:
     """
-    Run the production pipeline on a full dataset.
+    Run the full batch-correction pipeline.
 
-    This function is a placeholder for a single-pass production run
-    (no train/test split). It is not implemented yet.
+    This function performs a one-pass processing workflow that reads a full
+    dataset, cleans invalid rows and columns, fits normalization statistics
+    (optionally batch-wise and on control samples), applies normalization, and
+    writes the resulting cleaned and normalized outputs to disk.
 
-    Raises
-    ------
-    NotImplementedError
-        Always raised. The function body is not implemented.
+    Production Pipeline steps
+    -------------------------
+    1. Load and scan the input Parquet dataset into a Polars LazyFrame.
+    2. Derive feature and metadata frames using configuration-specified
+       column selections.
+    3. Clean the dataset by removing:
+         - Columns that contain only non-finite (NaN/inf) values.
+         - Rows containing any non-finite feature values.
+    4. Fit a batch-wise normalizer (computed from control samples only).
+    5. Apply normalization to the full cleaned dataset.
+    6. Write the cleaned, normalized, and fitted model artifacts to disk.
+
+    Parameters
+    ----------
+    input_data_path : PathLike
+        Path to the input Parquet file containing the full dataset to process.
+    config : Config or PathLike, optional
+        Path to configuration
+    output_dir : PathLike, optional
+        Directory to which cleaned and normalized outputs will be written.
+        Defaults to the current working directory if not specified.
+
+    Outputs
+    -------
+    Written to ``output_dir``:
+
+    - ``meta_data.parquet`` — cleaned metadata table.
+    - ``features.parquet`` — cleaned feature matrix.
+    - ``normalized.parquet`` — z-score normalized feature matrix.
+    - ``normalizer.pkl`` — serialized :class:`Normalizer` object containing
+      per-feature mean and standard deviation statistics.
 
     CLI
     ---
-    Registered subcommand (placeholder)::
+    Exposed via Fire at the ``fisseq-data-pipeline`` entry point, e.g.::
 
     ```bash
     fisseq-data-pipeline run
+        --input_data_path data.parquet
+        --config config.yaml
+        --output_dir out
     ```
     """
-    # TODO: implement run
-    raise NotImplementedError()
+    setup_logging(output_dir)
+    logging.info("Starting validation with input path: %s", input_data_path)
+
+    data_df = pl.scan_parquet(input_data_path)
+    output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
+    logging.info("Output directory set to: %s", output_dir)
+
+    logging.info("Collecting data matrices")
+    config = Config(config)
+    feature_df, meta_data_df = get_data_dfs(data_df, config)
+
+    logging.info("Cleaning data")
+    feature_df, meta_data_df = clean_data(
+        feature_df,
+        meta_data_df,
+        stages=[
+            "drop_cols_all_nonfinite",
+            "drop_rows_any_nonfinite",
+        ],
+    )
+
+    logging.info("Saving cleaned data")
+    feature_df.sink_parquet(output_dir / "meta_data.parquet")
+    meta_data_df.sink_parquet(output_dir / "features.parquet")
+
+    logging.info("Fitting normalizer")
+    normalizer = fit_normalizer(
+        feature_df,
+        meta_data_df=meta_data_df,
+        fit_batch_wise=True,
+        fit_only_on_control=True,
+    )
+
+    logging.info("Saving normalizer")
+    normalizer.save(output_dir / "normalizer.pkl")
+
+    logging.info("Normalizing data")
+    normalized_df = normalize(feature_df, normalizer, meta_data_df=meta_data_df)
+
+    logging.info("Saving normalized data")
+    normalized_df.sink_parquet(output_dir / "normalized.parquet")
 
 
 def configure(output_path: Optional[PathLike] = None) -> None:
