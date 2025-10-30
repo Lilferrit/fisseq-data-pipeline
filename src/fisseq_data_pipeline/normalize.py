@@ -92,15 +92,8 @@ def _add_batch_col(
         suitable for downstream grouping or normalization.
     """
     if is_batch_wise:
-        feature_df = (
-            feature_df.with_row_index(name="_idx")
-            .join(
-                meta_data_df.with_row_index(name="_idx").select(
-                    pl.col("_idx"), pl.col("_batch")
-                ),
-                on="_idx",
-            )
-            .select(pl.exclude("_idx"))
+        feature_df = pl.concat(
+            (feature_df, meta_data_df.select(pl.col("_batch"))), how="horizontal"
         )
     else:
         feature_df = feature_df.with_columns(pl.lit(0).cast(pl.Int8).alias("_batch"))
@@ -158,15 +151,12 @@ def fit_normalizer(
     if fit_only_on_control:
         logging.info("Adding query to filter for control samples")
         feature_df = (
-            feature_df.with_row_index(name="_idx")
-            .join(
-                meta_data_df.with_row_index(name="_idx").select(
-                    pl.col("_idx"), pl.col("_is_control")
-                ),
-                on="_idx",
+            pl.concat(
+                (feature_df, meta_data_df.select(pl.col("_is_control"))),
+                how="horizontal",
             )
             .filter(pl.col("_is_control"))
-            .select(pl.exclude(["_idx", "_is_control"]))
+            .select(pl.exclude("_is_control"))
         )
         meta_data_df = meta_data_df.filter(pl.col("_is_control"))
 
