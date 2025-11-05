@@ -11,7 +11,6 @@ import fire
 import polars as pl
 
 from .filter import clean_data, drop_infrequent_pairs
-from .combat import fit_harmonizer, harmonize
 from .normalize import fit_normalizer, normalize
 from .utils import Config, get_data_dfs, train_test_split
 from .utils.config import DEFAULT_CFG_PATH
@@ -170,30 +169,11 @@ def validate(
     with open(output_dir / f"normalizer.pkl", "wb") as f:
         pickle.dump(normalizer, f)
 
-    logging.info("Fitting harmonizer on train data")
-    harmonizer = fit_harmonizer(
-        train_normalized_df, train_meta_df, fit_only_on_control=True
-    )
-
-    logging.info("Harmonizing test data")
-    test_harmonized_df = harmonize(test_normalized_df, test_meta_df, harmonizer)
-
-    logging.info("Writing harmonization outputs")
-    test_harmonized_df.write_parquet(output_dir / "harmonized.test.parquet")
-    with open(output_dir / f"harmonizer.pkl", "wb") as f:
-        pickle.dump(harmonizer, f)
-
     if write_train_results:
         logging.info("Writing train output up to the normalization stage")
         train_meta_df.write_parquet(output_dir / "meta_data.train.parquet")
         train_feature_df.write_parquet(output_dir / "features.train.parquet")
         train_normalized_df.write_parquet(output_dir / "normalized.train.parquet")
-
-        logging.info("Harmonizing train data")
-        train_harmonized_df = harmonize(train_normalized_df, train_meta_df, harmonizer)
-
-        logging.info("Writing harmonized train data")
-        train_harmonized_df.write_parquet(output_dir / "harmonized.train.parquet")
 
 
 def run(*args, **kwargs) -> None:
