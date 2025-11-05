@@ -89,10 +89,12 @@ def drop_cols_all_nonfinite(
         all columns consisting solely of non-finite values.
     """
     # TODO: Can this also be a lazy expression?
-    logging.info("Adding query to remove columns containing all non-finite values")
+    logging.info("Scanning for all non-finite rows")
     finite_summary = feature_df.select(
         [pl.col(c).is_finite().any().alias(c) for c in feature_df.columns]
     ).collect()
+
+    logging.info("Adding query to remove columns containing all non-finite values")
     non_finite_cols = [c for c in feature_df.columns if not finite_summary[c][0]]
     feature_df = feature_df.select(pl.exclude(non_finite_cols))
     logging.info(
