@@ -15,6 +15,57 @@ from .utils import Config, get_data_dfs, train_test_split
 from .utils.config import DEFAULT_CFG_PATH
 
 
+def get_db(input_data_path: PathLike, eager: bool) -> pl.LazyFrame:
+    """
+    Load or scan a Parquet database as a Polars LazyFrame.
+
+    Depending on the ``eager`` flag, this function either reads the entire
+    Parquet file into memory eagerly or sets up a lazy scan that defers I/O
+    until query execution. The result is always returned as a
+    :class:`polars.LazyFrame` for downstream pipeline compatibility.
+
+    Parameters
+    ----------
+    input_data_path : PathLike
+        Path to the Parquet file containing the dataset to be processed.
+    eager : bool
+        If True, fully load the dataset into memory using
+        :func:`polars.read_parquet` and immediately convert it to a lazy
+        frame. This avoids repeated on-disk scans and can improve runtime on
+        systems with sufficient memory.
+        If False, construct a lazy, on-demand scan using
+        :func:`polars.scan_parquet`, which minimizes memory usage but may be
+        slower due to disk I/O during execution.
+
+    Returns
+    -------
+    polars.LazyFrame
+        A lazy Polars representation of the dataset, ready for further
+        transformations.
+
+    Notes
+    -----
+    - Eager loading is advantageous for repeated access or complex queries
+      over a moderate-sized dataset that fits comfortably in RAM.
+    - Lazy scanning is preferred for very large datasets or when operating
+      in a memory-constrained environment.
+
+    Examples
+    --------
+    >>> lf = get_db("features.parquet", eager=False)
+    >>> lf = get_db("features.parquet", eager=True)
+    """
+    if eager:
+        logging.info("Eagerly loading database: %s", input_data_path)
+        data_df = pl.read_parquet(input_data_path).lazy()
+    else:
+        logging.info("Scanning database: %s", input_data_path)
+        data_df = pl.scan_parquet(input_data_path)
+
+    logging.info("Finished %s database.", "loading" if eager else "scanning")
+    return data_df
+
+
 def setup_logging(log_dir: Optional[PathLike] = None) -> None:
     """
     Configure logging for the pipeline.
@@ -66,6 +117,7 @@ def validate(
     output_dir: Optional[PathLike] = None,
     test_size: float = 0.2,
     write_train_results: bool = True,
+    eager_db_loading: bool = False,
 ) -> None:
     """
     Train pipeline parameters and run on a stratified train/test split.
@@ -96,6 +148,13 @@ def validate(
     write_train_results : bool, default=True
         If True, also write the train split's unmodified/normalized/
         harmonized outputs.
+    eager_db_loading : bool, default=False
+        If True, fully load the input Parquet file into memory eagerly
+        using :func:`polars.read_parquet`. This avoids repeated on-disk
+        scans and can significantly speed up processing on systems with
+        sufficient RAM. If False (default), the dataset is accessed lazily
+        using :func:`polars.scan_parquet`, which minimizes memory usage but
+        may incur slower disk I/O during computation.
 
     Outputs
     -------
@@ -131,7 +190,7 @@ def validate(
     setup_logging(output_dir)
     logging.info("Starting validation with input path: %s", input_data_path)
 
-    data_df = pl.scan_parquet(input_data_path)
+    data_df = get_db(input_data_path, eager_db_loading)
     output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
     logging.info("Output directory set to: %s", output_dir)
 
@@ -177,6 +236,7 @@ def run(
     input_data_path: PathLike,
     config: Optional[Config | PathLike] = None,
     output_dir: Optional[PathLike] = None,
+    eager_db_loading: bool = False,
 ) -> None:
     """
     Run the full batch-correction pipeline.
@@ -207,6 +267,13 @@ def run(
     output_dir : PathLike, optional
         Directory to which cleaned and normalized outputs will be written.
         Defaults to the current working directory if not specified.
+    eager_db_loading : bool, default=False
+        If True, fully load the input Parquet file into memory eagerly
+        using :func:`polars.read_parquet`. This avoids repeated on-disk
+        scans and can significantly speed up processing on systems with
+        sufficient RAM. If False (default), the dataset is accessed lazily
+        using :func:`polars.scan_parquet`, which minimizes memory usage but
+        may incur slower disk I/O during computation.
 
     Outputs
     -------
@@ -232,7 +299,7 @@ def run(
     setup_logging(output_dir)
     logging.info("Starting validation with input path: %s", input_data_path)
 
-    data_df = pl.scan_parquet(input_data_path)
+    data_df = get_db(input_data_path, eager_db_loading)
     output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
     logging.info("Output directory set to: %s", output_dir)
 

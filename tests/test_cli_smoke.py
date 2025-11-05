@@ -24,8 +24,11 @@ def make_toy_dataset(path: pathlib.Path):
     df.write_parquet(path)
 
 
+@pytest.mark.parametrize("eager_db_loading", [True, False])
 @pytest.mark.parametrize("write_train_results", [True, False])
-def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
+def test_validate_smoke(
+    tmp_path: pathlib.Path, write_train_results: bool, eager_db_loading: bool
+):
     # Create toy dataset
     data_path = tmp_path / "toy.parquet"
     make_toy_dataset(data_path)
@@ -49,6 +52,7 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
         output_dir=output_dir,
         test_size=0.25,
         write_train_results=write_train_results,
+        eager_db_loading=eager_db_loading,
     )
 
     # Always expect test outputs
@@ -84,7 +88,8 @@ def test_validate_smoke(tmp_path: pathlib.Path, write_train_results: bool):
             assert not path.exists(), f"Unexpected train output: {fname}"
 
 
-def test_run(tmp_path: pathlib.Path):
+@pytest.mark.parametrize("eager_db_loading", [True, False])
+def test_run(tmp_path: pathlib.Path, eager_db_loading: bool):
     # Create toy dataset
     data_path = tmp_path / "toy.parquet"
     make_toy_dataset(data_path)
@@ -99,7 +104,7 @@ def test_run(tmp_path: pathlib.Path):
         }
     )
 
-    run(data_path, cfg, output_dir=tmp_path)
+    run(data_path, cfg, output_dir=tmp_path, eager_db_loading=eager_db_loading)
     for fname in [
         "meta_data.parquet",
         "features.parquet",
