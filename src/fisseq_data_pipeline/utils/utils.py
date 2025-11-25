@@ -71,8 +71,8 @@ def get_feature_selector(data_df: pl.LazyFrame, config: Config) -> PlSelector:
     return selector
 
 
-def get_data_dfs(
-    data_df: pl.LazyFrame,
+def get_data_lf(
+    db_lf: pl.LazyFrame,
     config: Config,
     dtype: pl.DataType = pl.Float32,
 ) -> Tuple[pl.LazyFrame, pl.LazyFrame]:
@@ -121,7 +121,7 @@ def get_data_dfs(
     )
 
     # Attach row indices to preserve mapping later
-    base = data_df.with_row_index(name="_sample_idx").cache()
+    base = db_lf.with_row_index(name="_meta_sample_idx").cache()
 
     # Build feature selector
     feature_expr = get_feature_selector(base, config).cast(dtype=dtype)
@@ -130,9 +130,11 @@ def get_data_dfs(
     # Control mask expr
     logging.debug("Parsing control sample query: %s", config.control_sample_query)
 
-    control_mask_expr = pl.sql_expr(config.control_sample_query).alias("_is_control")
-    batch_expr = pl.col(config.batch_col_name).alias("_batch")
-    label_expr = pl.col(config.label_col_name).alias("_label")
+    control_mask_expr = pl.sql_expr(config.control_sample_query).alias(
+        "_meta_is_control"
+    )
+    batch_expr = pl.col(config.batch_col_name).alias("_meta_batch")
+    label_expr = pl.col(config.label_col_name).alias("_meta_label")
 
     # Execute the full plan
     logging.info("Creating combined dataframe query")
@@ -142,98 +144,21 @@ def get_data_dfs(
         control_mask_expr,
     ).select(
         feature_expr,
-        pl.col("_batch"),
-        pl.col("_is_control"),
-        pl.col("_sample_idx"),
-        pl.col("_label"),
+        pl.col("_meta_batch"),
+        pl.col("_meta_is_control"),
+        pl.col("_meta_sample_idx"),
+        pl.col("_meta_label"),
     )
 
-    # Get feature dataframe
-    logging.info("Creating feature dataframe query")
-    feature_df = lf.select(feature_expr)
-
-    logging.info("Creating metadata frame query")
-    meta_data_df = lf.select(
-        pl.col("_batch"),
-        pl.col("_label"),
-        pl.col("_is_control"),
-        pl.col("_sample_idx"),
-    )
-
-    return feature_df, meta_data_df
+    return lf
 
 
-def train_test_split(
-    feature_df: pl.LazyFrame,
-    meta_data_df: pl.LazyFrame,
-    test_size: float,
-) -> Tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]:
-    """
-    Split feature and metadata DataFrames into stratified train and test sets.
+def get_feature_cols(
+    data_lf: pl.LazyFrame, as_string: bool = False
+) -> list[pl.Expr] | list[str]:
+    wrapper = str if as_string else pl.col
+    return [wrapper(c) for c in data_lf.columns if not c.startswith("_meta")]
 
-    Parameters
-    ----------
-    feature_df : pl.LazyFrame
-        Feature matrix with shape (n_samples, n_features).
-    meta_data_df : pl.LazyFrame
-        Metadata aligned row-wise with ``feature_df``. Must contain columns
-        ``_label`` (class labels) and ``_batch`` (batch identifiers).
-    test_size : float
-        Proportion of the dataset to include in the test split. Should be a
-        float between 0.0 and 1.0.
 
-    Returns
-    -------
-    train_feature_df : pl.LazyFrame
-        Features for the training set.
-    train_meta_data_df : pl.LazyFrame
-        Metadata for the training set.
-    test_feature_df : pl.LazyFrame
-        Features for the test set.
-    test_meta_data_df : pl.LazyFrame
-        Metadata for the test set.
-
-    Notes
-    -----
-    - Each ``(_label, _batch)`` group must have at least two samples for
-      stratification to succeed.
-    - The split is reproducible if ``RANDOM_STATE`` is fixed.
-    """
-    logging.info("Creating lazy stratified train/test split query")
-    lf_meta = meta_data_df.with_row_index("row_id").with_columns(
-        pl.concat_str(
-            [
-                pl.col("_label").cast(pl.Utf8),
-                pl.lit(":"),
-                pl.col("_batch").cast(pl.Utf8),
-            ]
-        ).alias("grp")
-    )
-
-    lf_test_idx = (
-        lf_meta.group_by("grp")
-        .agg(pl.col("row_id").sample(fraction=test_size, seed=RANDOM_STATE))
-        .explode("row_id")
-    )
-
-    lf_mask = (
-        lf_meta.join(lf_test_idx, on="row_id", how="left")
-        .with_columns(pl.col("grp_right").is_not_null().alias("_is_test"))
-        .select(["row_id", "_is_test"])
-    )
-
-    logging.info("Split created, executing query")
-    is_test = lf_mask.select(pl.col("_is_test")).collect().get_column("_is_test")
-    is_train = ~is_test
-
-    logging.info(
-        "Split completed: %d train / %d test samples", is_train.sum(), is_test.sum()
-    )
-
-    logging.info("Copying data")
-    train_feature_df = feature_df.filter(is_train)
-    test_feature_df = feature_df.filter(is_test)
-    train_meta_data_df = meta_data_df.filter(is_train)
-    test_meta_data_df = meta_data_df.filter(is_test)
-
-    return train_feature_df, train_meta_data_df, test_feature_df, test_meta_data_df
+def get_feature_lf(data_lf: pl.LazyFrame) -> pl.LazyFrame:
+    return data_lf.select(get_feature_cols(data_lf))

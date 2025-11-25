@@ -3,9 +3,8 @@ import numpy as np
 import polars as pl
 
 from fisseq_data_pipeline.utils.utils import (
-    get_data_dfs,
+    get_data_lf,
     get_feature_selector,
-    train_test_split,
 )
 
 

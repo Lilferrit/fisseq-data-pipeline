@@ -3,7 +3,7 @@ import unittest.mock
 import polars as pl
 
 import fisseq_data_pipeline.filter as filt  # to tweak MINIMUM_CLASS_MEMBERS in tests
-from fisseq_data_pipeline.filter import clean_data, drop_rows_infrequent_pairs
+from fisseq_data_pipeline.filter import clean_data
 
 
 def test_removes_all_null_columns():

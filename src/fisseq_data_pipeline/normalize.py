@@ -2,10 +2,11 @@ import dataclasses
 import logging
 import pickle
 from os import PathLike
-from typing import Optional
 
 import numpy as np
 import polars as pl
+
+from .utils import get_feature_cols
 
 
 @dataclasses.dataclass
@@ -67,125 +68,93 @@ class Normalizer:
             pickle.dump(self, f)
 
 
-def _add_batch_col(
-    feature_df: pl.LazyFrame, meta_data_df: Optional[pl.LazyFrame], is_batch_wise: bool
-) -> pl.LazyFrame:
-    """
-    Attach a `_batch` column to the feature LazyFrame.
-
-    Parameters
-    ----------
-    feature_df : pl.LazyFrame
-        LazyFrame containing per-sample features to which the `_batch`
-        column should be added.
-    meta_data_df : pl.LazyFrame or None
-        Row-aligned metadata LazyFrame containing the `_batch` column.
-        Required if `is_batch_wise` is True.
-    is_batch_wise : bool
-        If True, add the actual `_batch` column from the metadata.
-        If False, assign a dummy `_batch = 0` to all rows.
-
-    Returns
-    -------
-    pl.LazyFrame
-        The input feature LazyFrame augmented with a `_batch` column,
-        suitable for downstream grouping or normalization.
-    """
-    if is_batch_wise:
-        feature_df = pl.concat(
-            (feature_df, meta_data_df.select(pl.col("_batch"))), how="horizontal"
-        )
-    else:
-        feature_df = feature_df.with_columns(pl.lit(0).cast(pl.Int8).alias("_batch"))
-
-    return feature_df
-
-
 def fit_normalizer(
-    feature_df: pl.LazyFrame,
-    meta_data_df: Optional[pl.LazyFrame] = None,
+    data_lf: pl.LazyFrame,
     fit_only_on_control: bool = False,
     fit_batch_wise: bool = True,
 ) -> Normalizer:
     """
-    Compute per-feature means and standard deviations for z-score normalization.
+    Compute per-feature mean and standard deviation statistics for
+    z-score normalization.
 
-    The function can operate in two modes:
-      * **Global normalization** - if `fit_batch_wise=False`, compute one mean
-        and standard deviation per feature across all samples.
-      * **Batch-wise normalization** - if `fit_batch_wise=True`,
-        compute separate statistics for each batch defined by the `_batch`
-        column of `meta_data_df`.
+    The normalizer can operate in two modes:
 
-    Optionally, the statistics may be estimated only from control samples
-    indicated by a boolean `_is_control` column in the metadata.
+    **1. Global normalization (`fit_batch_wise=False`)**
+       All samples are assigned to a single synthetic batch
+       (`_meta_batch = 0`). A single mean and standard deviation
+       are computed per feature.
 
-    Columns with (near) zero variance are automatically excluded from the
-    resulting normalizer to avoid divide-by-zero errors during scaling.
+    **2. Batch-wise normalization (`fit_batch_wise=True`)**
+       Means and standard deviations are computed independently for
+       each batch defined by the existing `_meta_batch` column.
+
+    If `fit_only_on_control=True`, rows are filtered using the
+    boolean `_meta_is_control` column before statistics are computed.
+
+    Columns with zero or near-zero variance are identified and dropped
+    from the returned statistics to avoid division-by-zero during
+    normalization.
 
     Parameters
     ----------
-    feature_df : pl.DataFrame
-        Feature matrix of shape (n_samples, n_features). Each column represents
-        a quantitative feature to be normalized.
-    meta_data_df : pl.DataFrame, optional
-        Metadata DataFrame aligned row-wise with `feature_df`. Must contain a
-        `_batch` column if `fit_batch_wise=True`, and an `_is_control` column
-        if `fit_only_on_control=True`.
-    fit_only_on_control : bool, default=False
-        If True, compute normalization statistics using only rows where
-        `meta_data_df["_is_control"]` is True.
-    fit_batch_wise : bool, default=True
-        If True, compute means and standard deviations separately for each
-        batch. Requires that `meta_data_df` include a `_batch` column.
+    data_lf : pl.LazyFrame
+        A LazyFrame containing:
+          - numerical feature columns
+          - a `_meta_batch` column (if `fit_batch_wise=True`)
+          - optionally a `_meta_is_control` column
+    fit_only_on_control : bool, default False
+        Whether to compute statistics only from rows where
+        `_meta_is_control == True`.
+    fit_batch_wise : bool, default True
+        Whether to compute statistics separately per batch. If False,
+        all samples are assigned to a single batch.
 
     Returns
     -------
     Normalizer
-        A dataclass containing the per-feature means, standard deviations,
-        and optional batch mapping for use in downstream normalization.
+        A dataclass holding:
+          - `means` : per-batch feature means
+          - `stds` : per-batch feature standard deviations
+          - `is_batch_wise` : boolean flag matching input
     """
-    if (fit_only_on_control or fit_batch_wise) and meta_data_df is None:
-        raise ValueError("Meta data required to fit to control samples or by batch")
-
     if fit_only_on_control:
         logging.info("Adding query to filter for control samples")
-        feature_df = (
-            pl.concat(
-                (feature_df, meta_data_df.select(pl.col("_is_control"))),
-                how="horizontal",
-            )
-            .filter(pl.col("_is_control"))
-            .select(pl.exclude("_is_control"))
-        )
-        meta_data_df = meta_data_df.filter(pl.col("_is_control"))
+        data_lf = data_lf.filter(pl.col("_meta_is_control"))
+
+    if not fit_batch_wise:
+        data_lf = data_lf.with_columns(pl.lit(0).alias("_meta_batch"))
 
     # Handle batch column (batch-wise vs global)
-    feature_df = _add_batch_col(feature_df, meta_data_df, fit_batch_wise)
+    logging.info("Adding normalization queries")
     agg_exprs = []
-    for c in feature_df.columns:
-        if c == "_batch":
-            continue
+    for c in get_feature_cols(data_lf, as_string=True):
         agg_exprs.append(pl.col(c).mean().alias(f"{c}_mean"))
         agg_exprs.append(pl.col(c).std().alias(f"{c}_std"))
 
-    agg_df = feature_df.group_by("_batch").agg(agg_exprs)
+    agg_df = data_lf.group_by("_meta_batch").agg(agg_exprs)
     mean_cols = [c for c in agg_df.columns if c.endswith("_mean")]
     std_cols = [c for c in agg_df.columns if c.endswith("_std")]
 
-    means, stds = (
-        agg_df.select(
-            [pl.col(c).alias(c.removesuffix(sfx)) for c in cols] + [pl.col("_batch")]
-        ).collect()
-        for cols, sfx in [(mean_cols, "_mean"), (std_cols, "_std")]
-    )
+    logging.info("Computing feature means")
+    means = agg_df.select(
+        pl.col("_meta_batch"),
+        *[pl.col(c).alias(c.removesuffix("_mean")) for c in mean_cols],
+    ).collect()
 
+    logging.info("Computing feature standard deviations")
+    stds = agg_df.select(
+        pl.col("_meta_batch"),
+        *[pl.col(c).alias(c.removesuffix("_std")) for c in std_cols],
+    ).collect()
+
+    logging.info("Scanning for zero variance columns")
     zero_var_cols = [
         c
-        for c in stds.columns
-        if c != "_batch" and (stds[c] <= np.finfo(np.float32).eps).any()
+        for c in get_feature_cols(data_lf, as_string=True)
+        if (stds[c] <= np.finfo(np.float32).eps).any()
     ]
-    if zero_var_cols:
+
+    if len(zero_var_cols) != 0:
         logging.warning("Dropping %d zero-variance columns", len(zero_var_cols))
         means = means.select(pl.exclude(zero_var_cols))
         stds = stds.select(pl.exclude(zero_var_cols))
@@ -194,68 +163,64 @@ def fit_normalizer(
     return Normalizer(means=means, stds=stds, is_batch_wise=fit_batch_wise)
 
 
-def normalize(
-    feature_df: pl.LazyFrame,
-    normalizer: Normalizer,
-    meta_data_df: Optional[pl.LazyFrame] = None,
-) -> pl.LazyFrame:
+def normalize(data_lf: pl.LazyFrame, normalizer: Normalizer) -> pl.LazyFrame:
     """
-    Apply z-score normalization to a feature matrix.
+    Apply z-score normalization to a LazyFrame using precomputed statistics.
 
-    Each feature value is standardized as:
-        z = (x - mean) / std
-    where `mean` and `std` are drawn from the appropriate batch in
+    Each feature column `f` is transformed into:
+
+        z_f = (f - f_mean) / f_std
+
+    where `f_mean` and `f_std` are taken from the corresponding row of
     `normalizer.means` and `normalizer.stds`.
 
-    When the normalizer was fitted batch-wise, the `_batch` column in
-    `meta_data_df` determines which row of the stored statistics applies
-    to each sample.
+    If the normalizer was fitted batch-wise, the `_meta_batch` column of
+    `data_lf` determines which batch statistics to apply. If the normalizer
+    was fitted globally (`is_batch_wise=False`), a dummy batch index 0 is
+    applied to all rows.
 
-    Columns absent from the normalizer (e.g., zero-variance columns that were
-    dropped during fitting) are automatically removed prior to scaling.
+    Columns that were removed during fitting (e.g., zero-variance features)
+    are automatically dropped from `data_lf` prior to normalization.
 
     Parameters
     ----------
-    feature_df : pl.DataFrame
-        Feature matrix of shape (n_samples, n_features) to be normalized.
+    data_lf : pl.LazyFrame
+        A LazyFrame containing numerical feature columns and a `_meta_batch`
+        column (or none if global normalization is desired).
     normalizer : Normalizer
-        Object containing the means, standard deviations, and batch mapping
-        produced by :func:`fit_normalizer`.
-    meta_data_df : pl.DataFrame, optional
-        Metadata aligned row-wise with `feature_df`. Required when the
-        normalizer was fitted batch-wise (i.e., `normalizer.mapping` is not
-        None), and must include a `_batch` column.
+        The object returned by :func:`fit_normalizer`, containing the
+        per-feature mean and standard deviation tables.
 
     Returns
     -------
-    pl.DataFrame
-        Normalized feature matrix of shape (n_samples, n_retained_features),
-        where columns with zero variance during fitting are omitted.
+    pl.LazyFrame
+        A LazyFrame where all feature columns have been z-score normalized.
+        Columns not present in the normalizer (e.g., removed features) are
+        excluded.
     """
-    if normalizer.is_batch_wise and meta_data_df is None:
-        raise ValueError("Meta data required to use batch-wise normalizer")
-
     logging.info("Creating normalization query")
-    feature_df = _add_batch_col(feature_df, meta_data_df, normalizer.is_batch_wise)
-    feature_cols = feature_df.columns
-    norm_cols = normalizer.stds.columns
+    if not normalizer.is_batch_wise:
+        data_lf = data_lf.with_columns(pl.lit(0).alias("_meta_batch"))
 
-    if set(norm_cols) != set(feature_cols):
-        feature_df = feature_df.select(norm_cols)
+    bad_cols = set(data_lf.columns) - set(normalizer.stds.columns)
+    data_lf = data_lf.select(pl.exclude(bad_cols))
+
+    if len(bad_cols) > 0:
         logging.warning(
             "Dropped %d columns from feature_df not present in normalizer",
-            len(feature_cols) - len(norm_cols),
+            len(bad_cols),
         )
 
+    feature_columns = get_feature_cols(data_lf, as_string=True)
     for suffix, df in [("_mean", normalizer.means), ("_std", normalizer.stds)]:
-        feature_df = feature_df.join(df.lazy(), on="_batch", how="left", suffix=suffix)
+        data_lf = data_lf.join(df.lazy(), on="_meta_batch", how="left", suffix=suffix)
 
-    feature_df = feature_df.select(
+    meta_columns = [c for c in data_lf.columns if c.startswith("_meta")]
+    data_lf = data_lf.with_columns(
         [
             ((pl.col(c) - pl.col(f"{c}_mean")) / pl.col(f"{c}_std")).alias(c)
-            for c in norm_cols
-            if c != "_batch"
+            for c in feature_columns
         ]
-    )
+    ).select(feature_columns + meta_columns)
 
-    return feature_df
+    return data_lf

@@ -11,7 +11,7 @@ import polars as pl
 
 from .filter import clean_data
 from .normalize import fit_normalizer, normalize
-from .utils import Config, get_data_dfs, train_test_split
+from .utils import Config, get_data_lf
 from .utils.config import DEFAULT_CFG_PATH
 
 
@@ -111,127 +111,6 @@ def setup_logging(log_dir: Optional[PathLike] = None) -> None:
     )
 
 
-def validate(
-    input_data_path: PathLike,
-    config: Optional[Config | PathLike] = None,
-    output_dir: Optional[PathLike] = None,
-    test_size: float = 0.2,
-    write_train_results: bool = True,
-    eager_db_loading: bool = False,
-) -> None:
-    """
-    Train pipeline parameters and run on a stratified train/test split.
-
-    Validation Pipeline steps
-    --------------
-    1. Load dataset, derive feature/metadata frames, and clean invalid
-       rows/columns.
-    2. Build a stratification vector from ``_batch`` and ``_label`` and
-       perform a single stratified train/test split.
-    3. Fit a normalizer on the training split; transform train and test.
-    4. Fit ComBat harmonizer on normalized training data; apply to the
-       normalized test (and optionally train).
-    5. Write unmodified, normalized, and harmonized Parquet outputs, and
-       save fitted models.
-
-    Parameters
-    ----------
-    input_data_path : PathLike
-        Path to a Parquet file to scan and process.
-    config : Config or PathLike, optional
-        Configuration object or path. Must define feature columns and the
-        names of ``_batch``, ``_label``, and ``_is_control`` fields.
-    output_dir : PathLike, optional
-        Output directory. Defaults to the current working directory.
-    test_size : float, default=0.2
-        Fraction of samples assigned to the test split.
-    write_train_results : bool, default=True
-        If True, also write the train split's unmodified/normalized/
-        harmonized outputs.
-    eager_db_loading : bool, default=False
-        If True, fully load the input Parquet file into memory eagerly
-        using :func:`polars.read_parquet`. This avoids repeated on-disk
-        scans and can significantly speed up processing on systems with
-        sufficient RAM. If False (default), the dataset is accessed lazily
-        using :func:`polars.scan_parquet`, which minimizes memory usage but
-        may incur slower disk I/O during computation.
-
-    Outputs
-    -------
-    Written to ``output_dir``:
-
-    - ``meta_data.test.parquet``
-    - ``features.test.parquet``
-    - ``normalized.test.parquet``
-    - ``harmonized.test.parquet``
-    - ``normalizer.pkl``
-    - ``harmonizer.pkl``
-
-    If ``write_train_results=True``:
-
-    - ``meta_data.train.parquet``
-    - ``features.train.parquet``
-    - ``normalized.train.parquet``
-    - ``harmonized.train.parquet``
-
-    CLI
-    ---
-    Exposed via Fire at the ``fisseq-data-pipeline`` entry point, e.g.::
-
-    ```bash
-    fisseq-data-pipeline validate
-        --input_data_path data.parquet
-        --config config.yaml
-        --output_dir out
-        --test_size 0.2
-        --write_train_results true
-    ```
-    """
-    setup_logging(output_dir)
-    logging.info("Starting validation with input path: %s", input_data_path)
-
-    data_df = get_db(input_data_path, eager_db_loading)
-    output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
-    logging.info("Output directory set to: %s", output_dir)
-
-    logging.info("Collecting data matrices")
-    config = Config(config)
-    feature_df, meta_data_df = get_data_dfs(data_df, config)
-    feature_df, meta_data_df = clean_data(feature_df, meta_data_df)
-    train_feature_df, train_meta_df, test_feature_df, test_meta_df = train_test_split(
-        feature_df, meta_data_df, test_size=test_size
-    )
-
-    logging.info("Writing feature matrices")
-    test_meta_df.sink_parquet(output_dir / "meta_data.test.parquet")
-    test_feature_df.sink_parquet(output_dir / "features.test.parquet")
-
-    logging.info("Fitting normalizer on train data")
-    normalizer = fit_normalizer(
-        train_feature_df,
-        meta_data_df=train_meta_df,
-        fit_only_on_control=True,
-    )
-
-    logging.info("Running normalizer on train/test data")
-    train_normalized_df = normalize(
-        train_feature_df, normalizer, meta_data_df=train_meta_df
-    )
-    test_normalized_df = normalize(
-        test_feature_df, normalizer, meta_data_df=test_meta_df
-    )
-
-    logging.info("Writing normalizer outputs")
-    test_normalized_df.sink_parquet(output_dir / "normalized.test.parquet")
-    normalizer.save(output_dir / "normalizer.pkl")
-
-    if write_train_results:
-        logging.info("Writing train output up to the normalization stage")
-        train_meta_df.sink_parquet(output_dir / "meta_data.train.parquet")
-        train_feature_df.sink_parquet(output_dir / "features.train.parquet")
-        train_normalized_df.sink_parquet(output_dir / "normalized.train.parquet")
-
-
 def run(
     input_data_path: PathLike,
     config: Optional[Config | PathLike] = None,
@@ -299,32 +178,23 @@ def run(
     setup_logging(output_dir)
     logging.info("Starting validation with input path: %s", input_data_path)
 
-    data_df = get_db(input_data_path, eager_db_loading)
+    db_lf = get_db(input_data_path, eager_db_loading)
     output_dir = pathlib.Path.cwd() if output_dir is None else pathlib.Path(output_dir)
     logging.info("Output directory set to: %s", output_dir)
 
     logging.info("Collecting data matrices")
     config = Config(config)
-    feature_df, meta_data_df = get_data_dfs(data_df, config)
+    data_lf = get_data_lf(db_lf, config)
 
     logging.info("Cleaning data")
-    feature_df, meta_data_df = clean_data(
-        feature_df,
-        meta_data_df,
-        stages=[
-            "drop_cols_all_nonfinite",
-            "drop_rows_any_nonfinite",
-        ],
-    )
+    data_lf = clean_data(data_lf)
 
     logging.info("Saving cleaned data")
-    feature_df.sink_parquet(output_dir / "meta_data.parquet")
-    meta_data_df.sink_parquet(output_dir / "features.parquet")
+    data_lf.sink_parquet(output_dir / "data-cleaned.parquet")
 
     logging.info("Fitting normalizer")
     normalizer = fit_normalizer(
-        feature_df,
-        meta_data_df=meta_data_df,
+        data_lf=data_lf,
         fit_batch_wise=True,
         fit_only_on_control=True,
     )
@@ -333,10 +203,10 @@ def run(
     normalizer.save(output_dir / "normalizer.pkl")
 
     logging.info("Normalizing data")
-    normalized_df = normalize(feature_df, normalizer, meta_data_df=meta_data_df)
+    normalized_lf = normalize(data_lf, normalizer)
 
     logging.info("Saving normalized data")
-    normalized_df.sink_parquet(output_dir / "normalized.parquet")
+    normalized_lf.sink_parquet(output_dir / "normalized.parquet")
 
 
 def configure(output_path: Optional[PathLike] = None) -> None:
@@ -388,7 +258,7 @@ def main() -> None:
         fisseq-data-pipeline validate --input_data_path data.parquet
     """
     try:
-        fire.Fire({"validate": validate, "run": run, "configure": configure})
+        fire.Fire({"run": run, "configure": configure})
     except:
         logging.exception("Run failed due to the following exception:")
         raise

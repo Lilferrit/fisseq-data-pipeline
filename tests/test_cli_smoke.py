@@ -5,7 +5,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from fisseq_data_pipeline.pipeline import Config, configure, run, validate
+from fisseq_data_pipeline.pipeline import Config, configure, run
 
 np.random.seed(42)
 
@@ -22,70 +22,6 @@ def make_toy_dataset(path: pathlib.Path):
         }
     )
     df.write_parquet(path)
-
-
-@pytest.mark.parametrize("eager_db_loading", [True, False])
-@pytest.mark.parametrize("write_train_results", [True, False])
-def test_validate_smoke(
-    tmp_path: pathlib.Path, write_train_results: bool, eager_db_loading: bool
-):
-    # Create toy dataset
-    data_path = tmp_path / "toy.parquet"
-    make_toy_dataset(data_path)
-
-    # Build config
-    cfg = Config(
-        {
-            "feature_cols": ["f1", "f2"],
-            "batch_col_name": "batch",
-            "label_col_name": "label",
-            "control_sample_query": "is_ctrl",
-        }
-    )
-
-    # Run validate
-    output_dir = tmp_path / f"out_{write_train_results}"
-    output_dir.mkdir()
-    validate(
-        input_data_path=data_path,
-        config=cfg,
-        output_dir=output_dir,
-        test_size=0.25,
-        write_train_results=write_train_results,
-        eager_db_loading=eager_db_loading,
-    )
-
-    # Always expect test outputs
-    expected_test_files = [
-        "meta_data.test.parquet",
-        "features.test.parquet",
-        "normalized.test.parquet",
-        "normalizer.pkl",
-    ]
-    for fname in expected_test_files:
-        path = output_dir / fname
-        assert path.exists(), f"Missing expected output: {fname}"
-
-        if ".parquet" in fname and "meta_data" not in fname:
-            df = pl.read_parquet(path)
-            assert df.select(pl.all().is_finite()).to_numpy().all()
-
-    # Train outputs only if requested
-    expected_train_files = [
-        "meta_data.train.parquet",
-        "features.train.parquet",
-        "normalized.train.parquet",
-    ]
-    for fname in expected_train_files:
-        path = output_dir / fname
-        if write_train_results:
-            assert path.exists(), f"Missing expected train output: {fname}"
-
-            if ".parquet" in fname and "meta_data" not in fname:
-                df = pl.read_parquet(path)
-                assert df.select(pl.all().is_finite()).to_numpy().all()
-        else:
-            assert not path.exists(), f"Unexpected train output: {fname}"
 
 
 @pytest.mark.parametrize("eager_db_loading", [True, False])
@@ -106,8 +42,7 @@ def test_run(tmp_path: pathlib.Path, eager_db_loading: bool):
 
     run(data_path, cfg, output_dir=tmp_path, eager_db_loading=eager_db_loading)
     for fname in [
-        "meta_data.parquet",
-        "features.parquet",
+        "data-cleaned.parquet",
         "normalized.parquet",
         "normalizer.pkl",
     ]:
