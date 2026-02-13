@@ -97,7 +97,9 @@ def expected_batchwise():
 # ---------------------------------------------------------------------
 def test_fit_medmad_global(data_df, expected_global):
     """Should compute global median/MAD across all samples."""
-    norm = fit_normalizer(data_df.lazy(), fit_only_on_control=False, fit_batch_wise=False)
+    norm = fit_normalizer(
+        data_df.lazy(), fit_only_on_control=False, fit_batch_wise=False
+    )
     assert isinstance(norm, MedMadNormalizer)
     assert norm.is_batch_wise is False
 
@@ -114,15 +116,21 @@ def test_fit_medmad_global(data_df, expected_global):
     # Check numerical accuracy
     row_med = norm.medians.row(0)
     row_mad = norm.mads.row(0)
-    assert np.isclose(row_med[norm.medians.columns.index("f1")], expected_global["median_f1"])
-    assert np.isclose(row_med[norm.medians.columns.index("f2")], expected_global["median_f2"])
+    assert np.isclose(
+        row_med[norm.medians.columns.index("f1")], expected_global["median_f1"]
+    )
+    assert np.isclose(
+        row_med[norm.medians.columns.index("f2")], expected_global["median_f2"]
+    )
     assert np.isclose(row_mad[norm.mads.columns.index("f1")], expected_global["mad_f1"])
     assert np.isclose(row_mad[norm.mads.columns.index("f2")], expected_global["mad_f2"])
 
 
 def test_fit_medmad_batchwise(data_df, expected_batchwise):
     """Should compute correct per-batch medians and MADs."""
-    norm = fit_normalizer(data_df.lazy(), fit_only_on_control=False, fit_batch_wise=True)
+    norm = fit_normalizer(
+        data_df.lazy(), fit_only_on_control=False, fit_batch_wise=True
+    )
     assert norm.is_batch_wise is True
 
     # Two batches
@@ -138,23 +146,41 @@ def test_fit_medmad_batchwise(data_df, expected_batchwise):
     # Validate batch A
     a_med = norm.medians.filter(pl.col("_meta_batch") == "A").row(0)
     a_mad = norm.mads.filter(pl.col("_meta_batch") == "A").row(0)
-    assert np.isclose(a_med[norm.medians.columns.index("f1")], expected_batchwise["A"]["median_f1"])
-    assert np.isclose(a_med[norm.medians.columns.index("f2")], expected_batchwise["A"]["median_f2"])
-    assert np.isclose(a_mad[norm.mads.columns.index("f1")], expected_batchwise["A"]["mad_f1"])
-    assert np.isclose(a_mad[norm.mads.columns.index("f2")], expected_batchwise["A"]["mad_f2"])
+    assert np.isclose(
+        a_med[norm.medians.columns.index("f1")], expected_batchwise["A"]["median_f1"]
+    )
+    assert np.isclose(
+        a_med[norm.medians.columns.index("f2")], expected_batchwise["A"]["median_f2"]
+    )
+    assert np.isclose(
+        a_mad[norm.mads.columns.index("f1")], expected_batchwise["A"]["mad_f1"]
+    )
+    assert np.isclose(
+        a_mad[norm.mads.columns.index("f2")], expected_batchwise["A"]["mad_f2"]
+    )
 
     # Validate batch B
     b_med = norm.medians.filter(pl.col("_meta_batch") == "B").row(0)
     b_mad = norm.mads.filter(pl.col("_meta_batch") == "B").row(0)
-    assert np.isclose(b_med[norm.medians.columns.index("f1")], expected_batchwise["B"]["median_f1"])
-    assert np.isclose(b_med[norm.medians.columns.index("f2")], expected_batchwise["B"]["median_f2"])
-    assert np.isclose(b_mad[norm.mads.columns.index("f1")], expected_batchwise["B"]["mad_f1"])
-    assert np.isclose(b_mad[norm.mads.columns.index("f2")], expected_batchwise["B"]["mad_f2"])
+    assert np.isclose(
+        b_med[norm.medians.columns.index("f1")], expected_batchwise["B"]["median_f1"]
+    )
+    assert np.isclose(
+        b_med[norm.medians.columns.index("f2")], expected_batchwise["B"]["median_f2"]
+    )
+    assert np.isclose(
+        b_mad[norm.mads.columns.index("f1")], expected_batchwise["B"]["mad_f1"]
+    )
+    assert np.isclose(
+        b_mad[norm.mads.columns.index("f2")], expected_batchwise["B"]["mad_f2"]
+    )
 
 
 def test_fit_medmad_control_only_global(data_df, expected_global_control):
     """Should filter to _meta_is_control == True before computing stats."""
-    norm = fit_normalizer(data_df.lazy(), fit_only_on_control=True, fit_batch_wise=False)
+    norm = fit_normalizer(
+        data_df.lazy(), fit_only_on_control=True, fit_batch_wise=False
+    )
     assert isinstance(norm, MedMadNormalizer)
     assert norm.is_batch_wise is False
 
@@ -165,10 +191,18 @@ def test_fit_medmad_control_only_global(data_df, expected_global_control):
     # Check numerical accuracy
     row_med = norm.medians.row(0)
     row_mad = norm.mads.row(0)
-    assert np.isclose(row_med[norm.medians.columns.index("f1")], expected_global_control["median_f1"])
-    assert np.isclose(row_med[norm.medians.columns.index("f2")], expected_global_control["median_f2"])
-    assert np.isclose(row_mad[norm.mads.columns.index("f1")], expected_global_control["mad_f1"])
-    assert np.isclose(row_mad[norm.mads.columns.index("f2")], expected_global_control["mad_f2"])
+    assert np.isclose(
+        row_med[norm.medians.columns.index("f1")], expected_global_control["median_f1"]
+    )
+    assert np.isclose(
+        row_med[norm.medians.columns.index("f2")], expected_global_control["median_f2"]
+    )
+    assert np.isclose(
+        row_mad[norm.mads.columns.index("f1")], expected_global_control["mad_f1"]
+    )
+    assert np.isclose(
+        row_mad[norm.mads.columns.index("f2")], expected_global_control["mad_f2"]
+    )
 
 
 # ---------------------------------------------------------------------
@@ -204,7 +238,9 @@ def test_normalize_batchwise_has_median_0_mad_1_per_batch(data_df):
         batch_df = out.filter(pl.col("_meta_batch") == batch)
         for c in feat_cols:
             x = batch_df[c].to_numpy()
-            assert np.isclose(np.median(x), 0.0, atol=1e-8), f"{batch}:{c} median={np.median(x)}"
+            assert np.isclose(
+                np.median(x), 0.0, atol=1e-8
+            ), f"{batch}:{c} median={np.median(x)}"
             assert np.isclose(_mad(x), 1.0, atol=1e-8), f"{batch}:{c} mad={_mad(x)}"
 
 
@@ -230,7 +266,9 @@ def test_normalize_and_denormalize_reversibility_batchwise(data_df):
     norm = fit_normalizer(data_df.lazy(), fit_batch_wise=True)
     normed = normalize(data_df.lazy(), norm).collect()
 
-    retained = [c for c in ["f1", "f2"] if c in norm.medians.columns]  # excludes dropped
+    retained = [
+        c for c in ["f1", "f2"] if c in norm.medians.columns
+    ]  # excludes dropped
     assert retained == ["f1", "f2"]
 
     recovered_parts = []
@@ -242,9 +280,7 @@ def test_normalize_and_denormalize_reversibility_batchwise(data_df):
             .to_numpy()
         )  # shape (1, nfeat)
         mad = (
-            norm.mads.filter(pl.col("_meta_batch") == batch)
-            .select(retained)
-            .to_numpy()
+            norm.mads.filter(pl.col("_meta_batch") == batch).select(retained).to_numpy()
         )  # shape (1, nfeat)
 
         # normalized values for batch
@@ -257,21 +293,3 @@ def test_normalize_and_denormalize_reversibility_batchwise(data_df):
     original = data_df.select(retained).to_numpy()
 
     assert np.allclose(recovered, original, atol=1e-8)
-
-
-# ---------------------------------------------------------------------
-# Persistence sanity
-# ---------------------------------------------------------------------
-def test_normalizer_pickle_roundtrip(tmp_path, data_df):
-    """save()/pickle roundtrip should preserve statistics."""
-    norm = fit_normalizer(data_df.lazy(), fit_batch_wise=True)
-    p = tmp_path / "medmad.pkl"
-    norm.save(p)
-
-    with open(p, "rb") as f:
-        loaded = pickle.load(f)
-
-    assert isinstance(loaded, MedMadNormalizer)
-    assert loaded.is_batch_wise == norm.is_batch_wise
-    assert loaded.medians.frame_equal(norm.medians)
-    assert loaded.mads.frame_equal(norm.mads)

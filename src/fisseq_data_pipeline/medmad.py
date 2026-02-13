@@ -269,8 +269,10 @@ def normalize(data_lf: pl.LazyFrame, normalizer: MedMadNormalizer) -> pl.LazyFra
 
     logging.info("Adding queries to apply normalization")
     data_lf = (
-        data_lf.join(normalizer.medians, on="_meta_batch", how="left", suffix="_median")
-        .join(normalizer.mads, on="_meta_batch", how="left", suffix="_mad")
+        data_lf.join(
+            normalizer.medians.lazy(), on="_meta_batch", how="left", suffix="_median"
+        )
+        .join(normalizer.mads.lazy(), on="_meta_batch", how="left", suffix="_mad")
         .with_columns(
             [
                 (pl.col(c) - pl.col(f"{c}_median")) / pl.col(f"{c}_mad").alias(c)
