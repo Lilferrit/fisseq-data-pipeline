@@ -202,7 +202,9 @@ def normalize(data_lf: pl.LazyFrame, normalizer: Normalizer) -> pl.LazyFrame:
     if not normalizer.is_batch_wise:
         data_lf = data_lf.with_columns(pl.lit(0).alias("_meta_batch"))
 
-    bad_cols = set(data_lf.columns) - set(normalizer.stds.columns)
+    feature_cols = set(get_feature_cols(data_lf, as_string=True))
+    norm_cols = set(get_feature_cols(normalizer.stds, as_string=True))
+    bad_cols = feature_cols - norm_cols
     data_lf = data_lf.select(pl.exclude(bad_cols))
 
     if len(bad_cols) > 0:
@@ -211,7 +213,7 @@ def normalize(data_lf: pl.LazyFrame, normalizer: Normalizer) -> pl.LazyFrame:
             len(bad_cols),
         )
 
-    feature_columns = get_feature_cols(data_lf, as_string=True)
+    feature_columns = feature_cols.intersection(norm_cols)
     for suffix, df in [("_mean", normalizer.means), ("_std", normalizer.stds)]:
         data_lf = data_lf.join(df.lazy(), on="_meta_batch", how="left", suffix=suffix)
 
@@ -221,6 +223,6 @@ def normalize(data_lf: pl.LazyFrame, normalizer: Normalizer) -> pl.LazyFrame:
             ((pl.col(c) - pl.col(f"{c}_mean")) / pl.col(f"{c}_std")).alias(c)
             for c in feature_columns
         ]
-    ).select(feature_columns + meta_columns)
+    ).select(list(feature_columns) + meta_columns)
 
     return data_lf

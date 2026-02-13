@@ -41,7 +41,9 @@ def drop_cols_all_nonfinite(data_lf: pl.LazyFrame) -> pl.LazyFrame:
     ).collect()
 
     logging.info("Adding query to remove columns containing all non-finite values")
-    non_finite_cols = [c for c in get_feature_cols(data_lf, as_string=True) if not finite_summary[c][0]]
+    non_finite_cols = [
+        c for c in get_feature_cols(data_lf, as_string=True) if not finite_summary[c][0]
+    ]
     data_lf = data_lf.select(pl.exclude(non_finite_cols))
     logging.info(
         "Removing %d columns containing only non-finite values",
