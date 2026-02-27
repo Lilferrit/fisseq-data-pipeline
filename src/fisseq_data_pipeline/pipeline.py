@@ -11,7 +11,7 @@ import polars as pl
 
 from .filter import clean_data
 from .normalize import fit_normalizer, normalize
-from .utils import Config, get_data_lf
+from .utils import Config, get_data_lf, setup_logging
 from .utils.config import DEFAULT_CFG_PATH
 
 
@@ -64,51 +64,6 @@ def get_db(input_data_path: PathLike, eager: bool) -> pl.LazyFrame:
 
     logging.info("Finished %s database.", "loading" if eager else "scanning")
     return data_df
-
-
-def setup_logging(log_dir: Optional[PathLike] = None) -> None:
-    """
-    Configure logging for the pipeline.
-
-    A log file and a console stream are set up simultaneously.
-    The log file is created in the specified directory (or the current
-    working directory by default) with a timestamped filename.
-    The log level is controlled by the environment variable
-    ``FISSEQ_PIPELINE_LOG_LEVEL`` (default: ``"info"``).
-
-    Parameters
-    ----------
-    log_dir : PathLike, optional
-        Directory where log files will be written.
-        If ``None``, the current working directory is used.
-    """
-    log_levels = {
-        "debug": logging.DEBUG,
-        "info": logging.INFO,
-        "warning": logging.WARNING,
-        "error": logging.ERROR,
-        "critical": logging.CRITICAL,
-    }
-
-    if log_dir is None:
-        log_dir = pathlib.Path.cwd()
-    else:
-        log_dir = pathlib.Path(log_dir)
-
-    dt_str = datetime.datetime.now().strftime("%Y%m%d:%H%M%S")
-    filename = f"fisseq-data-pipeline-{dt_str}.log"
-    log_path = log_dir / filename
-    handlers = [logging.StreamHandler(), logging.FileHandler(log_path, mode="w")]
-
-    log_level = os.getenv("FISSEQ_PIPELINE_LOG_LEVEL", "info")
-    log_level = log_levels.get(log_level, logging.INFO)
-
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s [%(levelname)s] [%(funcName)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=handlers,
-    )
 
 
 def run(

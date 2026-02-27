@@ -4,8 +4,9 @@ import pickle
 from os import PathLike
 
 import fire
-import fisseq_data_pipeline.normalize
 import polars as pl
+
+import fisseq_data_pipeline.normalize
 
 
 def just_normalize(
