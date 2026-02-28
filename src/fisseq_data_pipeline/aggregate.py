@@ -1,6 +1,7 @@
 # aggregate.py
 import logging
 import pathlib
+import re
 from os import PathLike
 from typing import Any, Optional
 
@@ -271,42 +272,116 @@ def _compute_one_label_arrays(
     return out
 
 
+def variant_classification(v: str) -> str:
+    """Thanks Sriram"""
+    if "fs" in v:
+        classification = "Frameshift"
+    elif v[-1] == "-":
+        vs = v.split("|")
+        ncodons_aff = len(vs)
+        if ncodons_aff > 2:
+            classification = "Other"
+        else:
+            if ncodons_aff == 1:
+                classification = "3nt Deletion"
+            elif ncodons_aff == 2:
+                if int(vs[0][1:-1]) == (int(vs[1][1:-1]) - 1):
+                    classification = "3nt Deletion"
+                else:
+                    classification = "Other"
+            else:
+                classification = "Other"
+    elif ("X" in v) | ("*" in v):
+        classification = "Nonsense"
+    elif "WT" in v:
+        classification = "WT"
+    else:
+        regex_match = re.match(r"([A-Z])(\d+)([A-Z])", v)
+        if regex_match is None:
+            classification = "Other"
+        elif regex_match.group(1) == regex_match.group(3):
+            classification = "Synonymous"
+        else:
+            classification = "Single Missense"
+
+    return classification
+
+
 def aggregate(
-    norm_df: pl.DataFrame | PathLike, normalize_emds: bool = True
+    norm_df: pl.DataFrame | PathLike,
+    normalize_emds: bool = True,
+    norm_only_to_synonymous: bool = False,
 ) -> tuple[pl.DataFrame, Optional[Normalizer]]:
     """
     Aggregate a normalized feature dataframe by (batch, label), computing both
     per-feature medians and per-feature distances-to-control (EMD/Wasserstein).
 
-    This function:
-      1) Computes median(feature) within each group defined by
-         (`_meta_batch`, `_meta_label`).
-      2) Computes, for each feature, the 1D Wasserstein distance between the
-         group's distribution and control distribution within the same batch.
-      3) Optionally normalizes the resulting EMD columns batch-wise, returning
-         both the normalized aggregation and the fitted Normalizer.
+    This function performs two complementary per-group summaries over groups
+    defined by (`_meta_batch`, `_meta_label`):
+
+      1) **Location summary (median):**
+         Computes `median(feature)` for each feature column within the group.
+
+      2) **Distribution-shift summary (EMD/Wasserstein):**
+         For each feature, computes the 1D Wasserstein distance between the
+         distribution of values in the group and the cached reference
+         distribution for the same batch. The reference distributions are
+         built from rows where `_meta_is_control == True`.
+
+      3) **Optional EMD normalization:**
+         If `normalize_emds=True`, fits a batch-wise z-score normalizer on the
+         aggregated EMD columns and returns normalized EMDs.
+
+         If `norm_only_to_synonymous=True`, the EMD normalizer is fit **only**
+         on groups whose `_meta_label` classifies as "Synonymous" via
+         `variant_classification(...)`. In this mode, a synthetic
+         `_meta_is_control` column is created on the aggregated EMD dataframe
+         to mark "Synonymous" groups as controls for fitting.
 
     Parameters
     ----------
     norm_df : pl.DataFrame | PathLike
         Either an in-memory Polars DataFrame or a path to a parquet file.
-        The dataframe is expected to include:
+
+        The dataframe must include:
           - `_meta_batch` (batch identifier)
           - `_meta_label` (group label identifier)
-          - `_meta_is_control` (boolean control indicator)
+          - `_meta_is_control` (boolean control indicator used to build the
+            per-batch reference distributions)
           - feature columns returned by `get_feature_cols(...)`
+
     normalize_emds : bool, default=True
         If True, fit a batch-wise normalizer on the aggregated EMD columns and
-        return normalized EMDs along with the fitted normalizer.
+        return normalized EMDs along with the fitted normalizer. If False,
+        EMD columns are returned unnormalized and the returned normalizer is
+        `None`.
+
+    norm_only_to_synonymous : bool, default=False
+        If True, fit the EMD normalizer only on aggregated groups classified as
+        "Synonymous" by `variant_classification(_meta_label)`. This is useful
+        when you want the EMD z-scoring baseline to be defined by synonymous
+        variants rather than all groups.
+
+        Notes:
+        - This option has an effect only when `normalize_emds=True`.
+        - It does *not* change which rows are used to build the EMD reference
+          distributions; those always come from the input rows where
+          `_meta_is_control == True`.
 
     Returns
     -------
     tuple[pl.DataFrame, Optional[Normalizer]]
-        If `normalize_emds` is False:
-          - returns (`agg_df`, None) containing medians and raw EMD columns.
-        If `normalize_emds` is True:
-          - returns `(norm_agg_df, normalizer)`, where `norm_agg_df` contains
-            medians and normalized EMD columns.
+        A tuple `(agg_df, normalizer)`.
+
+        - `agg_df` contains one row per (`_meta_batch`, `_meta_label`) group and
+            - per-feature medians (native Polars group-by median)
+            - per-feature EMD columns named `{feature}_EMD` (raw or normalized)
+
+        - `normalizer` is:
+            - `None` if `normalize_emds=False`
+            - a fitted `Normalizer` if `normalize_emds=True`
+              (possibly fit only on synonymous groups if
+               `norm_only_to_synonymous=True`)
     """
     if not isinstance(norm_df, pl.DataFrame):
         logging.info(
@@ -359,9 +434,21 @@ def aggregate(
         )
         return agg_df, None
 
+    if norm_only_to_synonymous:
+        emd_df = emd_df.with_columns(
+            (
+                pl.col("_meta_label").map_elements(
+                    variant_classification, return_dtype=pl.Utf8
+                )
+                == "Synonymous"
+            ).alias("_meta_is_control")
+        )
+
     logging.info("Fitting EMD normalizer (batch-wise)")
     emd_lf = emd_df.lazy()
-    normalizer = fit_normalizer(emd_lf, fit_batch_wise=True, fit_only_on_control=False)
+    normalizer = fit_normalizer(
+        emd_lf, fit_batch_wise=True, fit_only_on_control=norm_only_to_synonymous
+    )
 
     logging.info("Normalizing EMD dataframe")
     emd_df = normalize(emd_lf, normalizer).collect()
@@ -377,26 +464,38 @@ def aggregate(
 
 
 def cli_wrapper(
-    norm_df: pl.DataFrame | PathLike, out_dir: PathLike, normalize_emds: bool = True
+    norm_df: pl.DataFrame | PathLike,
+    out_dir: PathLike,
+    normalize_emds: bool = True,
+    norm_only_to_synonymous: bool = False,
 ) -> None:
     """
     Command-line entrypoint for aggregating a normalized dataset.
 
     This wrapper:
+      - Configures logging (via `setup_logging(out_dir)`)
       - Runs `aggregate(...)`
       - Writes the aggregated dataframe to `<out_dir>/aggregated.parquet`
-      - If EMD normalization is enabled, also writes the fitted normalizer to
-        `<out_dir>/emd_normalizer.pkl`
+      - If EMD normalization is enabled, also writes the fitted EMD normalizer
+        to `<out_dir>/emd_normalizer.pkl`
 
     Parameters
     ----------
     norm_df : pl.DataFrame | PathLike
         Input normalized dataset (DataFrame or parquet path). See `aggregate`
-        for required columns.
+        for required columns and semantics.
+
     out_dir : PathLike
-        Output directory to write results into.
+        Output directory to write results into. The directory is created if it
+        does not already exist.
+
     normalize_emds : bool, default=True
-        Whether to normalize EMD columns and save the fitted normalizer.
+        Whether to normalize EMD columns and save the fitted EMD normalizer.
+
+    norm_only_to_synonymous : bool, default=False
+        If True, fit the EMD normalizer only on groups classified as
+        "Synonymous" (see `aggregate(...)`). Only relevant when
+        `normalize_emds=True`.
     """
     setup_logging(out_dir)
     logging.info(
@@ -406,7 +505,11 @@ def cli_wrapper(
         str(normalize_emds),
     )
 
-    agg_df, normalizer = aggregate(norm_df, normalize_emds=normalize_emds)
+    agg_df, normalizer = aggregate(
+        norm_df,
+        normalize_emds=normalize_emds,
+        norm_only_to_synonymous=norm_only_to_synonymous,
+    )
 
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

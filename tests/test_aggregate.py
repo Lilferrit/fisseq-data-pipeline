@@ -196,6 +196,83 @@ def test_aggregate_with_normalize_uses_fit_and_normalize(
     assert norm_row["f2"] == pytest.approx(raw_row["f2"])
 
 
+def test_aggregate_norm_only_to_synonymous_marks_controls_for_fit(
+    monkeypatch, toy_norm_df: pl.DataFrame
+) -> None:
+    """
+    When norm_only_to_synonymous=True, aggregate() should:
+      - add a synthetic `_meta_is_control` column to the aggregated EMD dataframe
+        where groups classified as "Synonymous" are True
+      - call fit_normalizer(..., fit_only_on_control=True)
+    """
+    monkeypatch.setattr(m, "get_feature_cols", lambda df, as_string=True: ["f1", "f2"])
+
+    # Classify only the "ctrl" label as Synonymous (others not)
+    def fake_variant_classification(label: str) -> str:
+        return "Synonymous" if label == "ctrl" else "Nonsynonymous"
+
+    monkeypatch.setattr(m, "variant_classification", fake_variant_classification)
+
+    # Stub normalizer + functions
+    @dataclass
+    class DummyNormalizer:
+        tag: str = "dummy-syn"
+
+        def save(self, path: Path) -> None:
+            path.write_bytes(b"dummy")
+
+    def fake_fit_normalizer(
+        lf: pl.LazyFrame, fit_batch_wise: bool, fit_only_on_control: bool
+    ):
+        assert fit_batch_wise is True
+        assert fit_only_on_control is True  # <-- key behavior for this test
+
+        cols = set(lf.collect_schema().names())
+        assert {
+            "_meta_batch",
+            "_meta_label",
+            "f1_EMD",
+            "f2_EMD",
+            "_meta_is_control",
+        }.issubset(cols)
+
+        # Validate control marking semantics: "ctrl" groups are True, "var" groups False
+        df = lf.collect()
+        flags = (
+            df.select(["_meta_label", "_meta_is_control"])
+            .unique()
+            .sort("_meta_label")
+            .to_dicts()
+        )
+        # Expect both labels present
+        by_label = {d["_meta_label"]: d["_meta_is_control"] for d in flags}
+        assert by_label["ctrl"] is True
+        assert by_label["var"] is False
+
+        return DummyNormalizer()
+
+    def fake_normalize(lf: pl.LazyFrame, normalizer: DummyNormalizer) -> pl.LazyFrame:
+        # Deterministic transform to show we ran through normalize()
+        return lf.with_columns(
+            (pl.col("f1_EMD") + 1).alias("f1_EMD"),
+            (pl.col("f2_EMD") + 1).alias("f2_EMD"),
+        )
+
+    monkeypatch.setattr(m, "fit_normalizer", fake_fit_normalizer)
+    monkeypatch.setattr(m, "normalize", fake_normalize)
+    monkeypatch.setattr(m, "Normalizer", DummyNormalizer, raising=False)
+
+    norm_agg_df, normalizer = m.aggregate(
+        toy_norm_df, normalize_emds=True, norm_only_to_synonymous=True
+    )
+    assert isinstance(normalizer, DummyNormalizer)
+
+    # Sanity: output should still have medians + EMD columns
+    assert set(["_meta_batch", "_meta_label", "f1", "f2", "f1_EMD", "f2_EMD"]).issubset(
+        set(norm_agg_df.columns)
+    )
+
+
 def test_cli_wrapper_writes_outputs(
     monkeypatch, tmp_path: Path, toy_norm_df: pl.DataFrame
 ) -> None:
