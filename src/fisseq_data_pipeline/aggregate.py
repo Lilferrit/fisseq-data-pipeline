@@ -1,9 +1,9 @@
-# aggregate.py
 import logging
+import dataclasses
 import pathlib
 import re
 from os import PathLike
-from typing import Any, Optional
+from typing import Any, Optional, Iterator
 
 import fire
 import joblib
@@ -28,38 +28,16 @@ class EMDAggregator:
 
     It precomputes (batch, feature) reference arrays once in `__init__` so that
     aggregation avoids repeatedly filtering/converting the control dataframe.
-
-    Attributes
-    ----------
-    feature_cols : list[str]
-        Feature columns over which EMDs will be computed.
-    col_dict : dict
-        Nested dictionary of cached reference distributions:
-        `col_dict[batch][feature_name] -> np.ndarray` (1D float array).
-        These arrays typically correspond to control values for each feature
-        within each batch.
     """
 
+    @dataclasses.dataclass
+    class AggregateTask:
+        batch: str
+        label: str
+        features: dict[str, np.ndarray]
+        ref_arrays: dict[str, np.ndarray]
+
     def __init__(self, aggregate_df: pl.DataFrame) -> None:
-        """
-        Build per-batch reference distributions for each feature.
-
-        Parameters
-        ----------
-        aggregate_df : pl.DataFrame
-            Dataframe containing the reference rows used to form the reference
-            distributions (typically the control subset of a larger dataframe).
-
-            Must contain:
-              - `_meta_batch` column
-            And the feature columns returned by `get_feature_cols(...)`.
-
-        Notes
-        -----
-        This constructor converts each (batch, feature) column to a 1D NumPy
-        array, which may allocate significant memory if you have many features
-        or a large control set.
-        """
         self.feature_cols = get_feature_cols(aggregate_df, as_string=True)
         self.col_dict: dict[Any, dict[str, np.ndarray]] = {}
 
@@ -80,6 +58,44 @@ class EMDAggregator:
                 self.col_dict[curr_batch][curr_feature] = curr_col
 
         logging.info("Cached reference distributions successfully")
+
+    def iter_tasks(
+        self, agg_df: pl.DataFrame
+    ) -> Iterator["EMDAggregator.AggregateTask"]:
+        """
+        Lazily yield per-(batch, label) aggregation tasks.
+
+        This avoids materializing a full `tasks: list[...]` in memory. Note that
+        each yielded task still materializes NumPy arrays for the group's feature
+        columns (because joblib process backends require picklable objects).
+
+        Parameters
+        ----------
+        agg_df : pl.DataFrame
+            Input dataframe containing `_meta_batch`, `_meta_label`, and feature columns.
+
+        Yields
+        ------
+        EMDAggregator.AggregateTask
+            A task containing the group's (variant) feature arrays and the cached
+            reference arrays for that batch.
+        """
+        logging.info("Creating lazy task iterator")
+        agg_gb = agg_df.filter(pl.col("_meta_label") != "WT").group_by(
+            pl.col("_meta_label"), pl.col("_meta_batch")
+        )
+
+        for (label, batch), feature_df in agg_gb:
+            logging.debug("Creating task for %s::%s", batch, label)
+            curr_features = {
+                col: feature_df.get_column(col).to_numpy() for col in self.feature_cols
+            }
+            yield EMDAggregator.AggregateTask(
+                batch=batch,
+                label=label,
+                features=curr_features,
+                ref_arrays=self.col_dict[batch],
+            )
 
     def agg_emd(self, args: list[pl.Series]) -> pl.Series:
         """
@@ -122,44 +138,8 @@ class EMDAggregator:
         """
         Aggregate EMD/Wasserstein distances by (batch, label) using joblib.
 
-        For each group defined by (`_meta_batch`, `_meta_label`), this computes
-        per-feature 1D Wasserstein distances between the group's feature values
-        and the cached reference distribution for the same batch.
-
-        This method:
-          1) Enumerates all (batch, label) groups in `agg_df`.
-          2) Materializes per-feature NumPy arrays for the group (variant) and
-             the cached reference arrays for that batch.
-          3) Runs the per-group EMD computation in parallel via joblib.
-
-        Parameters
-        ----------
-        agg_df : pl.DataFrame
-            The dataframe to aggregate. Must include:
-              - `_meta_batch`
-              - `_meta_label`
-            And the feature columns in `self.feature_cols`.
-
-        n_jobs : int, default=-1
-            Number of workers for joblib. `-1` uses all available cores.
-
-        backend : str, default="loky"
-            Joblib backend. "loky" uses multiprocessing (process-based) and
-            requires picklable task inputs. This implementation materializes
-            NumPy arrays to satisfy that requirement.
-            You may choose "threading" if you want threads instead.
-
-        verbose : int, default=0
-            Joblib verbosity level.
-
-        Returns
-        -------
-        pl.DataFrame
-            A dataframe with one row per (`_meta_batch`, `_meta_label`) and
-            columns:
-              - `_meta_batch`
-              - `_meta_label`
-              - `{feature}_EMD` for each feature in `self.feature_cols`
+        This version uses a generator (`iter_tasks`) so tasks are not stored
+        eagerly in a list.
         """
         logging.info(
             "Building EMD tasks from df: %d rows, n_jobs=%s backend=%s",
@@ -168,59 +148,9 @@ class EMDAggregator:
             backend,
         )
 
-        tasks: list[tuple[Any, Any, dict[str, np.ndarray], dict[str, np.ndarray]]] = []
-        batches = agg_df.get_column("_meta_batch").unique().to_list()
-        logging.info("Found %d batches in input dataframe", len(batches))
-
-        total_groups = 0
-        for curr_batch in batches:
-            curr_df = agg_df.filter(pl.col("_meta_batch") == curr_batch)
-
-            # If a batch exists in agg_df but not in reference cache, that's a hard error
-            if curr_batch not in self.col_dict:
-                raise KeyError(
-                    f"Batch {curr_batch!r} present in agg_df but missing from reference cache"
-                )
-
-            ref_for_batch = self.col_dict[curr_batch]
-
-            # Reference arrays are identical for every label within a batch; build once per batch
-            reference_arrays = {
-                feat: np.asarray(ref_for_batch[feat]).ravel()
-                for feat in self.feature_cols
-            }
-
-            labels = curr_df.get_column("_meta_label").unique().to_list()
-            logging.info("Batch %r: %d labels", curr_batch, len(labels))
-
-            for curr_label in labels:
-                variant_df = curr_df.filter(pl.col("_meta_label") == curr_label)
-
-                # materialize only what's needed (picklable)
-                variant_arrays = {
-                    feat: variant_df.select(feat).to_numpy().ravel()
-                    for feat in self.feature_cols
-                }
-
-                tasks.append((curr_batch, curr_label, variant_arrays, reference_arrays))
-                total_groups += 1
-
-        logging.info(
-            "Prepared %d EMD tasks (%d groups × %d features each)",
-            total_groups,
-            total_groups,
-            len(self.feature_cols),
-        )
-        logging.info("Computing EMDs with joblib")
-
         dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(_compute_one_label_arrays)(
-                curr_batch=curr_batch,
-                curr_label=curr_label,
-                variant_arrays=variant_arrays,
-                reference_arrays=reference_arrays,
-            )
-            for (curr_batch, curr_label, variant_arrays, reference_arrays) in tasks
+            joblib.delayed(_compute_one_label_arrays)(task=task)
+            for task in self.iter_tasks(agg_df)
         )
 
         logging.info("EMD computation complete; assembling output dataframe")
@@ -229,45 +159,13 @@ class EMDAggregator:
         return out
 
 
-def _compute_one_label_arrays(
-    *,
-    curr_batch: Any,
-    curr_label: Any,
-    variant_arrays: dict[str, np.ndarray],
-    reference_arrays: dict[str, np.ndarray],
-) -> dict[str, Any]:
+def _compute_one_label_arrays(*, task: EMDAggregator.AggregateTask) -> dict[str, Any]:
     """
     Compute per-feature 1D Wasserstein distances for a single (batch, label).
-
-    This function is designed to be executed in parallel (e.g. via joblib).
-    Inputs are simple Python objects / NumPy arrays to be easy to pickle when
-    using process-based backends.
-
-    Parameters
-    ----------
-    curr_batch : Any
-        Batch identifier for this task.
-
-    curr_label : Any
-        Group label identifier for this task.
-
-    variant_arrays : dict[str, np.ndarray]
-        Mapping `{feature_name -> 1D array of values}` for the current group's
-        feature distributions.
-
-    reference_arrays : dict[str, np.ndarray]
-        Mapping `{feature_name -> 1D array of reference values}` for the batch's
-        reference distributions (typically controls).
-
-    Returns
-    -------
-    dict[str, Any]
-        A dictionary containing `_meta_batch`, `_meta_label`, and one key per
-        feature of the form `{feature}_EMD`.
     """
-    out: dict[str, Any] = {"_meta_label": curr_label, "_meta_batch": curr_batch}
-    for feat, v in variant_arrays.items():
-        r = reference_arrays[feat]
+    out: dict[str, Any] = {"_meta_label": task.label, "_meta_batch": task.batch}
+    for feat, v in task.features.items():
+        r = task.ref_arrays[feat]
         out[f"{feat}_EMD"] = scipy.stats.wasserstein_distance(v, r)
     return out
 

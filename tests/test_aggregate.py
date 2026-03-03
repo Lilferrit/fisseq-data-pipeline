@@ -295,7 +295,7 @@ def test_cli_wrapper_writes_outputs(
         }
     )
 
-    def fake_aggregate(norm_df, normalize_emds: bool = True):
+    def fake_aggregate(norm_df, normalize_emds: bool = True, norm_only_to_synonymous: bool = False):
         return out_df, (DummyNormalizer2() if normalize_emds else None)
 
     monkeypatch.setattr(m, "aggregate", fake_aggregate)
