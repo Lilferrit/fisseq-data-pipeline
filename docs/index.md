@@ -9,14 +9,14 @@ Welcome to the **FISSEQ Data Pipeline** documentation.
 Access the pipeline with a single entry point:
 
 ```bash
-  fisseq-data-pipeline [validate|run|configure]
+  fisseq-data-pipeline [run|configure]
 ```
 
 For more details on command line usage see [Pipeline](./pipeline.md).
 
 ### Data cleaning
 
-Remove invalid rows/columns and rare label–batch pairs, namely columns that contain all NaN values, followed by rows that contain any remaining NaN values.
+Remove invalid rows and columns — specifically columns that contain all NaN values, followed by rows that contain any remaining NaN values.
 
 See [Filter](./filter.md).
 

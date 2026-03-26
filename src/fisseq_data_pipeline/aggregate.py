@@ -1,173 +1,307 @@
+import abc
 import logging
-import dataclasses
 import pathlib
 import re
 from os import PathLike
-from typing import Any, Optional, Iterator
+from typing import Any, Optional
 
 import fire
 import joblib
 import numpy as np
 import polars as pl
 import scipy.stats
+import sklearn.metrics
 
 from .normalize import Normalizer, fit_normalizer, normalize
 from .utils import get_feature_cols, setup_logging
 
 
-class EMDAggregator:
+class BaseAggregator(abc.ABC):
     """
-    Compute per-group 1D Wasserstein distances (a.k.a. 1D EMD) to a cached
-    reference distribution, typically built from control rows.
+    Abstract base class for all aggregators.
 
-    This class can be used in two ways:
-      1) As a Polars `pl.map_groups(...)` aggregation helper via `agg_emd(...)`,
-         computing a single-feature EMD per group.
-      2) As a standalone aggregator via `agg_df(...)`, computing all per-feature
-         EMDs for each (`_meta_batch`, `_meta_label`) group using joblib.
-
-    It precomputes (batch, feature) reference arrays once in `__init__` so that
-    aggregation avoids repeatedly filtering/converting the control dataframe.
+    All subclasses expose a single ``aggregate(agg_df)`` method that accepts
+    an input DataFrame and returns a per-(batch, label) summary DataFrame.
     """
 
-    @dataclasses.dataclass
-    class AggregateTask:
-        batch: str
-        label: str
-        features: dict[str, np.ndarray]
-        ref_arrays: dict[str, np.ndarray]
-
-    def __init__(self, aggregate_df: pl.DataFrame) -> None:
-        self.feature_cols = get_feature_cols(aggregate_df, as_string=True)
-        self.col_dict: dict[Any, dict[str, np.ndarray]] = {}
-
-        batches = aggregate_df.get_column("_meta_batch").unique().to_list()
-        logging.info(
-            "Initializing EMDAggregator from reference df: %d rows, %d batches, %d features",
-            aggregate_df.height,
-            len(batches),
-            len(self.feature_cols),
-        )
-
-        for curr_batch in batches:
-            curr_df = aggregate_df.filter(pl.col("_meta_batch") == curr_batch)
-            self.col_dict[curr_batch] = {}
-
-            for curr_feature in self.feature_cols:
-                curr_col = curr_df.select(pl.col(curr_feature)).to_numpy().ravel()
-                self.col_dict[curr_batch][curr_feature] = curr_col
-
-        logging.info("Cached reference distributions successfully")
-
-    def iter_tasks(
-        self, agg_df: pl.DataFrame
-    ) -> Iterator["EMDAggregator.AggregateTask"]:
+    @abc.abstractmethod
+    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
         """
-        Lazily yield per-(batch, label) aggregation tasks.
-
-        This avoids materializing a full `tasks: list[...]` in memory. Note that
-        each yielded task still materializes NumPy arrays for the group's feature
-        columns (because joblib process backends require picklable objects).
+        Compute per-(batch, label) statistics.
 
         Parameters
         ----------
         agg_df : pl.DataFrame
-            Input dataframe containing `_meta_batch`, `_meta_label`, and feature columns.
-
-        Yields
-        ------
-        EMDAggregator.AggregateTask
-            A task containing the group's (variant) feature arrays and the cached
-            reference arrays for that batch.
-        """
-        logging.info("Creating lazy task iterator")
-        agg_gb = agg_df.filter(pl.col("_meta_label") != "WT").group_by(
-            pl.col("_meta_label"), pl.col("_meta_batch")
-        )
-
-        for (label, batch), feature_df in agg_gb:
-            logging.debug("Creating task for %s::%s", batch, label)
-            curr_features = {
-                col: feature_df.get_column(col).to_numpy() for col in self.feature_cols
-            }
-            yield EMDAggregator.AggregateTask(
-                batch=batch,
-                label=label,
-                features=curr_features,
-                ref_arrays=self.col_dict[batch],
-            )
-
-    def agg_emd(self, args: list[pl.Series]) -> pl.Series:
-        """
-        Polars group aggregation UDF that returns the Wasserstein distance
-        between the group's feature distribution and the cached reference
-        distribution for the corresponding batch.
-
-        Parameters
-        ----------
-        args : list[pl.Series]
-            A list of Polars Series passed by `pl.map_groups(exprs=[...])`.
-            Expected structure:
-              - args[0]: Series of feature values for the current group
-              - args[1]: Series containing the batch identifier for the current
-                         group (typically constant within the group)
+            Input DataFrame containing ``_meta_batch``, ``_meta_label``, and
+            feature columns.
 
         Returns
         -------
-        pl.Series
-            A length-1 Series containing the Wasserstein distance (float64)
-            for this group/feature combination.
+        pl.DataFrame
+            One row per (batch, label) group with computed statistics.
         """
-        feature_col = args[0]
-        batch_col = args[1]
-        feature = feature_col.name
-        batch = batch_col.first()
+        raise NotImplementedError
 
-        variant_features = feature_col.to_numpy().ravel()
-        reference_features = self.col_dict[batch][feature]
-        emd = scipy.stats.wasserstein_distance(variant_features, reference_features)
-        return pl.Series([emd], dtype=pl.Float64)
 
-    def agg_df(
+class ReferenceBaseAggregator(BaseAggregator):
+    """
+    Base class for aggregators that compare each group against a reference
+    distribution, typically built from control rows.
+
+    Subclasses override :meth:`compute_statistic` to implement a specific
+    scalar summary (e.g. EMD, KS statistic) for each feature.
+
+    Parameters
+    ----------
+    reference_df : pl.DataFrame
+        Reference DataFrame (typically control rows) used as the comparison
+        distribution in :meth:`compute_statistic`.
+    """
+
+    def __init__(self, reference_df: pl.DataFrame) -> None:
+        self.feature_cols = get_feature_cols(reference_df, as_string=True)
+        self.reference_df = reference_df
+
+    @abc.abstractmethod
+    def compute_statistic(
+        self, label: str, batch: str, group_df: pl.DataFrame, ref_df: pl.DataFrame
+    ) -> dict[str, Any]:
+        """
+        Compute per-feature statistics for a single (batch, label) group.
+
+        Parameters
+        ----------
+        label : str
+            The variant label for this group.
+        batch : str
+            The batch identifier for this group.
+        group_df : pl.DataFrame
+            The subset of the input DataFrame corresponding to this
+            (batch, label) group.
+        ref_df : pl.DataFrame
+            The subset of the reference DataFrame corresponding to this batch.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dict with at minimum ``_meta_label`` and ``_meta_batch`` keys,
+            plus one entry per feature column containing the computed statistic.
+        """
+        raise NotImplementedError
+
+    def aggregate(
         self,
         agg_df: pl.DataFrame,
         n_jobs: int = -1,
-        backend: str = "loky",
+        backend: str = "threading",
         verbose: int = 0,
     ) -> pl.DataFrame:
         """
-        Aggregate EMD/Wasserstein distances by (batch, label) using joblib.
+        Compute per-(batch, label) statistics for all features using joblib.
 
-        This version uses a generator (`iter_tasks`) so tasks are not stored
-        eagerly in a list.
+        Filters out wildtype rows, groups by ``_meta_label`` and
+        ``_meta_batch``, and dispatches one :meth:`compute_statistic` call
+        per group in parallel.
+
+        Parameters
+        ----------
+        agg_df : pl.DataFrame
+            Input DataFrame containing ``_meta_batch``, ``_meta_label``, and
+            feature columns.
+        n_jobs : int, optional
+            Number of parallel jobs passed to joblib.
+        backend : str, optional
+            Joblib backend.
+        verbose : int, optional
+            Joblib verbosity level. Defaults to ``0``.
+
+        Returns
+        -------
+        pl.DataFrame
+            A DataFrame with one row per (batch, label) group and one column
+            per feature containing the computed statistic.
         """
-        logging.info(
-            "Building EMD tasks from df: %d rows, n_jobs=%s backend=%s",
-            agg_df.height,
-            str(n_jobs),
-            backend,
+        groups = agg_df.filter(pl.col("_meta_label") != "WT").group_by(
+            "_meta_label", "_meta_batch"
         )
+        tasks = [((label, batch), group_df) for (label, batch), group_df in groups]
 
         dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(_compute_one_label_arrays)(task=task)
-            for task in self.iter_tasks(agg_df)
+            joblib.delayed(self.compute_statistic)(
+                label=label,
+                batch=batch,
+                group_df=group_df,
+                ref_df=self.reference_df.filter(pl.col("_meta_batch") == batch),
+            )
+            for (label, batch), group_df in tasks
         )
 
-        logging.info("EMD computation complete; assembling output dataframe")
-        out = pl.DataFrame(dicts)
-        logging.info("EMD dataframe shape: %s rows × %s cols", out.height, out.width)
-        return out
+        return pl.DataFrame(dicts)
 
 
-def _compute_one_label_arrays(*, task: EMDAggregator.AggregateTask) -> dict[str, Any]:
+class NativeAggregator(BaseAggregator):
     """
-    Compute per-feature 1D Wasserstein distances for a single (batch, label).
+    Base class for aggregators implemented as native Polars group-by expressions.
+
+    Subclasses override :meth:`polars_exprs` to return a list of Polars
+    expressions that are passed directly to ``group_by().agg()``.
     """
-    out: dict[str, Any] = {"_meta_label": task.label, "_meta_batch": task.batch}
-    for feat, v in task.features.items():
-        r = task.ref_arrays[feat]
-        out[f"{feat}_EMD"] = scipy.stats.wasserstein_distance(v, r)
-    return out
+
+    @abc.abstractmethod
+    def polars_exprs(self, feature_cols: list[str]) -> list[pl.Expr]:
+        """
+        Return Polars aggregation expressions for the given feature columns.
+
+        Parameters
+        ----------
+        feature_cols : list[str]
+            Names of the feature columns to aggregate.
+
+        Returns
+        -------
+        list[pl.Expr]
+            Polars expressions to pass to ``group_by().agg()``.
+        """
+        raise NotImplementedError
+
+    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
+        feature_cols = get_feature_cols(agg_df, as_string=True)
+        return (
+            agg_df.filter(pl.col("_meta_label") != "WT")
+            .group_by("_meta_label", "_meta_batch")
+            .agg(self.polars_exprs(feature_cols))
+        )
+
+
+class MeanAggregator(NativeAggregator):
+    """Computes per-group mean for each feature column."""
+
+    def polars_exprs(self, feature_cols: list[str]) -> list[pl.Expr]:
+        return [pl.col(f).mean().alias(f"{f}_mean") for f in feature_cols]
+
+
+class MedianAggregator(NativeAggregator):
+    """Computes per-group median for each feature column."""
+
+    def polars_exprs(self, feature_cols: list[str]) -> list[pl.Expr]:
+        return [pl.col(f).median().alias(f"{f}_median") for f in feature_cols]
+
+
+class MADAggregator(NativeAggregator):
+    """Computes per-group median absolute deviation (MAD) for each feature column."""
+
+    def polars_exprs(self, feature_cols: list[str]) -> list[pl.Expr]:
+        return [
+            (pl.col(f) - pl.col(f).median()).abs().median().alias(f"{f}_MAD")
+            for f in feature_cols
+        ]
+
+
+class StdAggregator(NativeAggregator):
+    """Computes per-group standard deviation for each feature column."""
+
+    def polars_exprs(self, feature_cols: list[str]) -> list[pl.Expr]:
+        return [pl.col(f).std().alias(f"{f}_std") for f in feature_cols]
+
+
+class EMDAggregator(ReferenceBaseAggregator):
+    """
+    Computes per-group 1D Wasserstein distances (Earth Mover's Distance)
+    against a reference distribution for each feature column.
+    """
+
+    def compute_statistic(
+        self, label: str, batch: str, group_df: pl.DataFrame, ref_df: pl.DataFrame
+    ) -> dict[str, Any]:
+        row: dict[str, Any] = {"_meta_label": label, "_meta_batch": batch}
+        for feat in self.feature_cols:
+            variant = group_df.get_column(feat).to_numpy()
+            reference = ref_df.get_column(feat).to_numpy()
+            row[f"{feat}_EMD"] = scipy.stats.wasserstein_distance(variant, reference)
+        return row
+
+
+class KSAggregator(ReferenceBaseAggregator):
+    """
+    Computes per-group two-sample Kolmogorov-Smirnov statistics against
+    a reference distribution for each feature column.
+    """
+
+    def compute_statistic(
+        self, label: str, batch: str, group_df: pl.DataFrame, ref_df: pl.DataFrame
+    ) -> dict[str, Any]:
+        row: dict[str, Any] = {"_meta_label": label, "_meta_batch": batch}
+        for feat in self.feature_cols:
+            variant = group_df.get_column(feat).to_numpy()
+            reference = ref_df.get_column(feat).to_numpy()
+            row[f"{feat}_KS"] = scipy.stats.ks_2samp(variant, reference).statistic
+        return row
+
+
+class QQCorrelationAggregator(ReferenceBaseAggregator):
+    """
+    Computes per-group Q-Q correlation against a reference distribution for
+    each feature column.
+
+    Parameters
+    ----------
+    reference_df : pl.DataFrame
+        Reference DataFrame (typically control rows).
+    n_quantiles : int, optional
+        Number of quantile points to evaluate. Defaults to ``100``.
+    """
+
+    def __init__(self, reference_df: pl.DataFrame, n_quantiles: int = 100) -> None:
+        super().__init__(reference_df)
+        self.quantile_points = np.linspace(0, 1, n_quantiles)
+
+    def compute_statistic(
+        self, label: str, batch: str, group_df: pl.DataFrame, ref_df: pl.DataFrame
+    ) -> dict[str, Any]:
+        row: dict[str, Any] = {"_meta_label": label, "_meta_batch": batch}
+        for feat in self.feature_cols:
+            variant = group_df.get_column(feat).to_numpy()
+            reference = ref_df.get_column(feat).to_numpy()
+            variant_quantiles = np.quantile(variant, self.quantile_points)
+            reference_quantiles = np.quantile(reference, self.quantile_points)
+            row[f"{feat}_QQ"] = scipy.stats.pearsonr(
+                variant_quantiles, reference_quantiles
+            ).statistic
+        return row
+
+
+class AUROCAggregator(ReferenceBaseAggregator):
+    """
+    Computes per-group AUROC against a reference distribution for each
+    feature column.
+
+    Variant samples are labelled ``1`` and reference samples are labelled
+    ``0``. ``0.5`` indicates identical distributions and ``1.0`` indicates
+    perfect separability.
+    """
+
+    def compute_statistic(
+        self, label: str, batch: str, group_df: pl.DataFrame, ref_df: pl.DataFrame
+    ) -> dict[str, Any]:
+        row: dict[str, Any] = {"_meta_label": label, "_meta_batch": batch}
+        for feat in self.feature_cols:
+            variant = group_df.get_column(feat).to_numpy()
+            reference = ref_df.get_column(feat).to_numpy()
+            values = np.concatenate([reference, variant])
+            labels = np.concatenate(
+                [
+                    np.zeros(len(reference)),
+                    np.ones(len(variant)),
+                ]
+            )
+
+            auroc = sklearn.metrics.roc_auc_score(labels, values)
+            if auroc < 0.5:
+                auroc = 1 - auroc
+
+            row[f"{feat}_AUROC"] = auroc
+
+        return row
 
 
 def variant_classification(v: str) -> str:
@@ -321,7 +455,7 @@ def aggregate(
     )
 
     logging.info("Computing EMD dataframe")
-    emd_df = aggregator.agg_df(norm_df)
+    emd_df = aggregator.aggregate(norm_df)
     logging.info("EMD dataframe shape: %d rows × %d cols", emd_df.height, emd_df.width)
 
     if not normalize_emds:
@@ -361,71 +495,140 @@ def aggregate(
     return agg_df, normalizer
 
 
-def cli_wrapper(
-    norm_df: pl.DataFrame | PathLike,
+_AGGREGATORS: dict[str, type[BaseAggregator]] = {
+    "mean": MeanAggregator,
+    "median": MedianAggregator,
+    "MAD": MADAggregator,
+    "std": StdAggregator,
+    "EMD": EMDAggregator,
+    "KS": KSAggregator,
+    "QQ": QQCorrelationAggregator,
+    "AUROC": AUROCAggregator,
+}
+
+
+def compute_cli(
+    norm_df: PathLike,
     out_dir: PathLike,
-    normalize_emds: bool = True,
-    norm_only_to_synonymous: bool = False,
+    aggregator: str,
 ) -> None:
     """
-    Command-line entrypoint for aggregating a normalized dataset.
+    Compute per-(batch, label) aggregate statistics and write the result.
 
-    This wrapper:
-      - Configures logging (via `setup_logging(out_dir)`)
-      - Runs `aggregate(...)`
-      - Writes the aggregated dataframe to `<out_dir>/aggregated.parquet`
-      - If EMD normalization is enabled, also writes the fitted EMD normalizer
-        to `<out_dir>/emd_normalizer.pkl`
+    Reads a normalized feature parquet, runs the specified aggregator over all
+    (batch, label) groups (excluding WT), and writes the result — containing
+    only the aggregate feature columns — to ``<out_dir>/aggregated.parquet``.
+
+    For reference-based aggregators (EMD, KS, QQ, AUROC) the per-batch
+    reference distributions are built from rows where
+    ``_meta_is_control == True``.
 
     Parameters
     ----------
-    norm_df : pl.DataFrame | PathLike
-        Input normalized dataset (DataFrame or parquet path). See `aggregate`
-        for required columns and semantics.
-
+    norm_df : PathLike
+        Path to the input normalized feature parquet. Must contain
+        ``_meta_batch``, ``_meta_label``, and feature columns.  Reference-based
+        aggregators also require ``_meta_is_control``.
     out_dir : PathLike
-        Output directory to write results into. The directory is created if it
-        does not already exist.
-
-    normalize_emds : bool, default=True
-        Whether to normalize EMD columns and save the fitted EMD normalizer.
-
-    norm_only_to_synonymous : bool, default=False
-        If True, fit the EMD normalizer only on groups classified as
-        "Synonymous" (see `aggregate(...)`). Only relevant when
-        `normalize_emds=True`.
+        Output directory. Created if it does not exist.
+    aggregator : str
+        Aggregation method.  One of: ``mean``, ``median``, ``MAD``, ``std``,
+        ``EMD``, ``KS``, ``QQ``, ``AUROC``.
     """
-    setup_logging(out_dir)
-    logging.info(
-        "Starting aggregation CLI: norm_df=%s out_dir=%s normalize_emds=%s",
-        str(norm_df),
-        str(out_dir),
-        str(normalize_emds),
-    )
-
-    agg_df, normalizer = aggregate(
-        norm_df,
-        normalize_emds=normalize_emds,
-        norm_only_to_synonymous=norm_only_to_synonymous,
-    )
-
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging(out_dir)
+
+    if aggregator not in _AGGREGATORS:
+        raise ValueError(
+            f"Unknown aggregator {aggregator!r}. "
+            f"Choose from: {sorted(_AGGREGATORS)}"
+        )
+
+    logging.info("Loading normalized dataframe from %s", str(norm_df))
+    df = pl.read_parquet(norm_df)
+    logging.info("Loaded: %d rows × %d cols", df.height, df.width)
+
+    agg_cls = _AGGREGATORS[aggregator]
+    if issubclass(agg_cls, ReferenceBaseAggregator):
+        if "_meta_is_control" not in df.columns:
+            raise ValueError(
+                f"Aggregator {aggregator!r} requires '_meta_is_control' column."
+            )
+        control_df = df.filter(pl.col("_meta_is_control"))
+        logging.info("Building reference from %d control rows", control_df.height)
+        agg = agg_cls(control_df)
+    else:
+        agg = agg_cls()
+
+    logging.info("Running %s aggregator", aggregator)
+    result = agg.aggregate(df)
+    logging.info("Result: %d rows × %d cols", result.height, result.width)
 
     out_path = out_dir / "aggregated.parquet"
     logging.info("Writing aggregated dataframe to %s", str(out_path))
-    agg_df.write_parquet(out_path)
+    result.write_parquet(out_path)
+    logging.info("Done")
 
-    if normalizer is None:
-        logging.info("No normalizer returned (normalize_emds=False); done")
-        return
 
-    norm_path = out_dir / "emd_normalizer.pkl"
-    logging.info("Writing EMD normalizer to %s", str(norm_path))
+def normalize_cli(
+    agg_df: PathLike,
+    out_dir: PathLike,
+) -> None:
+    """
+    Normalize an aggregate dataframe to the synonymous-variant baseline.
+
+    Reads an aggregate parquet (produced by ``compute``), classifies each row's
+    ``_meta_label`` with :func:`variant_classification`, marks "Synonymous"
+    rows as the reference population, fits a batch-wise z-score normalizer on
+    those rows, and writes the normalized result.
+
+    Parameters
+    ----------
+    agg_df : PathLike
+        Path to the aggregate feature parquet. Must contain ``_meta_batch``,
+        ``_meta_label``, and aggregate feature columns.
+    out_dir : PathLike
+        Output directory. Created if it does not exist.  Writes:
+
+        - ``normalized.parquet`` — the normalized aggregate dataframe
+        - ``normalizer.pkl`` — the fitted :class:`~.normalize.Normalizer`
+    """
+    out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging(out_dir)
+
+    logging.info("Loading aggregate dataframe from %s", str(agg_df))
+    df = pl.read_parquet(agg_df)
+    logging.info("Loaded: %d rows × %d cols", df.height, df.width)
+
+    logging.info("Marking synonymous rows as normalization reference")
+    df = df.with_columns(
+        (
+            pl.col("_meta_label").map_elements(
+                variant_classification, return_dtype=pl.Utf8
+            )
+            == "Synonymous"
+        ).alias("_meta_is_control")
+    )
+
+    lf = df.lazy()
+    logging.info("Fitting batch-wise normalizer on synonymous rows")
+    normalizer = fit_normalizer(lf, fit_batch_wise=True, fit_only_on_control=True)
+
+    logging.info("Normalizing")
+    normalized_df = normalize(lf, normalizer).collect()
+    normalized_df = normalized_df.drop("_meta_is_control")
+
+    out_path = out_dir / "normalized.parquet"
+    logging.info("Writing normalized dataframe to %s", str(out_path))
+    normalized_df.write_parquet(out_path)
+
+    norm_path = out_dir / "normalizer.pkl"
+    logging.info("Writing normalizer to %s", str(norm_path))
     normalizer.save(norm_path)
-    logging.info("CLI finished successfully")
+    logging.info("Done")
 
 
 if __name__ == "__main__":
-    """CLI entry"""
-    fire.Fire(cli_wrapper)
+    fire.Fire({"compute": compute_cli, "normalize": normalize_cli})

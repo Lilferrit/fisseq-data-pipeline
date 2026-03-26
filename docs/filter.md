@@ -1,66 +1,60 @@
 # Data Cleaning Utilities
 
 The `fisseq_data_pipeline.filter` module provides functions to **clean and
-filter feature/metadata tables** prior to normalization and harmonization.
-These utilities are invoked automatically in the pipeline, but can also be
-used independently.
+filter feature tables** prior to normalization. These utilities are invoked
+automatically in the pipeline, but can also be used independently.
 
 ## Overview
 
-- **`clean_data`**: Removes invalid rows/columns from feature and metadata
-  tables while keeping them aligned.
-- **`drop_infrequent_pairs`**: Drops rows from rare `(label, batch)` groups
-  according to a configurable threshold.
+- **`clean_data`**: Applies a configurable sequence of filtering stages to a
+  `LazyFrame`. The default pipeline removes all-non-finite columns then rows
+  with any non-finite value.
+- **`drop_cols_all_nonfinite`**: Drops columns where every value is NaN, +inf,
+  or -inf.
+- **`drop_rows_any_nonfinite`**: Drops rows containing any non-finite feature
+  value.
 
-
-## Environment variables
-
-- **`FISSEQ_PIPELINE_MIN_CLASS_MEMBERS`**  
-  Minimum number of samples required per `(label, batch)` group when running
-  `drop_infrequent_pairs`.  
-  Default: `2`.
-
-Example:
-
-```bash
-# Require at least 5 samples per label–batch group
-FISSEQ_PIPELINE_MIN_CLASS_MEMBERS=5 fisseq-data-pipeline validate ...
-```
-
-### Example Usage
+## Example Usage
 
 ```python
 import polars as pl
-from fisseq_data_pipeline.filter import clean_data, drop_infrequent_pairs
+from fisseq_data_pipeline.filter import clean_data
 
-# Example feature matrix
-feature_df = pl.DataFrame({
-    "f1": [1.0, 2.0, float("nan"), 4.0],
-    "f2": [5.0, 6.0, 7.0, 8.0],
-})
+# Example combined data LazyFrame (features + metadata)
+data_lf = pl.DataFrame({
+    "_meta_batch": ["A", "A", "B"],
+    "_meta_label": ["X", "X", "Y"],
+    "f1": [1.0, float("nan"), 3.0],
+    "f2": [5.0, 6.0, float("inf")],
+    "f3": [float("nan"), float("nan"), float("nan")],
+}).lazy()
 
-# Example metadata with batch + label
-meta_df = pl.DataFrame({
-    "_label": ["A", "A", "B", "B"],
-    "_batch": ["X", "Y", "X", "Y"],
-})
+# Run default pipeline: drop all-nonfinite columns, then rows with any nonfinite
+cleaned_lf = clean_data(data_lf)
 
-# Clean non-finite and zero-variance columns/rows
-feature_df, meta_df = clean_data(feature_df, meta_df)
+# Run only one stage
+cleaned_lf = clean_data(data_lf, stages=["drop_cols_all_nonfinite"])
 
-# Drop infrequent (label, batch) pairs
-feature_df, meta_df = drop_infrequent_pairs(feature_df, meta_df)
+# Insert a custom filtering stage
+def my_filter(lf: pl.LazyFrame) -> pl.LazyFrame:
+    return lf.filter(pl.col("f1") > 0)
+
+cleaned_lf = clean_data(data_lf, stages=["drop_cols_all_nonfinite", my_filter])
 ```
+
+## Notes
+
+- Only columns **not** prefixed with `_meta` are treated as feature columns
+  and considered during non-finite checks. Metadata columns are carried
+  through unchanged.
+- Unknown string stage names are skipped with a `WARNING` log message.
+- Custom stages must accept and return a `pl.LazyFrame`.
 
 ## API reference
 
 ---
 
 ::: fisseq_data_pipeline.filter.clean_data
-
----
-
-::: fisseq_data_pipeline.filter.drop_rows_infrequent_pairs
 
 ---
 

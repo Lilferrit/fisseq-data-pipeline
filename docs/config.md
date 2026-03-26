@@ -1,17 +1,17 @@
-# Configuration utilities
+# Configuration
 
-The `fisseq_data_pipeline.utils.config` module provides a `Config` object for
+The `fisseq_data_pipeline.config` module provides a `Config` object for
 managing pipeline configuration. It allows loading configuration values from
 YAML files, Python dictionaries, or other `Config` objects, and ensures that
 all values are validated against a default configuration.
 
 ## Overview
 
-- **`Config`**: A wrapper around a validated configuration dictionary.  
+- **`Config`**: A wrapper around a validated configuration dictionary.
   - Loads from a path, dictionary, `Config`, or falls back to the default
-    `config.yaml`.  
+    `config.yaml`.
   - Allows access via both attribute-style (`cfg.feature_cols`) and
-    dictionary-style (`cfg["feature_cols"]`).  
+    dictionary-style (`cfg["feature_cols"]`).
   - Automatically fills in missing keys from the default configuration and
     removes invalid keys.
 
@@ -22,7 +22,7 @@ all values are validated against a default configuration.
 ## Example usage
 
 ```python
-from fisseq_data_pipeline.utils.config import Config
+from fisseq_data_pipeline.config import Config
 
 # Load default configuration
 cfg = Config(None)
@@ -31,14 +31,14 @@ cfg = Config(None)
 cfg = Config("my_config.yaml")
 
 # Load from a Python dict
-cfg = Config({"feature_cols": ["f1", "f2"], "_batch": "batch"})
+cfg = Config({"feature_cols": ["f1", "f2"], "batch_col_name": "batch"})
 
 # Load from an existing Config
 cfg2 = Config(cfg)
 
 # Access values
 print(cfg.feature_cols)
-print(cfg["_batch"])
+print(cfg["batch_col_name"])
 ```
 
 ## Validation Behavior
@@ -46,7 +46,7 @@ print(cfg["_batch"])
 When initializing a `Config`:
 
 - Invalid keys not present in the default configuration are removed with a warning.
-- Missing keys are filled with the default values from config.yaml.
+- Missing keys are filled with the default values from `config.yaml`.
 
 This ensures that the configuration is always complete and consistent with the pipeline defaults.
 
@@ -54,10 +54,10 @@ This ensures that the configuration is always complete and consistent with the p
 
 ---
 
-::: fisseq_data_pipeline.utils.config.Config
+::: fisseq_data_pipeline.config.Config
 
 ---
 
-::: fisseq_data_pipeline.utils.config.DEFAULT_CFG_PATH
+::: fisseq_data_pipeline.config.DEFAULT_CFG_PATH
 
 ---

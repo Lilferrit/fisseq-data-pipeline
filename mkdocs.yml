@@ -5,8 +5,9 @@ nav:
   - Configuration: configuration.md
   - Filter: filter.md
   - Normalize: normalize.md
-  - Config: utils/config.md
-  - Utils: utils/utils.md
+  - Aggregate: aggregate.md
+  - Config: config.md
+  - Utils: utils.md
 theme:
   name: readthedocs
 plugins:

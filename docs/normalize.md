@@ -11,12 +11,14 @@ values.
 
 ## Overview
 
-- **`Normalizer`**: A dataclass container storing per-column means and
-  standard deviations.  
-- **`fit_normalizer`**: Compute normalization statistics (means and stds) from
-  a feature DataFrame, optionally restricted to control samples.  
-- **`normalize`**: Apply z-score normalization to a feature DataFrame using a
-  fitted `Normalizer`.
+- **`Normalizer`**: A dataclass container storing per-feature means and
+  standard deviations, plus a flag indicating whether statistics were computed
+  batch-wise.
+- **`fit_normalizer`**: Compute normalization statistics from a `data_lf`
+  LazyFrame containing feature columns and `_meta_batch` / `_meta_is_control`
+  metadata columns.
+- **`normalize`**: Apply z-score normalization to a `data_lf` LazyFrame using
+  a fitted `Normalizer`.
 
 ---
 
@@ -26,35 +28,44 @@ values.
 import polars as pl
 from fisseq_data_pipeline.normalize import fit_normalizer, normalize
 
-# Example feature matrix
-feature_df = pl.DataFrame({
-    "x": [1.0, 2.0, 3.0],
-    "y": [2.0, 4.0, 6.0],
-})
+# Combined data LazyFrame: features + metadata columns
+data_lf = pl.DataFrame({
+    "_meta_batch":      ["A", "A", "A", "B", "B", "B"],
+    "_meta_is_control": [True, False, True, False, True, False],
+    "f1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    "f2": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+}).lazy()
 
-# Fit the normalizer
-normalizer = fit_normalizer(feature_df)
+# Fit batch-wise normalizer on control samples only
+normalizer = fit_normalizer(data_lf, fit_batch_wise=True, fit_only_on_control=True)
 
 # Apply normalization
-normalized_df = normalize(feature_df, normalizer)
+normalized_lf = normalize(data_lf, normalizer)
 
-print(normalized_df)
+# Save for later reuse
+normalizer.save("normalizer.pkl")
 ```
 
-### Output
+### Global normalization
 
-```bash
-shape: (3, 2)
-┌──────────┬──────────┐
-│ x        │ y        │
-│ ---      │ ---      │
-│ f64      │ f64      │
-╞══════════╪══════════╡
-│ -1.0     │ -1.0     │
-│  0.0     │  0.0     │
-│  1.0     │  1.0     │
-└──────────┴──────────┘
+```python
+# Fit a single global normalizer across all samples
+normalizer = fit_normalizer(data_lf, fit_batch_wise=False)
+normalized_lf = normalize(data_lf, normalizer)
 ```
+
+---
+
+## Notes
+
+- Columns with zero or near-zero variance are automatically dropped from the
+  fitted `Normalizer` to avoid division-by-zero during normalization.
+- `normalize` silently drops feature columns that are absent from the
+  `Normalizer` (e.g. columns removed during fitting due to zero variance).
+- Metadata columns (prefixed `_meta`) are preserved in the output of
+  `normalize`.
+
+---
 
 ## API reference
 

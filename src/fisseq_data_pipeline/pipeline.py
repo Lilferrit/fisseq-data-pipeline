@@ -9,10 +9,10 @@ from typing import Optional
 import fire
 import polars as pl
 
+from .config import DEFAULT_CFG_PATH
 from .filter import clean_data
 from .normalize import fit_normalizer, normalize
 from .utils import Config, get_data_lf, setup_logging
-from .utils.config import DEFAULT_CFG_PATH
 
 
 def get_db(input_data_path: PathLike, eager: bool) -> pl.LazyFrame:

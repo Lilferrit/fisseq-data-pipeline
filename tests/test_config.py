@@ -4,8 +4,8 @@ import pathlib
 import pytest
 import yaml
 
-import fisseq_data_pipeline.utils.config as cfg_mod
-from fisseq_data_pipeline.utils import Config
+import fisseq_data_pipeline.config as cfg_mod
+from fisseq_data_pipeline.config import Config
 
 
 @pytest.fixture()
