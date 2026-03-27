@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Pipeline - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Pipeline";
+        var mkdocs_page_input_path = "pipeline.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Pipeline</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick start</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#write-a-default-config-to-the-current-directory">Write a default config to the current directory</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#logging">Logging</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#command-interface">Command Interface</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#run">Run</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.pipeline.run">run</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#configure">Configure</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.pipeline.configure">configure</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../configuration/">Configuration</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../filter/">Filter</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../normalize/">Normalize</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../aggregate/">Aggregate</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../config/">Config</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../utils/">Utils</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Pipeline</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="pipeline">Pipeline</h1>
+<p>The FISSEQ data pipeline exposes a small CLI via the entry point
+<code>fisseq-data-pipeline</code>. Subcommands are provided by
+<a href="https://github.com/google/python-fire">Python Fire</a>:</p>
+<ul>
+<li><code>run</code> — Production, single-pass run: clean, normalize, and write outputs.</li>
+<li><code>configure</code> — Write a default configuration file.</li>
+</ul>
+<h2 id="quick-start">Quick start</h2>
+<pre><code class="language-bash"># Run the full pipeline
+fisseq-data-pipeline run \
+  --input_data_path data.parquet \
+  --config config.yaml \
+  --output_dir out
+</code></pre>
+<h2 id="write-a-default-config-to-the-current-directory">Write a default config to the current directory</h2>
+<pre><code class="language-bash">fisseq-data-pipeline configure
+
+# Write to a custom location
+fisseq-data-pipeline configure --output_path path/to/config.yaml
+</code></pre>
+<h2 id="logging">Logging</h2>
+<p>Log level is controlled via the <code>FISSEQ_PIPELINE_LOG_LEVEL</code> environment
+variable (default: <code>info</code>).</p>
+<pre><code class="language-bash">FISSEQ_PIPELINE_LOG_LEVEL=debug fisseq-data-pipeline run \
+  --input_data_path data.parquet
+</code></pre>
+<h2 id="command-interface">Command Interface</h2>
+<hr />
+<h3 id="run">Run</h3>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="fisseq_data_pipeline.pipeline.run" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">input_data_path</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">eager_db_loading</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Run the full batch-correction pipeline.</p>
+<p>This function performs a one-pass processing workflow that reads a full
+dataset, cleans invalid rows and columns, fits normalization statistics
+(optionally batch-wise and on control samples), applies normalization, and
+writes the resulting cleaned and normalized outputs to disk.</p>
+
+
+<details class="production-pipeline-steps" open>
+  <summary>Production Pipeline steps</summary>
+  <ol>
+<li>Load and scan the input Parquet dataset into a Polars LazyFrame.</li>
+<li>Derive feature and metadata frames using configuration-specified
+   column selections.</li>
+<li>Clean the dataset by removing:<ul>
+<li>Columns that contain only non-finite (NaN/inf) values.</li>
+<li>Rows containing any non-finite feature values.</li>
+</ul>
+</li>
+<li>Fit a batch-wise normalizer (computed from control samples only).</li>
+<li>Apply normalization to the full cleaned dataset.</li>
+<li>Write the cleaned, normalized, and fitted model artifacts to disk.</li>
+</ol>
+</details>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>input_data_path</code></b>
+                  (<code><span title="os.PathLike">PathLike</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the input Parquet file containing the full dataset to process.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>config</code></b>
+                  (<code><span title="fisseq_data_pipeline.utils.Config">Config</span> or <span title="os.PathLike">PathLike</span></code>, default:
+                      <code>None</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Path to configuration</p>
+              </div>
+            </li>
+            <li>
+              <b><code>output_dir</code></b>
+                  (<code><span title="os.PathLike">PathLike</span></code>, default:
+                      <code>None</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Directory to which cleaned and normalized outputs will be written.
+Defaults to the current working directory if not specified.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>eager_db_loading</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>False</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>If True, fully load the input Parquet file into memory eagerly
+using :func:<code>polars.read_parquet</code>. This avoids repeated on-disk
+scans and can significantly speed up processing on systems with
+sufficient RAM. If False (default), the dataset is accessed lazily
+using :func:<code>polars.scan_parquet</code>, which minimizes memory usage but
+may incur slower disk I/O during computation.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<details class="outputs" open>
+  <summary>Outputs</summary>
+  <p>Written to <code>output_dir</code>:</p>
+<ul>
+<li><code>meta_data.parquet</code> — cleaned metadata table.</li>
+<li><code>features.parquet</code> — cleaned feature matrix.</li>
+<li><code>normalized.parquet</code> — z-score normalized feature matrix.</li>
+<li><code>normalizer.pkl</code> — serialized :class:<code>Normalizer</code> object containing
+  per-feature mean and standard deviation statistics.</li>
+</ul>
+</details>
+
+<details class="cli" open>
+  <summary>CLI</summary>
+  <p>Exposed via Fire at the <code>fisseq-data-pipeline</code> entry point, e.g.::</p>
+<pre><code class="language-bash">fisseq-data-pipeline run
+    --input_data_path data.parquet
+    --config config.yaml
+    --output_dir out
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/pipeline.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span>
+    <span class="n">input_data_path</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Config</span> <span class="o">|</span> <span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">eager_db_loading</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run the full batch-correction pipeline.</span>
+
+<span class="sd">    This function performs a one-pass processing workflow that reads a full</span>
+<span class="sd">    dataset, cleans invalid rows and columns, fits normalization statistics</span>
+<span class="sd">    (optionally batch-wise and on control samples), applies normalization, and</span>
+<span class="sd">    writes the resulting cleaned and normalized outputs to disk.</span>
+
+<span class="sd">    Production Pipeline steps</span>
+<span class="sd">    -------------------------</span>
+<span class="sd">    1. Load and scan the input Parquet dataset into a Polars LazyFrame.</span>
+<span class="sd">    2. Derive feature and metadata frames using configuration-specified</span>
+<span class="sd">       column selections.</span>
+<span class="sd">    3. Clean the dataset by removing:</span>
+<span class="sd">         - Columns that contain only non-finite (NaN/inf) values.</span>
+<span class="sd">         - Rows containing any non-finite feature values.</span>
+<span class="sd">    4. Fit a batch-wise normalizer (computed from control samples only).</span>
+<span class="sd">    5. Apply normalization to the full cleaned dataset.</span>
+<span class="sd">    6. Write the cleaned, normalized, and fitted model artifacts to disk.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    input_data_path : PathLike</span>
+<span class="sd">        Path to the input Parquet file containing the full dataset to process.</span>
+<span class="sd">    config : Config or PathLike, optional</span>
+<span class="sd">        Path to configuration</span>
+<span class="sd">    output_dir : PathLike, optional</span>
+<span class="sd">        Directory to which cleaned and normalized outputs will be written.</span>
+<span class="sd">        Defaults to the current working directory if not specified.</span>
+<span class="sd">    eager_db_loading : bool, default=False</span>
+<span class="sd">        If True, fully load the input Parquet file into memory eagerly</span>
+<span class="sd">        using :func:`polars.read_parquet`. This avoids repeated on-disk</span>
+<span class="sd">        scans and can significantly speed up processing on systems with</span>
+<span class="sd">        sufficient RAM. If False (default), the dataset is accessed lazily</span>
+<span class="sd">        using :func:`polars.scan_parquet`, which minimizes memory usage but</span>
+<span class="sd">        may incur slower disk I/O during computation.</span>
+
+<span class="sd">    Outputs</span>
+<span class="sd">    -------</span>
+<span class="sd">    Written to ``output_dir``:</span>
+
+<span class="sd">    - ``meta_data.parquet`` — cleaned metadata table.</span>
+<span class="sd">    - ``features.parquet`` — cleaned feature matrix.</span>
+<span class="sd">    - ``normalized.parquet`` — z-score normalized feature matrix.</span>
+<span class="sd">    - ``normalizer.pkl`` — serialized :class:`Normalizer` object containing</span>
+<span class="sd">      per-feature mean and standard deviation statistics.</span>
+
+<span class="sd">    CLI</span>
+<span class="sd">    ---</span>
+<span class="sd">    Exposed via Fire at the ``fisseq-data-pipeline`` entry point, e.g.::</span>
+
+<span class="sd">    ```bash</span>
+<span class="sd">    fisseq-data-pipeline run</span>
+<span class="sd">        --input_data_path data.parquet</span>
+<span class="sd">        --config config.yaml</span>
+<span class="sd">        --output_dir out</span>
+<span class="sd">    ```</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting validation with input path: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">input_data_path</span><span class="p">)</span>
+
+    <span class="n">db_lf</span> <span class="o">=</span> <span class="n">get_db</span><span class="p">(</span><span class="n">input_data_path</span><span class="p">,</span> <span class="n">eager_db_loading</span><span class="p">)</span>
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span> <span class="k">if</span> <span class="n">output_dir</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Output directory set to: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Collecting data matrices&quot;</span><span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="n">data_lf</span> <span class="o">=</span> <span class="n">get_data_lf</span><span class="p">(</span><span class="n">db_lf</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Cleaning data&quot;</span><span class="p">)</span>
+    <span class="n">data_lf</span> <span class="o">=</span> <span class="n">clean_data</span><span class="p">(</span><span class="n">data_lf</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving cleaned data&quot;</span><span class="p">)</span>
+    <span class="n">data_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;data-cleaned.parquet&quot;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting normalizer&quot;</span><span class="p">)</span>
+    <span class="n">normalizer</span> <span class="o">=</span> <span class="n">fit_normalizer</span><span class="p">(</span>
+        <span class="n">data_lf</span><span class="o">=</span><span class="n">data_lf</span><span class="p">,</span>
+        <span class="n">fit_batch_wise</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving normalizer&quot;</span><span class="p">)</span>
+    <span class="n">normalizer</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalizer.pkl&quot;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Normalizing data&quot;</span><span class="p">)</span>
+    <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">data_lf</span><span class="p">,</span> <span class="n">normalizer</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving normalized data&quot;</span><span class="p">)</span>
+    <span class="n">normalized_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalized.parquet&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+<h3 id="configure">Configure</h3>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="fisseq_data_pipeline.pipeline.configure" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fisseq_data_pipeline</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">output_path</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Write a copy of the default configuration to <code>output_path</code>.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>output_path</code></b>
+                  (<code><span title="os.PathLike">PathLike</span></code>, default:
+                      <code>None</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>Target path for the configuration file. If <code>None</code>, writes
+<code>config.yaml</code> to the current working directory.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code>None</code>
+              –
+              <div class="doc-md-description">
+                
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<details class="cli" open>
+  <summary>CLI</summary>
+  <p>Exposed via Fire at the <code>fisseq-data-pipeline</code> entry point</p>
+<pre><code class="language-bash"># Write config.yaml to CWD
+fisseq-data-pipeline configure
+
+# Write to a custom location
+fisseq-data-pipeline configure --output_path path/to/config.yaml
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/pipeline.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">configure</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PathLike</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Write a copy of the default configuration to ``output_path``.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    output_path : PathLike, optional</span>
+<span class="sd">        Target path for the configuration file. If ``None``, writes</span>
+<span class="sd">        ``config.yaml`` to the current working directory.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    None</span>
+
+<span class="sd">    CLI</span>
+<span class="sd">    ---</span>
+<span class="sd">    Exposed via Fire at the ``fisseq-data-pipeline`` entry point</span>
+
+<span class="sd">    ```bash</span>
+<span class="sd">    # Write config.yaml to CWD</span>
+<span class="sd">    fisseq-data-pipeline configure</span>
+
+<span class="sd">    # Write to a custom location</span>
+<span class="sd">    fisseq-data-pipeline configure --output_path path/to/config.yaml</span>
+<span class="sd">    ```</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">output_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">output_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;config.yaml&quot;</span>
+
+    <span class="n">shutil</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">DEFAULT_CFG_PATH</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href=".." class="btn btn-neutral float-left" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../configuration/" class="btn btn-neutral float-right" title="Configuration">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../configuration/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
