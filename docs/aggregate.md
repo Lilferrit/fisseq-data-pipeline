@@ -1,9 +1,6 @@
 # Aggregate
 
-The `fisseq_data_pipeline.aggregate` module provides aggregators that
-summarize a normalized feature matrix into per-(batch, label) statistics.
-It also exposes a two-subcommand CLI for computing aggregations and
-normalizing aggregate DataFrames to synonymous variants.
+The `fisseq_data_pipeline.aggregate` module summarizes cell-level normalized feature matrices into per-variant statistics. After aggregation, variants are classified as synonymous or non-synonymous and a second z-score normalization pass is applied using synonymous variants as the reference baseline.
 
 ---
 
@@ -11,104 +8,98 @@ normalizing aggregate DataFrames to synonymous variants.
 
 ### Class hierarchy
 
+All aggregators inherit from a single `BaseAggregator` abstract base class:
+
 ```
 BaseAggregator (abstract)
-├── NativeAggregator (abstract) — Polars group-by expressions, no reference
-│   ├── MeanAggregator
-│   ├── MedianAggregator
-│   ├── MADAggregator
-│   └── StdAggregator
-└── ReferenceBaseAggregator (abstract) — requires control reference distribution
-    ├── EMDAggregator
-    ├── KSAggregator
-    ├── QQCorrelationAggregator
-    └── AUROCAggregator
+├── MeanAggregator
+├── MedianAggregator
+├── MADAggregator
+├── StdAggregator
+├── EMDAggregator            — requires reference_df
+├── KSAggregator             — requires reference_df
+├── QQCorrelationAggregator  — requires reference_df
+├── AUROCAggregator          — requires reference_df
+└── MultiAggregator          — composes a list of aggregators
 ```
 
-**Native aggregators** use Polars `group_by().agg()` and require no reference
-distribution. They accept only `agg_df` as an argument to `aggregate()`.
-
-**Reference-based aggregators** compare each (batch, label) group against a
-control reference distribution. They are constructed with a `reference_df` and
-use joblib for parallel dispatch.
+Aggregators that compare against a reference distribution (`EMD`, `KS`, `QQ`, `AUROC`) accept a `reference_df` (the control population) at construction time. If `reference_df` is `None`, `aggregate()` raises `ValueError`.
 
 ### Aggregator registry
 
-| Key | Class | Type |
-|-----|-------|------|
-| `"mean"` | `MeanAggregator` | Native |
-| `"median"` | `MedianAggregator` | Native |
-| `"MAD"` | `MADAggregator` | Native |
-| `"std"` | `StdAggregator` | Native |
-| `"EMD"` | `EMDAggregator` | Reference |
-| `"KS"` | `KSAggregator` | Reference |
-| `"QQ"` | `QQCorrelationAggregator` | Reference |
-| `"AUROC"` | `AUROCAggregator` | Reference |
+| Key | Class | Statistic |
+| --- | ----- | --------- |
+| `"mean"` | `MeanAggregator` | Per-group mean |
+| `"median"` | `MedianAggregator` | Per-group median |
+| `"MAD"` | `MADAggregator` | Per-group median absolute deviation |
+| `"std"` | `StdAggregator` | Per-group standard deviation |
+| `"EMD"` | `EMDAggregator` | Earth Mover's Distance vs. control |
+| `"KS"` | `KSAggregator` | KS statistic vs. control |
+| `"QQ"` | `QQCorrelationAggregator` | Q-Q Pearson correlation vs. control |
+| `"AUROC"` | `AUROCAggregator` | AUROC vs. control |
+| `"multi"` | `MultiAggregator` | All of the above except EMD (default) |
 
 ---
 
 ## Example usage
 
-### Native aggregator
+### Single aggregator
 
 ```python
 import polars as pl
 from fisseq_data_pipeline.aggregate import MeanAggregator
 
-data_df = pl.DataFrame({
-    "_meta_batch": ["A", "A", "B", "B"],
-    "_meta_label": ["X", "X", "Y", "Y"],
-    "f1": [1.0, 2.0, 3.0, 4.0],
-    "f2": [5.0, 6.0, 7.0, 8.0],
-})
+df = pl.read_parquet("cells_normalized.parquet")
+control_df = df.filter(pl.col("meta_is_control"))
 
-agg = MeanAggregator()
-result = agg.aggregate(data_df)
+agg = MeanAggregator(reference_df=control_df, label_col="meta_aa_changes")
+result = agg.aggregate(df)
 ```
 
 ### Reference-based aggregator
 
 ```python
-from fisseq_data_pipeline.aggregate import EMDAggregator
+from fisseq_data_pipeline.aggregate import KSAggregator
 
-reference_df = data_df.filter(pl.col("_meta_label") == "WT")
-agg = EMDAggregator(reference_df)
-result = agg.aggregate(data_df)
+agg = KSAggregator(reference_df=control_df, label_col="meta_aa_changes")
+result = agg.aggregate(df)
+```
+
+### Module-level `aggregate()` function
+
+```python
+import polars as pl
+from fisseq_data_pipeline.aggregate import aggregate
+
+lf = pl.scan_parquet("cells_normalized.parquet")
+
+# Run all non-EMD aggregators (default)
+result = aggregate(lf, label_col="meta_aa_changes", aggregator_name="multi")
+
+# Run a single aggregator
+result = aggregate(lf, label_col="meta_aa_changes", aggregator_name="KS")
 ```
 
 ---
 
 ## CLI
 
-The module exposes two subcommands via Python Fire:
-
-### `compute`
-
-Compute per-(batch, label) aggregation statistics from a normalized Parquet
-file. Outputs `aggregated.parquet` containing only the aggregate feature
-columns.
-
 ```bash
-python -m fisseq_data_pipeline.aggregate compute \
-  --norm_df normalized.parquet \
-  --out_dir out/ \
-  --aggregator mean
+python -m fisseq_data_pipeline.aggregate \
+    output_dir=./out \
+    input_file=data/cells_normalized.parquet \
+    aggregator=multi \
+    label_column=meta_aa_changes
 ```
 
-Valid `--aggregator` values: `mean`, `median`, `MAD`, `std`, `EMD`, `KS`,
-`QQ`, `AUROC`.
+Valid `aggregator` values: `mean`, `median`, `MAD`, `std`, `EMD`, `KS`, `QQ`, `AUROC`, `multi`.
 
-### `normalize`
+Output path:
 
-Normalize an aggregate DataFrame to synonymous (synonymous-variant) rows,
-fitting and applying a normalizer. Outputs `normalized.parquet` and
-`normalizer.pkl`.
+- `output_root` set → `{output_root}.{stem}.{ext}`
+- `output_root` not set → `{output_dir}/{filename}` (same name as input)
 
-```bash
-python -m fisseq_data_pipeline.aggregate normalize \
-  --agg_df aggregated.parquet \
-  --out_dir out/
-```
+When `save_normalizer=true`, the fitted synonymous-baseline normalizer is written as `normalizer.parquet` using the same path convention.
 
 ---
 
@@ -116,11 +107,15 @@ python -m fisseq_data_pipeline.aggregate normalize \
 
 ---
 
-::: fisseq_data_pipeline.aggregate.BaseAggregator
+::: fisseq_data_pipeline.aggregate.AggregateConfig
 
 ---
 
-::: fisseq_data_pipeline.aggregate.NativeAggregator
+::: fisseq_data_pipeline.aggregate.variant_classification
+
+---
+
+::: fisseq_data_pipeline.aggregate.BaseAggregator
 
 ---
 
@@ -140,10 +135,6 @@ python -m fisseq_data_pipeline.aggregate normalize \
 
 ---
 
-::: fisseq_data_pipeline.aggregate.ReferenceBaseAggregator
-
----
-
 ::: fisseq_data_pipeline.aggregate.EMDAggregator
 
 ---
@@ -160,10 +151,14 @@ python -m fisseq_data_pipeline.aggregate normalize \
 
 ---
 
-::: fisseq_data_pipeline.aggregate.compute_cli
+::: fisseq_data_pipeline.aggregate.MultiAggregator
 
 ---
 
-::: fisseq_data_pipeline.aggregate.normalize_cli
+::: fisseq_data_pipeline.aggregate.aggregate
+
+---
+
+::: fisseq_data_pipeline.aggregate.main
 
 ---

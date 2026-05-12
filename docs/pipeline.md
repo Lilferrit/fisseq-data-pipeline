@@ -1,53 +1,81 @@
-# Pipeline
+# Running the pipeline
 
-The FISSEQ data pipeline exposes a small CLI via the entry point
-``fisseq-data-pipeline``. Subcommands are provided by
-[Python Fire](https://github.com/google/python-fire):
+The FISSEQ pipeline consists of two sequential Hydra entry points. Each can also be run independently.
 
-- `run` — Production, single-pass run: clean, normalize, and write outputs.
-- `configure` — Write a default configuration file.
+---
 
-## Quick start
+## Step 1 — Normalize
 
-```bash
-# Run the full pipeline
-fisseq-data-pipeline run \
-  --input_data_path data.parquet \
-  --config config.yaml \
-  --output_dir out
-```
-
-## Write a default config to the current directory
+Fit z-score normalization statistics on WT control cells and apply them to the full dataset:
 
 ```bash
-fisseq-data-pipeline configure
-
-# Write to a custom location
-fisseq-data-pipeline configure --output_path path/to/config.yaml
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet
 ```
+
+Output: `out/cells.parquet` with z-scored feature columns and an added `meta_is_control` boolean column.
+
+---
+
+## Step 2 — Aggregate
+
+Aggregate cell-level data to per-variant statistics, then normalize to synonymous variant baseline:
+
+```bash
+python -m fisseq_data_pipeline.aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet
+```
+
+Output: `out/cells.parquet` with one row per non-synonymous variant. Feature columns are aggregate statistics (e.g. mean, KS, AUROC) z-scored to synonymous variants.
+
+---
+
+## Using a custom label or control column
+
+Override `control_sample_query` in the normalize step and `label_column` in the aggregate step:
+
+```bash
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet \
+    control_sample_query="meta_treatment = 'DMSO'"
+
+python -m fisseq_data_pipeline.aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet \
+    label_column=meta_treatment
+```
+
+---
+
+## Named output roots
+
+Use `output_root` to prefix all output files from a run:
+
+```bash
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    output_root=run1 \
+    input_file=data/cells.parquet
+
+# Produces: out/run1.cells.parquet, out/run1.normalizer.parquet, out/run1.normalize.log
+```
+
+---
 
 ## Logging
 
-Log level is controlled via the `FISSEQ_PIPELINE_LOG_LEVEL` environment
-variable (default: `info`).
+Logs are written to both stdout and a `.log` file in `output_dir`. Control verbosity with `log_level`:
 
 ```bash
-FISSEQ_PIPELINE_LOG_LEVEL=debug fisseq-data-pipeline run \
-  --input_data_path data.parquet
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet \
+    log_level=debug
 ```
 
-## Command Interface
-
 ---
 
-### Run
-
-::: fisseq_data_pipeline.pipeline.run
-
----
-
-### Configure
-
-::: fisseq_data_pipeline.pipeline.configure
-
----
+For all available config options see [Configuration](./configuration.md).

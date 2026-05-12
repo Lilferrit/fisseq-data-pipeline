@@ -1,12 +1,18 @@
 import dataclasses
 import logging
-import pickle
+import pathlib
 from os import PathLike
+from typing import Optional
 
-import numpy as np
+import hydra
 import polars as pl
+from hydra.core.config_store import ConfigStore
+from omegaconf import MISSING, DictConfig, OmegaConf
+from polars import selectors as cs
 
-from .utils import get_feature_cols
+from .config import AppConfig
+from .constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, EPS, FEATURE_SELECTOR
+from .utils import setup_logging
 
 
 @dataclasses.dataclass
@@ -24,205 +30,261 @@ class Normalizer:
         A DataFrame of shape (n_batches, n_features) containing the standard
         deviation of each feature for each batch. When batch-wise normalization
         is not used, this has shape (1, n_features).
-    is_batch_wise : dict[str, int] or None
-        Whether statistics were computed batch-wise or globally
     """
 
     means: pl.DataFrame
     stds: pl.DataFrame
-    is_batch_wise: bool
 
-    def save(self, save_path: PathLike) -> None:
+    @classmethod
+    def from_lazyframe(
+        cls, lf: pl.LazyFrame, fit_only_on_control: bool = True
+    ) -> "Normalizer":
         """
-        Serialize and save the Normalizer object to disk using pickle.
+        Fit a Normalizer by computing per-feature means and standard deviations.
 
-        This method stores the fitted normalization statistics — per-feature
-        means, standard deviations, and batch-wise configuration flag — as a
-        single binary file that can later be reloaded to reproduce the same
-        normalization behavior.
+        NaN values are excluded before computing statistics. Features with zero
+        or near-zero variance (std < EPS) are stored as ``None`` and will
+        produce ``NaN`` when applied, acting as a natural indicator that the
+        feature should be dropped.
 
         Parameters
         ----------
-        save_path : PathLike
-            Destination file path for the serialized Normalizer object. The file
-            is written in binary format (typically named ``normalizer.pkl``).
+        lf : pl.LazyFrame
+            Input LazyFrame. Must contain a boolean ``CONTROL_COLUMN`` column
+            when ``fit_only_on_control=True``, and feature columns matched by
+            ``FEATURE_SELECTOR``.
+        fit_only_on_control : bool, default True
+            If ``True``, statistics are computed using only rows where
+            ``CONTROL_COLUMN`` is ``True``.
 
-        Notes
-        -----
-        - The file can be reloaded using ``pickle.load(open(path, "rb"))``.
-        - Only the Normalizer object and its attributes are serialized; any
-        external references (e.g., LazyFrames) are not included.
-        - The resulting file is Python-version dependent and not guaranteed
-        to be portable across major interpreter versions.
-
-        Examples
-        --------
-        >>> normalizer = fit_normalizer(feature_df, meta_data_df)
-        >>> normalizer.save("output/normalizer.pkl")
-
-        To reload later:
-        >>> with open("output/normalizer.pkl", "rb") as f:
-        ...     normalizer = pickle.load(f)
+        Returns
+        -------
+        Normalizer
+            A fitted ``Normalizer`` instance with ``means`` and ``stds``
+            DataFrames of shape ``(1, n_features)``.
         """
-        with open(save_path, "wb") as f:
-            pickle.dump(self, f)
+        if fit_only_on_control:
+            logging.info("Adding query to filter for control samples")
+            lf = lf.filter(CONTROL_COLUMN)
+
+        logging.info("")
+        feature_lf = lf.select(FEATURE_SELECTOR).with_columns(
+            cs.numeric().fill_nan(None)
+        )
+
+        logging.info("Computing feature means")
+        means = feature_lf.mean().collect()
+
+        logging.info("Computing feature standard deviations")
+        stds = (
+            feature_lf.std()
+            .with_columns(
+                pl.when(cs.numeric().abs() < EPS)
+                .then(None)
+                .otherwise(cs.numeric())
+                .name.keep()
+            )
+            .collect()
+        )
+
+        return cls(means=means, stds=stds)
+
+    def save(self, path: PathLike) -> None:
+        """
+        Serialize the Normalizer to a Parquet file.
+
+        Both ``means`` and ``stds`` are written as a single DataFrame with a
+        ``_stat`` column set to ``"mean"`` or ``"std"`` to distinguish the two
+        rows. Reload with :meth:`load`.
+
+        Parameters
+        ----------
+        path : PathLike
+            Destination file path (e.g. ``normalizer.parquet``).
+        """
+        pl.concat(
+            [
+                self.means.with_columns(pl.lit("mean").alias("_stat")),
+                self.stds.with_columns(pl.lit("std").alias("_stat")),
+            ]
+        ).write_parquet(path)
+
+    @classmethod
+    def load(cls, path: PathLike) -> "Normalizer":
+        """
+        Deserialize a Normalizer from a Parquet file written by :meth:`save`.
+
+        Parameters
+        ----------
+        path : PathLike
+            Path to a Parquet file previously written by :meth:`save`.
+
+        Returns
+        -------
+        Normalizer
+            A ``Normalizer`` instance with ``means`` and ``stds`` restored.
+        """
+        df = pl.read_parquet(path)
+        means = df.filter(pl.col("_stat") == "mean").drop("_stat")
+        stds = df.filter(pl.col("_stat") == "std").drop("_stat")
+        return cls(means=means, stds=stds)
+
+    def apply(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """
+        Apply z-score normalization to a LazyFrame using the fitted statistics.
+
+        Each feature column ``c`` is transformed as ``(c - mean_c) / std_c``
+        using the values stored in ``self.means`` and ``self.stds``.
+
+        NaNs are converted to nulls both before and after normalization: the
+        pre-pass ensures NaN inputs don't propagate into the arithmetic, and
+        the post-pass converts any NaNs produced by division by a zero-variance
+        feature (whose std is ``None``) into nulls for consistent downstream
+        handling. Non-feature columns are passed through unchanged.
+
+        Parameters
+        ----------
+        lf : pl.LazyFrame
+            Input LazyFrame containing feature columns matched by
+            ``FEATURE_SELECTOR``.
+
+        Returns
+        -------
+        pl.LazyFrame
+            A LazyFrame with feature columns z-score normalized in-place.
+            Any non-finite inputs or zero-variance features are represented
+            as nulls.
+        """
+        logging.info("Adding normalization queries")
+        means: dict[str, Optional[float]] = self.means.row(0, named=True)
+        stds: dict[str, Optional[float]] = self.stds.row(0, named=True)
+
+        lf = (
+            lf.with_columns(cs.numeric().fill_nan(None))
+            .with_columns(
+                (pl.col(c) - means.get(c)) / stds.get(c)
+                for c in lf.select(FEATURE_SELECTOR).columns
+            )
+            .with_columns(cs.numeric().fill_nan(None))
+        )
+
+        return lf
 
 
-def fit_normalizer(
-    data_lf: pl.LazyFrame,
-    fit_only_on_control: bool = False,
-    fit_batch_wise: bool = True,
-) -> Normalizer:
+@dataclasses.dataclass
+class NormalizeConfig(AppConfig):
     """
-    Compute per-feature mean and standard deviation statistics for
-    z-score normalization.
+    Hydra structured configuration for the normalization entry point.
 
-    The normalizer can operate in two modes:
+    Attributes
+    ----------
+    input_file : str
+        Path to the input parquet file to normalize. Required.
+    control_sample_query : str
+        SQL-like WHERE clause identifying control rows used to fit the
+        normalizer (e.g. ``"meta_aa_changes = 'WT'"``).
+    save_normalizer : bool
+        If ``True``, persist the fitted :class:`Normalizer` to a parquet file
+        alongside the normalized output.
+    """
 
-    **1. Global normalization (`fit_batch_wise=False`)**
-       All samples are assigned to a single synthetic batch
-       (`_meta_batch = 0`). A single mean and standard deviation
-       are computed per feature.
+    input_file: str = MISSING
+    control_sample_query: str = "meta_aa_changes = 'WT'"
+    save_normalizer: bool = True
 
-    **2. Batch-wise normalization (`fit_batch_wise=True`)**
-       Means and standard deviations are computed independently for
-       each batch defined by the existing `_meta_batch` column.
 
-    If `fit_only_on_control=True`, rows are filtered using the
-    boolean `_meta_is_control` column before statistics are computed.
+_cs = ConfigStore.instance()
+_cs.store(name="normalize_main", node=NormalizeConfig)
 
-    Columns with zero or near-zero variance are identified and dropped
-    from the returned statistics to avoid division-by-zero during
-    normalization.
+
+def add_control_indicator_column(
+    lf: pl.LazyFrame, cfg: NormalizeConfig
+) -> pl.LazyFrame:
+    """
+    Append a boolean ``CONTROL_COLUMN`` to a LazyFrame using a SQL predicate.
 
     Parameters
     ----------
-    data_lf : pl.LazyFrame
-        A LazyFrame containing:
-          - numerical feature columns
-          - a `_meta_batch` column (if `fit_batch_wise=True`)
-          - optionally a `_meta_is_control` column
-    fit_only_on_control : bool, default False
-        Whether to compute statistics only from rows where
-        `_meta_is_control == True`.
-    fit_batch_wise : bool, default True
-        Whether to compute statistics separately per batch. If False,
-        all samples are assigned to a single batch.
-
-    Returns
-    -------
-    Normalizer
-        A dataclass holding:
-          - `means` : per-batch feature means
-          - `stds` : per-batch feature standard deviations
-          - `is_batch_wise` : boolean flag matching input
-    """
-    if fit_only_on_control:
-        logging.info("Adding query to filter for control samples")
-        data_lf = data_lf.filter(pl.col("_meta_is_control"))
-
-    if not fit_batch_wise:
-        data_lf = data_lf.with_columns(pl.lit(0).alias("_meta_batch"))
-
-    # Handle batch column (batch-wise vs global)
-    logging.info("Adding normalization queries")
-    agg_exprs = []
-    for c in get_feature_cols(data_lf, as_string=True):
-        agg_exprs.append(pl.col(c).mean().alias(f"{c}_mean"))
-        agg_exprs.append(pl.col(c).std().alias(f"{c}_std"))
-
-    agg_df = data_lf.group_by("_meta_batch").agg(agg_exprs)
-    mean_cols = [c for c in agg_df.columns if c.endswith("_mean")]
-    std_cols = [c for c in agg_df.columns if c.endswith("_std")]
-
-    logging.info("Computing feature means")
-    means = agg_df.select(
-        pl.col("_meta_batch"),
-        *[pl.col(c).alias(c.removesuffix("_mean")) for c in mean_cols],
-    ).collect()
-
-    logging.info("Computing feature standard deviations")
-    stds = agg_df.select(
-        pl.col("_meta_batch"),
-        *[pl.col(c).alias(c.removesuffix("_std")) for c in std_cols],
-    ).collect()
-
-    logging.info("Scanning for zero variance columns")
-    zero_var_cols = [
-        c
-        for c in get_feature_cols(data_lf, as_string=True)
-        if (stds[c] <= np.finfo(np.float32).eps).any()
-    ]
-
-    if len(zero_var_cols) != 0:
-        logging.warning("Dropping %d zero-variance columns", len(zero_var_cols))
-        means = means.select(pl.exclude(zero_var_cols))
-        stds = stds.select(pl.exclude(zero_var_cols))
-
-    logging.info("Normalization statistics computed successfully")
-    return Normalizer(means=means, stds=stds, is_batch_wise=fit_batch_wise)
-
-
-def normalize(data_lf: pl.LazyFrame, normalizer: Normalizer) -> pl.LazyFrame:
-    """
-    Apply z-score normalization to a LazyFrame using precomputed statistics.
-
-    Each feature column `f` is transformed into:
-
-        z_f = (f - f_mean) / f_std
-
-    where `f_mean` and `f_std` are taken from the corresponding row of
-    `normalizer.means` and `normalizer.stds`.
-
-    If the normalizer was fitted batch-wise, the `_meta_batch` column of
-    `data_lf` determines which batch statistics to apply. If the normalizer
-    was fitted globally (`is_batch_wise=False`), a dummy batch index 0 is
-    applied to all rows.
-
-    Columns that were removed during fitting (e.g., zero-variance features)
-    are automatically dropped from `data_lf` prior to normalization.
-
-    Parameters
-    ----------
-    data_lf : pl.LazyFrame
-        A LazyFrame containing numerical feature columns and a `_meta_batch`
-        column (or none if global normalization is desired).
-    normalizer : Normalizer
-        The object returned by :func:`fit_normalizer`, containing the
-        per-feature mean and standard deviation tables.
+    lf : pl.LazyFrame
+        Input LazyFrame to annotate.
+    cfg : NormalizeConfig
+        Configuration supplying ``control_sample_query``, a SQL-like WHERE
+        clause evaluated against the frame (e.g. ``"meta_aa_changes = 'WT'"``).
 
     Returns
     -------
     pl.LazyFrame
-        A LazyFrame where all feature columns have been z-score normalized.
-        Columns not present in the normalizer (e.g., removed features) are
-        excluded.
+        The input frame with an additional boolean ``CONTROL_COLUMN`` column
+        that is ``True`` for rows matching the query.
     """
-    logging.info("Creating normalization query")
-    if not normalizer.is_batch_wise:
-        data_lf = data_lf.with_columns(pl.lit(0).alias("_meta_batch"))
+    return lf.with_columns(
+        pl.sql_expr(cfg.control_sample_query).alias(CONTROL_COLUMN_NAME)
+    )
 
-    feature_cols = set(get_feature_cols(data_lf, as_string=True))
-    norm_cols = set(get_feature_cols(normalizer.stds, as_string=True))
-    bad_cols = feature_cols - norm_cols
-    data_lf = data_lf.select(pl.exclude(bad_cols))
 
-    if len(bad_cols) > 0:
-        logging.warning(
-            "Dropped %d columns from feature_df not present in normalizer",
-            len(bad_cols),
-        )
+@hydra.main(version_base=None, config_path=None, config_name="normalize_main")
+def main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: fit and apply z-score normalization to a parquet file.
 
-    feature_columns = feature_cols.intersection(norm_cols)
-    for suffix, df in [("_mean", normalizer.means), ("_std", normalizer.stds)]:
-        data_lf = data_lf.join(df.lazy(), on="_meta_batch", how="left", suffix=suffix)
+    Reads the input file at ``input_file``, adds a control indicator column
+    via :func:`add_control_indicator_column`, fits a :class:`Normalizer` on
+    the control rows, applies it, and writes the result.
 
-    meta_columns = [c for c in data_lf.columns if c.startswith("_meta")]
-    data_lf = data_lf.with_columns(
-        [
-            ((pl.col(c) - pl.col(f"{c}_mean")) / pl.col(f"{c}_std")).alias(c)
-            for c in feature_columns
-        ]
-    ).select(list(feature_columns) + meta_columns)
+    Output path
+    -----------
+    - If ``output_root`` is set: ``{output_root}.{stem}.{ext}``
+    - Otherwise: ``{output_dir}/{filename}`` (same name as the input file)
 
-    return data_lf
+    If ``save_normalizer`` is ``True``, the fitted :class:`Normalizer` is also
+    written alongside the output using the same root/dir convention with the
+    name ``normalizer.parquet``.
+
+    Configuration
+    -------------
+    Override any field on the command line, e.g.::
+
+        python -m fisseq_data_pipeline.normalize \\
+            output_dir=./out \\
+            input_file=data/cells.parquet
+    """
+    norm_cfg: NormalizeConfig = OmegaConf.to_object(cfg)
+
+    output_dir = pathlib.Path(norm_cfg.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    norm_cfg.output_dir = output_dir
+    setup_logging(norm_cfg, "normalize")
+
+    input_path = pathlib.Path(norm_cfg.input_file)
+    logging.info("Loading input from %s", input_path)
+    lf = pl.scan_parquet(input_path)
+    lf = add_control_indicator_column(lf, norm_cfg)
+
+    logging.info("Fitting normalizer")
+    normalizer = Normalizer.from_lazyframe(lf)
+    logging.info("Applying normalizer")
+    lf = normalizer.apply(lf)
+
+    stem = input_path.stem
+    ext = input_path.suffix.lstrip(".")
+    if norm_cfg.output_root is not None:
+        out_path = pathlib.Path(f"{norm_cfg.output_root}.{stem}.{ext}")
+    else:
+        out_path = output_dir / input_path.name
+
+    logging.info("Writing output to %s", out_path)
+    lf.collect().write_parquet(out_path)
+
+    if norm_cfg.save_normalizer:
+        if norm_cfg.output_root is not None:
+            norm_path = pathlib.Path(f"{norm_cfg.output_root}.normalizer.parquet")
+        else:
+            norm_path = output_dir / "normalizer.parquet"
+        logging.info("Saving normalizer to %s", norm_path)
+        normalizer.save(norm_path)
+
+    logging.info("Done")
+
+
+if __name__ == "__main__":
+    main()

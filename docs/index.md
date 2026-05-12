@@ -2,55 +2,55 @@
 
 Welcome to the **FISSEQ Data Pipeline** documentation.
 
-## Features
+## Overview
 
-### Command-line interface (CLI)
+The pipeline processes cell-level FISSEQ imaging feature matrices through two sequential steps:
 
-Access the pipeline with a single entry point:
+1. **Normalization** — Fit z-score statistics on wild-type (WT) control cells and apply them across the full dataset.
+2. **Aggregation** — Summarize cell-level features into per-variant statistics, then normalize to a synonymous variant baseline.
+
+Each step is a standalone [Hydra](https://hydra.cc) entry point and can be run independently or in sequence.
+
+## Quick start
+
+### Step 1 — Normalize cell-level data
 
 ```bash
-  fisseq-data-pipeline [run|configure]
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet
 ```
 
-For more details on command line usage see [Pipeline](./pipeline.md).
+### Step 2 — Aggregate to per-variant statistics
 
-### Data cleaning
+```bash
+python -m fisseq_data_pipeline.aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet
+```
 
-Remove invalid rows and columns — specifically columns that contain all NaN values, followed by rows that contain any remaining NaN values.
-
-See [Filter](./filter.md).
-
-### Normalization
-
-Compute z-score normalization statistics on control samples and apply them across the dataset.
-By default z-score normalization is fit only to control samples.
-Fitting only to control samples ensures that biological variation is captured even in the case where biological covariants are largely disjoint across batches.
-
-See [Normalize](./normalize.md).
+For a full walkthrough see [Running the pipeline](./pipeline.md).
 
 ## Installation
 
-This package in its current state should be considered experimental, and is thus not hosted on PyPI.
-However, the package may be installed directly from Github using the command:
+This package is not yet hosted on PyPI. Install directly from GitHub:
 
 ```bash
 pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
 ```
 
-You may also clone the repository and install dependencies:
+Or clone and install locally:
 
 ```bash
-git clone https://github.com/your-org/fisseq-data-pipeline.git
+git clone https://github.com/Lilferrit/fisseq-data-pipeline.git
 cd fisseq-data-pipeline
 pip install -e .
 ```
 
-### Running the Pipeline
+## Modules
 
-After installation the pipeline can be run from the command line.
-For more details see [Pipeline](./pipeline.md).
-
-### Configuration
-
-The pipeline may be configured using a yaml configuration file.
-For more details see [Configuration](./configuration.md).
+- [Normalize](./normalize.md) — Z-score normalization fit on control samples.
+- [Aggregate](./aggregate.md) — Per-variant feature aggregation with synonymous baseline normalization.
+- [Configuration](./configuration.md) — All config fields for each entry point.
+- [Running the pipeline](./pipeline.md) — End-to-end walkthrough.
+- [Utilities](./utils.md) — Shared logging setup.

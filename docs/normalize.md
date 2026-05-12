@@ -1,24 +1,15 @@
 # Normalize
 
-The `fisseq_data_pipeline.normalize` module provides utilities for computing
-and applying **z-score normalization** to feature matrices.
-
-Normalization is typically run as part of the FISSEQ pipeline, but these
-functions can also be used independently when you need to standardize feature
-values.
+The `fisseq_data_pipeline.normalize` module fits and applies **z-score normalization** to cell-level feature matrices. By default, normalization statistics are computed only from wild-type (WT) control cells, ensuring that biological variation in non-control variants is captured rather than normalized away.
 
 ---
 
 ## Overview
 
-- **`Normalizer`**: A dataclass container storing per-feature means and
-  standard deviations, plus a flag indicating whether statistics were computed
-  batch-wise.
-- **`fit_normalizer`**: Compute normalization statistics from a `data_lf`
-  LazyFrame containing feature columns and `_meta_batch` / `_meta_is_control`
-  metadata columns.
-- **`normalize`**: Apply z-score normalization to a `data_lf` LazyFrame using
-  a fitted `Normalizer`.
+- **`Normalizer`** — Dataclass storing per-feature means and standard deviations. Supports `from_lazyframe`, `apply`, `save`, and `load`.
+- **`add_control_indicator_column`** — Annotates a LazyFrame with a boolean `meta_is_control` column using a configurable SQL predicate.
+- **`NormalizeConfig`** — Hydra structured config extending `AppConfig`.
+- **`main`** — Hydra entry point: reads a parquet file, annotates controls, fits and applies a `Normalizer`, writes output.
 
 ---
 
@@ -26,44 +17,50 @@ values.
 
 ```python
 import polars as pl
-from fisseq_data_pipeline.normalize import fit_normalizer, normalize
+from fisseq_data_pipeline.normalize import Normalizer, NormalizeConfig, add_control_indicator_column
 
-# Combined data LazyFrame: features + metadata columns
-data_lf = pl.DataFrame({
-    "_meta_batch":      ["A", "A", "A", "B", "B", "B"],
-    "_meta_is_control": [True, False, True, False, True, False],
-    "f1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-    "f2": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
-}).lazy()
+lf = pl.scan_parquet("cells.parquet")
 
-# Fit batch-wise normalizer on control samples only
-normalizer = fit_normalizer(data_lf, fit_batch_wise=True, fit_only_on_control=True)
+cfg = NormalizeConfig(output_dir="/tmp", input_file="cells.parquet")
+lf = add_control_indicator_column(lf, cfg)
 
-# Apply normalization
-normalized_lf = normalize(data_lf, normalizer)
+normalizer = Normalizer.from_lazyframe(lf, fit_only_on_control=True)
+normalized_lf = normalizer.apply(lf)
 
-# Save for later reuse
-normalizer.save("normalizer.pkl")
-```
+# Persist for later reuse
+normalizer.save("normalizer.parquet")
 
-### Global normalization
-
-```python
-# Fit a single global normalizer across all samples
-normalizer = fit_normalizer(data_lf, fit_batch_wise=False)
-normalized_lf = normalize(data_lf, normalizer)
+# Reload
+loaded = Normalizer.load("normalizer.parquet")
 ```
 
 ---
 
 ## Notes
 
-- Columns with zero or near-zero variance are automatically dropped from the
-  fitted `Normalizer` to avoid division-by-zero during normalization.
-- `normalize` silently drops feature columns that are absent from the
-  `Normalizer` (e.g. columns removed during fitting due to zero variance).
-- Metadata columns (prefixed `_meta`) are preserved in the output of
-  `normalize`.
+- Feature columns are all columns whose names do **not** match `^meta_.*$`.
+- Columns with zero or near-zero variance have their std stored as `None` and produce `null` values after `apply()` — use this to identify and drop uninformative features.
+- `NaN` inputs are converted to `null` before normalization; any `NaN` outputs (from division by a `None` std) are also converted to `null`.
+- Metadata columns (prefixed `meta_`) pass through `apply()` unchanged.
+
+---
+
+## CLI
+
+```bash
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet \
+    control_sample_query="meta_aa_changes = 'WT'" \
+    save_normalizer=true
+```
+
+Output path:
+
+- `output_root` set → `{output_root}.{stem}.{ext}`
+- `output_root` not set → `{output_dir}/{filename}` (same name as input)
+
+When `save_normalizer=true`, the fitted normalizer is written as `normalizer.parquet` using the same path convention.
 
 ---
 
@@ -75,10 +72,14 @@ normalized_lf = normalize(data_lf, normalizer)
 
 ---
 
-::: fisseq_data_pipeline.normalize.fit_normalizer
+::: fisseq_data_pipeline.normalize.NormalizeConfig
 
 ---
 
-::: fisseq_data_pipeline.normalize.normalize
+::: fisseq_data_pipeline.normalize.add_control_indicator_column
+
+---
+
+::: fisseq_data_pipeline.normalize.main
 
 ---

@@ -1,16 +1,15 @@
 # FISSEQ Data Pipeline
 
 The **FISSEQ Data Pipeline** provides a reproducible, configurable workflow for processing **FISSEQ cell profiling data**.
-It handles data cleaning, normalization, and per-(batch, label) aggregation, making it easier to analyze experiments across batches and biological conditions.
+It handles z-score normalization on control samples and per-variant feature aggregation, making it straightforward to compare variants across experiments.
 
 ---
 
 ## Features
 
-- **Data cleaning**: Remove all-non-finite columns and rows with any non-finite feature value.
-- **Normalization**: Batch-wise z-score normalization fit on control samples, with serialized statistics for later reuse.
-- **Aggregation**: Per-(batch, label) summary statistics using native Polars expressions (mean, median, MAD, std) or reference-distribution comparisons (EMD, KS, Q-Q correlation, AUROC).
-- **Config-driven**: YAML configuration specifies feature selection, control sample queries, and metadata fields.
+- **Normalization**: Z-score normalization fit on WT control cells and applied across the full dataset. Statistics serialized as Parquet for later reuse.
+- **Aggregation**: Per-variant summary statistics using native Polars expressions (mean, median, MAD, std) or reference-distribution comparisons (EMD, KS, Q-Q correlation, AUROC). Synonymous variants are used as the aggregation-level normalization baseline.
+- **Hydra-driven**: Each step is a standalone Hydra entry point. Any config field can be overridden on the command line.
 
 ---
 
@@ -32,174 +31,129 @@ pip install -e .
 
 ---
 
+## Quick start
+
+### Step 1 — Normalize cell-level data
+
+Fit z-score statistics on WT control cells and apply to the full dataset:
+
+```bash
+fisseq_normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet
+```
+
+Output: `out/cells.parquet` with normalized feature columns and an added `meta_is_control` boolean column.
+
+### Step 2 — Aggregate to per-variant statistics
+
+Summarize cell-level data to one row per variant, then normalize to synonymous baseline:
+
+```bash
+fisseq_aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet
+```
+
+Output: `out/cells.parquet` with one row per non-synonymous variant and aggregate feature statistics z-scored to synonymous variants.
+
+---
+
 ## Configuration
 
-The pipeline is configured with a YAML file. To generate a default config in your working directory:
-
-```bash
-fisseq-data-pipeline configure
-
-# Or write it to a specific location
-fisseq-data-pipeline configure --output_path path/to/config.yaml
-```
-
-The default configuration looks like:
-
-```yaml
-# Regex or list of column names to select feature columns.
-# The default matches CellProfiler outputs (uppercase start, contains underscore).
-feature_cols: "^[A-Z][A-Za-z0-9]*_.*"
-
-# SQL-like WHERE clause to identify control samples.
-control_sample_query: "variantClass = 'WT'"
-
-# Column containing batch identifiers (e.g. well, experiment, or run).
-batch_col_name: "tile_experiment_well"
-
-# Column containing biological labels (e.g. variant or treatment).
-label_col_name: "aaChanges"
-```
-
-`feature_cols` can be a **regex string** to match column names, or an **explicit list** of column names:
-
-```yaml
-# Regex (selects all columns starting with an uppercase letter followed by underscore)
-feature_cols: "^[A-Z][A-Za-z0-9]*_.*"
-
-# Explicit list
-feature_cols:
-  - Intensity_MeanIntensity_DAPI
-  - Intensity_StdIntensity_DAPI
-  - Texture_Correlation_DAPI
-```
-
----
-
-## Pipeline CLI
-
-The main pipeline entry point is `fisseq-data-pipeline`. It runs data cleaning and normalization in a single pass and writes outputs to disk.
-
-### `run`
-
-```bash
-fisseq-data-pipeline run \
-  --input_data_path data.parquet \
-  --config config.yaml \
-  --output_dir results/
-```
-
-| Argument | Description | Default |
-| --- | --- | --- |
-| `--input_data_path` | Path to input Parquet file | required |
-| `--config` | Path to YAML config, or omit to use defaults | `None` |
-| `--output_dir` | Directory to write outputs | current directory |
-| `--eager_db_loading` | Load full dataset into memory up front | `False` |
-
-**Outputs** written to `output_dir`:
-
-| File | Description |
-| --- | --- |
-| `data-cleaned.parquet` | Feature matrix after cleaning |
-| `normalized.parquet` | Z-score normalized feature matrix |
-| `normalizer.pkl` | Serialized `Normalizer` object for reuse |
-
-### `configure`
-
-```bash
-# Write config.yaml to the current directory
-fisseq-data-pipeline configure
-
-# Write to a custom path
-fisseq-data-pipeline configure --output_path experiments/exp1/config.yaml
-```
-
----
-
-## Aggregation CLI
-
-After normalization, compute per-(batch, label) summary statistics using the aggregation module.
-
-### `compute`
-
-Reads a normalized Parquet file and writes `aggregated.parquet` containing only the aggregate feature columns (one row per (batch, label) group).
-
-```bash
-python -m fisseq_data_pipeline.aggregate compute \
-  --norm_df results/normalized.parquet \
-  --out_dir results/ \
-  --aggregator mean
-```
-
-| Argument | Description |
-| --- | --- |
-| `--norm_df` | Path to normalized Parquet file |
-| `--out_dir` | Directory to write outputs |
-| `--aggregator` | Aggregation method (see table below) |
-
-Available aggregators:
-
-| Value | Description | Type |
-| --- | --- | --- |
-| `mean` | Per-group feature mean | Native |
-| `median` | Per-group feature median | Native |
-| `MAD` | Per-group median absolute deviation | Native |
-| `std` | Per-group feature standard deviation | Native |
-| `EMD` | Earth Mover's Distance vs. control distribution | Reference |
-| `KS` | Kolmogorov-Smirnov statistic vs. control distribution | Reference |
-| `QQ` | Q-Q Pearson correlation vs. control distribution | Reference |
-| `AUROC` | Area under the ROC curve vs. control distribution | Reference |
-
-Reference-based aggregators (`EMD`, `KS`, `QQ`, `AUROC`) compare each (batch, label) group against the control rows for the same batch.
+Both entry points share a common set of base fields (`output_dir`, `output_root`, `log_level`) and each adds its own:
 
 ### `normalize`
 
-Normalize an aggregate DataFrame to synonymous-variant rows, fitting and applying a normalizer. Outputs `normalized.parquet` and `normalizer.pkl`.
+| Field | Default | Description |
+| ----- | ------- | ----------- |
+| `input_file` | **required** | Path to input parquet file. |
+| `control_sample_query` | `"meta_aa_changes = 'WT'"` | SQL WHERE clause identifying control rows. |
+| `save_normalizer` | `true` | Write fitted normalizer to `normalizer.parquet`. |
 
-```bash
-python -m fisseq_data_pipeline.aggregate normalize \
-  --agg_df results/aggregated.parquet \
-  --out_dir results/
-```
+### `aggregate`
 
----
+| Field | Default | Description |
+| ----- | ------- | ----------- |
+| `input_file` | **required** | Path to cell-level normalized parquet file. |
+| `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
+| `aggregator` | `"multi"` | Aggregation method (see table below). |
+| `save_normalizer` | `true` | Write synonymous-baseline normalizer to `normalizer.parquet`. |
 
-## Logging
+### Aggregators
 
-Log level is controlled via the `FISSEQ_PIPELINE_LOG_LEVEL` environment variable. Accepted values: `debug`, `info`, `warning`, `error`, `critical`. Default: `info`.
-
-```bash
-FISSEQ_PIPELINE_LOG_LEVEL=debug fisseq-data-pipeline run \
-  --input_data_path data.parquet
-```
-
-Log files are written to the output directory with a timestamped filename: `fisseq-data-pipeline-YYYYMMDD:HHMMSS.log`.
+| Value | Description |
+| ----- | ----------- |
+| `mean` | Per-variant feature mean |
+| `median` | Per-variant feature median |
+| `MAD` | Per-variant median absolute deviation |
+| `std` | Per-variant standard deviation |
+| `EMD` | Earth Mover's Distance vs. control distribution |
+| `KS` | Kolmogorov-Smirnov statistic vs. control distribution |
+| `QQ` | Q-Q Pearson correlation vs. control distribution |
+| `AUROC` | AUROC vs. control distribution |
+| `multi` | All of the above except EMD (default) |
 
 ---
 
 ## Typical workflow
 
 ```bash
-# 1. Generate a config
-fisseq-data-pipeline configure --output_path config.yaml
+# Normalize
+fisseq_normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet
 
-# 2. Edit config.yaml to match your dataset's column names
+# Aggregate (default: all non-EMD statistics)
+fisseq_aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet
 
-# 3. Run the main pipeline
-fisseq-data-pipeline run \
-  --input_data_path data.parquet \
-  --config config.yaml \
-  --output_dir results/
+# Aggregate with a single method
+fisseq_aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet \
+    aggregator=KS
+```
 
-# 4. Compute aggregation statistics
-python -m fisseq_data_pipeline.aggregate compute \
-  --norm_df results/normalized.parquet \
-  --out_dir results/ \
-  --aggregator EMD
+### Custom control query or label column
 
-# 5. Normalize aggregates to synonymous variants
-python -m fisseq_data_pipeline.aggregate normalize \
-  --agg_df results/aggregated.parquet \
-  --out_dir results/
+```bash
+fisseq_normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet \
+    control_sample_query="meta_treatment = 'DMSO'"
+
+fisseq_aggregate \
+    output_dir=./out \
+    input_file=out/cells.parquet \
+    label_column=meta_treatment
+```
+
+### Named output roots
+
+Use `output_root` to prefix all output files from a run (useful when running multiple configurations into the same directory):
+
+```bash
+fisseq_normalize \
+    output_dir=./out \
+    output_root=run1 \
+    input_file=data/cells.parquet
+
+# Produces: out/run1.cells.parquet, out/run1.normalizer.parquet, out/run1.normalize.log
+```
+
+---
+
+## Logging
+
+Log level is controlled via the `log_level` config field (default: `info`). Logs are written to both stdout and a `.log` file in `output_dir`.
+
+```bash
+fisseq_normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet \
+    log_level=debug
 ```
 
 ---
