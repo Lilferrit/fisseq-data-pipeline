@@ -1,67 +1,34 @@
-# Data Cleaning Utilities
+# Data Cleaning
 
-The `fisseq_data_pipeline.filter` module provides functions to **clean and
-filter feature tables** prior to normalization. These utilities are invoked
-automatically in the pipeline, but can also be used independently.
+The `fisseq_data_pipeline.filter` module has been removed. Data cleaning is no longer a built-in pipeline step.
 
-## Overview
+## Recommended approach
 
-- **`clean_data`**: Applies a configurable sequence of filtering stages to a
-  `LazyFrame`. The default pipeline removes all-non-finite columns then rows
-  with any non-finite value.
-- **`drop_cols_all_nonfinite`**: Drops columns where every value is NaN, +inf,
-  or -inf.
-- **`drop_rows_any_nonfinite`**: Drops rows containing any non-finite feature
-  value.
-
-## Example Usage
+Pre-filter your input parquet file before passing it to the normalize step. Common operations using Polars:
 
 ```python
 import polars as pl
-from fisseq_data_pipeline.filter import clean_data
+from polars import selectors as cs
 
-# Example combined data LazyFrame (features + metadata)
-data_lf = pl.DataFrame({
-    "_meta_batch": ["A", "A", "B"],
-    "_meta_label": ["X", "X", "Y"],
-    "f1": [1.0, float("nan"), 3.0],
-    "f2": [5.0, 6.0, float("inf")],
-    "f3": [float("nan"), float("nan"), float("nan")],
-}).lazy()
+lf = pl.scan_parquet("raw_cells.parquet")
 
-# Run default pipeline: drop all-nonfinite columns, then rows with any nonfinite
-cleaned_lf = clean_data(data_lf)
+# Drop columns that are entirely null or NaN
+feature_cols = lf.select(cs.exclude("^meta_.*$")).columns
+lf = lf.select(
+    cs.by_name("^meta_.*$"),
+    *[pl.col(c) for c in feature_cols if lf.select(pl.col(c).is_finite().any()).collect().item()]
+)
 
-# Run only one stage
-cleaned_lf = clean_data(data_lf, stages=["drop_cols_all_nonfinite"])
+# Drop rows with any non-finite feature value
+lf = lf.filter(cs.exclude("^meta_.*$").is_finite().all_horizontal())
 
-# Insert a custom filtering stage
-def my_filter(lf: pl.LazyFrame) -> pl.LazyFrame:
-    return lf.filter(pl.col("f1") > 0)
-
-cleaned_lf = clean_data(data_lf, stages=["drop_cols_all_nonfinite", my_filter])
+lf.collect().write_parquet("cells_cleaned.parquet")
 ```
 
-## Notes
+Then run normalization on the cleaned file:
 
-- Only columns **not** prefixed with `_meta` are treated as feature columns
-  and considered during non-finite checks. Metadata columns are carried
-  through unchanged.
-- Unknown string stage names are skipped with a `WARNING` log message.
-- Custom stages must accept and return a `pl.LazyFrame`.
-
-## API reference
-
----
-
-::: fisseq_data_pipeline.filter.clean_data
-
----
-
-::: fisseq_data_pipeline.filter.drop_cols_all_nonfinite
-
----
-
-::: fisseq_data_pipeline.filter.drop_rows_any_nonfinite
-
----
+```bash
+python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=cells_cleaned.parquet
+```

@@ -1,63 +1,32 @@
-# Configuration
+# AppConfig
 
-The `fisseq_data_pipeline.config` module provides a `Config` object for
-managing pipeline configuration. It allows loading configuration values from
-YAML files, Python dictionaries, or other `Config` objects, and ensures that
-all values are validated against a default configuration.
-
-## Overview
-
-- **`Config`**: A wrapper around a validated configuration dictionary.
-  - Loads from a path, dictionary, `Config`, or falls back to the default
-    `config.yaml`.
-  - Allows access via both attribute-style (`cfg.feature_cols`) and
-    dictionary-style (`cfg["feature_cols"]`).
-  - Automatically fills in missing keys from the default configuration and
-    removes invalid keys.
-
-- **`DEFAULT_CFG_PATH`**: The path to the default configuration YAML file that
-  ships with the pipeline.
-
-
-## Example usage
-
-```python
-from fisseq_data_pipeline.config import Config
-
-# Load default configuration
-cfg = Config(None)
-
-# Load from a YAML file
-cfg = Config("my_config.yaml")
-
-# Load from a Python dict
-cfg = Config({"feature_cols": ["f1", "f2"], "batch_col_name": "batch"})
-
-# Load from an existing Config
-cfg2 = Config(cfg)
-
-# Access values
-print(cfg.feature_cols)
-print(cfg["batch_col_name"])
-```
-
-## Validation Behavior
-
-When initializing a `Config`:
-
-- Invalid keys not present in the default configuration are removed with a warning.
-- Missing keys are filled with the default values from `config.yaml`.
-
-This ensures that the configuration is always complete and consistent with the pipeline defaults.
-
-## API Reference
+The `fisseq_data_pipeline.config` module defines `AppConfig`, the shared base configuration used by all pipeline entry points. It is a Hydra structured config implemented as a `dataclasses.dataclass`.
 
 ---
 
-::: fisseq_data_pipeline.config.Config
+## Fields
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `output_dir` | `str` | **required** | Directory where output files and logs are written. |
+| `output_root` | `str \| None` | `None` | Optional prefix for output file names. When set, files are named `{output_root}.{stem}.{ext}` rather than `{output_dir}/{filename}`. |
+| `log_level` | `str` | `"info"` | Logging verbosity. One of: `debug`, `info`, `warning`, `error`, `critical`. |
 
 ---
 
-::: fisseq_data_pipeline.config.DEFAULT_CFG_PATH
+## Usage
+
+`AppConfig` is extended by each module's config:
+
+- [`NormalizeConfig`](./normalize.md) — adds `input_file`, `control_sample_query`, `save_normalizer`
+- [`AggregateConfig`](./aggregate.md) — adds `input_file`, `label_column`, `aggregator`, `save_normalizer`
+
+---
+
+## API reference
+
+---
+
+::: fisseq_data_pipeline.config.AppConfig
 
 ---
