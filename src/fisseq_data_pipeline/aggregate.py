@@ -3,7 +3,7 @@ import dataclasses
 import logging
 import pathlib
 import re
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 import hydra
 import joblib
@@ -15,7 +15,12 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import AppConfig
-from .constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECTOR
+from .constants import (
+    CONTROL_COLUMN,
+    CONTROL_COLUMN_NAME,
+    FEATURE_SELECTOR,
+    META_SELECTOR,
+)
 from .normalize import Normalizer
 from .utils import setup_logging
 
@@ -38,12 +43,18 @@ class AggregateConfig(AppConfig):
     save_normalizer : bool
         If ``True``, persist the fitted :class:`.normalize.Normalizer` alongside
         the output. Defaults to ``True``.
+    block_list_file : str or None
+        Optional path to a parquet file with at least ``feature`` (str) and
+        ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
+        ``False`` are excluded from aggregation. Defaults to ``None`` (no
+        features blocked).
     """
 
     input_file: str = MISSING
     label_column: str = "meta_aa_changes"
     aggregator: str = "multi"
     save_normalizer: bool = True
+    block_list_file: Optional[str] = None
 
 
 _cs = ConfigStore.instance()
@@ -91,9 +102,9 @@ class BaseAggregator(abc.ABC):
     """
     Abstract base class for all aggregators.
 
-    The constructor stores an optional reference DataFrame and label column
-    name. Subclasses that require ``reference_df`` raise :exc:`ValueError`
-    inside :meth:`aggregate` when it is ``None``.
+    The constructor stores an optional reference DataFrame, label column
+    name, and block list. Subclasses that require ``reference_df`` raise
+    :exc:`ValueError` inside :meth:`aggregate` when it is ``None``.
 
     Parameters
     ----------
@@ -103,15 +114,20 @@ class BaseAggregator(abc.ABC):
     label_col : str
         Name of the column used to identify variant groups. Defaults to
         ``"meta_aa_changes"``.
+    block_list : set[str] or None
+        Aggregated output column names to skip (e.g. ``"f1_EMD"``). Blocked
+        statistics are not computed. Defaults to ``None``.
     """
 
     def __init__(
         self,
         reference_df: Optional[pl.DataFrame] = None,
         label_col: str = "meta_aa_changes",
+        block_list: Optional[set[str]] = None,
     ) -> None:
         self.reference_df = reference_df
         self.label_col = label_col
+        self.block_list = block_list
 
     @abc.abstractmethod
     def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
@@ -132,60 +148,130 @@ class BaseAggregator(abc.ABC):
         raise NotImplementedError
 
 
-class MeanAggregator(BaseAggregator):
+class NativeAggregator(BaseAggregator):
+    """
+    Base for aggregators that express their statistic as a single Polars expression.
+
+    Subclasses declare :attr:`_stat_suffix` and implement :meth:`_expr`. The
+    boilerplate of filtering controls, grouping, filtering the block list, and
+    collecting feature columns is handled here.
+    """
+
+    _stat_suffix: ClassVar[str]
+
+    @abc.abstractmethod
+    def _expr(self, feat: str) -> pl.Expr:
+        raise NotImplementedError
+
+    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
+        feature_cols = [
+            f
+            for f in agg_df.select(FEATURE_SELECTOR).columns
+            if f"{f}{self._stat_suffix}" not in (self.block_list or set())
+        ]
+        return (
+            agg_df.filter(~CONTROL_COLUMN)
+            .group_by(self.label_col)
+            .agg([self._expr(f) for f in feature_cols])
+        )
+
+
+class MeanAggregator(NativeAggregator):
     """Computes per-group mean for each feature column."""
 
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
-        feature_cols = agg_df.select(FEATURE_SELECTOR).columns
-        return (
-            agg_df.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
-            .agg([pl.col(f).mean().alias(f"{f}_mean") for f in feature_cols])
-        )
+    _stat_suffix = "_mean"
+
+    def _expr(self, feat: str) -> pl.Expr:
+        return pl.col(feat).mean().alias(f"{feat}_mean")
 
 
-class MedianAggregator(BaseAggregator):
+class MedianAggregator(NativeAggregator):
     """Computes per-group median for each feature column."""
 
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
-        feature_cols = agg_df.select(FEATURE_SELECTOR).columns
-        return (
-            agg_df.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
-            .agg([pl.col(f).median().alias(f"{f}_median") for f in feature_cols])
-        )
+    _stat_suffix = "_median"
+
+    def _expr(self, feat: str) -> pl.Expr:
+        return pl.col(feat).median().alias(f"{feat}_median")
 
 
-class MADAggregator(BaseAggregator):
+class MADAggregator(NativeAggregator):
     """Computes per-group median absolute deviation (MAD) for each feature column."""
 
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
-        feature_cols = agg_df.select(FEATURE_SELECTOR).columns
+    _stat_suffix = "_MAD"
+
+    def _expr(self, feat: str) -> pl.Expr:
         return (
-            agg_df.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
-            .agg(
-                [
-                    (pl.col(f) - pl.col(f).median()).abs().median().alias(f"{f}_MAD")
-                    for f in feature_cols
-                ]
-            )
+            (pl.col(feat) - pl.col(feat).median()).abs().median().alias(f"{feat}_MAD")
         )
 
 
-class StdAggregator(BaseAggregator):
+class StdAggregator(NativeAggregator):
     """Computes per-group standard deviation for each feature column."""
 
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
-        feature_cols = agg_df.select(FEATURE_SELECTOR).columns
-        return (
-            agg_df.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
-            .agg([pl.col(f).std().alias(f"{f}_std") for f in feature_cols])
+    _stat_suffix = "_std"
+
+    def _expr(self, feat: str) -> pl.Expr:
+        return pl.col(feat).std().alias(f"{feat}_std")
+
+
+class ReferenceBasedAggregator(BaseAggregator):
+    """
+    Base for aggregators that compare each variant group against a reference
+    distribution using a scalar per-feature statistic.
+
+    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_EMD"``) and implement
+    :meth:`_compute_feature_stat`. The boilerplate of checking for a reference
+    DataFrame, filtering controls, dispatching parallel tasks, null-guarding,
+    and building the output DataFrame is handled here.
+    """
+
+    _stat_suffix: ClassVar[str]
+
+    def aggregate(
+        self,
+        agg_df: pl.DataFrame,
+        n_jobs: int = -1,
+        backend: str = "threading",
+        verbose: int = 0,
+    ) -> pl.DataFrame:
+        if self.reference_df is None:
+            raise ValueError(f"{type(self).__name__} requires a reference_df")
+        feature_cols = [
+            f
+            for f in self.reference_df.select(FEATURE_SELECTOR).columns
+            if f"{f}{self._stat_suffix}" not in (self.block_list or set())
+        ]
+        groups = agg_df.filter(~CONTROL_COLUMN).group_by(self.label_col)
+        tasks = [(keys[0], group_df) for keys, group_df in groups]
+        dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
+            joblib.delayed(self._compute_statistic)(label, group_df, feature_cols)
+            for label, group_df in tasks
         )
+        return pl.DataFrame(dicts)
+
+    def _compute_statistic(
+        self, label: str, group_df: pl.DataFrame, feature_cols: list[str]
+    ) -> dict[str, Any]:
+        row: dict[str, Any] = {self.label_col: label}
+        for feat in feature_cols:
+            group_vals = group_df.get_column(feat).drop_nulls().to_numpy()
+            ref_vals = self.reference_df.get_column(feat).drop_nulls().to_numpy()
+            if len(group_vals) == 0 or len(ref_vals) == 0:
+                row[f"{feat}{self._stat_suffix}"] = None
+            else:
+                row[f"{feat}{self._stat_suffix}"] = self._compute_feature_stat(
+                    group_vals, ref_vals
+                )
+        return row
+
+    @abc.abstractmethod
+    def _compute_feature_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
+    ) -> float:
+        raise NotImplementedError
 
 
-class EMDAggregator(BaseAggregator):
+class EMDAggregator(ReferenceBasedAggregator):
     """
     Computes per-group 1D Wasserstein distances (Earth Mover's Distance)
     against the reference distribution for each feature column.
@@ -193,37 +279,15 @@ class EMDAggregator(BaseAggregator):
     Requires ``reference_df`` to be set at construction time.
     """
 
-    def aggregate(
-        self,
-        agg_df: pl.DataFrame,
-        n_jobs: int = -1,
-        backend: str = "threading",
-        verbose: int = 0,
-    ) -> pl.DataFrame:
-        if self.reference_df is None:
-            raise ValueError("EMDAggregator requires a reference_df")
-        feature_cols = self.reference_df.select(FEATURE_SELECTOR).columns
-        groups = agg_df.filter(~CONTROL_COLUMN).group_by(self.label_col)
-        tasks = [(keys[0], group_df) for keys, group_df in groups]
-        dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(self._compute_statistic)(label, group_df, feature_cols)
-            for label, group_df in tasks
-        )
-        return pl.DataFrame(dicts)
+    _stat_suffix = "_EMD"
 
-    def _compute_statistic(
-        self, label: str, group_df: pl.DataFrame, feature_cols: list[str]
-    ) -> dict[str, Any]:
-        row: dict[str, Any] = {self.label_col: label}
-        for feat in feature_cols:
-            row[f"{feat}_EMD"] = scipy.stats.wasserstein_distance(
-                group_df.get_column(feat).to_numpy(),
-                self.reference_df.get_column(feat).to_numpy(),
-            )
-        return row
+    def _compute_feature_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
+    ) -> float:
+        return scipy.stats.wasserstein_distance(group_vals, ref_vals)
 
 
-class KSAggregator(BaseAggregator):
+class KSAggregator(ReferenceBasedAggregator):
     """
     Computes per-group two-sample Kolmogorov-Smirnov statistics against
     the reference distribution for each feature column.
@@ -231,37 +295,15 @@ class KSAggregator(BaseAggregator):
     Requires ``reference_df`` to be set at construction time.
     """
 
-    def aggregate(
-        self,
-        agg_df: pl.DataFrame,
-        n_jobs: int = -1,
-        backend: str = "threading",
-        verbose: int = 0,
-    ) -> pl.DataFrame:
-        if self.reference_df is None:
-            raise ValueError("KSAggregator requires a reference_df")
-        feature_cols = self.reference_df.select(FEATURE_SELECTOR).columns
-        groups = agg_df.filter(~CONTROL_COLUMN).group_by(self.label_col)
-        tasks = [(keys[0], group_df) for keys, group_df in groups]
-        dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(self._compute_statistic)(label, group_df, feature_cols)
-            for label, group_df in tasks
-        )
-        return pl.DataFrame(dicts)
+    _stat_suffix = "_KS"
 
-    def _compute_statistic(
-        self, label: str, group_df: pl.DataFrame, feature_cols: list[str]
-    ) -> dict[str, Any]:
-        row: dict[str, Any] = {self.label_col: label}
-        for feat in feature_cols:
-            row[f"{feat}_KS"] = scipy.stats.ks_2samp(
-                group_df.get_column(feat).to_numpy(),
-                self.reference_df.get_column(feat).to_numpy(),
-            ).statistic
-        return row
+    def _compute_feature_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
+    ) -> float:
+        return scipy.stats.ks_2samp(group_vals, ref_vals).statistic
 
 
-class QQCorrelationAggregator(BaseAggregator):
+class QQCorrelationAggregator(ReferenceBasedAggregator):
     """
     Computes per-group Q-Q correlation against the reference distribution for
     each feature column.
@@ -278,49 +320,27 @@ class QQCorrelationAggregator(BaseAggregator):
         Number of quantile points to evaluate. Defaults to ``100``.
     """
 
+    _stat_suffix = "_QQ"
+
     def __init__(
         self,
         reference_df: Optional[pl.DataFrame] = None,
         label_col: str = "meta_aa_changes",
         n_quantiles: int = 100,
+        block_list: Optional[set[str]] = None,
     ) -> None:
-        super().__init__(reference_df, label_col)
+        super().__init__(reference_df, label_col, block_list)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
-    def aggregate(
-        self,
-        agg_df: pl.DataFrame,
-        n_jobs: int = -1,
-        backend: str = "threading",
-        verbose: int = 0,
-    ) -> pl.DataFrame:
-        if self.reference_df is None:
-            raise ValueError("QQCorrelationAggregator requires a reference_df")
-        feature_cols = self.reference_df.select(FEATURE_SELECTOR).columns
-        groups = agg_df.filter(~CONTROL_COLUMN).group_by(self.label_col)
-        tasks = [(keys[0], group_df) for keys, group_df in groups]
-        dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(self._compute_statistic)(label, group_df, feature_cols)
-            for label, group_df in tasks
-        )
-        return pl.DataFrame(dicts)
-
-    def _compute_statistic(
-        self, label: str, group_df: pl.DataFrame, feature_cols: list[str]
-    ) -> dict[str, Any]:
-        row: dict[str, Any] = {self.label_col: label}
-        for feat in feature_cols:
-            variant_q = np.quantile(
-                group_df.get_column(feat).to_numpy(), self.quantile_points
-            )
-            reference_q = np.quantile(
-                self.reference_df.get_column(feat).to_numpy(), self.quantile_points
-            )
-            row[f"{feat}_QQ"] = scipy.stats.pearsonr(variant_q, reference_q).statistic
-        return row
+    def _compute_feature_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
+    ) -> float:
+        variant_q = np.quantile(group_vals, self.quantile_points)
+        reference_q = np.quantile(ref_vals, self.quantile_points)
+        return scipy.stats.pearsonr(variant_q, reference_q).statistic
 
 
-class AUROCAggregator(BaseAggregator):
+class AUROCAggregator(ReferenceBasedAggregator):
     """
     Computes per-group AUROC against the reference distribution for each
     feature column.
@@ -332,38 +352,17 @@ class AUROCAggregator(BaseAggregator):
     separability.
     """
 
-    def aggregate(
-        self,
-        agg_df: pl.DataFrame,
-        n_jobs: int = -1,
-        backend: str = "threading",
-        verbose: int = 0,
-    ) -> pl.DataFrame:
-        if self.reference_df is None:
-            raise ValueError("AUROCAggregator requires a reference_df")
-        feature_cols = self.reference_df.select(FEATURE_SELECTOR).columns
-        groups = agg_df.filter(~CONTROL_COLUMN).group_by(self.label_col)
-        tasks = [(keys[0], group_df) for keys, group_df in groups]
-        dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(self._compute_statistic)(label, group_df, feature_cols)
-            for label, group_df in tasks
-        )
-        return pl.DataFrame(dicts)
+    _stat_suffix = "_AUROC"
 
-    def _compute_statistic(
-        self, label: str, group_df: pl.DataFrame, feature_cols: list[str]
-    ) -> dict[str, Any]:
-        row: dict[str, Any] = {self.label_col: label}
-        for feat in feature_cols:
-            variant = group_df.get_column(feat).to_numpy()
-            reference = self.reference_df.get_column(feat).to_numpy()
-            values = np.concatenate([reference, variant])
-            labels = np.concatenate([np.zeros(len(reference)), np.ones(len(variant))])
-            auroc = sklearn.metrics.roc_auc_score(labels, values)
-            if auroc < 0.5:
-                auroc = 1 - auroc
-            row[f"{feat}_AUROC"] = auroc
-        return row
+    def _compute_feature_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
+    ) -> float:
+        values = np.concatenate([ref_vals, group_vals])
+        labels = np.concatenate([np.zeros(len(ref_vals)), np.ones(len(group_vals))])
+        auroc = sklearn.metrics.roc_auc_score(labels, values)
+        if auroc < 0.5:
+            auroc = 1 - auroc
+        return auroc
 
 
 class MultiAggregator(BaseAggregator):
@@ -414,6 +413,7 @@ def aggregate(
     lf: pl.LazyFrame,
     label_col: str,
     aggregator_name: str,
+    block_list: Optional[set[str]] = None,
 ) -> pl.DataFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
@@ -430,6 +430,11 @@ def aggregate(
     aggregator_name : str
         Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,
         ``EMD``, ``KS``, ``QQ``, ``AUROC``, or ``multi`` (all except EMD).
+    block_list : set[str] or None
+        Aggregated output column names to skip (e.g. ``"f1_EMD"``). Blocked
+        statistics are not computed and do not appear in the output. Names
+        that do not match any aggregated output are silently ignored. Defaults
+        to ``None``.
 
     Returns
     -------
@@ -447,26 +452,69 @@ def aggregate(
 
     if aggregator_name == "multi":
         sub_aggs = [
-            _AGGREGATORS[name](control_df, label_col=label_col)
+            _AGGREGATORS[name](control_df, label_col=label_col, block_list=block_list)
             for name in _MULTI_DEFAULT
         ]
         agg: BaseAggregator = MultiAggregator(sub_aggs)
     else:
-        agg = _AGGREGATORS[aggregator_name](control_df, label_col=label_col)
+        agg = _AGGREGATORS[aggregator_name](
+            control_df, label_col=label_col, block_list=block_list
+        )
 
     return agg.aggregate(df)
+
+
+def get_aggregate_meta_data(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
+    """
+    Compute per-variant metadata statistics from a LazyFrame.
+
+    Always produces ``meta_num_cells`` (row count per label group). If the
+    frame contains a ``meta_barcode`` column, two additional columns are
+    produced: ``meta_num_unique_barcodes`` (distinct barcode count per group)
+    and ``meta_barcode_counts`` (per-barcode frequencies as a list of structs
+    ``{meta_barcode: str, count: u32}``).
+
+    Parameters
+    ----------
+    lf : pl.LazyFrame
+        Input LazyFrame. Only columns matched by ``META_SELECTOR`` (i.e. those
+        with a ``meta_`` prefix) are used in the aggregation.
+    label_col : str
+        Name of the column identifying variant labels, used as the group key.
+
+    Returns
+    -------
+    pl.LazyFrame
+        One row per label group with columns ``label_col``,
+        ``meta_num_cells``, and (when present) ``meta_num_unique_barcodes``
+        and ``meta_barcode_counts``.
+    """
+    label_lgb = lf.select(META_SELECTOR).group_by(label_col)
+    agg_exprs = [pl.col(label_col).count().alias("meta_num_cells")]
+
+    if "meta_barcode" in lf.collect_schema().names():
+        agg_exprs.extend(
+            [
+                pl.col("meta_barcode").n_unique().alias("meta_num_unique_barcodes"),
+                pl.col("meta_barcode").value_counts().alias("meta_barcode_counts"),
+            ]
+        )
+
+    return label_lgb.agg(agg_exprs)
 
 
 @hydra.main(version_base=None, config_path=None, config_name="aggregate_main")
 def main(cfg: DictConfig) -> None:
     """
-    Aggregate cell-level features and z-score normalize to synonymous baseline.
+    Aggregate cell-level features, z-score normalize to synonymous baseline,
+    and attach per-variant metadata.
 
     Reads the input file at ``input_file``, runs the configured aggregator to
     produce one row per variant, marks synonymous variants as the normalization
     reference via :func:`variant_classification`, fits a
-    :class:`.normalize.Normalizer` on those rows, applies it, and writes the
-    result.
+    :class:`.normalize.Normalizer` on those rows, applies it, joins per-variant
+    metadata from :func:`get_aggregate_meta_data` (cell counts and, when
+    present, barcode statistics), and writes the result.
 
     Output path
     -----------
@@ -497,9 +545,18 @@ def main(cfg: DictConfig) -> None:
     logging.info("Loading input from %s", input_path)
     lf = pl.scan_parquet(input_path)
 
+    block_list: Optional[set[str]] = None
+    if agg_cfg.block_list_file is not None:
+        logging.info("Loading block list from %s", agg_cfg.block_list_file)
+        bl_df = pl.read_parquet(agg_cfg.block_list_file)
+        block_list = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
+
     logging.info("Running %s aggregator", agg_cfg.aggregator)
     agg_df = aggregate(
-        lf, label_col=agg_cfg.label_column, aggregator_name=agg_cfg.aggregator
+        lf,
+        label_col=agg_cfg.label_column,
+        aggregator_name=agg_cfg.aggregator,
+        block_list=block_list,
     )
 
     logging.info(
@@ -519,6 +576,10 @@ def main(cfg: DictConfig) -> None:
         out_path = pathlib.Path(f"{agg_cfg.output_root}.{stem}.{ext}")
     else:
         out_path = output_dir / input_path.name
+
+    logging.info("Adding queries to retrieve metadata")
+    meta_lf = get_aggregate_meta_data(lf, agg_cfg.label_column)
+    normalized_lf = normalized_lf.join(meta_lf, on=agg_cfg.label_column)
 
     logging.info("Writing output to %s", out_path)
     normalized_lf.collect().write_parquet(out_path)
