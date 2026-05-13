@@ -9,6 +9,7 @@ It handles z-score normalization on control samples and per-variant feature aggr
 
 - **Normalization**: Z-score normalization fit on WT control cells and applied across the full dataset. Statistics serialized as Parquet for later reuse.
 - **Aggregation**: Per-variant summary statistics using native Polars expressions (mean, median, MAD, std) or reference-distribution comparisons (EMD, KS, Q-Q correlation, AUROC). Synonymous variants are used as the aggregation-level normalization baseline.
+- **Feature selection**: Pseudo-replicate Pearson correlations filter out irreproducible features before pycytominer removes low-variance and redundant ones.
 - **Hydra-driven**: Each step is a standalone Hydra entry point. Any config field can be overridden on the command line.
 
 ---
@@ -57,6 +58,19 @@ fisseq_aggregate \
 
 Output: `out/cells.parquet` with one row per non-synonymous variant and aggregate feature statistics z-scored to synonymous variants.
 
+### Step 3 — Feature selection
+
+Filter features by pseudo-replicate reproducibility and pycytominer criteria:
+
+```bash
+python -m fisseq_data_pipeline.features \
+    output_dir=./out \
+    input_file=out/cells.parquet \
+    minimum_correlation=0.5
+```
+
+Output: `out/feature_correlations.parquet` (per-feature Pearson *r* and `feature_ok` flag) and `out/cells.parquet` (final feature-selected aggregate).
+
 ---
 
 ## Configuration
@@ -79,6 +93,17 @@ Both entry points share a common set of base fields (`output_dir`, `output_root`
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `aggregator` | `"multi"` | Aggregation method (see table below). |
 | `save_normalizer` | `true` | Write synonymous-baseline normalizer to `normalizer.parquet`. |
+| `block_list_file` | `null` | Parquet file with `feature` and `feature_ok` columns; blocked features are skipped. |
+
+### `feature_select`
+
+| Field | Default | Description |
+| ----- | ------- | ----------- |
+| `input_file` | **required** | Path to cell-level normalized parquet file. |
+| `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
+| `aggregator` | `"multi"` | Aggregation method used for pseudo-replicate splitting and final aggregation. |
+| `minimum_correlation` | `0.5` | Features with pseudo-replicate *r* below this threshold are blocked. |
+| `random_state` | `42` | Seed for the stratified pseudo-replicate split. |
 
 ### Aggregators
 
@@ -109,11 +134,11 @@ fisseq_aggregate \
     output_dir=./out \
     input_file=out/cells.parquet
 
-# Aggregate with a single method
-fisseq_aggregate \
+# Feature selection (reproducibility filter + pycytominer)
+python -m fisseq_data_pipeline.features \
     output_dir=./out \
     input_file=out/cells.parquet \
-    aggregator=KS
+    minimum_correlation=0.5
 ```
 
 ### Custom control query or label column

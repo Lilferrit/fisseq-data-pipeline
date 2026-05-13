@@ -1,7 +1,8 @@
-import datetime
 import logging
-import os
 import pathlib
+from typing import Any
+
+import polars as pl
 
 from .config import AppConfig
 
@@ -45,3 +46,7 @@ def setup_logging(cfg: AppConfig, name: str) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=handlers,
     )
+
+
+def get_column(lf: pl.LazyFrame, col: str) -> list[Any]:
+    return lf.select(pl.col(col)).collect().get_column(col).to_list()
