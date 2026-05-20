@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.features as m
 from fisseq_data_pipeline.features import TMP_IDX_COL, FeatureSelectConfig
+from fisseq_data_pipeline.constants import IMPACT_SCORE_COL
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -275,6 +276,7 @@ def make_feat_cfg(
     minimum_correlation: float = 0.5,
     aggregator: str = "mean",
     random_state: int = 0,
+    compute_impact_score: bool = True,
 ) -> OmegaConf:
     """Return a DictConfig for FeatureSelectConfig with sensible test defaults."""
     return OmegaConf.structured(
@@ -285,6 +287,7 @@ def make_feat_cfg(
             aggregator=aggregator,
             minimum_correlation=minimum_correlation,
             random_state=random_state,
+            compute_impact_score=compute_impact_score,
         )
     )
 
@@ -466,3 +469,57 @@ def test_main_pyc_feature_select_dropped_feature_absent(tmp_path) -> None:
             m.main.__wrapped__(make_feat_cfg(tmp_path))
     result = pl.read_parquet(tmp_path / "input.parquet")
     assert "f1_mean" not in result.columns
+
+
+# ---------------------------------------------------------------------------
+# compute_impact_score — main() integration
+# ---------------------------------------------------------------------------
+
+
+def test_main_impact_score_column_present_by_default(tmp_path) -> None:
+    write_feat_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(make_feat_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "input.parquet")
+    assert IMPACT_SCORE_COL in result.columns
+
+
+def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
+    write_feat_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(make_feat_cfg(tmp_path, compute_impact_score=False))
+    result = pl.read_parquet(tmp_path / "input.parquet")
+    assert IMPACT_SCORE_COL not in result.columns
+
+
+def test_main_impact_score_values_are_finite(tmp_path) -> None:
+    # A1A is the only synonymous control; its aggregated feature vector is
+    # non-zero, so compute_impact_score produces finite scores for all rows.
+    write_feat_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(make_feat_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "input.parquet")
+    assert result[IMPACT_SCORE_COL].is_finite().all()
+
+
+def test_main_synonymous_control_has_zero_impact_score(tmp_path) -> None:
+    # After variant_classification the sole synonymous variant (A1A) becomes
+    # the control, so its own impact score should be 0.
+    write_feat_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(make_feat_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "input.parquet")
+    ctrl_row = result.filter(pl.col("meta_aa_changes") == "A1A")
+    assert ctrl_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)

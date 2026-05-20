@@ -7,10 +7,10 @@ from typing import Optional
 import hydra
 import polars as pl
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING, DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf
 from polars import selectors as cs
 
-from .config import AppConfig
+from .config import InputConfig
 from .constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, EPS, FEATURE_SELECTOR
 from .utils import setup_logging
 
@@ -172,14 +172,12 @@ class Normalizer:
 
 
 @dataclasses.dataclass
-class NormalizeConfig(AppConfig):
+class NormalizeConfig(InputConfig):
     """
     Hydra structured configuration for the normalization entry point.
 
     Attributes
     ----------
-    input_file : str
-        Path to the input parquet file to normalize. Required.
     control_sample_query : str
         SQL-like WHERE clause identifying control rows used to fit the
         normalizer (e.g. ``"meta_aa_changes = 'WT'"``).
@@ -188,7 +186,6 @@ class NormalizeConfig(AppConfig):
         alongside the normalized output.
     """
 
-    input_file: str = MISSING
     control_sample_query: str = "meta_aa_changes = 'WT'"
     save_normalizer: bool = True
 
@@ -273,7 +270,7 @@ def main(cfg: DictConfig) -> None:
         out_path = output_dir / input_path.name
 
     logging.info("Writing output to %s", out_path)
-    lf.collect().write_parquet(out_path)
+    lf.sink_parquet(out_path)
 
     if norm_cfg.save_normalizer:
         if norm_cfg.output_root is not None:
