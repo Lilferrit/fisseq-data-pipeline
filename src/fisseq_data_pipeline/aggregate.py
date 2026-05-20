@@ -12,34 +12,24 @@ import polars as pl
 import scipy.stats
 import sklearn.metrics
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING, DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf
 
-from .config import AppConfig
-from .constants import (
-    CONTROL_COLUMN,
-    CONTROL_COLUMN_NAME,
-    FEATURE_SELECTOR,
-    META_SELECTOR,
-)
+from .config import LabeledInputConfig
+from .constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECTOR
 from .normalize import Normalizer
-from .utils import setup_logging
+from .utils import get_aggregate_meta_data, load_batches, setup_logging, compute_impact_score
 
 
 @dataclasses.dataclass
-class AggregateConfig(AppConfig):
+class AggregateConfig(LabeledInputConfig):
     """
     Hydra structured configuration for the aggregation entry point.
 
     Attributes
     ----------
-    input_file : str
-        Path to the input parquet file (cell-level normalized data). Required.
-    label_column : str
-        Name of the column identifying variant labels. Defaults to
-        ``"meta_aa_changes"``. Used for group-by and synonymous classification.
     aggregator : str
         Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,
-        ``EMD``, ``KS``, ``QQ``, ``AUROC``. Defaults to ``"EMD"``.
+        ``EMD``, ``KS``, ``QQ``, ``AUROC``. Defaults to ``"multi"``.
     save_normalizer : bool
         If ``True``, persist the fitted :class:`.normalize.Normalizer` alongside
         the output. Defaults to ``True``.
@@ -50,11 +40,10 @@ class AggregateConfig(AppConfig):
         features blocked).
     """
 
-    input_file: str = MISSING
-    label_column: str = "meta_aa_changes"
     aggregator: str = "multi"
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
+    compute_impact_score: bool = True
 
 
 _cs = ConfigStore.instance()
@@ -464,66 +453,31 @@ def aggregate(
     return agg.aggregate(df)
 
 
-def get_aggregate_meta_data(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
-    """
-    Compute per-variant metadata statistics from a LazyFrame.
-
-    Always produces ``meta_num_cells`` (row count per label group). If the
-    frame contains a ``meta_barcode`` column, two additional columns are
-    produced: ``meta_num_unique_barcodes`` (distinct barcode count per group)
-    and ``meta_barcode_counts`` (per-barcode frequencies as a list of structs
-    ``{meta_barcode: str, count: u32}``).
-
-    Parameters
-    ----------
-    lf : pl.LazyFrame
-        Input LazyFrame. Only columns matched by ``META_SELECTOR`` (i.e. those
-        with a ``meta_`` prefix) are used in the aggregation.
-    label_col : str
-        Name of the column identifying variant labels, used as the group key.
-
-    Returns
-    -------
-    pl.LazyFrame
-        One row per label group with columns ``label_col``,
-        ``meta_num_cells``, and (when present) ``meta_num_unique_barcodes``
-        and ``meta_barcode_counts``.
-    """
-    label_lgb = lf.select(META_SELECTOR).group_by(label_col)
-    agg_exprs = [pl.col(label_col).count().alias("meta_num_cells")]
-
-    if "meta_barcode" in lf.collect_schema().names():
-        agg_exprs.extend(
-            [
-                pl.col("meta_barcode").n_unique().alias("meta_num_unique_barcodes"),
-                pl.col("meta_barcode").value_counts().alias("meta_barcode_counts"),
-            ]
-        )
-
-    return label_lgb.agg(agg_exprs)
-
-
 @hydra.main(version_base=None, config_path=None, config_name="aggregate_main")
 def main(cfg: DictConfig) -> None:
     """
     Aggregate cell-level features, z-score normalize to synonymous baseline,
     and attach per-variant metadata.
 
-    Reads the input file at ``input_file``, runs the configured aggregator to
-    produce one row per variant, marks synonymous variants as the normalization
-    reference via :func:`variant_classification`, fits a
-    :class:`.normalize.Normalizer` on those rows, applies it, joins per-variant
-    metadata from :func:`get_aggregate_meta_data` (cell counts and, when
-    present, barcode statistics), and writes the result.
+    ``input_file`` is interpreted as a glob pattern via
+    :func:`.utils.load_batches`; each matching file becomes one batch, with
+    ``meta_batch`` set to the filename stem. A concrete (non-glob) path is
+    treated as a single-file pattern.
+
+    Runs the configured aggregator to produce one row per variant, marks
+    synonymous variants as the normalization reference via
+    :func:`variant_classification`, fits a :class:`.normalize.Normalizer` on
+    those rows, applies it, joins per-variant metadata from
+    :func:`get_aggregate_meta_data`, and writes the result.
 
     Output path
     -----------
-    - If ``output_root`` is set: ``{output_root}.{stem}.{ext}``
-    - Otherwise: ``{output_dir}/{filename}`` (same name as the input file)
+    - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``
+    - Single-file input: ``{output_root}.{stem}.{ext}`` or
+      ``{output_dir}/{filename}`` (same name as the input file)
 
     If ``save_normalizer`` is ``True``, the fitted :class:`.normalize.Normalizer`
-    is also written using the same root/dir convention with the name
-    ``normalizer.parquet``.
+    is also written alongside the output as ``normalizer.parquet``.
 
     Configuration
     -------------
@@ -531,7 +485,7 @@ def main(cfg: DictConfig) -> None:
 
         python -m fisseq_data_pipeline.aggregate \\
             output_dir=./out \\
-            input_file=data/cells_normalized.parquet \\
+            'input_file=data/batches/*.parquet' \\
             aggregator=EMD
     """
     agg_cfg: AggregateConfig = OmegaConf.to_object(cfg)
@@ -541,9 +495,8 @@ def main(cfg: DictConfig) -> None:
     agg_cfg.output_dir = output_dir
     setup_logging(agg_cfg, "aggregate")
 
-    input_path = pathlib.Path(agg_cfg.input_file)
-    logging.info("Loading input from %s", input_path)
-    lf = pl.scan_parquet(input_path)
+    logging.info("Loading input from %s", agg_cfg.input_file)
+    lf, output_stem = load_batches(agg_cfg.input_file)
 
     block_list: Optional[set[str]] = None
     if agg_cfg.block_list_file is not None:
@@ -570,19 +523,21 @@ def main(cfg: DictConfig) -> None:
     logging.info("Applying normalizer")
     normalized_lf = normalizer.apply(agg_lf)
 
-    stem = input_path.stem
-    ext = input_path.suffix.lstrip(".")
     if agg_cfg.output_root is not None:
-        out_path = pathlib.Path(f"{agg_cfg.output_root}.{stem}.{ext}")
+        out_path = pathlib.Path(f"{agg_cfg.output_root}.{output_stem}.parquet")
     else:
-        out_path = output_dir / input_path.name
+        out_path = output_dir / f"{output_stem}.parquet"
 
     logging.info("Adding queries to retrieve metadata")
     meta_lf = get_aggregate_meta_data(lf, agg_cfg.label_column)
     normalized_lf = normalized_lf.join(meta_lf, on=agg_cfg.label_column)
 
+    if cfg.compute_impact_score:
+        logging.info("Computing impact scores")
+        normalized_lf = compute_impact_score(normalized_lf)
+
     logging.info("Writing output to %s", out_path)
-    normalized_lf.collect().write_parquet(out_path)
+    normalized_lf.sink_parquet(out_path)
 
     if agg_cfg.save_normalizer:
         if agg_cfg.output_root is not None:

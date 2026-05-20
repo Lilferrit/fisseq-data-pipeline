@@ -228,7 +228,7 @@ def make_cfg(tmp_path, *, output_root=None, save_normalizer=False) -> OmegaConf:
     """Return a DictConfig for NormalizeConfig with sensible test defaults."""
     return OmegaConf.structured(
         NormalizeConfig(
-            output_dir=str(tmp_path),
+            output_dir=str(tmp_path / "out"),
             output_root=output_root,
             input_file=str(tmp_path / "input.parquet"),
             save_normalizer=save_normalizer,
@@ -313,14 +313,14 @@ def test_main_creates_output_file(tmp_path):
     write_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.normalize.setup_logging"):
         main.__wrapped__(make_cfg(tmp_path))
-    assert (tmp_path / "input.parquet").exists()
+    assert (tmp_path / "out" / "input.parquet").exists()
 
 
 def test_main_output_values_are_normalized(tmp_path):
     write_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.normalize.setup_logging"):
         main.__wrapped__(make_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     # WT rows (indices 0-2) were the fit population; their z-scored mean ≈ 0
     assert result["f1"][:3].mean() == pytest.approx(0.0, abs=1e-6)
 
@@ -329,7 +329,7 @@ def test_main_preserves_meta_columns(tmp_path):
     write_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.normalize.setup_logging"):
         main.__wrapped__(make_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "meta_aa_changes" in result.columns
     assert "meta_is_control" in result.columns
 
@@ -346,4 +346,4 @@ def test_main_saves_normalizer_when_configured(tmp_path):
     write_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.normalize.setup_logging"):
         main.__wrapped__(make_cfg(tmp_path, save_normalizer=True))
-    assert (tmp_path / "normalizer.parquet").exists()
+    assert (tmp_path / "out" / "normalizer.parquet").exists()

@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.aggregate as m
 from fisseq_data_pipeline.aggregate import AggregateConfig
-from fisseq_data_pipeline.constants import CONTROL_COLUMN_NAME
+from fisseq_data_pipeline.constants import CONTROL_COLUMN_NAME, IMPACT_SCORE_COL
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -340,16 +340,18 @@ def make_agg_cfg(
     save_normalizer=False,
     aggregator="mean",
     block_list_file=None,
+    compute_impact_score=True,
 ) -> OmegaConf:
     """Return a DictConfig for AggregateConfig with sensible test defaults."""
     return OmegaConf.structured(
         AggregateConfig(
-            output_dir=str(tmp_path),
+            output_dir=str(tmp_path / "out"),
             output_root=output_root,
             input_file=str(tmp_path / "input.parquet"),
             save_normalizer=save_normalizer,
             aggregator=aggregator,
             block_list_file=block_list_file,
+            compute_impact_score=compute_impact_score,
         )
     )
 
@@ -410,14 +412,14 @@ def test_main_creates_output_file(tmp_path):
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
-    assert (tmp_path / "input.parquet").exists()
+    assert (tmp_path / "out" / "input.parquet").exists()
 
 
 def test_main_output_contains_label_column(tmp_path):
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "meta_aa_changes" in result.columns
 
 
@@ -425,7 +427,7 @@ def test_main_synonymous_rows_normalized_to_zero_mean(tmp_path):
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     # A1A and A2A are synonymous; after normalization their mean should be ~0
     syn_rows = result.filter(pl.col("meta_aa_changes").is_in(["A1A", "A2A"]))
     assert syn_rows["f1_mean"].mean() == pytest.approx(0.0, abs=1e-6)
@@ -443,7 +445,7 @@ def test_main_saves_normalizer_when_configured(tmp_path):
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path, save_normalizer=True))
-    assert (tmp_path / "normalizer.parquet").exists()
+    assert (tmp_path / "out" / "normalizer.parquet").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -707,7 +709,7 @@ def test_main_block_list_file_excludes_features(tmp_path) -> None:
     ).write_parquet(bl_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path, block_list_file=str(bl_path)))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "f1_mean" not in result.columns
     assert "f2_mean" in result.columns
 
@@ -716,7 +718,7 @@ def test_main_output_contains_meta_num_cells(tmp_path) -> None:
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "meta_num_cells" in result.columns
 
 
@@ -724,7 +726,7 @@ def test_main_meta_num_cells_reflects_cell_level_counts(tmp_path) -> None:
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     counts = dict(
         zip(result["meta_aa_changes"].to_list(), result["meta_num_cells"].to_list())
     )
@@ -735,7 +737,7 @@ def test_main_barcode_metadata_serializes_to_parquet(tmp_path) -> None:
     write_agg_input_parquet(tmp_path, with_barcode=True)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "meta_num_unique_barcodes" in result.columns
     assert "meta_barcode_counts" in result.columns
     assert result["meta_barcode_counts"].null_count() == 0
@@ -835,6 +837,65 @@ def test_get_aggregate_meta_data_unique_barcodes_correct(
     )
     assert counts["A"] == 2
     assert counts["B"] == 1
+
+
+# ---------------------------------------------------------------------------
+# compute_impact_score — main() integration
+# ---------------------------------------------------------------------------
+
+
+def write_agg_input_parquet_asymmetric(tmp_path) -> None:
+    """Cell-level data with 3 asymmetric synonymous controls.
+
+    Three synonymous variants (A1A, A2A, A3A) with unevenly spaced feature
+    values ensure the control median after Z-score normalization is non-zero,
+    avoiding NaN impact scores.
+    """
+    pl.DataFrame(
+        {
+            "meta_aa_changes": (
+                ["WT"] * 3 + ["A1A"] * 3 + ["A2A"] * 3 + ["A3A"] * 3 + ["A1B"] * 3
+            ),
+            "meta_is_control": [True] * 3 + [False] * 12,
+            "f1": [0.0] * 3 + [1.0] * 3 + [2.0] * 3 + [6.0] * 3 + [20.0] * 3,
+            "f2": [0.0] * 3 + [1.0] * 3 + [4.0] * 3 + [1.0] * 3 + [30.0] * 3,
+        }
+    ).write_parquet(tmp_path / "input.parquet")
+
+
+def test_main_impact_score_column_present_by_default(tmp_path) -> None:
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert IMPACT_SCORE_COL in result.columns
+
+
+def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path, compute_impact_score=False))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert IMPACT_SCORE_COL not in result.columns
+
+
+def test_main_impact_score_values_are_finite(tmp_path) -> None:
+    # Asymmetric synonymous controls guarantee a non-zero control median after
+    # Z-score normalization, so impact scores are finite rather than NaN.
+    write_agg_input_parquet_asymmetric(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert result[IMPACT_SCORE_COL].is_finite().all()
+
+
+def test_main_impact_score_in_unit_interval(tmp_path) -> None:
+    write_agg_input_parquet_asymmetric(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    scores = result[IMPACT_SCORE_COL]
+    assert (scores >= 0).all() and (scores <= 1).all()
 
 
 def test_get_aggregate_meta_data_barcode_counts_not_null(

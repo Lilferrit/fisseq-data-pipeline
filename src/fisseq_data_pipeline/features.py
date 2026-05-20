@@ -10,9 +10,9 @@ import sklearn.model_selection
 from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
-from .aggregate import AggregateConfig, aggregate
+from .aggregate import AggregateConfig, aggregate, variant_classification
 from .constants import FEATURE_SELECTOR
-from .utils import get_column, setup_logging
+from .utils import get_column, load_batches, setup_logging, compute_impact_score
 
 TMP_IDX_COL = "tmp_cell_idx"
 
@@ -239,9 +239,8 @@ def main(cfg: DictConfig) -> None:
     feat_cfg.output_dir = output_dir
     setup_logging(feat_cfg, "features")
 
-    input_path = pathlib.Path(feat_cfg.input_file)
-    logging.info("Loading input from %s", input_path)
-    lf = pl.scan_parquet(input_path)
+    logging.info("Loading input from %s", feat_cfg.input_file)
+    lf, output_stem = load_batches(feat_cfg.input_file)
 
     logging.info("Computing pseudo-replicate correlations")
     corr_df = pseudo_replicate_correlation(
@@ -261,14 +260,12 @@ def main(cfg: DictConfig) -> None:
         feat_cfg.minimum_correlation,
     )
 
-    stem = input_path.stem
-    ext = input_path.suffix.lstrip(".")
     if feat_cfg.output_root is not None:
         corr_path = pathlib.Path(f"{feat_cfg.output_root}.feature_correlations.parquet")
-        out_path = pathlib.Path(f"{feat_cfg.output_root}.{stem}.{ext}")
+        out_path = pathlib.Path(f"{feat_cfg.output_root}.{output_stem}.parquet")
     else:
         corr_path = output_dir / "feature_correlations.parquet"
-        out_path = output_dir / input_path.name
+        out_path = output_dir / f"{output_stem}.parquet"
 
     logging.info("Writing feature correlations to %s", corr_path)
     corr_df.write_parquet(corr_path)
@@ -283,6 +280,11 @@ def main(cfg: DictConfig) -> None:
 
     logging.info("Running pycytominer feature selection")
     selected_df = pyc_feature_select(agg_df)
+
+    if cfg.compute_impact_score:
+        logging.info("Computing impact scores")
+        selected_lf = variant_classification(selected_df.lazy(), feat_cfg.label_column)
+        selected_df = compute_impact_score(selected_lf).collect()
 
     logging.info("Writing output to %s", out_path)
     selected_df.write_parquet(out_path)
