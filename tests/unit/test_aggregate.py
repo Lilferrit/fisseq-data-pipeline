@@ -738,7 +738,7 @@ def test_main_barcode_metadata_serializes_to_parquet(tmp_path) -> None:
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path))
     result = pl.read_parquet(tmp_path / "out" / "input.parquet")
-    assert "meta_num_unique_barcodes" in result.columns
+    assert "meta_barcode_num_unique" in result.columns
     assert "meta_barcode_counts" in result.columns
     assert result["meta_barcode_counts"].null_count() == 0
 
@@ -819,7 +819,7 @@ def test_get_aggregate_meta_data_barcode_columns_present_with_meta_barcode(
     result = m.get_aggregate_meta_data(
         meta_lf_with_barcode, "meta_aa_changes"
     ).collect()
-    assert "meta_num_unique_barcodes" in result.columns
+    assert "meta_barcode_num_unique" in result.columns
     assert "meta_barcode_counts" in result.columns
 
 
@@ -832,7 +832,7 @@ def test_get_aggregate_meta_data_unique_barcodes_correct(
     counts = dict(
         zip(
             result["meta_aa_changes"].to_list(),
-            result["meta_num_unique_barcodes"].to_list(),
+            result["meta_barcode_num_unique"].to_list(),
         )
     )
     assert counts["A"] == 2

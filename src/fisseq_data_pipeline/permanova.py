@@ -147,7 +147,9 @@ def compute_permanova_sample(
     batch_labels = sampled.get_column(batch_col).cast(pl.Utf8).to_numpy()
 
     if len(np.unique(batch_labels)) < 2:
-        return pl.DataFrame({"f_value": [float("nan")], "f_value_shuffled": [float("nan")]})
+        return pl.DataFrame(
+            {"f_value": [float("nan")], "f_value_shuffled": [float("nan")]}
+        )
 
     dist_matrix = cosine_dists_matrix(feature_matrix)
     f_val = _compute_f_stat(dist_matrix, batch_labels)

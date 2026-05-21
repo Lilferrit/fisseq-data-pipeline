@@ -107,7 +107,7 @@ process PERMANOVA_WT {
     publishDir "${params.input_dir}/permanova/wildtype", mode: 'copy'
 
     input:
-    tuple val(all_batch_stems), val(input_dir)
+    val(input_dir)
 
     output:
     path("permanova.parquet")
@@ -129,7 +129,7 @@ process PERMANOVA_SYN {
     publishDir "${params.input_dir}/permanova/synonymous", mode: 'copy'
 
     input:
-    tuple val(all_batch_stems), val(input_dir)
+    val(input_dir)
 
     output:
     path("permanova.parquet")
@@ -173,7 +173,7 @@ process OVWT_GLOBAL {
     publishDir "${params.input_dir}/ovwt_global", mode: 'copy'
 
     input:
-    tuple val(all_batch_stems), val(input_dir)
+    val(input_dir)
 
     output:
     path("results.parquet")
@@ -229,7 +229,7 @@ process FEATURE_SELECT_GLOBAL {
     publishDir "${params.input_dir}/feature_select_global", mode: 'copy'
 
     input:
-    tuple val(all_batch_stems), val(input_dir)
+    val(input_dir)
 
     output:
     path("global.parquet")
@@ -286,8 +286,9 @@ workflow {
 
     // Resolve input_dir to absolute path so global process scripts can glob published outputs.
     // Relative paths (e.g. ".") break inside Nextflow work directories.
+    // .map here preserves the "wait for all batches" dependency while emitting just the path.
     def input_dir_abs = file(params.input_dir).toAbsolutePath().toString()
-    global_signal = all_stems_signal.combine(Channel.value(input_dir_abs))
+    global_signal = all_stems_signal.map { _stems -> input_dir_abs }
 
     // Step 3: PERMANOVA — global, two variant-class sub-runs
     PERMANOVA_WT(global_signal)
