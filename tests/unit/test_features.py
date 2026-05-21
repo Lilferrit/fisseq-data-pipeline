@@ -9,8 +9,12 @@ import scipy.stats
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.features as m
+from fisseq_data_pipeline.constants import (
+    IMPACT_SCORE_COL,
+    META_BARCODE_COL,
+    META_BATCH_COL,
+)
 from fisseq_data_pipeline.features import TMP_IDX_COL, FeatureSelectConfig
-from fisseq_data_pipeline.constants import IMPACT_SCORE_COL
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -278,10 +282,14 @@ def make_feat_cfg(
     random_state: int = 0,
     compute_impact_score: bool = True,
 ) -> OmegaConf:
-    """Return a DictConfig for FeatureSelectConfig with sensible test defaults."""
+    """Return a DictConfig for FeatureSelectConfig with sensible test defaults.
+
+    Output is written to ``tmp_path/out/`` so it never collides with the input
+    parquet at ``tmp_path/input.parquet``.
+    """
     return OmegaConf.structured(
         FeatureSelectConfig(
-            output_dir=str(tmp_path),
+            output_dir=str(tmp_path / "out"),
             output_root=output_root,
             input_file=str(tmp_path / "input.parquet"),
             aggregator=aggregator,
@@ -296,12 +304,15 @@ def write_feat_input_parquet(tmp_path) -> None:
     """Write cell-level test parquet: WT controls + 3 variants, 4 cells each.
 
     Constant feature values per group mean pseudo-replicates produce r = 1.0.
+    Each variant has 2 distinct barcodes (alternating bc_0 / bc_1) so that
+    meta_barcode_num_unique is predictable in aggregate meta data tests.
     """
     n = 4
     pl.DataFrame(
         {
             "meta_aa_changes": ["WT"] * n + ["A1A"] * n + ["A1B"] * n + ["A1C"] * n,
             "meta_is_control": [True] * n + [False] * (3 * n),
+            META_BARCODE_COL: ["bc_0", "bc_1"] * (2 * n),
             "f1": [0.0] * n + [1.0] * n + [5.0] * n + [10.0] * n,
             "f2": [0.0] * n + [2.0] * n + [6.0] * n + [12.0] * n,
         }
@@ -326,7 +337,7 @@ def test_main_creates_output_file(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    assert (tmp_path / "input.parquet").exists()
+    assert (tmp_path / "out" / "input.parquet").exists()
 
 
 def test_main_creates_feature_correlations_file(tmp_path) -> None:
@@ -336,7 +347,7 @@ def test_main_creates_feature_correlations_file(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    assert (tmp_path / "feature_correlations.parquet").exists()
+    assert (tmp_path / "out" / "feature_correlations.parquet").exists()
 
 
 def test_main_output_contains_label_column(tmp_path) -> None:
@@ -346,7 +357,7 @@ def test_main_output_contains_label_column(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "meta_aa_changes" in result.columns
 
 
@@ -379,7 +390,7 @@ def test_main_feature_correlations_has_feature_ok_column(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    corr = pl.read_parquet(tmp_path / "feature_correlations.parquet")
+    corr = pl.read_parquet(tmp_path / "out" / "feature_correlations.parquet")
     assert "feature_ok" in corr.columns
 
 
@@ -395,7 +406,7 @@ def test_main_high_correlation_feature_marked_ok(tmp_path) -> None:
                 side_effect=lambda profiles, **_kw: profiles,
             ):
                 m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
-    corr = pl.read_parquet(tmp_path / "feature_correlations.parquet")
+    corr = pl.read_parquet(tmp_path / "out" / "feature_correlations.parquet")
     row = corr.filter(pl.col("feature") == "f1_mean").to_dicts().pop()
     assert row["feature_ok"] is True
 
@@ -412,7 +423,7 @@ def test_main_low_correlation_feature_marked_not_ok(tmp_path) -> None:
                 side_effect=lambda profiles, **_kw: profiles,
             ):
                 m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
-    corr = pl.read_parquet(tmp_path / "feature_correlations.parquet")
+    corr = pl.read_parquet(tmp_path / "out" / "feature_correlations.parquet")
     row = corr.filter(pl.col("feature") == "f2_mean").to_dicts().pop()
     assert row["feature_ok"] is False
 
@@ -429,7 +440,7 @@ def test_main_blocked_feature_absent_from_output(tmp_path) -> None:
                 side_effect=lambda profiles, **_kw: profiles,
             ):
                 m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "f2_mean" not in result.columns
 
 
@@ -445,7 +456,7 @@ def test_main_unblocked_feature_present_in_output(tmp_path) -> None:
                 side_effect=lambda profiles, **_kw: profiles,
             ):
                 m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "f1_mean" in result.columns
 
 
@@ -467,7 +478,7 @@ def test_main_pyc_feature_select_dropped_feature_absent(tmp_path) -> None:
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch("pycytominer.feature_select", side_effect=drop_f1_mean):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "f1_mean" not in result.columns
 
 
@@ -483,7 +494,7 @@ def test_main_impact_score_column_present_by_default(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert IMPACT_SCORE_COL in result.columns
 
 
@@ -494,7 +505,7 @@ def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path, compute_impact_score=False))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert IMPACT_SCORE_COL not in result.columns
 
 
@@ -507,7 +518,7 @@ def test_main_impact_score_values_are_finite(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert result[IMPACT_SCORE_COL].is_finite().all()
 
 
@@ -520,6 +531,55 @@ def test_main_synonymous_control_has_zero_impact_score(tmp_path) -> None:
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    result = pl.read_parquet(tmp_path / "input.parquet")
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     ctrl_row = result.filter(pl.col("meta_aa_changes") == "A1A")
     assert ctrl_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# aggregate meta data — main() integration
+# ---------------------------------------------------------------------------
+
+
+def _run_main(tmp_path, **kwargs) -> pl.DataFrame:
+    """Run main() and return the output parquet."""
+    write_feat_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(make_feat_cfg(tmp_path, **kwargs))
+    return pl.read_parquet(tmp_path / "out" / "input.parquet")
+
+
+def test_main_output_contains_meta_num_cells(tmp_path) -> None:
+    result = _run_main(tmp_path)
+    assert "meta_num_cells" in result.columns
+
+
+def test_main_meta_num_cells_correct(tmp_path) -> None:
+    result = _run_main(tmp_path)
+    assert (result["meta_num_cells"] == 4).all()
+
+
+def test_main_output_contains_barcode_num_unique(tmp_path) -> None:
+    result = _run_main(tmp_path)
+    assert f"{META_BARCODE_COL}_num_unique" in result.columns
+
+
+def test_main_meta_barcode_num_unique_correct(tmp_path) -> None:
+    # write_feat_input_parquet alternates bc_0 / bc_1 → 2 unique per variant
+    result = _run_main(tmp_path)
+    assert (result[f"{META_BARCODE_COL}_num_unique"] == 2).all()
+
+
+def test_main_output_contains_batch_num_unique(tmp_path) -> None:
+    # meta_batch is added by load_batches from the filename stem
+    result = _run_main(tmp_path)
+    assert f"{META_BATCH_COL}_num_unique" in result.columns
+
+
+def test_main_meta_batch_num_unique_is_one_for_single_file(tmp_path) -> None:
+    # single input file → all cells share the same batch label
+    result = _run_main(tmp_path)
+    assert (result[f"{META_BATCH_COL}_num_unique"] == 1).all()

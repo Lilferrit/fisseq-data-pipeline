@@ -25,5 +25,7 @@ def main() -> None:
     print(f"Initialised experiment directory: {target}")
     print(f"  {target}/input/               <- place raw .parquet batch files here")
     print(f"  {target}/fisseq_pipeline.nf   <- Nextflow pipeline (do not edit)")
-    print(f"  {target}/nextflow.config      <- edit to configure your environment/profile")
+    print(
+        f"  {target}/nextflow.config      <- edit to configure your environment/profile"
+    )
     print(f"  {target}/PIPELINE_README.md   <- pipeline usage documentation")
