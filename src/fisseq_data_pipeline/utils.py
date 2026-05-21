@@ -8,11 +8,12 @@ import polars as pl
 
 from .config import AppConfig
 from .constants import (
-    META_BATCH_COL,
-    META_SELECTOR,
     CONTROL_COLUMN_NAME,
     FEATURE_SELECTOR,
     IMPACT_SCORE_COL,
+    META_BARCODE_COL,
+    META_BATCH_COL,
+    META_SELECTOR,
 )
 
 NORM_COL = "tmp_row_norm"
@@ -146,11 +147,12 @@ def get_aggregate_meta_data(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     """
     Compute per-variant metadata statistics from a LazyFrame.
 
-    Always produces ``meta_num_cells`` (row count per label group). If the
-    frame contains a ``meta_barcode`` column, two additional columns are
-    produced: ``meta_num_unique_barcodes`` (distinct barcode count per group)
-    and ``meta_barcode_counts`` (per-barcode frequencies as a list of structs
-    ``{meta_barcode: str, count: u32}``).
+    Always produces ``meta_num_cells`` (row count per label group). For each
+    of ``meta_barcode`` and ``meta_batch``, produces two additional columns:
+    ``{col}_num_unique`` (distinct value count per group) and ``{col}_counts``
+    (per-value frequencies as a list of structs ``{col: str, count: u32}``).
+    A warning is logged for any of these columns that is absent from the input;
+    the column pair is silently omitted from the result.
 
     Parameters
     ----------
@@ -163,18 +165,29 @@ def get_aggregate_meta_data(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     Returns
     -------
     pl.LazyFrame
-        One row per label group with columns ``label_col``,
-        ``meta_num_cells``, and (when present) ``meta_num_unique_barcodes``
-        and ``meta_barcode_counts``.
+        One row per label group. Always contains ``label_col`` and
+        ``meta_num_cells``. Additionally contains ``{col}_num_unique`` and
+        ``{col}_counts`` for each of ``meta_barcode`` and ``meta_batch`` that
+        is present in the input.
     """
     label_lgb = lf.select(META_SELECTOR).group_by(label_col)
     agg_exprs = [pl.col(label_col).count().alias("meta_num_cells")]
+    cols = set(lf.collect_schema().names())
 
-    if "meta_barcode" in lf.collect_schema().names():
+    for col in [META_BARCODE_COL, META_BATCH_COL]:
+        if col not in cols:
+            logging.warning(
+                "Metadata column %s not present in input dataframe - "
+                "skipping meta data aggregation over %s",
+                col,
+                col,
+            )
+            continue
+
         agg_exprs.extend(
             [
-                pl.col("meta_barcode").n_unique().alias("meta_num_unique_barcodes"),
-                pl.col("meta_barcode").value_counts().alias("meta_barcode_counts"),
+                pl.col(col).n_unique().alias(f"{col}_num_unique"),
+                pl.col(col).value_counts().alias(f"{col}_counts"),
             ]
         )
 
@@ -282,16 +295,15 @@ def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
         lf.filter(pl.col(CONTROL_COLUMN_NAME)).select(feature_cols).median()
     )
     control_norm = (
-        control_median_lf
-        .select(pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt())
+        control_median_lf.select(
+            pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt()
+        )
         .collect()
         .item()
     )
 
     row_norm_expr = pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt()
-    dot_expr = pl.sum_horizontal(
-        pl.col(c) * pl.col(f"{c}_ctrl") for c in feature_cols
-    )
+    dot_expr = pl.sum_horizontal(pl.col(c) * pl.col(f"{c}_ctrl") for c in feature_cols)
 
     return (
         lf.join(control_median_lf, how="cross", suffix="_ctrl")

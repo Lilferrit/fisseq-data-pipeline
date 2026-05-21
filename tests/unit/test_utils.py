@@ -8,6 +8,7 @@ import pytest
 from fisseq_data_pipeline.constants import (
     CONTROL_COLUMN_NAME,
     IMPACT_SCORE_COL,
+    META_BARCODE_COL,
     META_BATCH_COL,
 )
 from fisseq_data_pipeline.utils import (
@@ -16,8 +17,108 @@ from fisseq_data_pipeline.utils import (
     compute_impact_score,
     compute_norm,
     compute_query_dot,
+    get_aggregate_meta_data,
     load_batches,
 )
+
+# ---------------------------------------------------------------------------
+# get_aggregate_meta_data
+# ---------------------------------------------------------------------------
+
+# 2 variants × 2 batches × 2 barcodes/variant — straightforward ground truth
+_AGG_META_LF = pl.LazyFrame(
+    {
+        "meta_aa_changes": ["WT", "WT", "WT", "WT", "M1K", "M1K"],
+        META_BARCODE_COL: ["bc_a", "bc_a", "bc_b", "bc_b", "bc_c", "bc_c"],
+        META_BATCH_COL: ["batch1", "batch2", "batch1", "batch2", "batch1", "batch2"],
+    }
+)
+
+
+def _row(df: pl.DataFrame, label: str, label_col: str = "meta_aa_changes") -> dict:
+    return df.filter(pl.col(label_col) == label).row(0, named=True)
+
+
+def test_get_aggregate_meta_data_num_cells() -> None:
+    df = get_aggregate_meta_data(_AGG_META_LF, "meta_aa_changes").collect()
+    assert _row(df, "WT")["meta_num_cells"] == 4
+    assert _row(df, "M1K")["meta_num_cells"] == 2
+
+
+def test_get_aggregate_meta_data_barcode_num_unique() -> None:
+    df = get_aggregate_meta_data(_AGG_META_LF, "meta_aa_changes").collect()
+    assert _row(df, "WT")[f"{META_BARCODE_COL}_num_unique"] == 2  # bc_a, bc_b
+    assert _row(df, "M1K")[f"{META_BARCODE_COL}_num_unique"] == 1  # bc_c only
+
+
+def test_get_aggregate_meta_data_batch_num_unique() -> None:
+    df = get_aggregate_meta_data(_AGG_META_LF, "meta_aa_changes").collect()
+    assert _row(df, "WT")[f"{META_BATCH_COL}_num_unique"] == 2
+    assert _row(df, "M1K")[f"{META_BATCH_COL}_num_unique"] == 2
+
+
+def test_get_aggregate_meta_data_barcode_counts_column_present() -> None:
+    df = get_aggregate_meta_data(_AGG_META_LF, "meta_aa_changes").collect()
+    assert f"{META_BARCODE_COL}_counts" in df.columns
+
+
+def test_get_aggregate_meta_data_batch_counts_column_present() -> None:
+    df = get_aggregate_meta_data(_AGG_META_LF, "meta_aa_changes").collect()
+    assert f"{META_BATCH_COL}_counts" in df.columns
+
+
+def test_get_aggregate_meta_data_warns_on_missing_column(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    lf = pl.LazyFrame({"meta_aa_changes": ["WT"], META_BARCODE_COL: ["bc_a"]})
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        get_aggregate_meta_data(lf, "meta_aa_changes")
+    assert META_BATCH_COL in caplog.text
+
+
+def test_get_aggregate_meta_data_missing_batch_col_skips_batch_columns() -> None:
+    lf = pl.LazyFrame(
+        {"meta_aa_changes": ["WT", "WT"], META_BARCODE_COL: ["bc_a", "bc_b"]}
+    )
+    df = get_aggregate_meta_data(lf, "meta_aa_changes").collect()
+    assert f"{META_BATCH_COL}_num_unique" not in df.columns
+    assert f"{META_BATCH_COL}_counts" not in df.columns
+    assert f"{META_BARCODE_COL}_num_unique" in df.columns
+    assert f"{META_BARCODE_COL}_counts" in df.columns
+
+
+def test_get_aggregate_meta_data_missing_barcode_col_skips_barcode_columns() -> None:
+    lf = pl.LazyFrame({"meta_aa_changes": ["WT"], META_BATCH_COL: ["batch1"]})
+    df = get_aggregate_meta_data(lf, "meta_aa_changes").collect()
+    assert f"{META_BARCODE_COL}_num_unique" not in df.columns
+    assert f"{META_BARCODE_COL}_counts" not in df.columns
+    assert f"{META_BATCH_COL}_num_unique" in df.columns
+    assert f"{META_BATCH_COL}_counts" in df.columns
+
+
+def test_get_aggregate_meta_data_missing_both_cols_returns_only_num_cells() -> None:
+    lf = pl.LazyFrame({"meta_aa_changes": ["WT", "M1K"]})
+    df = get_aggregate_meta_data(lf, "meta_aa_changes").collect()
+    assert set(df.columns) == {"meta_aa_changes", "meta_num_cells"}
+
+
+def test_get_aggregate_meta_data_num_cells_correct_when_col_missing() -> None:
+    lf = pl.LazyFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "M1K"],
+            META_BARCODE_COL: ["bc_a", "bc_b", "bc_c"],
+        }
+    )
+    df = get_aggregate_meta_data(lf, "meta_aa_changes").collect()
+    assert _row(df, "WT")["meta_num_cells"] == 2
+    assert _row(df, "M1K")["meta_num_cells"] == 1
+
+
+# ---------------------------------------------------------------------------
+# load_batches
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -177,11 +278,13 @@ def test_compute_impact_score_control_is_zero() -> None:
 
 def test_compute_impact_score_orthogonal_is_half() -> None:
     # Control along f1; test row along f2 — cosine angle = 90° → score = 0.5
-    lf = pl.LazyFrame({
-        CONTROL_COLUMN_NAME: [True, False],
-        "f1": [1.0, 0.0],
-        "f2": [0.0, 1.0],
-    })
+    lf = pl.LazyFrame(
+        {
+            CONTROL_COLUMN_NAME: [True, False],
+            "f1": [1.0, 0.0],
+            "f2": [0.0, 1.0],
+        }
+    )
     result = compute_impact_score(lf).collect()
     non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
     assert non_ctrl[IMPACT_SCORE_COL][0] == pytest.approx(0.5, abs=1e-9)
@@ -189,11 +292,13 @@ def test_compute_impact_score_orthogonal_is_half() -> None:
 
 def test_compute_impact_score_opposite_is_one() -> None:
     # Opposite direction to the control median → max impact score
-    lf = pl.LazyFrame({
-        CONTROL_COLUMN_NAME: [True, False],
-        "f1": [1.0, -1.0],
-        "f2": [0.0, 0.0],
-    })
+    lf = pl.LazyFrame(
+        {
+            CONTROL_COLUMN_NAME: [True, False],
+            "f1": [1.0, -1.0],
+            "f2": [0.0, 0.0],
+        }
+    )
     result = compute_impact_score(lf).collect()
     non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
     assert non_ctrl[IMPACT_SCORE_COL][0] == pytest.approx(1.0, abs=1e-9)
@@ -217,33 +322,39 @@ def test_compute_impact_score_output_columns() -> None:
 def test_compute_impact_score_null_columns_excluded_from_calc() -> None:
     # f2 has a null so it is excluded; score is computed using f1 only.
     # Control median (f1=1); non-control (f1=-1) → opposite direction → score = 1.
-    lf = pl.LazyFrame({
-        CONTROL_COLUMN_NAME: [True, False],
-        "f1": [1.0, -1.0],
-        "f2": [None, 1.0],
-    })
+    lf = pl.LazyFrame(
+        {
+            CONTROL_COLUMN_NAME: [True, False],
+            "f1": [1.0, -1.0],
+            "f2": [None, 1.0],
+        }
+    )
     result = compute_impact_score(lf).collect()
     non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
     assert non_ctrl[IMPACT_SCORE_COL][0] == pytest.approx(1.0, abs=1e-9)
 
 
 def test_compute_impact_score_null_columns_kept_in_output() -> None:
-    lf = pl.LazyFrame({
-        CONTROL_COLUMN_NAME: [True],
-        "f1": [1.0],
-        "f2": [None],
-    })
+    lf = pl.LazyFrame(
+        {
+            CONTROL_COLUMN_NAME: [True],
+            "f1": [1.0],
+            "f2": [None],
+        }
+    )
     result = compute_impact_score(lf).collect()
     assert "f2" in result.columns
 
 
 def test_compute_impact_score_uses_control_median() -> None:
     # Two control rows whose median is (1, 0); verify the non-control score
-    lf = pl.LazyFrame({
-        CONTROL_COLUMN_NAME: [True, True, False],
-        "f1": [0.0, 2.0, 0.0],  # median f1 = 1.0
-        "f2": [0.0, 0.0, 1.0],
-    })
+    lf = pl.LazyFrame(
+        {
+            CONTROL_COLUMN_NAME: [True, True, False],
+            "f1": [0.0, 2.0, 0.0],  # median f1 = 1.0
+            "f2": [0.0, 0.0, 1.0],
+        }
+    )
     result = compute_impact_score(lf).collect()
     non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
     # control median = (1, 0); test = (0, 1) → orthogonal → 0.5

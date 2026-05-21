@@ -12,7 +12,13 @@ from omegaconf import DictConfig, OmegaConf
 
 from .aggregate import AggregateConfig, aggregate, variant_classification
 from .constants import FEATURE_SELECTOR
-from .utils import get_column, load_batches, setup_logging, compute_impact_score
+from .utils import (
+    compute_impact_score,
+    get_aggregate_meta_data,
+    get_column,
+    load_batches,
+    setup_logging,
+)
 
 TMP_IDX_COL = "tmp_cell_idx"
 
@@ -286,8 +292,11 @@ def main(cfg: DictConfig) -> None:
         selected_lf = variant_classification(selected_df.lazy(), feat_cfg.label_column)
         selected_df = compute_impact_score(selected_lf).collect()
 
+    meta_lf = get_aggregate_meta_data(lf, feat_cfg.label_column)
+    selected_lf = selected_df.lazy().join(meta_lf, on=feat_cfg.label_column)
+
     logging.info("Writing output to %s", out_path)
-    selected_df.write_parquet(out_path)
+    selected_lf.sink_parquet(out_path)
 
     logging.info("Done")
 

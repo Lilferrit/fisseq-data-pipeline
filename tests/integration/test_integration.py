@@ -16,8 +16,8 @@ import pytest
 # 5 A1A barcodes × 6 cells = 30 Synonymous cells  (A→A at position 1)
 # 5 M1K barcodes × 6 cells = 30 Single Missense cells
 _VARIANTS = {
-    "WT":  ("bc_wt_{i:02d}",  10, 6),
-    "A1A": ("bc_syn_{i:02d}",  5, 6),
+    "WT": ("bc_wt_{i:02d}", 10, 6),
+    "A1A": ("bc_syn_{i:02d}", 5, 6),
     "M1K": ("bc_mis_{i:02d}", 5, 6),
 }
 
@@ -31,11 +31,16 @@ _FEATURE_COLS = [
 
 # Low thresholds so the small synthetic dataset passes every pipeline step.
 _NF_PARAMS = [
-    "--bc_threshold",            "3",
-    "--variant_bc_threshold",    "3",
-    "--ovwt_min_cells",          "25",
-    "--permanova_n_bootstraps",  "3",
-    "--permanova_sample_size",   "20",
+    "--bc_threshold",
+    "3",
+    "--variant_bc_threshold",
+    "3",
+    "--ovwt_min_cells",
+    "25",
+    "--permanova_n_bootstraps",
+    "3",
+    "--permanova_sample_size",
+    "20",
 ]
 
 
@@ -80,7 +85,8 @@ def pipeline_outputs(tmp_path_factory):
 
     exp_dir = tmp_path_factory.mktemp("nf_experiment")
     subprocess.run(["fisseq-env-init", str(exp_dir)], check=True)
-    _write_batch(exp_dir / "input" / "batch1.parquet")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
 
     result = _run_pipeline(exp_dir)
     return exp_dir, result
@@ -127,18 +133,22 @@ def test_pipeline_exits_cleanly(pipeline_outputs):
     assert result.returncode == 0, result.stderr
 
 
-def test_pipeline_qc_outputs(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_qc_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    qc = exp_dir / "qc_filter" / "batch1"
+    qc = exp_dir / "qc_filter" / batch_stem
     assert (qc / "filtered_cells.parquet").exists()
     assert (qc / "barcode_counts.parquet").exists()
     assert (qc / "variants_per_barcode.parquet").exists()
 
 
-def test_pipeline_normalization_outputs(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_normalization_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "normalization" / "cells" / "batch1.parquet").exists()
-    assert (exp_dir / "normalization" / "normalizers" / "batch1.normalizer.parquet").exists()
+    assert (exp_dir / "normalization" / "cells" / f"{batch_stem}.parquet").exists()
+    assert (
+        exp_dir / "normalization" / "normalizers" / f"{batch_stem}.normalizer.parquet"
+    ).exists()
 
 
 def test_pipeline_permanova_outputs(pipeline_outputs):
@@ -147,9 +157,10 @@ def test_pipeline_permanova_outputs(pipeline_outputs):
     assert (exp_dir / "permanova" / "synonymous" / "permanova.parquet").exists()
 
 
-def test_pipeline_ovwt_batchwise_outputs(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_ovwt_batchwise_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    batch_dir = exp_dir / "ovwt_batchwise" / "batch1"
+    batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
     assert (batch_dir / "results.parquet").exists()
     assert (batch_dir / "models.pkl").exists()
 
@@ -160,10 +171,11 @@ def test_pipeline_ovwt_global_outputs(pipeline_outputs):
     assert (exp_dir / "ovwt_global" / "models.pkl").exists()
 
 
-def test_pipeline_feature_select_batchwise_outputs(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_feature_select_batchwise_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    batch_dir = exp_dir / "feature_select_batchwise" / "batch1"
-    assert (batch_dir / "batch1.parquet").exists()
+    batch_dir = exp_dir / "feature_select_batchwise" / batch_stem
+    assert (batch_dir / f"{batch_stem}.parquet").exists()
     assert (batch_dir / "feature_correlations.parquet").exists()
 
 
@@ -178,9 +190,10 @@ def test_pipeline_feature_select_global_outputs(pipeline_outputs):
 # ---------------------------------------------------------------------------
 
 
-def test_normalized_cells_wt_mean_near_zero(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_normalized_cells_wt_mean_near_zero(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "normalization" / "cells" / "batch1.parquet")
+    df = pl.read_parquet(exp_dir / "normalization" / "cells" / f"{batch_stem}.parquet")
     wt = df.filter(pl.col("meta_aa_changes") == "WT")
     feature_cols = [c for c in df.columns if not c.startswith("meta_")]
     for col in feature_cols:
@@ -195,18 +208,36 @@ def test_permanova_has_expected_columns(pipeline_outputs):
     assert "f_value" in df.columns
     assert "f_value_shuffled" in df.columns
     assert len(df) == 3  # permanova_n_bootstraps=3
+    assert df["f_value"].is_nan().sum() == 0  # real F-stats require ≥ 2 batches
 
 
-def test_ovwt_results_have_auroc_columns(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_ovwt_results_have_auroc_columns(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "ovwt_batchwise" / "batch1" / "results.parquet")
+    df = pl.read_parquet(exp_dir / "ovwt_batchwise" / batch_stem / "results.parquet")
     for col in ("train_auroc", "val_auroc", "test_auroc"):
         assert col in df.columns
 
 
-def test_feature_correlations_have_feature_ok_column(pipeline_outputs):
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(
-        exp_dir / "feature_select_batchwise" / "batch1" / "feature_correlations.parquet"
+        exp_dir
+        / "feature_select_batchwise"
+        / batch_stem
+        / "feature_correlations.parquet"
     )
     assert "feature_ok" in df.columns
+
+
+def test_ovwt_global_uses_both_batches(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "ovwt_global" / "results.parquet")
+    assert (df["meta_batch_num_unique"] == 2).all()
+
+
+def test_feature_select_global_uses_both_batches(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "feature_select_global" / "global.parquet")
+    assert (df["meta_batch_num_unique"] == 2).all()
