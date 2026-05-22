@@ -258,6 +258,24 @@ def test_downsample_wildtype_total_row_count():
     assert len(result) == 30 + 30 + 20
 
 
+def test_downsample_wildtype_integer_reduces_wt_to_target():
+    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30})
+    result = downsample_wildtype(df, "label", "WT", seed=0, n=50)
+    assert (result.get_column("label") == "WT").sum() == 50
+
+
+def test_downsample_wildtype_integer_no_op_when_wt_smaller_than_target():
+    df = _make_multilabel_df(wt_count=40, variant_counts={"V1": 30})
+    result = downsample_wildtype(df, "label", "WT", seed=0, n=5000)
+    assert (result.get_column("label") == "WT").sum() == 40
+
+
+def test_downsample_wildtype_integer_no_op_when_wt_equals_target():
+    df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 30})
+    result = downsample_wildtype(df, "label", "WT", seed=0, n=50)
+    assert (result.get_column("label") == "WT").sum() == 50
+
+
 # ---------------------------------------------------------------------------
 # filter_min_cells
 # ---------------------------------------------------------------------------

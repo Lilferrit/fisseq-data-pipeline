@@ -37,6 +37,8 @@ _NF_PARAMS = [
     "3",
     "--ovwt_min_cells",
     "25",
+    "--downsample_wt",
+    "50",
     "--permanova_n_bootstraps",
     "3",
     "--permanova_sample_size",

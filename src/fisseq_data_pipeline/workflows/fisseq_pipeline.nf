@@ -44,6 +44,7 @@ params.minimum_correlation     = 0.5
 params.permanova_n_bootstraps  = 200
 params.permanova_sample_size   = 1000
 params.ovwt_min_cells          = 250
+params.downsample_wt           = 5000
 params.aggregator              = "multi"
 
 // ── Processes ────────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ process OVWT_BATCHWISE {
         output_dir=. \\
         input_file=${normalized_parquet} \\
         min_cells=${params.ovwt_min_cells} \\
-        downsample_wt=true
+        downsample_wt=${params.downsample_wt}
     """
 }
 
@@ -187,7 +188,7 @@ process OVWT_GLOBAL {
         output_dir=. \\
         "input_file=${input_dir}/normalization/cells/*.parquet" \\
         min_cells=${params.ovwt_min_cells} \\
-        downsample_wt=true
+        downsample_wt=${params.downsample_wt}
     """
 }
 

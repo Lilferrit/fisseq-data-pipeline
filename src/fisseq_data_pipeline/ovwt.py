@@ -5,7 +5,7 @@ import pathlib
 import pickle
 import traceback
 from os import PathLike
-from typing import Optional
+from typing import Optional, Union
 
 import hydra
 import numpy as np
@@ -98,9 +98,11 @@ class OvwtConfig(LabeledInputConfig):
         Minimum number of cells required for a variant to be included.
         Variants with fewer cells are dropped before splitting. ``None``
         disables the filter. Defaults to ``250``.
-    downsample_wt : bool
+    downsample_wt : bool or int
         If ``True``, downsample wildtype cells to the size of the largest
-        variant group before splitting. Defaults to ``True``.
+        variant group before splitting. If an integer, downsample to that
+        exact count (no-op if wildtype count is already at or below the
+        target). ``False`` disables downsampling. Defaults to ``True``.
     save_splits : bool
         If ``True``, write train/test/val splits to Parquet files in
         ``output_dir``. Defaults to ``False``.
@@ -112,7 +114,7 @@ class OvwtConfig(LabeledInputConfig):
     random_state: int = 42
     feature_cols: Optional[list] = None
     min_cells: Optional[int] = 250
-    downsample_wt: bool = True
+    downsample_wt: Union[bool, int] = True
     save_splits: bool = False
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
@@ -379,12 +381,13 @@ def downsample_wildtype(
     label_col: str,
     wt_label: str,
     seed: int,
+    n: Optional[int] = None,
 ) -> pl.DataFrame:
     """
-    Downsample wildtype rows to match the largest variant group size.
+    Downsample wildtype rows to a target count.
 
-    If the wildtype group is larger than the largest non-wildtype variant
-    group, a random sample of wildtype rows is drawn without replacement.
+    If the wildtype group is larger than the target, a random sample of
+    wildtype rows is drawn without replacement.
 
     Parameters
     ----------
@@ -396,23 +399,29 @@ def downsample_wildtype(
         Label string identifying wildtype rows.
     seed : int
         Random seed for sampling.
+    n : int or None
+        Target wildtype count. If ``None``, the target is the size of the
+        largest non-wildtype variant group.
 
     Returns
     -------
     pl.DataFrame
         DataFrame with wildtype rows downsampled, or unchanged if already
-        smaller than the largest variant group.
+        at or below the target.
     """
-    max_variant_count = (
-        data_df.filter(pl.col(label_col) != wt_label)
-        .group_by(label_col)
-        .len()
-        .get_column("len")
-        .max()
-    )
+    if n is None:
+        target = (
+            data_df.filter(pl.col(label_col) != wt_label)
+            .group_by(label_col)
+            .len()
+            .get_column("len")
+            .max()
+        )
+    else:
+        target = n
     wt_df = data_df.filter(pl.col(label_col) == wt_label)
-    if max_variant_count is not None and len(wt_df) > max_variant_count:
-        wt_df = wt_df.sample(n=max_variant_count, seed=seed)
+    if target is not None and len(wt_df) > target:
+        wt_df = wt_df.sample(n=target, seed=seed)
     return pl.concat([data_df.filter(pl.col(label_col) != wt_label), wt_df])
 
 
@@ -494,9 +503,10 @@ def train_test_val_split(
     if cfg.min_cells is not None:
         data_df = filter_min_cells(data_df, label_col, cfg.wt_label, cfg.min_cells)
 
-    if cfg.downsample_wt:
+    if cfg.downsample_wt is not False and cfg.downsample_wt != 0:
+        n = cfg.downsample_wt if not isinstance(cfg.downsample_wt, bool) else None
         data_df = downsample_wildtype(
-            data_df, label_col, cfg.wt_label, cfg.random_state
+            data_df, label_col, cfg.wt_label, cfg.random_state, n=n
         )
 
     data_df = data_df.with_row_index("__idx__")
