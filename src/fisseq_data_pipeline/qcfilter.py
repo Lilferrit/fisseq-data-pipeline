@@ -6,8 +6,6 @@ from typing import Any, Iterable
 
 import hydra
 import polars as pl
-import pyarrow as pa
-import pyarrow.parquet as pq
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
@@ -202,14 +200,6 @@ def read_file(cell_file_path: pathlib.Path) -> pl.LazyFrame:
     (file path as a string) and ``meta_source_file_idx`` (row index within
     the source file).
 
-    Parquet files are scanned via :func:`pl.scan_parquet` with an explicit
-    schema derived from PyArrow. PyArrow reads the file footer (no data
-    loaded) using its more permissive C++ Parquet reader, which handles
-    non-standard list/set type encodings that Polars' Rust reader rejects.
-    Nested-type columns (list, struct, map, etc.) are excluded from the
-    schema so Polars never encounters them; they are dropped by
-    :func:`filter_columns` downstream regardless.
-
     Parameters
     ----------
     cell_file_path : pathlib.Path
@@ -229,14 +219,7 @@ def read_file(cell_file_path: pathlib.Path) -> pl.LazyFrame:
         )
         lf = pl.scan_csv(cell_file_path)
     elif cell_file_path.suffix in [".parquet", ".parq", ".pq"]:
-        arrow_schema = pq.read_schema(str(cell_file_path))
-        safe_schema = pa.schema(
-            [f for f in arrow_schema if not pa.types.is_nested(f.type)]
-        )
-        polars_schema = pl.from_arrow(safe_schema.empty_table()).schema
-        lf = pl.scan_parquet(
-            cell_file_path, schema=polars_schema, extra_columns="ignore"
-        )
+        lf = pl.scan_parquet(cell_file_path)
 
     lf = lf.with_columns(
         pl.lit(str(cell_file_path)).alias("meta_source_file"),
