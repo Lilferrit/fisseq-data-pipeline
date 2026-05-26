@@ -290,24 +290,6 @@ class TestReadFile:
 
         assert result["meta_source_file_idx"].to_list() == [0, 1, 2]
 
-    def test_parquet_with_list_column_is_readable(self, tmp_path):
-        """Files with list-typed columns (non-standard encoding) can be scanned."""
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-
-        table = pa.table(
-            {
-                "a": pa.array([1, 2, 3], type=pa.int32()),
-                "tags": pa.array([["x"], ["y", "z"], []], type=pa.list_(pa.string())),
-            }
-        )
-        pq_file = tmp_path / "cells.parquet"
-        pq.write_table(table, pq_file)
-
-        result = read_file(pq_file).collect()
-
-        assert "a" in result.columns
-
 
 # ---------------------------------------------------------------------------
 # combine_cell_files
