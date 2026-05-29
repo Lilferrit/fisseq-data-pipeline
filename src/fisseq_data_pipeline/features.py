@@ -163,8 +163,8 @@ def pseudo_replicate_correlation(
     rep_one_lf = get_replicate_lf(lf, rep_one_idx).drop(TMP_IDX_COL)
     rep_two_lf = get_replicate_lf(lf, rep_two_idx).drop(TMP_IDX_COL)
 
-    rep_one_aggregate_df = aggregate(rep_one_lf, label_col, aggregator_name)
-    rep_two_aggregate_df = aggregate(rep_two_lf, label_col, aggregator_name)
+    rep_one_aggregate_df = aggregate(rep_one_lf, label_col, aggregator_name).collect()
+    rep_two_aggregate_df = aggregate(rep_two_lf, label_col, aggregator_name).collect()
     rep_correlation_df = compute_feature_correlations(
         rep_one_aggregate_df, rep_two_aggregate_df, label_col
     )
@@ -282,7 +282,7 @@ def main(cfg: DictConfig) -> None:
         label_col=feat_cfg.label_column,
         aggregator_name=feat_cfg.aggregator,
         block_list=block_list,
-    )
+    ).collect()
 
     logging.info("Running pycytominer feature selection")
     selected_df = pyc_feature_select(agg_df)

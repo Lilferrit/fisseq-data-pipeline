@@ -107,16 +107,12 @@ def test_variant_classification_custom_label_col():
 
 
 def test_emd_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
-    control_df = toy_norm_df.filter(pl.col("meta_is_control"))
-    agg = m.EMDAggregator(control_df)
-    result = agg.aggregate(toy_norm_df)
+    result = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_EMD", "f2_EMD"}.issubset(set(result.columns))
 
 
 def test_emd_aggregator_matches_scipy(toy_norm_df: pl.DataFrame) -> None:
-    control_df = toy_norm_df.filter(pl.col("meta_is_control"))
-    agg = m.EMDAggregator(control_df)
-    result = agg.aggregate(toy_norm_df)
+    result = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
 
     row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
 
@@ -134,9 +130,7 @@ def test_emd_aggregator_matches_scipy(toy_norm_df: pl.DataFrame) -> None:
 
 
 def test_emd_aggregator_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
-    control_df = toy_norm_df.filter(pl.col("meta_is_control"))
-    agg = m.EMDAggregator(control_df)
-    result = agg.aggregate(toy_norm_df)
+    result = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
     assert "WT" not in result["meta_aa_changes"].to_list()
 
 
@@ -177,7 +171,7 @@ def null_ref_df() -> pl.DataFrame:
 
 
 def test_mean_aggregator(simple_df: pl.DataFrame) -> None:
-    result = m.MeanAggregator().aggregate(simple_df)
+    result = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_mean", "f2_mean"}.issubset(set(result.columns))
     row_a = _get_row(result, "A")
     assert row_a["f1_mean"] == pytest.approx(np.mean([1.0, 2.0, 3.0]))
@@ -188,7 +182,7 @@ def test_mean_aggregator(simple_df: pl.DataFrame) -> None:
 
 
 def test_median_aggregator(simple_df: pl.DataFrame) -> None:
-    result = m.MedianAggregator().aggregate(simple_df)
+    result = m.MedianAggregator().aggregate(simple_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_median", "f2_median"}.issubset(set(result.columns))
     row_a = _get_row(result, "A")
     assert row_a["f1_median"] == pytest.approx(np.median([1.0, 2.0, 3.0]))
@@ -196,7 +190,7 @@ def test_median_aggregator(simple_df: pl.DataFrame) -> None:
 
 
 def test_mad_aggregator(simple_df: pl.DataFrame) -> None:
-    result = m.MADAggregator().aggregate(simple_df)
+    result = m.MADAggregator().aggregate(simple_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_MAD", "f2_MAD"}.issubset(set(result.columns))
     row_a = _get_row(result, "A")
     vals = np.array([1.0, 2.0, 3.0])
@@ -205,7 +199,7 @@ def test_mad_aggregator(simple_df: pl.DataFrame) -> None:
 
 
 def test_std_aggregator(simple_df: pl.DataFrame) -> None:
-    result = m.StdAggregator().aggregate(simple_df)
+    result = m.StdAggregator().aggregate(simple_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_std", "f2_std"}.issubset(set(result.columns))
     row_a = _get_row(result, "A")
     assert row_a["f1_std"] == pytest.approx(np.std([1.0, 2.0, 3.0], ddof=1))
@@ -226,7 +220,7 @@ def test_native_aggregators_exclude_control_rows() -> None:
         m.MADAggregator,
         m.StdAggregator,
     ):
-        result = agg_cls().aggregate(df)
+        result = agg_cls().aggregate(df.lazy()).collect()
         assert "WT" not in result["meta_aa_changes"].to_list()
 
 
@@ -241,7 +235,7 @@ def test_multi_aggregator_columns_include_all_sub_aggregator_outputs(
     agg = m.MultiAggregator(
         [m.MeanAggregator(), m.MedianAggregator(), m.StdAggregator()]
     )
-    result = agg.aggregate(simple_df)
+    result = agg.aggregate(simple_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_mean", "f2_mean"}.issubset(set(result.columns))
     assert {"f1_median", "f2_median"}.issubset(set(result.columns))
     assert {"f1_std", "f2_std"}.issubset(set(result.columns))
@@ -249,18 +243,18 @@ def test_multi_aggregator_columns_include_all_sub_aggregator_outputs(
 
 def test_multi_aggregator_label_column_appears_once(simple_df: pl.DataFrame) -> None:
     agg = m.MultiAggregator([m.MeanAggregator(), m.MedianAggregator()])
-    result = agg.aggregate(simple_df)
+    result = agg.aggregate(simple_df.lazy()).collect()
     assert result.columns.count("meta_aa_changes") == 1
 
 
 def test_multi_aggregator_values_match_individual_aggregators(
     simple_df: pl.DataFrame,
 ) -> None:
-    mean_result = m.MeanAggregator().aggregate(simple_df)
-    std_result = m.StdAggregator().aggregate(simple_df)
+    mean_result = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
+    std_result = m.StdAggregator().aggregate(simple_df.lazy()).collect()
     multi_result = m.MultiAggregator([m.MeanAggregator(), m.StdAggregator()]).aggregate(
-        simple_df
-    )
+        simple_df.lazy()
+    ).collect()
 
     row_a_mean = mean_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
     row_a_multi = multi_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
@@ -275,7 +269,7 @@ def test_multi_aggregator_empty_raises() -> None:
         m.MultiAggregator([]).aggregate(
             pl.DataFrame(
                 {"meta_aa_changes": ["A"], "meta_is_control": [False], "f1": [1.0]}
-            )
+            ).lazy()
         )
 
 
@@ -287,21 +281,21 @@ def test_multi_aggregator_empty_raises() -> None:
 def test_aggregate_emd_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
     result = m.aggregate(
         toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="EMD"
-    )
+    ).collect()
     assert {"meta_aa_changes", "f1_EMD", "f2_EMD"}.issubset(set(result.columns))
 
 
 def test_aggregate_mean_returns_expected_columns(simple_df: pl.DataFrame) -> None:
     result = m.aggregate(
         simple_df.lazy(), label_col="meta_aa_changes", aggregator_name="mean"
-    )
+    ).collect()
     assert {"meta_aa_changes", "f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
 def test_aggregate_emd_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
     result = m.aggregate(
         toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="EMD"
-    )
+    ).collect()
     assert "WT" not in result["meta_aa_changes"].to_list()
 
 
@@ -310,7 +304,7 @@ def test_aggregate_multi_returns_columns_from_all_non_emd_aggregators(
 ) -> None:
     result = m.aggregate(
         toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="multi"
-    )
+    ).collect()
     assert "meta_aa_changes" in result.columns
     assert result.columns.count("meta_aa_changes") == 1
     for suffix in ("_mean", "_median", "_MAD", "_std", "_KS", "_QQ", "_AUROC"):
@@ -454,32 +448,32 @@ def test_main_saves_normalizer_when_configured(tmp_path):
 
 
 def test_mean_aggregator_ignores_nulls(null_df: pl.DataFrame) -> None:
-    result = m.MeanAggregator().aggregate(null_df)
+    result = m.MeanAggregator().aggregate(null_df.lazy()).collect()
     row_a = _get_row(result, "A")
     assert row_a["f1_mean"] == pytest.approx(2.0)  # mean of [1, 3]
     assert row_a["f2_mean"] == pytest.approx(4.5)  # mean of [4, 5]
 
 
 def test_mean_aggregator_all_null_returns_null(null_df: pl.DataFrame) -> None:
-    result = m.MeanAggregator().aggregate(null_df)
+    result = m.MeanAggregator().aggregate(null_df.lazy()).collect()
     row_b = _get_row(result, "B")
     assert row_b["f1_mean"] is None
 
 
 def test_median_aggregator_ignores_nulls(null_df: pl.DataFrame) -> None:
-    result = m.MedianAggregator().aggregate(null_df)
+    result = m.MedianAggregator().aggregate(null_df.lazy()).collect()
     row_a = _get_row(result, "A")
     assert row_a["f1_median"] == pytest.approx(2.0)  # median of [1, 3]
 
 
 def test_median_aggregator_all_null_returns_null(null_df: pl.DataFrame) -> None:
-    result = m.MedianAggregator().aggregate(null_df)
+    result = m.MedianAggregator().aggregate(null_df.lazy()).collect()
     row_b = _get_row(result, "B")
     assert row_b["f1_median"] is None
 
 
 def test_mad_aggregator_ignores_nulls(null_df: pl.DataFrame) -> None:
-    result = m.MADAggregator().aggregate(null_df)
+    result = m.MADAggregator().aggregate(null_df.lazy()).collect()
     row_a = _get_row(result, "A")
     vals = np.array([1.0, 3.0])
     expected_mad = np.median(np.abs(vals - np.median(vals)))
@@ -487,19 +481,19 @@ def test_mad_aggregator_ignores_nulls(null_df: pl.DataFrame) -> None:
 
 
 def test_mad_aggregator_all_null_returns_null(null_df: pl.DataFrame) -> None:
-    result = m.MADAggregator().aggregate(null_df)
+    result = m.MADAggregator().aggregate(null_df.lazy()).collect()
     row_b = _get_row(result, "B")
     assert row_b["f1_MAD"] is None
 
 
 def test_std_aggregator_ignores_nulls(null_df: pl.DataFrame) -> None:
-    result = m.StdAggregator().aggregate(null_df)
+    result = m.StdAggregator().aggregate(null_df.lazy()).collect()
     row_a = _get_row(result, "A")
     assert row_a["f1_std"] == pytest.approx(np.std([1.0, 3.0], ddof=1))
 
 
 def test_std_aggregator_all_null_returns_null(null_df: pl.DataFrame) -> None:
-    result = m.StdAggregator().aggregate(null_df)
+    result = m.StdAggregator().aggregate(null_df.lazy()).collect()
     row_b = _get_row(result, "B")
     assert row_b["f1_std"] is None
 
@@ -509,9 +503,9 @@ def test_std_aggregator_all_null_returns_null(null_df: pl.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _ref_based_null_df() -> tuple[pl.DataFrame, pl.DataFrame]:
+def _ref_based_null_df() -> pl.DataFrame:
     """Variant group A with one null; reference with one null. f2 all-null in variant."""
-    full = pl.DataFrame(
+    return pl.DataFrame(
         {
             "meta_aa_changes": ["WT", "WT", "WT", "A1B", "A1B", "A1B"],
             "meta_is_control": [True, True, True, False, False, False],
@@ -519,24 +513,32 @@ def _ref_based_null_df() -> tuple[pl.DataFrame, pl.DataFrame]:
             "f2": pl.Series([5.0, 6.0, 7.0, None, None, None], dtype=pl.Float64),
         }
     )
-    ref = full.filter(pl.col("meta_is_control"))
-    return full, ref
 
 
 def test_emd_aggregator_ignores_nulls_in_variant() -> None:
-    full, ref = _ref_based_null_df()
-    agg = m.EMDAggregator(ref)
-    result = agg.aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.EMDAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     expected = scipy.stats.wasserstein_distance([10.0, 30.0], [1.0, 3.0])
     assert row["f1_EMD"] == pytest.approx(expected)
 
 
 def test_emd_aggregator_all_null_variant_returns_null() -> None:
-    full, ref = _ref_based_null_df()
-    agg = m.EMDAggregator(ref)
-    result = agg.aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.EMDAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f2_EMD"] is None
 
 
@@ -548,25 +550,41 @@ def test_emd_aggregator_all_null_reference_returns_null() -> None:
             "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
         }
     )
-    ref = full.filter(pl.col("meta_is_control"))
-    result = m.EMDAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    row = (
+        m.EMDAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f1_EMD"] is None
 
 
 def test_ks_aggregator_ignores_nulls_in_variant() -> None:
-    full, ref = _ref_based_null_df()
-    agg = m.KSAggregator(ref)
-    result = agg.aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.KSAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     expected = scipy.stats.ks_2samp([10.0, 30.0], [1.0, 3.0]).statistic
     assert row["f1_KS"] == pytest.approx(expected)
 
 
 def test_ks_aggregator_all_null_variant_returns_null() -> None:
-    full, ref = _ref_based_null_df()
-    result = m.KSAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.KSAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f2_KS"] is None
 
 
@@ -578,24 +596,40 @@ def test_ks_aggregator_all_null_reference_returns_null() -> None:
             "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
         }
     )
-    ref = full.filter(pl.col("meta_is_control"))
-    result = m.KSAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    row = (
+        m.KSAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f1_KS"] is None
 
 
 def test_qq_aggregator_ignores_nulls_in_variant() -> None:
-    full, ref = _ref_based_null_df()
-    agg = m.QQCorrelationAggregator(ref)
-    result = agg.aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.QQCorrelationAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f1_QQ"] is not None
 
 
 def test_qq_aggregator_all_null_variant_returns_null() -> None:
-    full, ref = _ref_based_null_df()
-    result = m.QQCorrelationAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.QQCorrelationAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f2_QQ"] is None
 
 
@@ -607,23 +641,40 @@ def test_qq_aggregator_all_null_reference_returns_null() -> None:
             "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
         }
     )
-    ref = full.filter(pl.col("meta_is_control"))
-    result = m.QQCorrelationAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    row = (
+        m.QQCorrelationAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f1_QQ"] is None
 
 
 def test_auroc_aggregator_ignores_nulls_in_variant() -> None:
-    full, ref = _ref_based_null_df()
-    result = m.AUROCAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.AUROCAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f1_AUROC"] is not None
 
 
 def test_auroc_aggregator_all_null_variant_returns_null() -> None:
-    full, ref = _ref_based_null_df()
-    result = m.AUROCAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    full = _ref_based_null_df()
+    row = (
+        m.AUROCAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f2_AUROC"] is None
 
 
@@ -635,9 +686,83 @@ def test_auroc_aggregator_all_null_reference_returns_null() -> None:
             "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
         }
     )
-    ref = full.filter(pl.col("meta_is_control"))
-    result = m.AUROCAggregator(ref).aggregate(full)
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
+    row = (
+        m.AUROCAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f1_AUROC"] is None
+
+
+# ---------------------------------------------------------------------------
+# Infinity / NaN handling — reference-based aggregators
+# ---------------------------------------------------------------------------
+
+
+def test_auroc_aggregator_inf_in_variant_returns_null_not_exception() -> None:
+    """inf in variant values must be silently dropped, not crash sklearn."""
+    full = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "WT", "A1B", "A1B", "A1B"],
+            "meta_is_control": [True, True, True, False, False, False],
+            "f1": pl.Series([1.0, 2.0, 3.0, float("inf"), 1.0, 2.0], dtype=pl.Float64),
+        }
+    )
+    row = (
+        m.AUROCAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f1_AUROC"] is not None
+
+
+def test_auroc_aggregator_all_inf_in_variant_returns_null() -> None:
+    """When all variant values are inf, result must be null, not an exception."""
+    full = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
+            "meta_is_control": [True, True, False, False],
+            "f1": pl.Series(
+                [1.0, 2.0, float("inf"), float("inf")], dtype=pl.Float64
+            ),
+        }
+    )
+    row = (
+        m.AUROCAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f1_AUROC"] is None
+
+
+def test_auroc_aggregator_inf_in_reference_returns_null() -> None:
+    """When all reference values are inf, result must be null, not an exception."""
+    full = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
+            "meta_is_control": [True, True, False, False],
+            "f1": pl.Series(
+                [float("inf"), float("inf"), 1.0, 2.0], dtype=pl.Float64
+            ),
+        }
+    )
+    row = (
+        m.AUROCAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
     assert row["f1_AUROC"] is None
 
 
@@ -652,7 +777,7 @@ def test_aggregate_blocked_feature_excluded(simple_df: pl.DataFrame) -> None:
         label_col="meta_aa_changes",
         aggregator_name="mean",
         block_list={"f1_mean"},
-    )
+    ).collect()
     assert "f1_mean" not in result.columns
 
 
@@ -662,7 +787,7 @@ def test_aggregate_unblocked_feature_included(simple_df: pl.DataFrame) -> None:
         label_col="meta_aa_changes",
         aggregator_name="mean",
         block_list={"f1_mean"},
-    )
+    ).collect()
     assert "f2_mean" in result.columns
 
 
@@ -672,7 +797,7 @@ def test_aggregate_none_block_list_no_effect(simple_df: pl.DataFrame) -> None:
         label_col="meta_aa_changes",
         aggregator_name="mean",
         block_list=None,
-    )
+    ).collect()
     assert {"f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
@@ -684,7 +809,7 @@ def test_aggregate_unknown_feature_in_block_list_ignored(
         label_col="meta_aa_changes",
         aggregator_name="mean",
         block_list={"f1_does_not_exist"},
-    )
+    ).collect()
     assert {"f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
@@ -696,7 +821,7 @@ def test_aggregate_block_list_with_reference_based_aggregator(
         label_col="meta_aa_changes",
         aggregator_name="EMD",
         block_list={"f1_EMD"},
-    )
+    ).collect()
     assert "f1_EMD" not in result.columns
     assert "f2_EMD" in result.columns
 
