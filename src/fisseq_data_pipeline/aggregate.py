@@ -3,10 +3,9 @@ import dataclasses
 import logging
 import pathlib
 import re
-from typing import Any, ClassVar, Optional
+from typing import ClassVar, Optional
 
 import hydra
-import joblib
 import numpy as np
 import polars as pl
 import scipy.stats
@@ -96,15 +95,8 @@ class BaseAggregator(abc.ABC):
     """
     Abstract base class for all aggregators.
 
-    The constructor stores an optional reference DataFrame, label column
-    name, and block list. Subclasses that require ``reference_df`` raise
-    :exc:`ValueError` inside :meth:`aggregate` when it is ``None``.
-
     Parameters
     ----------
-    reference_df : pl.DataFrame or None
-        Optional reference (control) DataFrame. Reference-based aggregators
-        require this; native aggregators ignore it.
     label_col : str
         Name of the column used to identify variant groups. Defaults to
         ``"meta_aa_changes"``.
@@ -115,28 +107,26 @@ class BaseAggregator(abc.ABC):
 
     def __init__(
         self,
-        reference_df: Optional[pl.DataFrame] = None,
         label_col: str = "meta_aa_changes",
         block_list: Optional[set[str]] = None,
     ) -> None:
-        self.reference_df = reference_df
         self.label_col = label_col
         self.block_list = block_list
 
     @abc.abstractmethod
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
+    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         """
         Compute per-label statistics.
 
         Parameters
         ----------
-        agg_df : pl.DataFrame
-            Input DataFrame containing the label column, a ``CONTROL_COLUMN``
+        lf : pl.LazyFrame
+            Input LazyFrame containing the label column, a ``CONTROL_COLUMN``
             boolean column, and feature columns.
 
         Returns
         -------
-        pl.DataFrame
+        pl.LazyFrame
             One row per non-control variant group with computed statistics.
         """
         raise NotImplementedError
@@ -157,14 +147,14 @@ class NativeAggregator(BaseAggregator):
     def _expr(self, feat: str) -> pl.Expr:
         raise NotImplementedError
 
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
+    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         feature_cols = [
             f
-            for f in agg_df.select(FEATURE_SELECTOR).columns
+            for f in lf.select(FEATURE_SELECTOR).collect_schema().names()
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
         return (
-            agg_df.filter(~CONTROL_COLUMN)
+            lf.filter(~CONTROL_COLUMN)
             .group_by(self.label_col)
             .agg([self._expr(f) for f in feature_cols])
         )
@@ -221,42 +211,56 @@ class ReferenceBasedAggregator(BaseAggregator):
 
     _stat_suffix: ClassVar[str]
 
-    def aggregate(
-        self,
-        agg_df: pl.DataFrame,
-        n_jobs: int = -1,
-        backend: str = "threading",
-        verbose: int = 0,
-    ) -> pl.DataFrame:
-        if self.reference_df is None:
-            raise ValueError(f"{type(self).__name__} requires a reference_df")
+    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        all_cols = lf.collect_schema().names()
         feature_cols = [
             f
-            for f in self.reference_df.select(FEATURE_SELECTOR).columns
+            for f in lf.select(FEATURE_SELECTOR).collect_schema().names()
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
-        groups = agg_df.filter(~CONTROL_COLUMN).group_by(self.label_col)
-        tasks = [(keys[0], group_df) for keys, group_df in groups]
-        dicts = joblib.Parallel(n_jobs=n_jobs, backend=backend, verbose=verbose)(
-            joblib.delayed(self._compute_statistic)(label, group_df, feature_cols)
-            for label, group_df in tasks
+        variant_labels = lf.filter(~CONTROL_COLUMN).select(self.label_col).unique()
+        controls = lf.filter(CONTROL_COLUMN).drop(self.label_col)
+        expanded = pl.concat([
+            lf.filter(~CONTROL_COLUMN),
+            controls.join(variant_labels, how="cross").select(all_cols),
+        ])
+        # Group each label's rows (variant + replicated controls) into lists so
+        # that map_elements below can split them by the control flag.
+        grouped = expanded.group_by(self.label_col).agg(
+            [pl.col(f) for f in feature_cols] + [CONTROL_COLUMN]
         )
-        return pl.DataFrame(dicts)
-
-    def _compute_statistic(
-        self, label: str, group_df: pl.DataFrame, feature_cols: list[str]
-    ) -> dict[str, Any]:
-        row: dict[str, Any] = {self.label_col: label}
+        compute = self._compute_feature_stat
+        stat_exprs = []
         for feat in feature_cols:
-            group_vals = group_df.get_column(feat).drop_nulls().to_numpy()
-            ref_vals = self.reference_df.get_column(feat).drop_nulls().to_numpy()
-            if len(group_vals) == 0 or len(ref_vals) == 0:
-                row[f"{feat}{self._stat_suffix}"] = None
-            else:
-                row[f"{feat}{self._stat_suffix}"] = self._compute_feature_stat(
-                    group_vals, ref_vals
+
+            def _stat_fn(
+                s: dict,
+                _feat: str = feat,
+                _fn=compute,
+            ) -> Optional[float]:
+                is_ctrl = s[CONTROL_COLUMN_NAME]
+                vals = s[_feat]
+                group_vals = np.fromiter(
+                    (v for v, c in zip(vals, is_ctrl) if not c and v is not None and np.isfinite(v)),
+                    dtype=float,
                 )
-        return row
+                ref_vals = np.fromiter(
+                    (v for v, c in zip(vals, is_ctrl) if c and v is not None and np.isfinite(v)),
+                    dtype=float,
+                )
+                if len(group_vals) == 0 or len(ref_vals) == 0:
+                    return None
+                result = _fn(group_vals, ref_vals)
+                return float(result) if np.isfinite(result) else None
+
+            stat_exprs.append(
+                pl.struct([pl.col(feat), CONTROL_COLUMN])
+                .map_elements(_stat_fn, return_dtype=pl.Float64)
+                .alias(f"{feat}{self._stat_suffix}")
+            )
+        return grouped.with_columns(stat_exprs).select(
+            [self.label_col] + [f"{f}{self._stat_suffix}" for f in feature_cols]
+        )
 
     @abc.abstractmethod
     def _compute_feature_stat(
@@ -318,12 +322,11 @@ class QQCorrelationAggregator(ReferenceBasedAggregator):
 
     def __init__(
         self,
-        reference_df: Optional[pl.DataFrame] = None,
         label_col: str = "meta_aa_changes",
         n_quantiles: int = 100,
         block_list: Optional[set[str]] = None,
     ) -> None:
-        super().__init__(reference_df, label_col, block_list)
+        super().__init__(label_col, block_list)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
     def _compute_feature_stat(
@@ -376,13 +379,13 @@ class MultiAggregator(BaseAggregator):
 
     def __init__(self, aggregators: list[BaseAggregator]) -> None:
         label_col = aggregators[0].label_col if aggregators else "meta_aa_changes"
-        super().__init__(reference_df=None, label_col=label_col)
+        super().__init__(label_col=label_col)
         self.aggregators = aggregators
 
-    def aggregate(self, agg_df: pl.DataFrame) -> pl.DataFrame:
+    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         if not self.aggregators:
             raise ValueError("MultiAggregator requires at least one aggregator")
-        results = [agg.aggregate(agg_df) for agg in self.aggregators]
+        results = [agg.aggregate(lf) for agg in self.aggregators]
         combined = results[0]
         for other in results[1:]:
             combined = combined.join(other, on=self.label_col, how="inner")
@@ -408,7 +411,7 @@ def aggregate(
     label_col: str,
     aggregator_name: str,
     block_list: Optional[set[str]] = None,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
 
@@ -432,7 +435,7 @@ def aggregate(
 
     Returns
     -------
-    pl.DataFrame
+    pl.LazyFrame
         One row per non-control variant group with computed statistics.
     """
     valid = set(_AGGREGATORS) | {"multi"}
@@ -441,21 +444,16 @@ def aggregate(
             f"Unknown aggregator {aggregator_name!r}. Choose from: {sorted(valid)}"
         )
 
-    df = lf.collect()
-    control_df = df.filter(CONTROL_COLUMN)
-
     if aggregator_name == "multi":
         sub_aggs = [
-            _AGGREGATORS[name](control_df, label_col=label_col, block_list=block_list)
+            _AGGREGATORS[name](label_col=label_col, block_list=block_list)
             for name in _MULTI_DEFAULT
         ]
         agg: BaseAggregator = MultiAggregator(sub_aggs)
     else:
-        agg = _AGGREGATORS[aggregator_name](
-            control_df, label_col=label_col, block_list=block_list
-        )
+        agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
 
-    return agg.aggregate(df)
+    return agg.aggregate(lf)
 
 
 @hydra.main(version_base=None, config_path=None, config_name="aggregate_main")
@@ -510,17 +508,18 @@ def main(cfg: DictConfig) -> None:
         block_list = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
 
     logging.info("Running %s aggregator", agg_cfg.aggregator)
-    agg_df = aggregate(
-        lf,
-        label_col=agg_cfg.label_column,
-        aggregator_name=agg_cfg.aggregator,
-        block_list=block_list,
-    )
-
     logging.info(
         "Classifying variants and marking synonymous as normalization reference"
     )
-    agg_lf = variant_classification(agg_df.lazy(), agg_cfg.label_column)
+    agg_lf = variant_classification(
+        aggregate(
+            lf,
+            label_col=agg_cfg.label_column,
+            aggregator_name=agg_cfg.aggregator,
+            block_list=block_list,
+        ),
+        agg_cfg.label_column,
+    )
 
     logging.info("Fitting normalizer on synonymous rows")
     normalizer = Normalizer.from_lazyframe(agg_lf, fit_only_on_control=True)

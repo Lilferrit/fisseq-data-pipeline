@@ -101,6 +101,12 @@ def test_cosine_dists_matrix_zero_norm_row_no_nan() -> None:
     assert not np.any(np.isnan(d))
 
 
+def test_cosine_dists_matrix_is_exactly_symmetric() -> None:
+    x = np.random.default_rng(0).random((12, 5))
+    d = m.cosine_dists_matrix(x)
+    assert np.array_equal(d, d.T)
+
+
 def test_cosine_dists_matrix_identical_rows_zero_distance() -> None:
     v = np.array([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
     d = m.cosine_dists_matrix(v)
@@ -150,41 +156,68 @@ def test_compute_f_stat_separated_groups_larger_than_mixed() -> None:
 
 def test_compute_permanova_sample_output_columns() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=0)
+    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
     assert set(result.columns) == {"f_value", "f_value_shuffled"}
 
 
 def test_compute_permanova_sample_single_row() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=0)
+    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
     assert len(result) == 1
 
 
 def test_compute_permanova_sample_deterministic() -> None:
     df = _make_feature_df()
-    r1 = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=7)
-    r2 = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=7)
+    sampled = df.sample(n=30, seed=7, shuffle=True)
+    r1 = m.compute_permanova_sample(sampled, META_BATCH_COL, seed=7)
+    r2 = m.compute_permanova_sample(sampled, META_BATCH_COL, seed=7)
     assert r1["f_value"][0] == pytest.approx(r2["f_value"][0])
     assert r1["f_value_shuffled"][0] == pytest.approx(r2["f_value_shuffled"][0])
 
 
 def test_compute_permanova_sample_different_seeds_differ() -> None:
     df = _make_feature_df()
-    r1 = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=0)
-    r2 = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=99)
+    r1 = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    r2 = m.compute_permanova_sample(df.sample(n=30, seed=99, shuffle=True), META_BATCH_COL, seed=99)
     assert r1["f_value"][0] != pytest.approx(r2["f_value"][0])
 
 
 def test_compute_permanova_sample_separated_batches_high_f() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=50, seed=0)
+    result = m.compute_permanova_sample(df.sample(n=50, seed=0, shuffle=True), META_BATCH_COL, seed=0)
     assert result["f_value"][0] > 10.0
+
+
+def test_compute_permanova_sample_null_features_no_crash() -> None:
+    """Null feature values must be dropped, not crash DistanceMatrix."""
+    df = _make_feature_df()
+    df = df.with_columns(
+        pl.when(pl.int_range(pl.len()) < 5)
+        .then(None)
+        .otherwise(pl.col("Intensity_mean"))
+        .alias("Intensity_mean")
+    )
+    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    assert set(result.columns) == {"f_value", "f_value_shuffled"}
+
+
+def test_compute_permanova_sample_inf_features_no_crash() -> None:
+    """Inf feature values must be dropped, not crash DistanceMatrix."""
+    df = _make_feature_df()
+    df = df.with_columns(
+        pl.when(pl.int_range(pl.len()) < 5)
+        .then(float("inf"))
+        .otherwise(pl.col("Intensity_mean"))
+        .alias("Intensity_mean")
+    )
+    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    assert set(result.columns) == {"f_value", "f_value_shuffled"}
 
 
 def test_compute_permanova_sample_excludes_meta_columns() -> None:
     """meta_ columns must not be treated as features."""
     df = _make_feature_df().with_columns(pl.lit("extra").alias("meta_extra"))
-    result = m.compute_permanova_sample(df, META_BATCH_COL, sample_size=30, seed=0)
+    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
     assert result["f_value"][0] is not None
 
 

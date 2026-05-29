@@ -60,6 +60,8 @@ class PermanovaConfig(LabeledInputConfig):
 
 _cs.store(name="permanova_main", node=PermanovaConfig)
 
+_TMP_IDX = "__row_idx__"
+
 
 def cosine_dists_matrix(x: np.ndarray) -> np.ndarray:
     """
@@ -86,6 +88,8 @@ def cosine_dists_matrix(x: np.ndarray) -> np.ndarray:
     cos_dist = 1.0 - x_norm @ x_norm.T
     np.fill_diagonal(cos_dist, 0.0)
     np.clip(cos_dist, 0.0, None, out=cos_dist)
+    i_lower = np.tril_indices_from(cos_dist, k=-1)
+    cos_dist.T[i_lower] = cos_dist[i_lower]
     return cos_dist
 
 
@@ -110,28 +114,25 @@ def _compute_f_stat(dist_matrix: np.ndarray, labels: np.ndarray) -> float:
 
 
 def compute_permanova_sample(
-    df: pl.DataFrame,
+    sampled: pl.DataFrame,
     batch_col: str,
-    sample_size: int,
     seed: int,
 ) -> pl.DataFrame:
     """
-    Draw one bootstrap sample and compute observed and shuffled PERMANOVA F-statistics.
+    Compute observed and shuffled PERMANOVA F-statistics on a pre-sampled DataFrame.
 
     The distance matrix is computed once and reused for both the observed and
     null (label-shuffled) statistics.
 
     Parameters
     ----------
-    df : pl.DataFrame
-        Collected cell-level DataFrame containing feature columns and
-        ``batch_col``.
+    sampled : pl.DataFrame
+        Pre-sampled cell-level DataFrame containing feature columns and
+        ``batch_col``. Rows with non-finite feature values are silently dropped.
     batch_col : str
         Name of the batch grouping column.
-    sample_size : int
-        Number of rows to sample without replacement.
     seed : int
-        Random seed for both sampling and label shuffling.
+        Random seed for label shuffling.
 
     Returns
     -------
@@ -139,12 +140,15 @@ def compute_permanova_sample(
         Single-row DataFrame with columns ``f_value`` (observed) and
         ``f_value_shuffled`` (null).
     """
-    sampled = df.sample(n=sample_size, seed=seed, shuffle=True)
     feature_cols = [
         c for c in sampled.columns if len(c) > 0 and c[0].isupper() and "_" in c
     ]
     feature_matrix = sampled.select(feature_cols).cast(pl.Float64).to_numpy()
     batch_labels = sampled.get_column(batch_col).cast(pl.Utf8).to_numpy()
+
+    valid_rows = np.isfinite(feature_matrix).all(axis=1)
+    feature_matrix = feature_matrix[valid_rows]
+    batch_labels = batch_labels[valid_rows]
 
     if len(np.unique(batch_labels)) < 2:
         return pl.DataFrame(
@@ -208,19 +212,31 @@ def bootstrap_permanova(
         seed,
         parallel,
     )
-    df = lf.collect()
+    all_cols = lf.collect_schema().names()
+    feature_cols = [c for c in all_cols if len(c) > 0 and c[0].isupper() and "_" in c]
+
+    finite_mask = pl.all_horizontal(
+        pl.col(f).is_not_null() & pl.col(f).is_finite() for f in feature_cols
+    )
+    filtered_lf = lf.filter(finite_mask).with_row_index(_TMP_IDX)
+    idx_arr = filtered_lf.select(_TMP_IDX).collect()[_TMP_IDX].to_numpy()
+
     seeds = (seed + np.arange(n_bootstraps, dtype=np.int64)).tolist()
 
-    if parallel:
-        dfs = Parallel(n_jobs=n_jobs)(
-            delayed(compute_permanova_sample)(df, batch_col, sample_size, s)
-            for s in seeds
+    def _run_one(s: int) -> pl.DataFrame:
+        chosen = np.random.default_rng(s).choice(idx_arr, size=sample_size, replace=False)
+        sampled = (
+            filtered_lf
+            .filter(pl.col(_TMP_IDX).is_in(set(chosen.tolist())))
+            .drop(_TMP_IDX)
+            .collect()
         )
+        return compute_permanova_sample(sampled, batch_col, s)
+
+    if parallel:
+        dfs = Parallel(n_jobs=n_jobs)(delayed(_run_one)(s) for s in seeds)
     else:
-        dfs = [
-            compute_permanova_sample(df, batch_col, sample_size, s)
-            for s in tqdm.tqdm(seeds, desc="Bootstraps")
-        ]
+        dfs = [_run_one(s) for s in tqdm.tqdm(seeds, desc="Bootstraps")]
 
     return pl.concat(dfs)
 
