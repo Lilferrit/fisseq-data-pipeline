@@ -7,7 +7,7 @@ A Nextflow DSL2 workflow that runs the full FISSEQ data processing pipeline, fro
 ## Prerequisites
 
 - [Nextflow](https://www.nextflow.io/) ≥ 23.10
-- The `fisseq-data-pipeline` Python package installed and available on `PATH` (or configured via a profile — see below)
+- Python 3 with `venv` (or [uv](https://github.com/astral-sh/uv) if using `--uv`)
 
 ---
 
@@ -53,18 +53,23 @@ All outputs are written back into `<input_dir>` alongside the `input/` folder:
 
 ## Quickstart
 
-After running `fisseq-env-init`, the pipeline file and config live inside the experiment directory. Run from there:
+First, create the virtual environment and install the package:
 
 ```bash
-cd /path/to/experiment
-nextflow run fisseq_pipeline.nf --input_dir .
+./init.sh        # uses python3 + pip
+./init.sh --uv   # uses uv (faster)
+```
+
+Then run the pipeline. `run.sh` activates the environment, sets `-profile sge`, and points `--input_dir` at the directory containing `run.sh` automatically:
+
+```bash
+./run.sh
 ```
 
 Nextflow writes pipeline logs and per-process work directories to `./work/` by default. Point `-w` at a scratch filesystem on shared clusters:
 
 ```bash
-cd /path/to/experiment
-nextflow run fisseq_pipeline.nf --input_dir . -w /scratch/$USER/nf-work
+./run.sh -w /scratch/$USER/nf-work
 ```
 
 ---
@@ -81,27 +86,24 @@ nextflow run fisseq_pipeline.nf --input_dir . -w /scratch/$USER/nf-work
 | `--permanova_n_bootstraps` | `200` | Bootstrap iterations for PERMANOVA. |
 | `--permanova_sample_size` | `1000` | Rows per PERMANOVA bootstrap sample. |
 | `--ovwt_min_cells` | `250` | Minimum cells required per variant for OvWT classification. |
+| `--downsample_wt` | `5000` | Downsample wildtype cells to this count for OvWT classification. |
 | `--aggregator` | `"multi"` | Feature aggregation method (see `fisseq-aggregate` docs). |
 
-Override any parameter on the command line:
+Any extra arguments passed to `run.sh` are forwarded directly to Nextflow:
 
 ```bash
-nextflow run fisseq_pipeline.nf \
-    --input_dir . \
-    --bc_threshold 20 \
-    --minimum_correlation 0.7
+./run.sh --bc_threshold 20 --minimum_correlation 0.7
 ```
 
 Or collect overrides in a params file (`params.yml`):
 
 ```yaml
-input_dir: /path/to/experiment
 bc_threshold: 20
 minimum_correlation: 0.7
 ```
 
 ```bash
-nextflow run fisseq_pipeline.nf -params-file params.yml
+./run.sh -params-file params.yml
 ```
 
 ---
@@ -123,12 +125,12 @@ venv {
 Run with:
 
 ```bash
-nextflow run fisseq_pipeline.nf -profile venv --input_dir .
+nextflow run workflow.nf -profile venv --input_dir /path/to/experiment
 ```
 
 ### SGE cluster
 
-Uncomment the `sge` block in `nextflow.config`, set your queue name, and adjust resource limits:
+`run.sh` uses `-profile sge` by default. Configure the `sge` block in `nextflow.config` with your queue name and resource limits:
 
 ```groovy
 sge {
@@ -139,7 +141,7 @@ sge {
         cpus           = 4
         memory         = '16 GB'
         time           = '4h'
-        beforeScript   = "source /path/to/.venv/bin/activate"
+        beforeScript   = "source /path/to/env/bin/activate"
     }
 }
 ```
@@ -147,7 +149,7 @@ sge {
 Run with:
 
 ```bash
-nextflow run fisseq_pipeline.nf -profile sge --input_dir .
+./run.sh
 ```
 
 The `-V` flag in `clusterOptions` forwards your current shell environment to each SGE job, so any `module load` commands or environment variables set before launching Nextflow are inherited by the cluster jobs.
@@ -163,7 +165,7 @@ Nextflow supports SLURM, PBS, LSF, AWS Batch, Google Cloud Batch, and more. Add 
 Nextflow caches completed tasks. If a run is interrupted, resume from the last successful step:
 
 ```bash
-nextflow run fisseq_pipeline.nf -resume --input_dir .
+./run.sh -resume
 ```
 
 ---

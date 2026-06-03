@@ -67,7 +67,7 @@ def _write_batch(path: Path, seed: int = 42) -> None:
 
 def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["nextflow", "run", "fisseq_pipeline.nf", "--input_dir", ".", *_NF_PARAMS],
+        ["nextflow", "run", "workflow.nf", "--input_dir", ".", *_NF_PARAMS],
         cwd=exp_dir,
         capture_output=True,
         text=True,
@@ -106,7 +106,21 @@ def test_env_init_creates_input_dir(tmp_path):
 
 def test_env_init_copies_pipeline(tmp_path):
     subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    assert (tmp_path / "fisseq_pipeline.nf").is_file()
+    assert (tmp_path / "workflow.nf").is_file()
+
+
+def test_env_init_copies_run_sh(tmp_path):
+    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
+    run_sh = tmp_path / "run.sh"
+    assert run_sh.is_file()
+    assert run_sh.stat().st_mode & 0o111  # executable
+
+
+def test_env_init_copies_init_sh(tmp_path):
+    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
+    init_sh = tmp_path / "init.sh"
+    assert init_sh.is_file()
+    assert init_sh.stat().st_mode & 0o111  # executable
 
 
 def test_env_init_copies_nextflow_config(tmp_path):

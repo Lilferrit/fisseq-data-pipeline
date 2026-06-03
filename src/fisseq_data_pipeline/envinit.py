@@ -19,13 +19,16 @@ def main() -> None:
     (target / "input").mkdir(exist_ok=True)
 
     templates = importlib.resources.files("fisseq_data_pipeline.workflows")
-    for filename in ("nextflow.config", "fisseq_pipeline.nf", "PIPELINE_README.md"):
-        (target / filename).write_text((templates / filename).read_text())
+    for filename in ("nextflow.config", "workflow.nf", "run.sh", "init.sh", "PIPELINE_README.md"):
+        dest = target / filename
+        dest.write_text((templates / filename).read_text())
+
+    for script in ("run.sh", "init.sh"):
+        (target / script).chmod(0o755)
 
     print(f"Initialised experiment directory: {target}")
-    print(f"  {target}/input/               <- place raw .parquet batch files here")
-    print(f"  {target}/fisseq_pipeline.nf   <- Nextflow pipeline (do not edit)")
-    print(
-        f"  {target}/nextflow.config      <- edit to configure your environment/profile"
-    )
-    print(f"  {target}/PIPELINE_README.md   <- pipeline usage documentation")
+    print(f"  {target}/input/             <- place raw .parquet batch files here")
+    print(f"  {target}/init.sh            <- create venv and install the package")
+    print(f"  {target}/run.sh             <- run the Nextflow pipeline")
+    print(f"  {target}/nextflow.config    <- edit to configure your environment/profile")
+    print(f"  {target}/PIPELINE_README.md <- pipeline usage documentation")
