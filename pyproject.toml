@@ -29,7 +29,6 @@ fisseq-feature-select = "fisseq_data_pipeline.features:main"
 fisseq-ovwt = "fisseq_data_pipeline.ovwt:main"
 fisseq-qc-filter = "fisseq_data_pipeline.qcfilter:main"
 fisseq-permanova = "fisseq_data_pipeline.permanova:main"
-fisseq-env-init = "fisseq_data_pipeline.envinit:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
