@@ -8,23 +8,20 @@ It handles QC filtering, z-score normalization, per-variant feature aggregation,
 ## Pipeline overview
 
 ```
-raw cell files
+input/*.parquet  (one file per batch)
       │
       ▼
-fisseq-qc-filter        ← edit distance, barcode count, variant barcode count filters
+QC_FILTER  (per batch)     ← edit distance, barcode count, variant barcode count filters
       │
       ▼
-fisseq-normalize        ← z-score normalization fit on WT control cells
+NORMALIZE  (per batch)     ← z-score normalization fit on WT control cells
       │
-      ▼
-fisseq-aggregate        ← per-variant statistics, normalized to synonymous baseline
-      │
-      ▼
-fisseq-feature-select   ← pseudo-replicate reproducibility + pycytominer filters
-      │
-      ├──▶ fisseq-permanova   ← bootstrap PERMANOVA batch-effect assessment
-      │
-      └──▶ fisseq-ovwt        ← one-vs-wildtype XGBoost variant classification
+      ├──▶ PERMANOVA_WT            (global — waits for all batches)
+      ├──▶ PERMANOVA_SYN           (global — waits for all batches)
+      ├──▶ OVWT_BATCHWISE          (per batch)
+      ├──▶ OVWT_GLOBAL             (global — waits for all batches)
+      ├──▶ FEATURE_SELECT_BATCHWISE (per batch)
+      └──▶ FEATURE_SELECT_GLOBAL   (global — waits for all batches)
 ```
 
 ---
@@ -43,6 +40,114 @@ Or clone and install locally:
 git clone https://github.com/Lilferrit/fisseq-data-pipeline.git
 cd fisseq-data-pipeline
 pip install -e .
+```
+
+---
+
+## Nextflow pipeline
+
+### Prerequisites
+
+- [Nextflow](https://www.nextflow.io/) ≥ 23.10
+- A Python environment with `fisseq-data-pipeline` installed (see [Installation](#installation))
+
+### Quickstart
+
+Run directly from GitHub — no cloning required:
+
+```bash
+nextflow run your-org/fisseq-data-pipeline \
+    -c your.config \
+    --input_dir /path/to/experiment
+```
+
+Or from a local clone:
+
+```bash
+nextflow run . --input_dir /path/to/experiment
+```
+
+### Input directory layout
+
+Place one `.parquet` file per batch inside an `input/` subdirectory of your experiment root:
+
+```
+<input_dir>/
+  input/
+    batch1.parquet
+    batch2.parquet
+    ...
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+| --------- | ------- | ----------- |
+| `--input_dir` | **required** | Root directory containing `input/*.parquet` batch files. |
+| `--bc_threshold` | `10` | Minimum cells per barcode (QC filter). |
+| `--variant_bc_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
+| `--edit_distance_threshold` | `1` | Maximum allowed edit distance (QC filter). |
+| `--minimum_correlation` | `0.5` | Minimum pseudo-replicate Pearson *r* for feature selection. |
+| `--permanova_n_bootstraps` | `200` | Bootstrap iterations for PERMANOVA. |
+| `--permanova_sample_size` | `1000` | Rows per PERMANOVA bootstrap sample. |
+| `--ovwt_min_cells` | `250` | Minimum cells required per variant for OvWT classification. |
+| `--downsample_wt` | `5000` | Downsample wildtype cells to this count for OvWT classification. |
+| `--aggregator` | `"multi"` | Feature aggregation method (see `fisseq-feature-select` docs). |
+
+### Environment configuration
+
+`nextflow.config` in this repo contains only executor/cluster settings. Environment setup — activating a virtualenv or installing the package — belongs in a separate config file that you pass via `-c`:
+
+```bash
+nextflow run . -c your.config --input_dir /path/to/experiment
+```
+
+Copy `example.config` from the repo root as a starting point and uncomment/fill in one of the `beforeScript` options:
+
+```groovy
+// Option A: activate a pre-existing venv (recommended for shared clusters)
+beforeScript = 'source /path/to/your/venv/bin/activate'
+
+// Option B: install from GitHub on each run (simpler, slower)
+beforeScript = 'uv pip install git+https://github.com/your-org/fisseq-data-pipeline.git@main --system'
+```
+
+### Output layout
+
+All outputs are written back into `<input_dir>` alongside the `input/` folder:
+
+```text
+<input_dir>/
+  qc_filter/<batch>/
+    filtered_cells.parquet
+    barcode_counts.parquet
+    variants_per_barcode.parquet
+  normalization/
+    cells/<batch>.parquet
+    normalizers/<batch>.normalizer.parquet
+  permanova/
+    wildtype/permanova.parquet
+    synonymous/permanova.parquet
+  ovwt_batchwise/<batch>/
+    results.parquet
+    models.pkl
+  ovwt_global/
+    results.parquet
+    models.pkl
+  feature_select_batchwise/<batch>/
+    <batch>.parquet
+    feature_correlations.parquet
+  feature_select_global/
+    global.parquet
+    feature_correlations.parquet
+```
+
+### Resuming a run
+
+Nextflow caches completed tasks. Resume from the last successful step after an interruption:
+
+```bash
+nextflow run . --input_dir /path/to/experiment -resume
 ```
 
 ---

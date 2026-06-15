@@ -11,3 +11,9 @@ wheels/
 
 # Vscode
 .vscode/*
+.vscode/
+
+# Other stuff
+.ruff_cache/
+.pytest_cache/
+.claude/

@@ -1,4 +1,4 @@
-"""Integration tests for fisseq-env-init and the FISSEQ Nextflow pipeline."""
+"""Integration tests for the FISSEQ Nextflow pipeline."""
 
 import shutil
 import subprocess
@@ -45,6 +45,8 @@ _NF_PARAMS = [
     "20",
 ]
 
+_PROJECT_ROOT = Path(__file__).parents[2]
+
 
 def _write_batch(path: Path, seed: int = 42) -> None:
     rng = np.random.default_rng(seed)
@@ -67,7 +69,7 @@ def _write_batch(path: Path, seed: int = 42) -> None:
 
 def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["nextflow", "run", "workflow.nf", "--input_dir", ".", *_NF_PARAMS],
+        ["nextflow", "run", str(_PROJECT_ROOT), "--input_dir", str(exp_dir), *_NF_PARAMS],
         cwd=exp_dir,
         capture_output=True,
         text=True,
@@ -86,57 +88,11 @@ def pipeline_outputs(tmp_path_factory):
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_experiment")
-    subprocess.run(["fisseq-env-init", str(exp_dir)], check=True)
     _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
     _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
 
     result = _run_pipeline(exp_dir)
     return exp_dir, result
-
-
-# ---------------------------------------------------------------------------
-# fisseq-env-init tests
-# ---------------------------------------------------------------------------
-
-
-def test_env_init_creates_input_dir(tmp_path):
-    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    assert (tmp_path / "input").is_dir()
-
-
-def test_env_init_copies_pipeline(tmp_path):
-    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    assert (tmp_path / "workflow.nf").is_file()
-
-
-def test_env_init_copies_run_sh(tmp_path):
-    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    run_sh = tmp_path / "run.sh"
-    assert run_sh.is_file()
-    assert run_sh.stat().st_mode & 0o111  # executable
-
-
-def test_env_init_copies_init_sh(tmp_path):
-    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    init_sh = tmp_path / "init.sh"
-    assert init_sh.is_file()
-    assert init_sh.stat().st_mode & 0o111  # executable
-
-
-def test_env_init_copies_nextflow_config(tmp_path):
-    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    assert (tmp_path / "nextflow.config").is_file()
-
-
-def test_env_init_copies_readme(tmp_path):
-    subprocess.run(["fisseq-env-init", str(tmp_path)], check=True)
-    assert (tmp_path / "PIPELINE_README.md").is_file()
-
-
-def test_env_init_creates_nested_target(tmp_path):
-    target = tmp_path / "a" / "b" / "c"
-    subprocess.run(["fisseq-env-init", str(target)], check=True)
-    assert target.is_dir()
 
 
 # ---------------------------------------------------------------------------
