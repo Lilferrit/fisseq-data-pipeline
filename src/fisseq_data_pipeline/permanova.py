@@ -224,10 +224,11 @@ def bootstrap_permanova(
     seeds = (seed + np.arange(n_bootstraps, dtype=np.int64)).tolist()
 
     def _run_one(s: int) -> pl.DataFrame:
-        chosen = np.random.default_rng(s).choice(idx_arr, size=sample_size, replace=False)
+        chosen = np.random.default_rng(s).choice(
+            idx_arr, size=sample_size, replace=False
+        )
         sampled = (
-            filtered_lf
-            .filter(pl.col(_TMP_IDX).is_in(set(chosen.tolist())))
+            filtered_lf.filter(pl.col(_TMP_IDX).is_in(set(chosen.tolist())))
             .drop(_TMP_IDX)
             .collect()
         )

@@ -1,0 +1,18 @@
+Starting OVWT_CELLSCORES_BATCHWISE for batch1
+[2026-06-18 14:40:51,231][root][INFO] - Config:
+output_dir: .
+output_root: null
+log_level: info
+input_file: test_index.parquet
+label_column: meta_aa_changes
+models_path: models.pkl
+wt_label: WT
+batch_size: 10000
+
+[2026-06-18 14:40:51,231][root][INFO] - Loading input from test_index.parquet
+[2026-06-18 14:40:51,233][root][INFO] - Loading models from models.pkl
+[2026-06-18 14:40:51,235][root][INFO] - Loaded 2 model(s): ['M1K', 'A1A']
+[2026-06-18 14:40:51,235][root][INFO] - Scoring batch 0 (11 rows)
+[2026-06-18 14:40:51,237][root][INFO] - Scored 11 total rows across 1 batch(es)
+[2026-06-18 14:40:51,237][root][INFO] - Cell scores written to cell_scores.parquet
+[2026-06-18 14:40:51,237][root][INFO] - Done

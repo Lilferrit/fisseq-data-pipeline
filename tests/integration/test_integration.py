@@ -67,9 +67,47 @@ def _write_batch(path: Path, seed: int = 42) -> None:
     pl.DataFrame(rows).write_parquet(path)
 
 
+_OVWT_NF_PARAMS = [
+    "--bc_threshold",
+    "3",
+    "--variant_bc_threshold",
+    "3",
+    "--ovwt_min_cells",
+    "25",
+    "--downsample_wt",
+    "50",
+]
+
+
 def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["nextflow", "run", str(_PROJECT_ROOT), "--input_dir", str(exp_dir), *_NF_PARAMS],
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--input_dir",
+            str(exp_dir),
+            *_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+
+def _run_ovwt_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--workflow",
+            "ovwt",
+            "--input_dir",
+            str(exp_dir),
+            *_OVWT_NF_PARAMS,
+        ],
         cwd=exp_dir,
         capture_output=True,
         text=True,
@@ -135,6 +173,14 @@ def test_pipeline_ovwt_batchwise_outputs(pipeline_outputs, batch_stem):
     batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
     assert (batch_dir / "results.parquet").exists()
     assert (batch_dir / "models.pkl").exists()
+    assert (batch_dir / "test_index.parquet").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_ovwt_batchwise_test_index_columns(pipeline_outputs, batch_stem):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "ovwt_batchwise" / batch_stem / "test_index.parquet")
+    assert set(df.columns) == {"row_idx", "origin_file"}
 
 
 def test_pipeline_ovwt_global_outputs(pipeline_outputs):
@@ -213,3 +259,61 @@ def test_feature_select_global_uses_both_batches(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(exp_dir / "feature_select_global" / "global.parquet")
     assert (df["meta_batch_num_unique"] == 2).all()
+
+
+# ---------------------------------------------------------------------------
+# OvwtPipeline (ovwt.nf) — session fixture and tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def ovwt_pipeline_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_ovwt_experiment")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+
+    result = _run_ovwt_pipeline(exp_dir)
+    return exp_dir, result
+
+
+def test_ovwt_pipeline_exits_cleanly(ovwt_pipeline_outputs):
+    _, result = ovwt_pipeline_outputs
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_ovwt_pipeline_test_index_exists(ovwt_pipeline_outputs, batch_stem):
+    exp_dir, _ = ovwt_pipeline_outputs
+    assert (exp_dir / "ovwt_batchwise" / batch_stem / "test_index.parquet").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_ovwt_pipeline_test_index_columns(ovwt_pipeline_outputs, batch_stem):
+    exp_dir, _ = ovwt_pipeline_outputs
+    df = pl.read_parquet(exp_dir / "ovwt_batchwise" / batch_stem / "test_index.parquet")
+    assert set(df.columns) == {"row_idx", "origin_file"}
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_ovwt_pipeline_cell_scores_exist(ovwt_pipeline_outputs, batch_stem):
+    exp_dir, _ = ovwt_pipeline_outputs
+    assert (
+        exp_dir / "ovwt_cellscores_batchwise" / batch_stem / "cell_scores.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_ovwt_pipeline_cell_scores_row_count_matches_test_index(
+    ovwt_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = ovwt_pipeline_outputs
+    index_df = pl.read_parquet(
+        exp_dir / "ovwt_batchwise" / batch_stem / "test_index.parquet"
+    )
+    scores_df = pl.read_parquet(
+        exp_dir / "ovwt_cellscores_batchwise" / batch_stem / "cell_scores.parquet"
+    )
+    assert len(scores_df) == len(index_df)

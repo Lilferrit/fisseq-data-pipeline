@@ -335,10 +335,13 @@ def test_train_test_val_split_sizes():
 
 def test_train_test_val_split_no_overlap():
     df = _make_df(n=100)
-    # Add a unique id column to track rows across splits
-    df = df.with_row_index("__row__")
     train, test, val = train_test_val_split(df, _split_cfg())
-    # __row__ is lowercase so not selected as a feature; total rows should sum to 100
+    train_idx = set(train["__row_idx__"].to_list())
+    test_idx = set(test["__row_idx__"].to_list())
+    val_idx = set(val["__row_idx__"].to_list())
+    assert train_idx.isdisjoint(test_idx)
+    assert train_idx.isdisjoint(val_idx)
+    assert test_idx.isdisjoint(val_idx)
     assert len(train) + len(test) + len(val) == 100
 
 
@@ -347,7 +350,58 @@ def test_train_test_val_split_excludes_non_feature_columns():
     train, test, val = train_test_val_split(df, _split_cfg())
     for split in (train, test, val):
         assert "lowercase_extra" not in split.columns
-        assert set(split.columns) == {"Intensity_Mean", "Texture_Var", "label"}
+        assert set(split.columns) == {
+            "Intensity_Mean",
+            "Texture_Var",
+            "label",
+            "__row_idx__",
+        }
+
+
+def test_train_test_val_split_returns_row_idx_column():
+    df = _make_df(n=100)
+    train, test, val = train_test_val_split(df, _split_cfg())
+    for split in (train, test, val):
+        assert "__row_idx__" in split.columns
+
+
+def test_train_test_val_split_row_idx_are_original_positions():
+    df = _make_df(n=100)
+    train, test, val = train_test_val_split(df, _split_cfg())
+    all_idx = set()
+    for split in (train, test, val):
+        for i in split["__row_idx__"].to_list():
+            assert 0 <= i < 100
+        all_idx.update(split["__row_idx__"].to_list())
+    assert all_idx == set(range(100))
+
+
+def test_train_test_val_split_row_idx_excludes_filtered_rows():
+    # V2 has only 2 cells — below min_cells=10 — so its rows should be absent
+    df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 30, "V2": 2})
+    cfg = OmegaConf.create(
+        {
+            "label_column": "label",
+            "wt_label": "WT",
+            "random_state": 0,
+            "feature_cols": None,
+            "min_cells": 10,
+            "downsample_wt": False,
+        }
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    all_idx = set()
+    for split in (train, test, val):
+        all_idx.update(split["__row_idx__"].to_list())
+    # All returned indices must be valid positions in the original df
+    assert all(0 <= i < len(df) for i in all_idx)
+    # The 2 V2 rows (at the end of df) must not appear in any split
+    v2_rows = set(
+        df.with_row_index("__row_idx__")
+        .filter(pl.col("label") == "V2")["__row_idx__"]
+        .to_list()
+    )
+    assert all_idx.isdisjoint(v2_rows)
 
 
 def test_train_test_val_split_preserves_class_ratio():

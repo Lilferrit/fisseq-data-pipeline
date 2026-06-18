@@ -252,9 +252,11 @@ def test_multi_aggregator_values_match_individual_aggregators(
 ) -> None:
     mean_result = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
     std_result = m.StdAggregator().aggregate(simple_df.lazy()).collect()
-    multi_result = m.MultiAggregator([m.MeanAggregator(), m.StdAggregator()]).aggregate(
-        simple_df.lazy()
-    ).collect()
+    multi_result = (
+        m.MultiAggregator([m.MeanAggregator(), m.StdAggregator()])
+        .aggregate(simple_df.lazy())
+        .collect()
+    )
 
     row_a_mean = mean_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
     row_a_multi = multi_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
@@ -728,9 +730,7 @@ def test_auroc_aggregator_all_inf_in_variant_returns_null() -> None:
         {
             "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
             "meta_is_control": [True, True, False, False],
-            "f1": pl.Series(
-                [1.0, 2.0, float("inf"), float("inf")], dtype=pl.Float64
-            ),
+            "f1": pl.Series([1.0, 2.0, float("inf"), float("inf")], dtype=pl.Float64),
         }
     )
     row = (
@@ -750,9 +750,7 @@ def test_auroc_aggregator_inf_in_reference_returns_null() -> None:
         {
             "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
             "meta_is_control": [True, True, False, False],
-            "f1": pl.Series(
-                [float("inf"), float("inf"), 1.0, 2.0], dtype=pl.Float64
-            ),
+            "f1": pl.Series([float("inf"), float("inf"), 1.0, 2.0], dtype=pl.Float64),
         }
     )
     row = (

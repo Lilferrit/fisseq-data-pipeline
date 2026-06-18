@@ -1,0 +1,9 @@
+[2026-06-18 14:40:49,594][root][INFO] - Scanning file batch1.parquet
+[2026-06-18 14:40:49,595][root][INFO] - Adding edit distance QC query
+[2026-06-18 14:40:49,595][root][INFO] - Adding Barcode Level QC query
+[2026-06-18 14:40:49,595][root][INFO] - Adding Variant Level QC query
+[2026-06-18 14:40:49,596][root][INFO] - Writing output files to .
+[2026-06-18 14:40:49,596][root][INFO] - Writing filtered_cells
+[2026-06-18 14:40:49,599][root][INFO] - Writing barcode_counts
+[2026-06-18 14:40:49,600][root][INFO] - Writing variants_per_barcode
+[2026-06-18 14:40:49,601][root][INFO] - Done

@@ -1,0 +1,59 @@
+Starting OVWT_BATCHWISE for batch1
+[2026-06-18 14:40:50,331][root][INFO] - Config:
+output_dir: .
+output_root: null
+log_level: info
+input_file: filtered_cells.parquet
+label_column: meta_aa_changes
+wt_label: WT
+random_state: 42
+feature_cols: null
+min_cells: 25
+downsample_wt: 50
+save_splits: true
+xgboost:
+  num_boost_round: 100
+  early_stopping_rounds: 5
+  weigh_samples: true
+  params:
+    nthread: -1
+    max_depth: 3
+    colsample_bytree: 0.7
+    colsample_bylevel: 0.7
+    colsample_bynode: 0.7
+    subsample: 0.5
+
+[2026-06-18 14:40:50,331][root][INFO] - Loading input from filtered_cells.parquet
+[2026-06-18 14:40:50,331][root][INFO] - Found 1 batch file(s) matching 'filtered_cells.parquet'
+[2026-06-18 14:40:50,335][root][INFO] - Found 2 variant(s) to profile
+[2026-06-18 14:40:50,335][root][INFO] - Split sizes — train: 88, val: 11, test: 11
+[2026-06-18 14:40:50,335][root][INFO] - Wrote train index to train_index.parquet
+[2026-06-18 14:40:50,336][root][INFO] - Wrote test index to test_index.parquet
+[2026-06-18 14:40:50,336][root][INFO] - Wrote val index to val_index.parquet
+[2026-06-18 14:40:50,336][root][INFO] - Training model for variant 'M1K' vs. 'WT'
+[2026-06-18 14:40:50,336][root][INFO] - Subset sizes — train: 64, val: 8, test: 8
+[0]	train-auc:0.73438	eval-auc:0.60000
+[1]	train-auc:0.72292	eval-auc:0.73333
+[2]	train-auc:0.75052	eval-auc:0.66667
+[3]	train-auc:0.75781	eval-auc:0.60000
+[4]	train-auc:0.78333	eval-auc:0.53333
+[5]	train-auc:0.82760	eval-auc:0.53333
+[6]	train-auc:0.83438	eval-auc:0.53333
+[2026-06-18 14:40:50,347][root][INFO] - Results for 'M1K': train_auroc=0.8344, val_auroc=0.5333, test_auroc=0.6000
+[2026-06-18 14:40:50,347][root][INFO] - Training model for variant 'A1A' vs. 'WT'
+[2026-06-18 14:40:50,348][root][INFO] - Subset sizes — train: 64, val: 8, test: 8
+[0]	train-auc:0.63958	eval-auc:0.36667
+[1]	train-auc:0.60938	eval-auc:0.80000
+[2]	train-auc:0.66875	eval-auc:0.93333
+[3]	train-auc:0.70208	eval-auc:0.93333
+[4]	train-auc:0.73073	eval-auc:1.00000
+[5]	train-auc:0.74896	eval-auc:0.86667
+[6]	train-auc:0.81510	eval-auc:0.80000
+[7]	train-auc:0.84740	eval-auc:0.46667
+[8]	train-auc:0.83229	eval-auc:0.53333
+[9]	train-auc:0.83906	eval-auc:0.46667
+[2026-06-18 14:40:50,357][root][INFO] - Results for 'A1A': train_auroc=0.8391, val_auroc=0.4667, test_auroc=0.6000
+[2026-06-18 14:40:50,357][root][INFO] - Joining results with per-variant metadata
+[2026-06-18 14:40:50,358][root][INFO] - Results written to results.parquet
+[2026-06-18 14:40:50,359][root][INFO] - Writing models to models.pkl
+[2026-06-18 14:40:50,359][root][INFO] - Done

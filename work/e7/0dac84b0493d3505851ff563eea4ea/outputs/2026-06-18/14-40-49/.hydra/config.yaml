@@ -1,0 +1,12 @@
+output_dir: .
+output_root: null
+log_level: info
+cell_files:
+- batch1.parquet
+bc_threshold: 3
+variant_bc_threshold: 3
+edit_distance_threshold: 1
+barcode_col_name: upBarcode
+aa_changes_col_name: aaChanges
+edit_distance_col_name: editDistance
+label_column: meta_aa_changes

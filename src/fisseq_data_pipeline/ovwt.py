@@ -104,8 +104,10 @@ class OvwtConfig(LabeledInputConfig):
         exact count (no-op if wildtype count is already at or below the
         target). ``False`` disables downsampling. Defaults to ``True``.
     save_splits : bool
-        If ``True``, write train/test/val splits to Parquet files in
-        ``output_dir``. Defaults to ``False``.
+        If ``True``, write lightweight train/test/val index files to
+        ``output_dir``. Each file records the original row position and source
+        file path for each cell in the split rather than duplicating the full
+        feature matrix. Defaults to ``True``.
     xgboost : XGBoostConfig
         XGBoost training configuration. Defaults to :class:`XGBoostConfig`.
     """
@@ -115,7 +117,7 @@ class OvwtConfig(LabeledInputConfig):
     feature_cols: Optional[list] = None
     min_cells: Optional[int] = 250
     downsample_wt: Union[bool, int] = True
-    save_splits: bool = False
+    save_splits: bool = True
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
 
@@ -487,8 +489,12 @@ def train_test_val_split(
     Returns
     -------
     tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
-        ``(train, test, val)`` DataFrames, each containing feature columns and
-        the label column.
+        ``(train, test, val)`` DataFrames, each containing feature columns,
+        the label column, and a ``__row_idx__`` column recording the 0-based
+        row position of each cell in the original ``data_df`` argument (before
+        any filtering or downsampling). Callers that do not need the index
+        should drop ``__row_idx__`` before passing splits to model-training
+        functions.
     """
     label_col = cfg.label_column
     if cfg.feature_cols is not None:
@@ -496,8 +502,9 @@ def train_test_val_split(
     else:
         feature_cols = get_feature_cols(data_df)
 
+    data_df = data_df.with_row_index("__row_idx__")
     select_cols = feature_cols + [label_col]
-    data_df = data_df.select(select_cols)
+    data_df = data_df.select(select_cols + ["__row_idx__"])
     data_df = data_df.filter(pl.col(label_col).is_not_null())
 
     if cfg.min_cells is not None:
@@ -528,7 +535,9 @@ def train_test_val_split(
     )
 
     def select_rows(idx: np.ndarray) -> pl.DataFrame:
-        return data_df.filter(pl.col("__idx__").is_in(idx)).select(select_cols)
+        return data_df.filter(pl.col("__idx__").is_in(idx)).select(
+            select_cols + ["__row_idx__"]
+        )
 
     return select_rows(train_idx), select_rows(test_idx), select_rows(val_idx)
 
@@ -608,9 +617,10 @@ def main(cfg: DictConfig) -> None:
 
     Output files
     ------------
-    - ``{output_dir}/results.csv``
+    - ``{output_dir}/results.parquet``
     - ``{output_dir}/models.pkl``
-    - ``{output_dir}/{train,test,val}.parquet`` (only when ``save_splits`` is ``True``)
+    - ``{output_dir}/{train,test,val}_index.parquet`` (when ``save_splits`` is ``True``,
+      which is the default; each file has columns ``row_idx`` and ``origin_file``)
 
     Configuration
     -------------
@@ -644,14 +654,24 @@ def main(cfg: DictConfig) -> None:
     )
 
     if cfg.save_splits:
+        origin_file = str(pathlib.Path(cfg.input_file).resolve())
         for name, split_df in (
             ("train", train_all),
             ("test", test_all),
             ("val", val_all),
         ):
-            split_path = output_dir / f"{name}.parquet"
-            split_df.write_parquet(split_path)
-            logging.info("Wrote %s split to %s", name, split_path)
+            index_path = output_dir / f"{name}_index.parquet"
+            pl.DataFrame(
+                {
+                    "row_idx": split_df["__row_idx__"],
+                    "origin_file": pl.Series([origin_file] * len(split_df)),
+                }
+            ).write_parquet(index_path)
+            logging.info("Wrote %s index to %s", name, index_path)
+
+    train_all = train_all.drop("__row_idx__")
+    test_all = test_all.drop("__row_idx__")
+    val_all = val_all.drop("__row_idx__")
 
     results = []
     models = {}

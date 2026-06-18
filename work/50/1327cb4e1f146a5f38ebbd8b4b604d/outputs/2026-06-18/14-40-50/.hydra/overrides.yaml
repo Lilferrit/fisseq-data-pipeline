@@ -1,0 +1,4 @@
+- output_dir=.
+- input_file=filtered_cells.parquet
+- min_cells=25
+- downsample_wt=50

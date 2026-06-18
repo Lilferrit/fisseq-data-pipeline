@@ -156,13 +156,17 @@ def test_compute_f_stat_separated_groups_larger_than_mixed() -> None:
 
 def test_compute_permanova_sample_output_columns() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    result = m.compute_permanova_sample(
+        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
     assert set(result.columns) == {"f_value", "f_value_shuffled"}
 
 
 def test_compute_permanova_sample_single_row() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    result = m.compute_permanova_sample(
+        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
     assert len(result) == 1
 
 
@@ -177,14 +181,20 @@ def test_compute_permanova_sample_deterministic() -> None:
 
 def test_compute_permanova_sample_different_seeds_differ() -> None:
     df = _make_feature_df()
-    r1 = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
-    r2 = m.compute_permanova_sample(df.sample(n=30, seed=99, shuffle=True), META_BATCH_COL, seed=99)
+    r1 = m.compute_permanova_sample(
+        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
+    r2 = m.compute_permanova_sample(
+        df.sample(n=30, seed=99, shuffle=True), META_BATCH_COL, seed=99
+    )
     assert r1["f_value"][0] != pytest.approx(r2["f_value"][0])
 
 
 def test_compute_permanova_sample_separated_batches_high_f() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(df.sample(n=50, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    result = m.compute_permanova_sample(
+        df.sample(n=50, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
     assert result["f_value"][0] > 10.0
 
 
@@ -197,7 +207,9 @@ def test_compute_permanova_sample_null_features_no_crash() -> None:
         .otherwise(pl.col("Intensity_mean"))
         .alias("Intensity_mean")
     )
-    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    result = m.compute_permanova_sample(
+        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
     assert set(result.columns) == {"f_value", "f_value_shuffled"}
 
 
@@ -210,14 +222,18 @@ def test_compute_permanova_sample_inf_features_no_crash() -> None:
         .otherwise(pl.col("Intensity_mean"))
         .alias("Intensity_mean")
     )
-    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    result = m.compute_permanova_sample(
+        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
     assert set(result.columns) == {"f_value", "f_value_shuffled"}
 
 
 def test_compute_permanova_sample_excludes_meta_columns() -> None:
     """meta_ columns must not be treated as features."""
     df = _make_feature_df().with_columns(pl.lit("extra").alias("meta_extra"))
-    result = m.compute_permanova_sample(df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0)
+    result = m.compute_permanova_sample(
+        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    )
     assert result["f_value"][0] is not None
 
 

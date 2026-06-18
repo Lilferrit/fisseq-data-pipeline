@@ -1,0 +1,1 @@
+2026-06-18 14:40:48	3.4s	chaotic_mccarthy	OK	3f7dd3745d66ac0af541fd38052d6542	ae726bf0-9afe-4a62-a51b-a3f80df4e9c8	nextflow run /Users/gwen/fisseq-data-pipeline --workflow ovwt --input_dir /tmp/nf_debug --bc_threshold 3 --variant_bc_threshold 3 --ovwt_min_cells 25 --downsample_wt 50

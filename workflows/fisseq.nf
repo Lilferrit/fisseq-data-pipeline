@@ -12,7 +12,7 @@ include { FEATURE_SELECT_GLOBAL    } from '../modules/local/feature_select_globa
 workflow FisseqPipeline {
     // Validate required parameters (must be inside workflow in DSL2)
     if (params.input_dir == null) {
-        error "ERROR: --input_dir is required.\n  Usage: nextflow run fisseq_pipeline.nf --input_dir /path/to/data"
+        error "ERROR: --input_dir is required.\n  Usage: nextflow run fisseq.nf --input_dir /path/to/data"
     }
     def inputSubdir = file("${params.input_dir}/input")
     if (!inputSubdir.isDirectory()) {
