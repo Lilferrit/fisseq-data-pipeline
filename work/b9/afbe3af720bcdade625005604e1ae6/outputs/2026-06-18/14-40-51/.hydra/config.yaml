@@ -1,8 +1,0 @@
-output_dir: .
-output_root: null
-log_level: info
-input_file: test_index.parquet
-label_column: meta_aa_changes
-models_path: models.pkl
-wt_label: WT
-batch_size: 10000
