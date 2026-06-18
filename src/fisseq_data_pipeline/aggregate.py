@@ -220,10 +220,12 @@ class ReferenceBasedAggregator(BaseAggregator):
         ]
         variant_labels = lf.filter(~CONTROL_COLUMN).select(self.label_col).unique()
         controls = lf.filter(CONTROL_COLUMN).drop(self.label_col)
-        expanded = pl.concat([
-            lf.filter(~CONTROL_COLUMN),
-            controls.join(variant_labels, how="cross").select(all_cols),
-        ])
+        expanded = pl.concat(
+            [
+                lf.filter(~CONTROL_COLUMN),
+                controls.join(variant_labels, how="cross").select(all_cols),
+            ]
+        )
         # Group each label's rows (variant + replicated controls) into lists so
         # that map_elements below can split them by the control flag.
         grouped = expanded.group_by(self.label_col).agg(
@@ -241,11 +243,19 @@ class ReferenceBasedAggregator(BaseAggregator):
                 is_ctrl = s[CONTROL_COLUMN_NAME]
                 vals = s[_feat]
                 group_vals = np.fromiter(
-                    (v for v, c in zip(vals, is_ctrl) if not c and v is not None and np.isfinite(v)),
+                    (
+                        v
+                        for v, c in zip(vals, is_ctrl)
+                        if not c and v is not None and np.isfinite(v)
+                    ),
                     dtype=float,
                 )
                 ref_vals = np.fromiter(
-                    (v for v, c in zip(vals, is_ctrl) if c and v is not None and np.isfinite(v)),
+                    (
+                        v
+                        for v, c in zip(vals, is_ctrl)
+                        if c and v is not None and np.isfinite(v)
+                    ),
                     dtype=float,
                 )
                 if len(group_vals) == 0 or len(ref_vals) == 0:

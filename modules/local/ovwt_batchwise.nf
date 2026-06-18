@@ -8,7 +8,7 @@ process OVWT_BATCHWISE {
     tuple val(batch_stem), path(normalized_parquet)
 
     output:
-    tuple val(batch_stem), path("results.parquet"), path("models.pkl")
+    tuple val(batch_stem), path("results.parquet"), path("models.pkl"), path("test_index.parquet")
 
     script:
     // TODO: add per-batch OvWT visualization

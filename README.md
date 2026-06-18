@@ -96,7 +96,7 @@ Place one `.parquet` file per batch inside an `input/` subdirectory of your expe
 
 ### Environment configuration
 
-`nextflow.config` in this repo contains only executor/cluster settings. Environment setup — activating a virtualenv or installing the package — belongs in a separate config file that you pass via `-c`:
+The repo does not ship a `nextflow.config`. Executor and environment setup are entirely user-provided via a config file passed with `-c`:
 
 ```bash
 nextflow run . -c your.config --input_dir /path/to/experiment

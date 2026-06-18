@@ -46,11 +46,17 @@ params.permanova_sample_size   = 1000
 params.ovwt_min_cells          = 250
 params.downsample_wt           = 5000
 params.aggregator              = "multi"
+params.workflow                = "fisseq"   // "fisseq" | "ovwt"
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
-include { FisseqPipeline } from './workflows/fisseq_pipeline'
+include { FisseqPipeline } from './workflows/fisseq'
+include { OvwtPipeline   } from './workflows/ovwt'
 
 workflow {
-    FisseqPipeline()
+    if (params.workflow == "ovwt") {
+        OvwtPipeline()
+    } else {
+        FisseqPipeline()
+    }
 }
