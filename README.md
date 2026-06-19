@@ -56,7 +56,23 @@ pip install -e .
 Run directly from GitHub — no cloning required:
 
 ```bash
-nextflow run your-org/fisseq-data-pipeline \
+nextflow run Lilferrit/fisseq-data-pipeline \
+    -c your.config \
+    --input_dir /path/to/experiment
+```
+
+Use `-r` to pin to a branch or release tag. Nextflow caches the pulled revision in `~/.nextflow/assets`; pass `-latest` to force a refresh:
+
+```bash
+# Track the main branch
+nextflow run Lilferrit/fisseq-data-pipeline \
+    -r main \
+    -c your.config \
+    --input_dir /path/to/experiment
+
+# Pin to a specific release tag
+nextflow run Lilferrit/fisseq-data-pipeline \
+    -r v1.2.0 \
     -c your.config \
     --input_dir /path/to/experiment
 ```
@@ -65,6 +81,32 @@ Or from a local clone:
 
 ```bash
 nextflow run . --input_dir /path/to/experiment
+```
+
+### Choosing a workflow
+
+The pipeline ships two workflows, selected with `--workflow`:
+
+| Workflow | Steps | Use when |
+| -------- | ----- | -------- |
+| `fisseq` (default) | QC → Normalize → PERMANOVA (WT & SYN) → OvWT (batchwise & global) → Feature select (batchwise & global) | Full end-to-end analysis |
+| `ovwt` | QC → OvWT batchwise → OvWT cell scores batchwise | OvWT classification only, no normalization or feature selection |
+
+**Run the full fisseq pipeline** (default — `--workflow fisseq` may be omitted):
+
+```bash
+nextflow run Lilferrit/fisseq-data-pipeline \
+    -c your.config \
+    --input_dir /path/to/experiment
+```
+
+**Run the OvWT-only pipeline:**
+
+```bash
+nextflow run Lilferrit/fisseq-data-pipeline \
+    -c your.config \
+    --workflow ovwt \
+    --input_dir /path/to/experiment
 ```
 
 ### Input directory layout
@@ -93,6 +135,7 @@ Place one `.parquet` file per batch inside an `input/` subdirectory of your expe
 | `--ovwt_min_cells` | `250` | Minimum cells required per variant for OvWT classification. |
 | `--downsample_wt` | `5000` | Downsample wildtype cells to this count for OvWT classification. |
 | `--aggregator` | `"multi"` | Feature aggregation method (see `fisseq-feature-select` docs). |
+| `--workflow` | `"fisseq"` | Which workflow to run: `"fisseq"` (full pipeline) or `"ovwt"` (OvWT-only). |
 
 ### Environment configuration
 

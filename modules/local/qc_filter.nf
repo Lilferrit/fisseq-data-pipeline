@@ -1,7 +1,7 @@
 nextflow.enable.dsl = 2
 
 process QC_FILTER {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir { "${params.input_dir}/qc_filter/${batch_stem}" }, mode: 'copy'
 
     input:
