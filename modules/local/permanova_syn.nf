@@ -1,7 +1,7 @@
 nextflow.enable.dsl = 2
 
 process PERMANOVA_SYN {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir "${params.input_dir}/permanova/synonymous", mode: 'copy'
 
     input:

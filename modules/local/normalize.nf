@@ -4,7 +4,7 @@ nextflow.enable.dsl = 2
 // cells go to normalization/cells/ and normalizers go to normalization/normalizers/
 // so that the permanova/ovwt glob "normalization/cells/*.parquet" only hits cell data.
 process NORMALIZE {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir "${params.input_dir}/normalization", mode: 'copy', saveAs: { fname ->
         fname.endsWith('.normalizer.parquet') ? "normalizers/${fname}" : "cells/${fname}"
     }

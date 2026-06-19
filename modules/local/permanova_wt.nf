@@ -1,7 +1,7 @@
 nextflow.enable.dsl = 2
 
 process PERMANOVA_WT {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir "${params.input_dir}/permanova/wildtype", mode: 'copy'
 
     input:

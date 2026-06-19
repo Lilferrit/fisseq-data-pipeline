@@ -1,7 +1,7 @@
 nextflow.enable.dsl = 2
 
 process FEATURE_SELECT_GLOBAL {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir "${params.input_dir}/feature_select_global", mode: 'copy'
 
     input:

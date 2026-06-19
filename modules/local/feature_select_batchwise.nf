@@ -3,7 +3,7 @@ nextflow.enable.dsl = 2
 // output_dir=./out_select avoids the staged input (${batch_stem}.parquet) being
 // overwritten by the identically-named tool output when Nextflow uses symlink staging.
 process FEATURE_SELECT_BATCHWISE {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir { "${params.input_dir}/feature_select_batchwise/${batch_stem}" }, mode: 'copy'
 
     input:

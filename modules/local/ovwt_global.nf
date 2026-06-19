@@ -1,7 +1,7 @@
 nextflow.enable.dsl = 2
 
 process OVWT_GLOBAL {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir "${params.input_dir}/ovwt_global", mode: 'copy'
 
     input:

@@ -1,7 +1,7 @@
 nextflow.enable.dsl = 2
 
 process OVWT_BATCHWISE {
-    errorStrategy 'terminate'
+    errorStrategy 'ignore'
     publishDir { "${params.input_dir}/ovwt_batchwise/${batch_stem}" }, mode: 'copy'
 
     input:
