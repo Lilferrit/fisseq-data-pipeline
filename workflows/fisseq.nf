@@ -2,8 +2,8 @@ nextflow.enable.dsl = 2
 
 include { QC_FILTER                } from '../modules/local/qc_filter'
 include { NORMALIZE                } from '../modules/local/normalize'
-include { PERMANOVA_WT             } from '../modules/local/permanova_wt'
-include { PERMANOVA_SYN            } from '../modules/local/permanova_syn'
+include { BATCHVSBATCH_PRE         } from '../modules/local/batchvsbatch_pre'
+include { BATCHVSBATCH_POST        } from '../modules/local/batchvsbatch_post'
 include { OVWT_BATCHWISE           } from '../modules/local/ovwt_batchwise'
 include { OVWT_GLOBAL              } from '../modules/local/ovwt_global'
 include { FEATURE_SELECT_BATCHWISE } from '../modules/local/feature_select_batchwise'
@@ -23,6 +23,10 @@ workflow FisseqPipeline {
         error "ERROR: No .parquet files found in ${params.input_dir}/input"
     }
 
+    // Resolve input_dir to absolute path so global process scripts can glob published outputs.
+    // Relative paths (e.g. ".") break inside Nextflow work directories.
+    def input_dir_abs = file(params.input_dir).toAbsolutePath().toString()
+
     // Source channel: one tuple per batch parquet in input/
     input_ch = Channel.fromPath("${params.input_dir}/input/*.parquet")
         .map { f -> [ f.baseName, f ] }
@@ -36,28 +40,30 @@ workflow FisseqPipeline {
     NORMALIZE(norm_input_ch)
     norm_ch = NORMALIZE.out.normalized  // tuple(batch_stem, normalized_parquet)
 
-    // Collect all batch stems as a single-element signal for global steps
-    all_stems_signal = norm_ch.map { stem, p -> stem }.collect()
+    // Single-element signal that fires once all QC_FILTER batches are done.
+    // .map preserves the "wait for all batches" dependency while emitting just the path.
+    qc_signal = qc_ch.map { stem, fc, bc, vpb -> stem }.collect()
+        .map { _stems -> input_dir_abs }
 
-    // Resolve input_dir to absolute path so global process scripts can glob published outputs.
-    // Relative paths (e.g. ".") break inside Nextflow work directories.
-    // .map here preserves the "wait for all batches" dependency while emitting just the path.
-    def input_dir_abs = file(params.input_dir).toAbsolutePath().toString()
-    global_signal = all_stems_signal.map { _stems -> input_dir_abs }
+    // Single-element signal that fires once all NORMALIZE batches are done.
+    global_signal = norm_ch.map { stem, p -> stem }.collect()
+        .map { _stems -> input_dir_abs }
 
-    // Step 3: PERMANOVA — global, two variant-class sub-runs
-    PERMANOVA_WT(global_signal)
-    PERMANOVA_SYN(global_signal)
+    // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
+    BATCHVSBATCH_PRE(qc_signal)
 
-    // Step 4: OvWT — batchwise
+    // Step 4: Batch-vs-batch — post batch correction (normalized cells)
+    BATCHVSBATCH_POST(global_signal)
+
+    // Step 5: OvWT — batchwise
     OVWT_BATCHWISE(norm_ch)
 
-    // Step 5: OvWT — global
+    // Step 6: OvWT — global
     OVWT_GLOBAL(global_signal)
 
-    // Step 6: Feature selection — batchwise
+    // Step 7: Feature selection — batchwise
     FEATURE_SELECT_BATCHWISE(norm_ch)
 
-    // Step 7: Feature selection — global
+    // Step 8: Feature selection — global
     FEATURE_SELECT_GLOBAL(global_signal)
 }

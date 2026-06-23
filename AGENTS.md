@@ -17,15 +17,15 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
       ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
       │
+      ├──► BATCHVSBATCH_PRE         (global — waits for all QC_FILTER)
       ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │
-      ├──► PERMANOVA_WT            (global — waits for all batches)
-      ├──► PERMANOVA_SYN           (global — waits for all batches)
-      ├──► OVWT_BATCHWISE          (per batch)
-      ├──► OVWT_GLOBAL             (global — waits for all batches)
+      ├──► BATCHVSBATCH_POST        (global — waits for all batches)
+      ├──► OVWT_BATCHWISE           (per batch)
+      ├──► OVWT_GLOBAL              (global — waits for all batches)
       ├──► FEATURE_SELECT_BATCHWISE (per batch)
-      └──► FEATURE_SELECT_GLOBAL   (global — waits for all batches)
+      └──► FEATURE_SELECT_GLOBAL    (global — waits for all batches)
 ```
 
 **Main components:**
@@ -117,15 +117,18 @@ uv run fisseq-ovwt \
     output_dir=./out \
     input_file=out/features.parquet \
     min_cells=250
-```
 
-Note: `ovwtcellscores.py` (cell scoring from trained models) is not yet registered as a script entry point in `pyproject.toml`. Invoke it as a module for now:
-
-```bash
-uv run python -m fisseq_data_pipeline.ovwtcellscores \
+uv run fisseq-ovwt-cell-scores \
     output_dir=./out \
     input_file=out/normalized.parquet \
     models_path=out/models.pkl
+```
+
+```bash
+uv run fisseq-batch-vs-batch \
+    output_dir=./out \
+    input_file=out/features.parquet \
+    batch_column=meta_batch
 ```
 
 ### Tests
@@ -185,12 +188,14 @@ fisseq-data-pipeline/
 │   │   └── input.py               # InputConfig, LabeledInputConfig (inherit AppConfig)
 │   ├── constants.py               # Column names, Polars selectors, EPS
 │   ├── utils.py                   # load_batches, setup_logging, compute_impact_score, norms
+│   ├── xgbparams.py               # Shared XGBoost infrastructure (dataclasses, DMatrix builders, split helper)
 │   ├── qcfilter.py                # QC filtering entry point
 │   ├── normalize.py               # Normalizer class + normalize entry point
 │   ├── aggregate.py               # 9 aggregation strategies + entry point
 │   ├── features.py                # Pseudo-replicate correlation + pycytominer selection
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
-│   ├── ovwtcellscores.py          # Cell scoring via trained models (UNTRACKED, no pyproject entry)
+│   ├── ovwtcellscores.py          # Cell scoring via trained models
+│   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value (no pyproject entry)
 │   └── permanova.py               # Bootstrapped PERMANOVA entry point
 ├── modules/local/
 │   ├── qc_filter.nf
@@ -206,7 +211,7 @@ fisseq-data-pipeline/
 ├── main.nf                        # Nextflow entrypoint + parameter defaults
 ├── example.config                 # Template user config (env setup, venv/conda/singularity)
 ├── tests/
-│   ├── unit/                      # 8 files, fast, synthetic data
+│   ├── unit/                      # 10 files, fast, synthetic data
 │   └── integration/               # 1 file, slow, full pipeline run
 ├── docs/                          # STALE — do not rely on
 ├── site/                          # Generated MkDocs output — do not edit
@@ -231,9 +236,11 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`BaseAggregator`** (`aggregate.py`) — abstract base for 9 concrete aggregation strategies. `MultiAggregator` chains mean/median/MAD/std/KS/QQ/AUROC and joins results on the label column.
 
+**`xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, and `batchvsbatch.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here.
+
 **`load_batches`** (`utils.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
-**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (PERMANOVA, OVWT_GLOBAL, FEATURE_SELECT_GLOBAL) wait for all per-batch normalization to complete by collecting all batch stems into a single `global_signal` channel carrying the absolute `input_dir` path. Global processes then glob `normalization/cells/*.parquet` to discover all batch outputs.
+**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH_PRE/POST, OVWT_GLOBAL, FEATURE_SELECT_GLOBAL) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet`; all other global processes wait on `global_signal` (all NORMALIZE done) and glob `normalization/cells/*.parquet`.
 
 ### CLI entry points (registered in `pyproject.toml`)
 
@@ -244,7 +251,9 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 | `fisseq-aggregate` | `aggregate:main` | Per-variant aggregation |
 | `fisseq-feature-select` | `features:main` | Pseudo-rep + pycytominer feature selection |
 | `fisseq-ovwt` | `ovwt:main` | One-vs-WT XGBoost training |
+| `fisseq-ovwt-cell-scores` | `ovwtcellscores:main` | Score cells against trained OvWT models |
 | `fisseq-permanova` | `permanova:main` | Bootstrapped PERMANOVA |
+| `fisseq-batch-vs-batch` | `batchvsbatch:main` | Per-variant multiclass batch classifier (OvR AUC + Mann-Whitney p per batch) |
 
 All share base Hydra fields: `output_dir` (required), `output_root` (optional prefix), `log_level` (default `"info"`).
 
@@ -261,9 +270,9 @@ All outputs land under `<input_dir>` alongside the `input/` folder:
   normalization/
     cells/<batch>.parquet
     normalizers/<batch>.normalizer.parquet
-  permanova/
-    wildtype/permanova.parquet
-    synonymous/permanova.parquet
+  batchvsbatch/
+    pre/results.parquet         # pre batch correction (QC-filtered cells); columns: variant, batch, auroc, mw_pvalue, n_batch_cells, n_cells
+    post/results.parquet        # post batch correction (normalized cells)
   ovwt_batchwise/<batch>/
     results.parquet
     models.pkl
@@ -348,19 +357,17 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 4. **There is no CI for tests.** `.github/workflows/docs.yml` only deploys MkDocs to GitHub Pages on pushes to `main`. Tests are not run in CI — they must be run locally before merging.
 
-5. **`ovwtcellscores.py` is untracked and has no `pyproject.toml` entry point.** The file exists and works (tested in `tests/unit/test_ovwtcellscores.py`) but is not committed and has no `fisseq-ovwt-cell-scores` script registered. Before merging it: add the entry point to `pyproject.toml` and `git add` the file.
+5. **Integration tests are slow and require Nextflow.** `tests/integration/test_integration.py` runs the full Nextflow pipeline on synthetic data using a session-scoped fixture. Skipping them (`uv run pytest tests/unit`) is standard for day-to-day development.
 
-6. **Integration tests are slow and require Nextflow.** `tests/integration/test_integration.py` runs the full Nextflow pipeline on synthetic data using a session-scoped fixture. Skipping them (`uv run pytest tests/unit`) is standard for day-to-day development.
+6. **Global Nextflow processes glob for published files, not channel outputs.** `BATCHVSBATCH_PRE/POST`, `OVWT_GLOBAL`, and `FEATURE_SELECT_GLOBAL` read from disk after all upstream processes finish. This means: (a) relative `input_dir` paths are resolved to absolute at workflow start; (b) `publishDir` paths in upstream modules must stay in sync with the globs in global modules (`BATCHVSBATCH_PRE` globs `qc_filter/*/filtered_cells.parquet`; others glob `normalization/cells/*.parquet`).
 
-7. **Global Nextflow processes glob for published files, not channel outputs.** `PERMANOVA_WT`, `PERMANOVA_SYN`, `OVWT_GLOBAL`, and `FEATURE_SELECT_GLOBAL` read `normalization/cells/*.parquet` from disk after all NORMALIZE processes finish. This means: (a) relative `input_dir` paths are resolved to absolute at workflow start; (b) the `publishDir` path in `normalize.nf` must stay in sync with the glob in global modules.
+7. **`feature_select_batchwise.nf` uses `output_dir=./out_select`** to avoid a Nextflow staging collision where the output `.parquet` would overwrite the input `.parquet` (same filename). If you change the output naming in `features.py`, update this workaround.
 
-8. **`feature_select_batchwise.nf` uses `output_dir=./out_select`** to avoid a Nextflow staging collision where the output `.parquet` would overwrite the input `.parquet` (same filename). If you change the output naming in `features.py`, update this workaround.
+8. **The README contains `pip install` instructions.** Ignore them. This project uses `uv`. See the Setup section above.
 
-9. **The README contains `pip install` instructions.** Ignore them. This project uses `uv`. See the Setup section above.
+9. **`models.pkl` stores XGBoost `Booster` objects as a `dict[str, xgb.Booster]`.** Pickle is used here (not Parquet) because XGBoost's native serialization requires either the Booster API or pickle. Normalizer stats use Parquet (`Normalizer.save`/`Normalizer.load`) — don't confuse the two.
 
-10. **`models.pkl` stores XGBoost `Booster` objects as a `dict[str, xgb.Booster]`.** Pickle is used here (not Parquet) because XGBoost's native serialization requires either the Booster API or pickle. Normalizer stats use Parquet (`Normalizer.save`/`Normalizer.load`) — don't confuse the two.
-
-11. **Synonymous variants are used as the control baseline for aggregation**, not WT cells. In `aggregate.py:variant_classification`, synonymous mutations (first and last amino acid identical in `meta_aa_changes`) are flagged as `meta_is_control = True`. In `normalize.py`, the control is WT cells (the SQL `control_sample_query`). These are different steps with different baselines.
+10. **Synonymous variants are used as the control baseline for aggregation**, not WT cells. In `aggregate.py:variant_classification`, synonymous mutations (first and last amino acid identical in `meta_aa_changes`) are flagged as `meta_is_control = True`. In `normalize.py`, the control is WT cells (the SQL `control_sample_query`). These are different steps with different baselines.
 
 ---
 

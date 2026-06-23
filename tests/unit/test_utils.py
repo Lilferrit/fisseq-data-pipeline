@@ -179,6 +179,34 @@ def test_no_match_raises(tmp_path: Path) -> None:
         load_batches(str(tmp_path / "*.parquet"))
 
 
+@pytest.fixture
+def subdirectory_parquet(tmp_path: Path) -> Path:
+    """Two files with the same name in different subdirectories."""
+    for subdir in ("batch1", "batch2"):
+        d = tmp_path / subdir
+        d.mkdir()
+        pl.DataFrame({"meta_aa_changes": ["WT"], "f1": [1.0]}).write_parquet(
+            d / "filtered_cells.parquet"
+        )
+    return tmp_path
+
+
+def test_use_parent_name_assigns_directory_as_batch(subdirectory_parquet: Path) -> None:
+    lf, _ = load_batches(
+        str(subdirectory_parquet / "*/filtered_cells.parquet"), use_parent_name=True
+    )
+    batch_names = sorted(lf.collect()[META_BATCH_COL].unique().to_list())
+    assert batch_names == ["batch1", "batch2"]
+
+
+def test_use_parent_name_false_assigns_stem(subdirectory_parquet: Path) -> None:
+    lf, _ = load_batches(
+        str(subdirectory_parquet / "*/filtered_cells.parquet"), use_parent_name=False
+    )
+    batch_names = lf.collect()[META_BATCH_COL].unique().to_list()
+    assert batch_names == ["filtered_cells"]
+
+
 # ---------------------------------------------------------------------------
 # compute_norm
 # ---------------------------------------------------------------------------
