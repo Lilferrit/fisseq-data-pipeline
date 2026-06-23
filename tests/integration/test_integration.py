@@ -39,10 +39,10 @@ _NF_PARAMS = [
     "25",
     "--downsample_wt",
     "50",
-    "--permanova_n_bootstraps",
-    "3",
-    "--permanova_sample_size",
-    "20",
+    "--bvb_min_cells",
+    "50",
+    "--bvb_min_batches",
+    "2",
 ]
 
 _PROJECT_ROOT = Path(__file__).parents[2]
@@ -161,10 +161,10 @@ def test_pipeline_normalization_outputs(pipeline_outputs, batch_stem):
     ).exists()
 
 
-def test_pipeline_permanova_outputs(pipeline_outputs):
+def test_pipeline_batchvsbatch_outputs(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "permanova" / "wildtype" / "permanova.parquet").exists()
-    assert (exp_dir / "permanova" / "synonymous" / "permanova.parquet").exists()
+    assert (exp_dir / "batchvsbatch" / "pre" / "results.parquet").exists()
+    assert (exp_dir / "batchvsbatch" / "post" / "results.parquet").exists()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
@@ -220,13 +220,13 @@ def test_normalized_cells_wt_mean_near_zero(pipeline_outputs, batch_stem):
         )
 
 
-def test_permanova_has_expected_columns(pipeline_outputs):
+@pytest.mark.parametrize("stage", ["pre", "post"])
+def test_batchvsbatch_has_expected_columns(pipeline_outputs, stage):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "permanova" / "wildtype" / "permanova.parquet")
-    assert "f_value" in df.columns
-    assert "f_value_shuffled" in df.columns
-    assert len(df) == 3  # permanova_n_bootstraps=3
-    assert df["f_value"].is_nan().sum() == 0  # real F-stats require ≥ 2 batches
+    df = pl.read_parquet(exp_dir / "batchvsbatch" / stage / "results.parquet")
+    expected = {"variant", "batch", "auroc", "mw_pvalue", "n_batch_cells", "n_cells"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])

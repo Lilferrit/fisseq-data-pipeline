@@ -4,7 +4,6 @@ import pytest
 from omegaconf import OmegaConf
 
 from fisseq_data_pipeline.ovwt import (
-    convert_labels_to_boolean,
     downsample_wildtype,
     filter_min_cells,
     get_dmatrix,
@@ -79,27 +78,6 @@ def test_get_feature_cols_no_matching_columns():
 def test_get_feature_cols_all_columns_match():
     df = pl.DataFrame({"Intensity_Mean": [1.0], "Texture_Var": [2.0]})
     assert set(get_feature_cols(df)) == {"Intensity_Mean", "Texture_Var"}
-
-
-# ---------------------------------------------------------------------------
-# convert_labels_to_boolean
-# ---------------------------------------------------------------------------
-
-
-def test_convert_labels_to_boolean_wt_maps_to_true():
-    labels = np.array(["WT", "V1", "WT", "V1"])
-    result = convert_labels_to_boolean(labels, "WT")
-    np.testing.assert_array_equal(result, [True, False, True, False])
-
-
-def test_convert_labels_to_boolean_all_wt():
-    labels = np.array(["WT", "WT", "WT"])
-    assert convert_labels_to_boolean(labels, "WT").all()
-
-
-def test_convert_labels_to_boolean_none_wt():
-    labels = np.array(["V1", "V2", "V3"])
-    assert not convert_labels_to_boolean(labels, "WT").any()
 
 
 # ---------------------------------------------------------------------------

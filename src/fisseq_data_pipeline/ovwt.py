@@ -11,7 +11,6 @@ import hydra
 import numpy as np
 import polars as pl
 import sklearn.metrics
-import sklearn.model_selection
 import sklearn.utils
 import xgboost as xgb
 from hydra.core.config_store import ConfigStore
@@ -19,61 +18,12 @@ from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .utils import get_aggregate_meta_data, load_batches, setup_logging
-
-
-@dataclasses.dataclass
-class XGBoostParams:
-    """
-    XGBoost booster hyperparameters passed directly to :func:`xgb.train`.
-
-    Attributes
-    ----------
-    nthread : int
-        Number of parallel threads. ``-1`` uses all available. Defaults to ``-1``.
-    max_depth : int
-        Maximum tree depth. Defaults to ``3``.
-    colsample_bytree : float
-        Fraction of features sampled per tree. Defaults to ``0.7``.
-    colsample_bylevel : float
-        Fraction of features sampled per level. Defaults to ``0.7``.
-    colsample_bynode : float
-        Fraction of features sampled per split node. Defaults to ``0.7``.
-    subsample : float
-        Fraction of training rows sampled per tree. Defaults to ``0.5``.
-    """
-
-    nthread: int = -1
-    max_depth: int = 3
-    colsample_bytree: float = 0.7
-    colsample_bylevel: float = 0.7
-    colsample_bynode: float = 0.7
-    subsample: float = 0.5
-
-
-@dataclasses.dataclass
-class XGBoostConfig:
-    """
-    Training-loop configuration for XGBoost.
-
-    Attributes
-    ----------
-    num_boost_round : int
-        Maximum number of boosting rounds. Defaults to ``100``.
-    early_stopping_rounds : int
-        Stop training if the eval metric does not improve for this many rounds.
-        Defaults to ``5``.
-    weigh_samples : bool
-        If ``True``, use :func:`sklearn.utils.compute_sample_weight` with the
-        ``"balanced"`` strategy to up-weight the minority class. Defaults to
-        ``True``.
-    params : XGBoostParams
-        Booster hyperparameters. Defaults to :class:`XGBoostParams`.
-    """
-
-    num_boost_round: int = 100
-    early_stopping_rounds: int = 5
-    weigh_samples: bool = True
-    params: XGBoostParams = dataclasses.field(default_factory=XGBoostParams)
+from .xgbparams import (
+    XGBoostConfig,
+    get_dmatrix,
+    get_feature_cols,
+    split_indices_stratified,
+)
 
 
 @dataclasses.dataclass
@@ -125,60 +75,6 @@ _cs = ConfigStore.instance()
 _cs.store(name="ovwt_main", node=OvwtConfig)
 
 
-def convert_labels_to_boolean(labels: np.ndarray, wt_label: str) -> np.ndarray:
-    """
-    Convert a string label array to a boolean array marking wildtype rows.
-
-    Parameters
-    ----------
-    labels : np.ndarray
-        1-D array of variant label strings.
-    wt_label : str
-        The label string that identifies wildtype rows.
-
-    Returns
-    -------
-    np.ndarray
-        Boolean array of the same shape; ``True`` where ``labels == wt_label``.
-    """
-    return labels == wt_label
-
-
-def get_dmatrix(
-    df: pl.DataFrame,
-    label_col: str,
-    wt_label: str,
-    weight: Optional[np.ndarray] = None,
-) -> xgb.DMatrix:
-    """
-    Build an XGBoost DMatrix from a Polars DataFrame.
-
-    Feature columns are all columns except ``label_col``. Non-finite values
-    are replaced with ``NaN`` so XGBoost treats them as missing.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input DataFrame containing feature columns and ``label_col``.
-    label_col : str
-        Name of the label column.
-    wt_label : str
-        Wildtype label string passed to :func:`convert_labels_to_boolean`.
-    weight : np.ndarray or None
-        Optional per-sample weights array. Defaults to ``None``.
-
-    Returns
-    -------
-    xgb.DMatrix
-        DMatrix with boolean labels (``True`` = wildtype) and optional weights.
-    """
-    feature_cols = [col for col in df.columns if col != label_col]
-    x = df.select(feature_cols).cast(pl.Float64).to_numpy().copy()
-    x[~np.isfinite(x)] = np.nan
-    y = convert_labels_to_boolean(df.get_column(label_col).to_numpy(), wt_label)
-    return xgb.DMatrix(x, label=y, weight=weight)
-
-
 def train_xgboost(
     train: pl.DataFrame,
     val: pl.DataFrame,
@@ -210,9 +106,7 @@ def train_xgboost(
     label_col = cfg.label_column
     wt_label = cfg.wt_label
 
-    y_train = convert_labels_to_boolean(
-        train.get_column(label_col).to_numpy(), wt_label
-    )
+    y_train = train.get_column(label_col).to_numpy() == wt_label
     sample_weight = (
         sklearn.utils.compute_sample_weight("balanced", y_train)
         if cfg.xgboost.weigh_samples
@@ -355,29 +249,6 @@ def read_feature_file(file_path: PathLike) -> pl.DataFrame:
         )
 
 
-def get_feature_cols(df: pl.DataFrame) -> list[str]:
-    """
-    Return the feature column names from a DataFrame.
-
-    Feature columns are identified as those whose name starts with an uppercase
-    letter and contains an underscore, matching the CellProfiler naming
-    convention.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input DataFrame.
-
-    Returns
-    -------
-    list[str]
-        List of feature column names.
-    """
-    return [
-        col for col in df.columns if len(col) > 0 and col[0].isupper() and "_" in col
-    ]
-
-
 def downsample_wildtype(
     data_df: pl.DataFrame,
     label_col: str,
@@ -518,21 +389,8 @@ def train_test_val_split(
 
     data_df = data_df.with_row_index("__idx__")
     labels = data_df.get_column(label_col).to_numpy()
-    all_idx = data_df.get_column("__idx__").to_numpy()
 
-    train_idx, val_test_idx = sklearn.model_selection.train_test_split(
-        all_idx,
-        test_size=0.2,
-        stratify=labels,
-        random_state=cfg.random_state,
-    )
-
-    test_idx, val_idx = sklearn.model_selection.train_test_split(
-        val_test_idx,
-        test_size=0.5,
-        stratify=labels[val_test_idx],
-        random_state=cfg.random_state,
-    )
+    train_idx, test_idx, val_idx = split_indices_stratified(labels, cfg.random_state)
 
     def select_rows(idx: np.ndarray) -> pl.DataFrame:
         return data_df.filter(pl.col("__idx__").is_in(idx)).select(

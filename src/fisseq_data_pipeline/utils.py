@@ -100,7 +100,9 @@ def classify_variant(v: str) -> str:
     return "Synonymous" if m.group(1) == m.group(3) else "Single Missense"
 
 
-def load_batches(glob_pattern: str) -> tuple[pl.LazyFrame, str]:
+def load_batches(
+    glob_pattern: str, *, use_parent_name: bool = False
+) -> tuple[pl.LazyFrame, str]:
     """
     Load all Parquet files matching a glob pattern and label each with its filename stem.
 
@@ -113,6 +115,11 @@ def load_batches(glob_pattern: str) -> tuple[pl.LazyFrame, str]:
     glob_pattern : str
         Glob pattern for input Parquet files (e.g. ``"data/batches/*.parquet"``).
         A concrete path (no wildcards) is treated as a single-file pattern.
+    use_parent_name : bool
+        If ``True``, use each file's parent directory name as the batch label
+        instead of the file stem. Useful when multiple files share the same name
+        but live in different subdirectories (e.g. ``batch1/filtered_cells.parquet``
+        and ``batch2/filtered_cells.parquet``).
 
     Returns
     -------
@@ -132,11 +139,13 @@ def load_batches(glob_pattern: str) -> tuple[pl.LazyFrame, str]:
         raise ValueError(f"No files matched glob pattern: {glob_pattern!r}")
     logging.info("Found %d batch file(s) matching %r", len(paths), glob_pattern)
     output_stem = pathlib.Path(paths[0]).stem if len(paths) == 1 else "output"
+
+    def _label(p: str) -> str:
+        return pathlib.Path(p).parent.name if use_parent_name else pathlib.Path(p).stem
+
     lf = pl.concat(
         [
-            pl.scan_parquet(p).with_columns(
-                pl.lit(pathlib.Path(p).stem).alias(META_BATCH_COL)
-            )
+            pl.scan_parquet(p).with_columns(pl.lit(_label(p)).alias(META_BATCH_COL))
             for p in paths
         ]
     )

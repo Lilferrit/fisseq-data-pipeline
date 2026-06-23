@@ -12,8 +12,8 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .constants import FEATURE_SELECTOR, META_SELECTOR
-from .ovwt import get_dmatrix
 from .utils import load_batches, setup_logging
+from .xgbparams import get_dmatrix
 
 
 @dataclasses.dataclass
