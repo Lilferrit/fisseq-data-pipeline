@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.batchvsbatch as m
 from fisseq_data_pipeline.batchvsbatch import BvbConfig
-from fisseq_data_pipeline.xgbparams import XGBoostConfig, XGBoostParams
+from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig, XGBoostParams
 
 _LABEL_COL = "label"
 _BATCH_COL = "meta_batch"

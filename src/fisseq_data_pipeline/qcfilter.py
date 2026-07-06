@@ -10,8 +10,8 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import AppConfig
-from .constants import META_BARCODE_COL, META_EDIT_DISTANCE_COL
-from .utils import setup_logging
+from .utils.constants import META_BARCODE_COL, META_EDIT_DISTANCE_COL
+from .utils.log import setup_logging
 
 
 @dataclasses.dataclass

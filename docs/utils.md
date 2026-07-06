@@ -1,6 +1,6 @@
 # Utilities
 
-The `fisseq_data_pipeline.utils` module provides shared helpers used internally by the pipeline entry points.
+The `fisseq_data_pipeline.utils.log` module provides shared helpers used internally by the pipeline entry points.
 
 ---
 
@@ -14,7 +14,7 @@ The `fisseq_data_pipeline.utils` module provides shared helpers used internally 
 
 ```python
 from fisseq_data_pipeline.config import AppConfig
-from fisseq_data_pipeline.utils import setup_logging
+from fisseq_data_pipeline.utils.log import setup_logging
 
 cfg = AppConfig(output_dir="./out", log_level="debug")
 setup_logging(cfg, "normalize")
@@ -28,6 +28,6 @@ Log files are written to `{output_dir}/{name}.log`, or `{output_dir}/{output_roo
 
 ---
 
-::: fisseq_data_pipeline.utils.setup_logging
+::: fisseq_data_pipeline.utils.log.setup_logging
 
 ---

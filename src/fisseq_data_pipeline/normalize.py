@@ -11,8 +11,8 @@ from omegaconf import DictConfig, OmegaConf
 from polars import selectors as cs
 
 from .config import InputConfig
-from .constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, EPS, FEATURE_SELECTOR
-from .utils import setup_logging
+from .utils.constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, EPS, FEATURE_SELECTOR
+from .utils.log import setup_logging
 
 
 @dataclasses.dataclass

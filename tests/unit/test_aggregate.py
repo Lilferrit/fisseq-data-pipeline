@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.aggregate as m
 from fisseq_data_pipeline.aggregate import AggregateConfig
-from fisseq_data_pipeline.constants import CONTROL_COLUMN_NAME, IMPACT_SCORE_COL
+from fisseq_data_pipeline.utils.constants import CONTROL_COLUMN_NAME, IMPACT_SCORE_COL
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -16,8 +16,7 @@ QC_FILTER  (per batch)     ← edit distance, barcode count, variant barcode cou
       ▼
 NORMALIZE  (per batch)     ← z-score normalization fit on WT control cells
       │
-      ├──▶ PERMANOVA_WT            (global — waits for all batches)
-      ├──▶ PERMANOVA_SYN           (global — waits for all batches)
+      ├──▶ PERMANOVA               (global — waits for all batches)
       ├──▶ OVWT_BATCHWISE          (per batch)
       ├──▶ OVWT_GLOBAL             (global — waits for all batches)
       ├──▶ FEATURE_SELECT_BATCHWISE (per batch)
@@ -130,8 +129,7 @@ Place one `.parquet` file per batch inside an `input/` subdirectory of your expe
 | `--variant_bc_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
 | `--edit_distance_threshold` | `1` | Maximum allowed edit distance (QC filter). |
 | `--minimum_correlation` | `0.5` | Minimum pseudo-replicate Pearson *r* for feature selection. |
-| `--permanova_n_bootstraps` | `200` | Bootstrap iterations for PERMANOVA. |
-| `--permanova_sample_size` | `1000` | Rows per PERMANOVA bootstrap sample. |
+| `--permanova_n_permutations` | `999` | Label permutations for the per-variant PERMANOVA p-value. |
 | `--ovwt_min_cells` | `250` | Minimum cells required per variant for OvWT classification. |
 | `--downsample_wt` | `5000` | Downsample wildtype cells to this count for OvWT classification. |
 | `--aggregator` | `"multi"` | Feature aggregation method (see `fisseq-feature-select` docs). |
@@ -169,8 +167,7 @@ All outputs are written back into `<input_dir>` alongside the `input/` folder:
     cells/<batch>.parquet
     normalizers/<batch>.normalizer.parquet
   permanova/
-    wildtype/permanova.parquet
-    synonymous/permanova.parquet
+    permanova.parquet
   ovwt_batchwise/<batch>/
     results.parquet
     models.pkl
@@ -328,32 +325,24 @@ fisseq-feature-select \
 
 ### `fisseq-permanova`
 
-Assess batch effects in cell-level data using bootstrapped PERMANOVA on cosine distance matrices. `input_file` is treated as a glob pattern; each matching file becomes one batch (labeled by its filename stem). For each bootstrap sample, both an observed F-statistic and a label-shuffled null F-statistic are computed from the same distance matrix, making it straightforward to compare signal vs. noise across runs.
-
-Can optionally filter to a single variant class (e.g. WT-only) before computing, which isolates technical batch variation from biological signal.
+Assess batch effects in cell-level data using a per-variant one-way PERMANOVA on cosine distances. `input_file` is treated as a glob pattern; each matching file becomes one batch (labeled by its filename stem). For each variant seen in more than one batch, all unique pairwise cosine distances between its cells are computed (including cross-batch pairs) and used to derive a pseudo-F statistic via the standard sum-of-squares decomposition (Anderson 2001). An optional permutation test (shuffling batch labels while holding distances fixed) yields a p-value per variant.
 
 **Output files**:
-- `{output_dir}/permanova.parquet` — `n_bootstraps` rows with `f_value` and `f_value_shuffled` columns
+- `{output_dir}/permanova.parquet` — one row per eligible variant, with per-variant metadata (from `get_aggregate_meta_data`), `f_statistic`, and `p_value` (`null` when `n_permutations=0`)
 
 ```bash
 fisseq-permanova \
     output_dir=./out \
     'input_file=data/batches/*.parquet' \
-    variant_class_filter=WT \
-    n_bootstraps=200 \
-    sample_size=1000
+    n_permutations=999
 ```
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
 | `input_file` | **required** | Glob pattern matching one or more batch parquet files. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
-| `variant_class_filter` | `"WT"` | Restrict to this variant class before PERMANOVA (`null` uses all rows). |
-| `n_bootstraps` | `200` | Number of bootstrap samples. |
-| `sample_size` | `1000` | Rows per bootstrap sample. |
-| `seed` | `42` | Base random seed; bootstrap *i* uses `seed + i`. |
-| `parallel` | `false` | Run bootstraps in parallel via joblib. |
-| `n_jobs` | `-1` | Parallel worker count (`-1` = all cores). Used only when `parallel=true`. |
+| `n_permutations` | `999` | Number of label permutations for the p-value. `0` skips the permutation test (`p_value` is `null`). |
+| `seed` | `42` | Base random seed for label permutation; variant *i* (sorted order) uses `seed + i`. |
 
 ---
 
