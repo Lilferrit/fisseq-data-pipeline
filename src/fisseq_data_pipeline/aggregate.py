@@ -14,14 +14,12 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
-from .constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECTOR
 from .normalize import Normalizer
-from .utils import (
-    compute_impact_score,
-    get_aggregate_meta_data,
-    load_batches,
-    setup_logging,
-)
+from .utils.batches import load_batches
+from .utils.constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECTOR
+from .utils.log import setup_logging
+from .utils.metadata import get_aggregate_meta_data
+from .utils.vectors import compute_impact_score
 
 
 @dataclasses.dataclass

@@ -17,8 +17,10 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
-from .utils import get_aggregate_meta_data, load_batches, setup_logging
-from .xgbparams import (
+from .utils.batches import load_batches
+from .utils.log import setup_logging
+from .utils.metadata import get_aggregate_meta_data
+from .utils.xgbparams import (
     XGBoostConfig,
     get_dmatrix,
     get_feature_cols,

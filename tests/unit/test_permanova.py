@@ -9,7 +9,7 @@ import pytest
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.permanova as m
-from fisseq_data_pipeline.constants import META_BATCH_COL
+from fisseq_data_pipeline.utils.constants import META_BATCH_COL
 from fisseq_data_pipeline.permanova import PermanovaConfig
 
 # ---------------------------------------------------------------------------

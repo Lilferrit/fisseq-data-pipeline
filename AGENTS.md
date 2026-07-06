@@ -186,9 +186,14 @@ fisseq-data-pipeline/
 │   ├── config/
 │   │   ├── app.py                 # AppConfig dataclass (base: output_dir, output_root, log_level)
 │   │   └── input.py               # InputConfig, LabeledInputConfig (inherit AppConfig)
-│   ├── constants.py               # Column names, Polars selectors, EPS
-│   ├── utils.py                   # load_batches, setup_logging, compute_impact_score, norms
-│   ├── xgbparams.py               # Shared XGBoost infrastructure (dataclasses, DMatrix builders, split helper)
+│   ├── utils/                     # Shared, non-CLI internals
+│   │   ├── constants.py           # Column names, Polars selectors, EPS
+│   │   ├── xgbparams.py           # Shared XGBoost infrastructure (dataclasses, DMatrix builders, split helper)
+│   │   ├── log.py                 # setup_logging
+│   │   ├── batches.py             # load_batches
+│   │   ├── variant.py             # classify_variant
+│   │   ├── metadata.py            # get_column, get_aggregate_meta_data
+│   │   └── vectors.py             # compute_norm, compute_query_dot, compute_cosine_distance, compute_impact_score
 │   ├── qcfilter.py                # QC filtering entry point
 │   ├── normalize.py               # Normalizer class + normalize entry point
 │   ├── aggregate.py               # 9 aggregation strategies + entry point
@@ -210,7 +215,7 @@ fisseq-data-pipeline/
 ├── main.nf                        # Nextflow entrypoint + parameter defaults
 ├── example.config                 # Template user config (env setup, venv/conda/singularity)
 ├── tests/
-│   ├── unit/                      # 10 files, fast, synthetic data
+│   ├── unit/                      # 12 files, fast, synthetic data
 │   └── integration/               # 1 file, slow, full pipeline run
 ├── docs/                          # STALE — do not rely on
 ├── site/                          # Generated MkDocs output — do not edit
@@ -235,9 +240,9 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`BaseAggregator`** (`aggregate.py`) — abstract base for 9 concrete aggregation strategies. `MultiAggregator` chains mean/median/MAD/std/KS/QQ/AUROC and joins results on the label column.
 
-**`xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, and `batchvsbatch.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here.
+**`utils/xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, and `batchvsbatch.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here.
 
-**`load_batches`** (`utils.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
+**`load_batches`** (`utils/batches.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
 **Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH_PRE/POST, OVWT_GLOBAL, FEATURE_SELECT_GLOBAL, PERMANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet`; all other global processes wait on `global_signal` (all NORMALIZE done) and glob `normalization/cells/*.parquet`.
 
@@ -298,7 +303,7 @@ All outputs land under `<input_dir>` alongside the `input/` folder:
 | `UPPERCASE_WITH_UNDERSCORE` | CellProfiler morphological feature columns |
 | `tmp_*` | Ephemeral intermediate columns, dropped before output |
 
-Key constants (from `constants.py`):
+Key constants (from `utils/constants.py`):
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -322,7 +327,7 @@ Every module defines its Hydra config class as a `@dataclasses.dataclass`, regis
 
 ### Logging
 
-All modules call `setup_logging(cfg, name)` from `utils.py` at the start of `main()`. This writes logs to both stdout and a file at `{output_dir}/{output_root}.{name}.log` (or `{output_dir}/{name}.log` when `output_root` is unset). Format: `%(asctime)s [%(levelname)s] [%(funcName)s] %(message)s`.
+All modules call `setup_logging(cfg, name)` from `utils/log.py` at the start of `main()`. This writes logs to both stdout and a file at `{output_dir}/{output_root}.{name}.log` (or `{output_dir}/{name}.log` when `output_root` is unset). Format: `%(asctime)s [%(levelname)s] [%(funcName)s] %(message)s`.
 
 ### Error handling
 

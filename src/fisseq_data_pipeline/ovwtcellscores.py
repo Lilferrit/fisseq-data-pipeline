@@ -11,9 +11,10 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
-from .constants import FEATURE_SELECTOR, META_SELECTOR
-from .utils import load_batches, setup_logging
-from .xgbparams import get_dmatrix
+from .utils.batches import load_batches
+from .utils.constants import FEATURE_SELECTOR, META_SELECTOR
+from .utils.log import setup_logging
+from .utils.xgbparams import get_dmatrix
 
 
 @dataclasses.dataclass

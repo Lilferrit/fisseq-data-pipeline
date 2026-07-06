@@ -9,7 +9,7 @@ import scipy.stats
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.features as m
-from fisseq_data_pipeline.constants import (
+from fisseq_data_pipeline.utils.constants import (
     IMPACT_SCORE_COL,
     META_BARCODE_COL,
     META_BATCH_COL,

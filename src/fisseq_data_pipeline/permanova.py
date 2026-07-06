@@ -11,13 +11,11 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
-from .constants import FEATURE_SELECTOR, META_BATCH_COL
-from .utils import (
-    compute_cosine_distance,
-    get_aggregate_meta_data,
-    load_batches,
-    setup_logging,
-)
+from .utils.batches import load_batches
+from .utils.constants import FEATURE_SELECTOR, META_BATCH_COL
+from .utils.log import setup_logging
+from .utils.metadata import get_aggregate_meta_data
+from .utils.vectors import compute_cosine_distance
 
 _cs = ConfigStore.instance()
 
@@ -110,7 +108,7 @@ def compute_variant_permanova(
 
     Forms all unique unordered sample pairs (including cross-batch pairs) via
     a self cross-join, computes cosine distance per pair with
-    :func:`.utils.compute_cosine_distance`, and derives the F-statistic from
+    :func:`.utils.vectors.compute_cosine_distance`, and derives the F-statistic from
     the sum-of-squares decomposition. Rows with any non-finite feature value
     are dropped before pairing.
 
@@ -205,7 +203,7 @@ def main(cfg: DictConfig) -> None:
        pseudo-F statistic (and optional permutation p-value) via
        :func:`compute_variant_permanova`. Variants that raise an exception are
        skipped with a warning.
-    3. Join per-variant metadata from :func:`.utils.get_aggregate_meta_data`
+    3. Join per-variant metadata from :func:`.utils.metadata.get_aggregate_meta_data`
        and write results to a Parquet file.
 
     Output files

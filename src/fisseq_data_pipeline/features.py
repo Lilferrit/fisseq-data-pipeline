@@ -11,14 +11,11 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
 from .aggregate import AggregateConfig, aggregate, variant_classification
-from .constants import FEATURE_SELECTOR
-from .utils import (
-    compute_impact_score,
-    get_aggregate_meta_data,
-    get_column,
-    load_batches,
-    setup_logging,
-)
+from .utils.batches import load_batches
+from .utils.constants import FEATURE_SELECTOR
+from .utils.log import setup_logging
+from .utils.metadata import get_aggregate_meta_data, get_column
+from .utils.vectors import compute_impact_score
 
 TMP_IDX_COL = "tmp_cell_idx"
 
