@@ -12,8 +12,10 @@ from fisseq_data_pipeline.constants import (
     META_BATCH_COL,
 )
 from fisseq_data_pipeline.utils import (
+    COSINE_DIST_COL,
     DOT_COL,
     NORM_COL,
+    compute_cosine_distance,
     compute_impact_score,
     compute_norm,
     compute_query_dot,
@@ -387,3 +389,38 @@ def test_compute_impact_score_uses_control_median() -> None:
     non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
     # control median = (1, 0); test = (0, 1) → orthogonal → 0.5
     assert non_ctrl[IMPACT_SCORE_COL][0] == pytest.approx(0.5, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# compute_cosine_distance
+# ---------------------------------------------------------------------------
+
+
+def test_compute_cosine_distance_identical_vectors_is_zero() -> None:
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [2.0], "f1_b": [1.0], "f2_b": [2.0]})
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_orthogonal_vectors_is_one() -> None:
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [0.0], "f1_b": [0.0], "f2_b": [1.0]})
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_opposite_vectors_is_two() -> None:
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [0.0], "f1_b": [-1.0], "f2_b": [0.0]})
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(2.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_zero_norm_no_nan() -> None:
+    lf = pl.LazyFrame({"f1": [0.0], "f2": [0.0], "f1_b": [1.0], "f2_b": [0.0]})
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert not result[COSINE_DIST_COL].is_nan().any()
+
+
+def test_compute_cosine_distance_keeps_suffixed_columns() -> None:
+    lf = pl.LazyFrame({"f1": [1.0], "f1_b": [1.0]})
+    result = compute_cosine_distance(lf, ["f1"], suffix="_b").collect()
+    assert "f1_b" in result.columns

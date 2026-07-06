@@ -111,7 +111,7 @@ uv run fisseq-feature-select \
 uv run fisseq-permanova \
     output_dir=./out \
     'input_file=data/batches/*.parquet' \
-    variant_class_filter=WT
+    n_permutations=999
 
 uv run fisseq-ovwt \
     output_dir=./out \
@@ -196,12 +196,11 @@ fisseq-data-pipeline/
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
 │   ├── ovwtcellscores.py          # Cell scoring via trained models
 │   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value (no pyproject entry)
-│   └── permanova.py               # Bootstrapped PERMANOVA entry point
+│   └── permanova.py               # Per-variant pairwise PERMANOVA entry point
 ├── modules/local/
 │   ├── qc_filter.nf
 │   ├── normalize.nf
-│   ├── permanova_wt.nf
-│   ├── permanova_syn.nf
+│   ├── permanova.nf
 │   ├── ovwt_batchwise.nf
 │   ├── ovwt_global.nf
 │   ├── feature_select_batchwise.nf
@@ -240,7 +239,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`load_batches`** (`utils.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
-**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH_PRE/POST, OVWT_GLOBAL, FEATURE_SELECT_GLOBAL) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet`; all other global processes wait on `global_signal` (all NORMALIZE done) and glob `normalization/cells/*.parquet`.
+**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH_PRE/POST, OVWT_GLOBAL, FEATURE_SELECT_GLOBAL, PERMANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet`; all other global processes wait on `global_signal` (all NORMALIZE done) and glob `normalization/cells/*.parquet`.
 
 ### CLI entry points (registered in `pyproject.toml`)
 
@@ -252,7 +251,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 | `fisseq-feature-select` | `features:main` | Pseudo-rep + pycytominer feature selection |
 | `fisseq-ovwt` | `ovwt:main` | One-vs-WT XGBoost training |
 | `fisseq-ovwt-cell-scores` | `ovwtcellscores:main` | Score cells against trained OvWT models |
-| `fisseq-permanova` | `permanova:main` | Bootstrapped PERMANOVA |
+| `fisseq-permanova` | `permanova:main` | Per-variant PERMANOVA (cosine distance) |
 | `fisseq-batch-vs-batch` | `batchvsbatch:main` | Per-variant multiclass batch classifier (OvR AUC + Mann-Whitney p per batch) |
 
 All share base Hydra fields: `output_dir` (required), `output_root` (optional prefix), `log_level` (default `"info"`).

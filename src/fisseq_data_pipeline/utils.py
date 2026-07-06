@@ -18,6 +18,7 @@ from .constants import (
 
 NORM_COL = "tmp_row_norm"
 DOT_COL = "tmp_dot_product"
+COSINE_DIST_COL = "tmp_cosine_distance"
 
 
 def setup_logging(cfg: AppConfig, name: str) -> None:
@@ -268,6 +269,52 @@ def compute_query_dot(value_lf: pl.LazyFrame, query_lf: pl.LazyFrame) -> pl.Lazy
     ).drop([f"{col}_query" for col in feature_cols])
 
 
+def compute_cosine_distance(
+    lf: pl.LazyFrame, feature_cols: list[str], suffix: str
+) -> pl.LazyFrame:
+    """
+    Compute cosine distance between each row's feature vector and a second
+    feature vector already present in the same row under a suffixed name.
+
+    Intended for use after a join (cross-join against a single reference row,
+    or a self-join to form sample pairs) has placed a second copy of
+    ``feature_cols`` in each row, named ``f"{col}{suffix}"``. Computes
+
+        cosine_distance = 1 - cos_similarity
+
+    Zero-norm vectors are treated as unit vectors so the division does not
+    produce ``NaN``.
+
+    Parameters
+    ----------
+    lf : pl.LazyFrame
+        Frame containing both ``feature_cols`` and their ``{suffix}``-suffixed
+        counterparts.
+    feature_cols : list[str]
+        Names of the (unsuffixed) feature columns to compare.
+    suffix : str
+        Suffix identifying the second feature vector's columns.
+
+    Returns
+    -------
+    pl.LazyFrame
+        Input frame with ``tmp_cosine_distance`` appended. The suffixed input
+        columns are not dropped; the caller is responsible for that.
+    """
+    norm_a = pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt()
+    norm_b = pl.sum_horizontal(
+        [pl.col(f"{c}{suffix}").pow(2) for c in feature_cols]
+    ).sqrt()
+    dot = pl.sum_horizontal(pl.col(c) * pl.col(f"{c}{suffix}") for c in feature_cols)
+
+    safe_norm_a = pl.when(norm_a == 0.0).then(1.0).otherwise(norm_a)
+    safe_norm_b = pl.when(norm_b == 0.0).then(1.0).otherwise(norm_b)
+
+    return lf.with_columns(
+        (1 - dot / (safe_norm_a * safe_norm_b)).alias(COSINE_DIST_COL)
+    )
+
+
 def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
     """
     Compute a cosine-distance-based impact score relative to the control median.
@@ -275,7 +322,7 @@ def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
     The impact score measures how far each row's feature vector is from the
     median feature vector of control rows (``meta_is_control == True``):
 
-        impact = (1 - cos_similarity) / 2
+        impact = cosine_distance / 2
 
     This maps 0 (identical direction to control) → 0, orthogonal → 0.5,
     and opposite direction → 1.
@@ -291,8 +338,8 @@ def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
     Returns
     -------
     pl.LazyFrame
-        Input frame with ``meta_impact_score`` appended and the intermediate
-        ``tmp_row_norm`` and ``tmp_dot_product`` columns removed.
+        Input frame with ``meta_impact_score`` appended and intermediate
+        columns removed.
     """
     # Capture feature columns before any temp columns are added so that the norm
     # and dot product are computed over the original features only.
@@ -303,25 +350,12 @@ def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
     control_median_lf = (
         lf.filter(pl.col(CONTROL_COLUMN_NAME)).select(feature_cols).median()
     )
-    control_norm = (
-        control_median_lf.select(
-            pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt()
-        )
-        .collect()
-        .item()
-    )
 
-    row_norm_expr = pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt()
-    dot_expr = pl.sum_horizontal(pl.col(c) * pl.col(f"{c}_ctrl") for c in feature_cols)
+    joined_lf = lf.join(control_median_lf, how="cross", suffix="_ctrl")
+    dist_lf = compute_cosine_distance(joined_lf, feature_cols, suffix="_ctrl")
 
     return (
-        lf.join(control_median_lf, how="cross", suffix="_ctrl")
-        .with_columns(row_norm_expr.alias(NORM_COL), dot_expr.alias(DOT_COL))
-        .drop([f"{c}_ctrl" for c in feature_cols])
-        .with_columns(
-            ((1 - pl.col(DOT_COL) / (pl.col(NORM_COL) * control_norm)) / 2).alias(
-                IMPACT_SCORE_COL
-            )
-        )
-        .select(pl.exclude(DOT_COL, NORM_COL))
+        dist_lf.drop([f"{c}_ctrl" for c in feature_cols])
+        .with_columns((pl.col(COSINE_DIST_COL) / 2).alias(IMPACT_SCORE_COL))
+        .drop(COSINE_DIST_COL)
     )

@@ -1,20 +1,23 @@
 import dataclasses
 import logging
 import pathlib
+import traceback
 from typing import Optional
 
 import hydra
 import numpy as np
 import polars as pl
-import tqdm
 from hydra.core.config_store import ConfigStore
-from joblib import Parallel, delayed
 from omegaconf import DictConfig, OmegaConf
-from skbio.stats.distance import DistanceMatrix, permanova
 
 from .config import LabeledInputConfig
-from .constants import META_BATCH_COL
-from .utils import classify_variant, load_batches, setup_logging
+from .constants import FEATURE_SELECTOR, META_BATCH_COL
+from .utils import (
+    compute_cosine_distance,
+    get_aggregate_meta_data,
+    load_batches,
+    setup_logging,
+)
 
 _cs = ConfigStore.instance()
 
@@ -25,37 +28,24 @@ class PermanovaConfig(LabeledInputConfig):
     Hydra structured configuration for the PERMANOVA entry point.
 
     Extends :class:`.config.LabeledInputConfig` with parameters controlling
-    bootstrap PERMANOVA batch-effect assessment.
+    per-variant PERMANOVA batch-effect assessment.
 
     ``input_file`` is interpreted as a glob pattern. Each matching file is
     treated as a separate batch; the batch name is the filename stem.
 
     Attributes
     ----------
-    variant_class_filter : str or None
-        If set, only rows whose variant label maps to this class via
-        :func:`.utils.classify_variant` are included (e.g. ``"WT"``,
-        ``"Synonymous"``). ``None`` uses all rows. Defaults to ``None``.
-    n_bootstraps : int
-        Number of bootstrap samples to draw. Defaults to ``200``.
-    sample_size : int
-        Number of rows per bootstrap sample. Defaults to ``1000``.
+    n_permutations : int
+        Number of label permutations used to estimate the p-value for each
+        variant. ``0`` skips the permutation test entirely (``p_value`` is
+        ``None``). Defaults to ``999``.
     seed : int
-        Base random seed; each bootstrap uses ``seed + i``. Defaults to ``42``.
-    n_jobs : int
-        Number of parallel workers when ``parallel`` is ``True``. ``-1`` uses
-        all available cores. Defaults to ``-1``.
-    parallel : bool
-        If ``True``, run bootstraps in parallel via joblib. Defaults to
-        ``False``.
+        Base random seed for label permutation; variant ``i`` (in sorted
+        order) uses ``seed + i``. Defaults to ``42``.
     """
 
-    variant_class_filter: Optional[str] = "WT"
-    n_bootstraps: int = 200
-    sample_size: int = 1000
+    n_permutations: int = 999
     seed: int = 42
-    n_jobs: int = -1
-    parallel: bool = False
 
 
 _cs.store(name="permanova_main", node=PermanovaConfig)
@@ -63,203 +53,165 @@ _cs.store(name="permanova_main", node=PermanovaConfig)
 _TMP_IDX = "__row_idx__"
 
 
-def cosine_dists_matrix(x: np.ndarray) -> np.ndarray:
+def _f_statistic(
+    d2: np.ndarray,
+    idx_a: np.ndarray,
+    idx_b: np.ndarray,
+    group_of_sample: np.ndarray,
+    group_sizes: np.ndarray,
+    n: int,
+    a: int,
+) -> float:
     """
-    Compute a pairwise cosine distance matrix.
-
-    Zero-norm rows are treated as unit vectors to avoid NaN propagation.
-    Off-diagonal values are clipped to ``[0, inf)`` to suppress floating-point
-    underflow below zero.
+    Compute the PERMANOVA pseudo-F statistic via the Anderson (2001)
+    sum-of-squares decomposition.
 
     Parameters
     ----------
-    x : np.ndarray
-        2-D array of shape ``(n_samples, n_features)``.
-
-    Returns
-    -------
-    np.ndarray
-        Symmetric ``(n_samples, n_samples)`` cosine distance matrix with a
-        zero diagonal.
-    """
-    norms = np.linalg.norm(x, axis=1, keepdims=True)
-    norms = np.where(norms == 0.0, 1.0, norms)
-    x_norm = x / norms
-    cos_dist = 1.0 - x_norm @ x_norm.T
-    np.fill_diagonal(cos_dist, 0.0)
-    np.clip(cos_dist, 0.0, None, out=cos_dist)
-    i_lower = np.tril_indices_from(cos_dist, k=-1)
-    cos_dist.T[i_lower] = cos_dist[i_lower]
-    return cos_dist
-
-
-def _compute_f_stat(dist_matrix: np.ndarray, labels: np.ndarray) -> float:
-    """
-    Compute the PERMANOVA pseudo-F statistic (no permutation test).
-
-    Parameters
-    ----------
-    dist_matrix : np.ndarray
-        Square symmetric distance matrix.
-    labels : np.ndarray
-        1-D grouping array aligned with the rows/columns of ``dist_matrix``.
+    d2 : np.ndarray
+        Squared distances, one per unordered sample pair.
+    idx_a, idx_b : np.ndarray
+        Sample indices (into ``group_of_sample``/``group_sizes``) for each
+        pair in ``d2``.
+    group_of_sample : np.ndarray
+        Integer group (batch) label for each sample, aligned with sample index.
+    group_sizes : np.ndarray
+        Number of samples in each group, indexed by group label.
+    n : int
+        Total number of samples.
+    a : int
+        Number of groups (batches).
 
     Returns
     -------
     float
-        PERMANOVA pseudo-F statistic.
+        Pseudo-F statistic. May be ``nan``/``inf`` for degenerate inputs
+        (e.g. every group has exactly one member).
     """
-    result = permanova(DistanceMatrix(dist_matrix), labels, permutations=0)
-    return result["test statistic"]
+    ss_total = d2.sum() / n
+    group_a = group_of_sample[idx_a]
+    group_b = group_of_sample[idx_b]
+    same = group_a == group_b
+    weights = 1.0 / group_sizes[group_a]
+    ss_within = (d2[same] * weights[same]).sum()
+    ss_between = ss_total - ss_within
+    return (ss_between / (a - 1)) / (ss_within / (n - a))
 
 
-def compute_permanova_sample(
-    sampled: pl.DataFrame,
+def compute_variant_permanova(
+    variant_lf: pl.LazyFrame,
+    feature_cols: list[str],
     batch_col: str,
+    n_permutations: int,
     seed: int,
-) -> pl.DataFrame:
+) -> Optional[dict]:
     """
-    Compute observed and shuffled PERMANOVA F-statistics on a pre-sampled DataFrame.
+    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one variant.
 
-    The distance matrix is computed once and reused for both the observed and
-    null (label-shuffled) statistics.
+    Forms all unique unordered sample pairs (including cross-batch pairs) via
+    a self cross-join, computes cosine distance per pair with
+    :func:`.utils.compute_cosine_distance`, and derives the F-statistic from
+    the sum-of-squares decomposition. Rows with any non-finite feature value
+    are dropped before pairing.
 
     Parameters
     ----------
-    sampled : pl.DataFrame
-        Pre-sampled cell-level DataFrame containing feature columns and
-        ``batch_col``. Rows with non-finite feature values are silently dropped.
+    variant_lf : pl.LazyFrame
+        Cell-level lazy frame already filtered to a single variant, containing
+        ``feature_cols`` and ``batch_col``.
+    feature_cols : list[str]
+        Names of the feature columns to use for cosine distance.
     batch_col : str
         Name of the batch grouping column.
+    n_permutations : int
+        Number of label permutations for the p-value. ``0`` skips the test.
     seed : int
-        Random seed for label shuffling.
+        Random seed for label permutation.
 
     Returns
     -------
-    pl.DataFrame
-        Single-row DataFrame with columns ``f_value`` (observed) and
-        ``f_value_shuffled`` (null).
+    dict or None
+        ``{"f_statistic": float, "p_value": float or None}``, or ``None`` (with
+        a logged warning) if fewer than 2 samples or fewer than 2 batches
+        remain after dropping non-finite rows.
     """
-    feature_cols = [
-        c for c in sampled.columns if len(c) > 0 and c[0].isupper() and "_" in c
-    ]
-    feature_matrix = sampled.select(feature_cols).cast(pl.Float64).to_numpy()
-    batch_labels = sampled.get_column(batch_col).cast(pl.Utf8).to_numpy()
-
-    valid_rows = np.isfinite(feature_matrix).all(axis=1)
-    feature_matrix = feature_matrix[valid_rows]
-    batch_labels = batch_labels[valid_rows]
-
-    if len(np.unique(batch_labels)) < 2:
-        return pl.DataFrame(
-            {"f_value": [float("nan")], "f_value_shuffled": [float("nan")]}
-        )
-
-    dist_matrix = cosine_dists_matrix(feature_matrix)
-    f_val = _compute_f_stat(dist_matrix, batch_labels)
-
-    shuffled_labels = batch_labels.copy()
-    np.random.default_rng(seed).shuffle(shuffled_labels)
-    f_val_shuffled = _compute_f_stat(dist_matrix, shuffled_labels)
-
-    logging.debug("Seed %d: F=%.4f, F_shuffled=%.4f", seed, f_val, f_val_shuffled)
-    return pl.DataFrame({"f_value": [f_val], "f_value_shuffled": [f_val_shuffled]})
-
-
-def bootstrap_permanova(
-    lf: pl.LazyFrame,
-    batch_col: str,
-    n_bootstraps: int,
-    sample_size: int,
-    seed: int,
-    n_jobs: int,
-    parallel: bool,
-) -> pl.DataFrame:
-    """
-    Run bootstrapped PERMANOVA to assess batch effects in cell-level data.
-
-    Data is collected once before spawning workers so each bootstrap samples
-    from an in-memory DataFrame rather than re-scanning the source files.
-
-    Parameters
-    ----------
-    lf : pl.LazyFrame
-        Cell-level lazy frame with a batch label column (already filtered to
-        the desired variant class).
-    batch_col : str
-        Name of the batch grouping column.
-    n_bootstraps : int
-        Number of bootstrap samples to run.
-    sample_size : int
-        Rows per bootstrap sample.
-    seed : int
-        Base random seed; bootstrap ``i`` uses ``seed + i``.
-    n_jobs : int
-        Parallel workers (``-1`` = all cores). Ignored when ``parallel=False``.
-    parallel : bool
-        Whether to use joblib for parallel execution.
-
-    Returns
-    -------
-    pl.DataFrame
-        DataFrame with ``n_bootstraps`` rows and columns ``f_value`` and
-        ``f_value_shuffled``.
-    """
-    logging.info(
-        "Bootstrapping PERMANOVA: %d samples of size %d (seed=%d, parallel=%s)",
-        n_bootstraps,
-        sample_size,
-        seed,
-        parallel,
-    )
-    all_cols = lf.collect_schema().names()
-    feature_cols = [c for c in all_cols if len(c) > 0 and c[0].isupper() and "_" in c]
-
     finite_mask = pl.all_horizontal(
-        pl.col(f).is_not_null() & pl.col(f).is_finite() for f in feature_cols
+        pl.col(c).is_not_null() & pl.col(c).is_finite() for c in feature_cols
     )
-    filtered_lf = lf.filter(finite_mask).with_row_index(_TMP_IDX)
-    idx_arr = filtered_lf.select(_TMP_IDX).collect()[_TMP_IDX].to_numpy()
+    indexed_lf = (
+        variant_lf.select([*feature_cols, batch_col])
+        .filter(finite_mask)
+        .with_row_index(_TMP_IDX)
+    )
+    sample_df = indexed_lf.select(batch_col).collect()
+    n = sample_df.height
+    labels = sample_df.get_column(batch_col).cast(pl.Utf8).to_numpy()
 
-    seeds = (seed + np.arange(n_bootstraps, dtype=np.int64)).tolist()
+    _, group_of_sample, group_sizes = np.unique(
+        labels, return_inverse=True, return_counts=True
+    )
+    a = group_sizes.shape[0]
 
-    def _run_one(s: int) -> pl.DataFrame:
-        chosen = np.random.default_rng(s).choice(
-            idx_arr, size=sample_size, replace=False
+    if n < 2 or a < 2:
+        logging.warning(
+            "Skipping variant: %d finite sample(s) across %d batch(es) "
+            "(need >= 2 samples and >= 2 batches)",
+            n,
+            a,
         )
-        sampled = (
-            filtered_lf.filter(pl.col(_TMP_IDX).is_in(set(chosen.tolist())))
-            .drop(_TMP_IDX)
-            .collect()
-        )
-        return compute_permanova_sample(sampled, batch_col, s)
+        return None
 
-    if parallel:
-        dfs = Parallel(n_jobs=n_jobs)(delayed(_run_one)(s) for s in seeds)
-    else:
-        dfs = [_run_one(s) for s in tqdm.tqdm(seeds, desc="Bootstraps")]
+    pairs_lf = indexed_lf.join(indexed_lf, how="cross", suffix="_b").filter(
+        pl.col(_TMP_IDX) < pl.col(f"{_TMP_IDX}_b")
+    )
+    dist_lf = compute_cosine_distance(pairs_lf, feature_cols, suffix="_b")
+    pair_df = dist_lf.select(
+        pl.col(_TMP_IDX).alias("idx_a"),
+        pl.col(f"{_TMP_IDX}_b").alias("idx_b"),
+        pl.col("tmp_cosine_distance").alias("dist"),
+    ).collect()
 
-    return pl.concat(dfs)
+    idx_a = pair_df.get_column("idx_a").to_numpy()
+    idx_b = pair_df.get_column("idx_b").to_numpy()
+    d2 = pair_df.get_column("dist").to_numpy() ** 2
+
+    f_obs = _f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
+
+    if n_permutations <= 0:
+        return {"f_statistic": f_obs, "p_value": None}
+
+    rng = np.random.default_rng(seed)
+    count_ge = 0
+    for _ in range(n_permutations):
+        perm_group = rng.permutation(group_of_sample)
+        f_perm = _f_statistic(d2, idx_a, idx_b, perm_group, group_sizes, n, a)
+        if f_perm >= f_obs:
+            count_ge += 1
+    p_value = (count_ge + 1) / (n_permutations + 1)
+
+    return {"f_statistic": f_obs, "p_value": p_value}
 
 
 @hydra.main(version_base=None, config_path=None, config_name="permanova_main")
 def main(cfg: DictConfig) -> None:
     """
-    Hydra entry point: bootstrap PERMANOVA batch-effect validation.
+    Hydra entry point: per-variant PERMANOVA batch-effect assessment.
 
     Steps
     -----
     1. Glob ``input_file`` to find batch files; each file's stem becomes its
        batch label (added as ``meta_batch``).
-    2. Optionally filter to a single variant class via ``variant_class_filter``
-       (applied using :func:`.utils.classify_variant` on ``label_column``).
-    3. Run :func:`bootstrap_permanova` to estimate observed and null F-statistics
-       across ``n_bootstraps`` samples.
-    4. Write results to a Parquet file.
+    2. For each variant seen in more than one batch, compute the PERMANOVA
+       pseudo-F statistic (and optional permutation p-value) via
+       :func:`compute_variant_permanova`. Variants that raise an exception are
+       skipped with a warning.
+    3. Join per-variant metadata from :func:`.utils.get_aggregate_meta_data`
+       and write results to a Parquet file.
 
     Output files
     ------------
-    - ``{prefix}permanova.parquet``
+    - ``{prefix}permanova.parquet`` — one row per variant, with metadata
+      columns, ``f_statistic``, and ``p_value``.
 
     where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,
     otherwise empty.
@@ -271,8 +223,7 @@ def main(cfg: DictConfig) -> None:
         python -m fisseq_data_pipeline.permanova \\
             output_dir=./out \\
             'input_file=data/batches/*.parquet' \\
-            variant_class_filter=WT \\
-            n_bootstraps=200
+            n_permutations=999
     """
     perm_cfg: PermanovaConfig = OmegaConf.to_object(cfg)
 
@@ -281,31 +232,64 @@ def main(cfg: DictConfig) -> None:
     perm_cfg.output_dir = output_dir
     setup_logging(perm_cfg, "permanova")
 
+    label_col = perm_cfg.label_column
+    batch_col = META_BATCH_COL
+
     lf, _ = load_batches(perm_cfg.input_file)
 
-    if perm_cfg.variant_class_filter is not None:
-        logging.info("Filtering to variant class: %s", perm_cfg.variant_class_filter)
-        lf = lf.filter(
-            pl.col(perm_cfg.label_column).map_elements(
-                classify_variant, return_dtype=pl.Utf8
-            )
-            == perm_cfg.variant_class_filter
-        )
+    feature_cols = list(lf.select(FEATURE_SELECTOR).collect_schema().names())
+    logging.info("Using %d feature column(s)", len(feature_cols))
 
-    permanova_df = bootstrap_permanova(
-        lf,
-        batch_col=META_BATCH_COL,
-        n_bootstraps=perm_cfg.n_bootstraps,
-        sample_size=perm_cfg.sample_size,
-        seed=perm_cfg.seed,
-        n_jobs=perm_cfg.n_jobs,
-        parallel=perm_cfg.parallel,
+    variant_batches = (
+        lf.group_by(label_col)
+        .agg(pl.col(batch_col).n_unique().alias("n_batches"))
+        .filter(pl.col("n_batches") > 1)
+        .collect()
     )
+    variants = sorted(variant_batches.get_column(label_col).drop_nulls().to_list())
+    logging.info("Found %d variant(s) with more than one batch", len(variants))
+
+    results = []
+    for i, variant in enumerate(variants):
+        logging.info("Computing PERMANOVA for variant '%s'", variant)
+        variant_lf = lf.filter(pl.col(label_col) == variant)
+        try:
+            stats = compute_variant_permanova(
+                variant_lf,
+                feature_cols,
+                batch_col,
+                n_permutations=perm_cfg.n_permutations,
+                seed=perm_cfg.seed + i,
+            )
+        except Exception:
+            logging.warning(
+                "Failed to compute PERMANOVA for variant '%s', skipping:\n%s",
+                variant,
+                traceback.format_exc(),
+            )
+            continue
+        if stats is not None:
+            results.append({label_col: variant, **stats})
+
+    results_df = (
+        pl.DataFrame(results)
+        if results
+        else pl.DataFrame(
+            schema={
+                label_col: pl.Utf8,
+                "f_statistic": pl.Float64,
+                "p_value": pl.Float64,
+            }
+        )
+    )
+
+    meta_lf = get_aggregate_meta_data(lf, label_col)
+    output_df = results_df.join(meta_lf.collect(), on=label_col, how="inner")
 
     prefix = f"{perm_cfg.output_root}." if perm_cfg.output_root is not None else ""
     out_path = output_dir / f"{prefix}permanova.parquet"
     logging.info("Writing results to %s", out_path)
-    permanova_df.write_parquet(out_path)
+    output_df.write_parquet(out_path)
     logging.info("Done")
 
 

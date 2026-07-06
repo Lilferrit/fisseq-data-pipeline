@@ -8,6 +8,7 @@ include { OVWT_BATCHWISE           } from '../modules/local/ovwt_batchwise'
 include { OVWT_GLOBAL              } from '../modules/local/ovwt_global'
 include { FEATURE_SELECT_BATCHWISE } from '../modules/local/feature_select_batchwise'
 include { FEATURE_SELECT_GLOBAL    } from '../modules/local/feature_select_global'
+include { PERMANOVA                } from '../modules/local/permanova'
 
 workflow FisseqPipeline {
     // Validate required parameters (must be inside workflow in DSL2)
@@ -66,4 +67,7 @@ workflow FisseqPipeline {
 
     // Step 8: Feature selection — global
     FEATURE_SELECT_GLOBAL(global_signal)
+
+    // Step 9: PERMANOVA — batch-effect assessment (normalized cells)
+    PERMANOVA(global_signal)
 }

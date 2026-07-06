@@ -203,6 +203,11 @@ def test_pipeline_feature_select_global_outputs(pipeline_outputs):
     assert (exp_dir / "feature_select_global" / "feature_correlations.parquet").exists()
 
 
+def test_pipeline_permanova_outputs(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    assert (exp_dir / "permanova" / "permanova.parquet").exists()
+
+
 # ---------------------------------------------------------------------------
 # Pipeline output content tests
 # ---------------------------------------------------------------------------
@@ -259,6 +264,27 @@ def test_feature_select_global_uses_both_batches(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(exp_dir / "feature_select_global" / "global.parquet")
     assert (df["meta_batch_num_unique"] == 2).all()
+
+
+def test_permanova_has_expected_columns(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
+    expected = {"meta_aa_changes", "f_statistic", "p_value", "meta_num_cells"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+def test_permanova_uses_both_batches(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
+    assert (df["meta_batch_num_unique"] == 2).all()
+
+
+def test_permanova_f_statistic_is_finite(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
+    assert df["f_statistic"].is_finite().all()
+    assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
 
 
 # ---------------------------------------------------------------------------

@@ -17,14 +17,14 @@ from fisseq_data_pipeline.permanova import PermanovaConfig
 # ---------------------------------------------------------------------------
 
 
-def _make_feature_df(n_per_batch: int = 60, seed: int = 0) -> pl.DataFrame:
+def _make_feature_df(n_per_batch: int = 30, seed: int = 0) -> pl.DataFrame:
     """Two clearly separated batches with CellProfiler-style feature names."""
     rng = np.random.default_rng(seed)
     batch_a = rng.normal(loc=0.0, scale=0.1, size=(n_per_batch, 3))
     batch_b = rng.normal(loc=5.0, scale=0.1, size=(n_per_batch, 3))
     data = np.vstack([batch_a, batch_b])
     batches = ["batch_a"] * n_per_batch + ["batch_b"] * n_per_batch
-    labels = ["WT"] * n_per_batch + ["WT"] * n_per_batch
+    labels = ["WT"] * (n_per_batch * 2)
     return pl.DataFrame(
         {
             "meta_aa_changes": labels,
@@ -36,7 +36,7 @@ def _make_feature_df(n_per_batch: int = 60, seed: int = 0) -> pl.DataFrame:
     )
 
 
-def _make_random_df(n_per_batch: int = 60, seed: int = 1) -> pl.DataFrame:
+def _make_random_df(n_per_batch: int = 30, seed: int = 1) -> pl.DataFrame:
     """Two batches drawn from the same distribution (no batch effect)."""
     rng = np.random.default_rng(seed)
     data = rng.normal(size=(n_per_batch * 2, 3))
@@ -56,273 +56,130 @@ def make_perm_cfg(tmp_path: Path, input_file: str, **overrides) -> OmegaConf:
     kwargs = dict(
         output_dir=str(tmp_path),
         input_file=input_file,
-        n_bootstraps=3,
-        sample_size=30,
+        n_permutations=99,
         seed=42,
-        parallel=False,
-        variant_class_filter=None,
     )
     kwargs.update(overrides)
     return OmegaConf.structured(PermanovaConfig(**kwargs))
 
 
-# ---------------------------------------------------------------------------
-# cosine_dists_matrix
-# ---------------------------------------------------------------------------
-
-
-def test_cosine_dists_matrix_shape() -> None:
-    x = np.random.default_rng(0).random((10, 4))
-    d = m.cosine_dists_matrix(x)
-    assert d.shape == (10, 10)
-
-
-def test_cosine_dists_matrix_diagonal_is_zero() -> None:
-    x = np.random.default_rng(0).random((8, 3))
-    d = m.cosine_dists_matrix(x)
-    np.testing.assert_array_equal(np.diag(d), 0.0)
-
-
-def test_cosine_dists_matrix_is_symmetric() -> None:
-    x = np.random.default_rng(0).random((8, 3))
-    d = m.cosine_dists_matrix(x)
-    np.testing.assert_allclose(d, d.T, atol=1e-12)
-
-
-def test_cosine_dists_matrix_non_negative() -> None:
-    x = np.random.default_rng(0).random((10, 4))
-    d = m.cosine_dists_matrix(x)
-    assert np.all(d >= 0.0)
-
-
-def test_cosine_dists_matrix_zero_norm_row_no_nan() -> None:
-    x = np.array([[0.0, 0.0], [1.0, 0.0]])
-    d = m.cosine_dists_matrix(x)
-    assert not np.any(np.isnan(d))
-
-
-def test_cosine_dists_matrix_is_exactly_symmetric() -> None:
-    x = np.random.default_rng(0).random((12, 5))
-    d = m.cosine_dists_matrix(x)
-    assert np.array_equal(d, d.T)
-
-
-def test_cosine_dists_matrix_identical_rows_zero_distance() -> None:
-    v = np.array([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
-    d = m.cosine_dists_matrix(v)
-    assert d[0, 1] == pytest.approx(0.0, abs=1e-12)
-
-
-def test_cosine_dists_matrix_orthogonal_rows_distance_one() -> None:
-    v = np.array([[1.0, 0.0], [0.0, 1.0]])
-    d = m.cosine_dists_matrix(v)
-    assert d[0, 1] == pytest.approx(1.0, abs=1e-12)
+FEATURE_COLS = ["Intensity_mean", "Texture_std", "Shape_area"]
 
 
 # ---------------------------------------------------------------------------
-# _compute_f_stat
+# _f_statistic
 # ---------------------------------------------------------------------------
 
 
-def test_compute_f_stat_returns_float() -> None:
-    rng = np.random.default_rng(0)
-    x = rng.random((20, 3))
-    labels = np.array(["a"] * 10 + ["b"] * 10)
-    dist = m.cosine_dists_matrix(x)
-    result = m._compute_f_stat(dist, labels)
-    assert isinstance(result, float)
+def test_f_statistic_hand_computed() -> None:
+    # 4 samples, 2 batches of 2. Pairs: (0,1) same batch 0, (0,2) cross,
+    # (0,3) cross, (1,2) cross, (1,3) cross, (2,3) same batch 1.
+    idx_a = np.array([0, 0, 0, 1, 1, 2])
+    idx_b = np.array([1, 2, 3, 2, 3, 3])
+    d2 = np.array([1.0, 4.0, 9.0, 9.0, 16.0, 1.0])
+    group_of_sample = np.array([0, 0, 1, 1])
+    group_sizes = np.array([2, 2])
+    n, a = 4, 2
+
+    f = m._f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
+
+    ss_total = d2.sum() / n
+    ss_within = 1.0 / 2 + 1.0 / 2  # pairs (0,1) and (2,3), weight 1/n_g each
+    ss_between = ss_total - ss_within
+    expected = (ss_between / (a - 1)) / (ss_within / (n - a))
+    assert f == pytest.approx(expected)
 
 
-def test_compute_f_stat_separated_groups_larger_than_mixed() -> None:
-    rng = np.random.default_rng(42)
-    x_sep = np.vstack(
-        [
-            rng.normal(0.0, 0.1, (20, 3)),
-            rng.normal(5.0, 0.1, (20, 3)),
-        ]
-    )
-    x_mix = rng.normal(0.0, 1.0, (40, 3))
-    labels = np.array(["a"] * 20 + ["b"] * 20)
+def test_f_statistic_separated_groups_larger_than_mixed() -> None:
+    df_sep = _make_feature_df()
+    df_mix = _make_random_df()
 
-    f_sep = m._compute_f_stat(m.cosine_dists_matrix(x_sep), labels)
-    f_mix = m._compute_f_stat(m.cosine_dists_matrix(x_mix), labels)
-    assert f_sep > f_mix
+    def _f_for(df: pl.DataFrame) -> float:
+        result = m.compute_variant_permanova(
+            df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=0, seed=0
+        )
+        return result["f_statistic"]
+
+    assert _f_for(df_sep) > _f_for(df_mix)
 
 
 # ---------------------------------------------------------------------------
-# compute_permanova_sample
+# compute_variant_permanova
 # ---------------------------------------------------------------------------
 
 
-def test_compute_permanova_sample_output_columns() -> None:
+def test_compute_variant_permanova_output_keys() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(
-        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=10, seed=0
     )
-    assert set(result.columns) == {"f_value", "f_value_shuffled"}
+    assert set(result.keys()) == {"f_statistic", "p_value"}
 
 
-def test_compute_permanova_sample_single_row() -> None:
+def test_compute_variant_permanova_no_permutations_p_value_none() -> None:
     df = _make_feature_df()
-    result = m.compute_permanova_sample(
-        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=0, seed=0
     )
-    assert len(result) == 1
+    assert result["p_value"] is None
 
 
-def test_compute_permanova_sample_deterministic() -> None:
+def test_compute_variant_permanova_p_value_in_range() -> None:
+    df = _make_random_df()
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=50, seed=0
+    )
+    assert 0.0 < result["p_value"] <= 1.0
+
+
+def test_compute_variant_permanova_separated_batches_significant() -> None:
     df = _make_feature_df()
-    sampled = df.sample(n=30, seed=7, shuffle=True)
-    r1 = m.compute_permanova_sample(sampled, META_BATCH_COL, seed=7)
-    r2 = m.compute_permanova_sample(sampled, META_BATCH_COL, seed=7)
-    assert r1["f_value"][0] == pytest.approx(r2["f_value"][0])
-    assert r1["f_value_shuffled"][0] == pytest.approx(r2["f_value_shuffled"][0])
-
-
-def test_compute_permanova_sample_different_seeds_differ() -> None:
-    df = _make_feature_df()
-    r1 = m.compute_permanova_sample(
-        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=99, seed=0
     )
-    r2 = m.compute_permanova_sample(
-        df.sample(n=30, seed=99, shuffle=True), META_BATCH_COL, seed=99
+    assert result["f_statistic"] > 10.0
+    assert result["p_value"] < 0.05
+
+
+def test_compute_variant_permanova_single_batch_returns_none() -> None:
+    df = _make_feature_df().filter(pl.col(META_BATCH_COL) == "batch_a")
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=10, seed=0
     )
-    assert r1["f_value"][0] != pytest.approx(r2["f_value"][0])
+    assert result is None
 
 
-def test_compute_permanova_sample_separated_batches_high_f() -> None:
-    df = _make_feature_df()
-    result = m.compute_permanova_sample(
-        df.sample(n=50, seed=0, shuffle=True), META_BATCH_COL, seed=0
+def test_compute_variant_permanova_too_few_samples_returns_none() -> None:
+    df = _make_feature_df().head(1)
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=10, seed=0
     )
-    assert result["f_value"][0] > 10.0
+    assert result is None
 
 
-def test_compute_permanova_sample_null_features_no_crash() -> None:
-    """Null feature values must be dropped, not crash DistanceMatrix."""
+def test_compute_variant_permanova_drops_non_finite_rows() -> None:
     df = _make_feature_df()
     df = df.with_columns(
-        pl.when(pl.int_range(pl.len()) < 5)
-        .then(None)
-        .otherwise(pl.col("Intensity_mean"))
-        .alias("Intensity_mean")
-    )
-    result = m.compute_permanova_sample(
-        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
-    )
-    assert set(result.columns) == {"f_value", "f_value_shuffled"}
-
-
-def test_compute_permanova_sample_inf_features_no_crash() -> None:
-    """Inf feature values must be dropped, not crash DistanceMatrix."""
-    df = _make_feature_df()
-    df = df.with_columns(
-        pl.when(pl.int_range(pl.len()) < 5)
+        pl.when(pl.int_range(pl.len()) < 3)
         .then(float("inf"))
         .otherwise(pl.col("Intensity_mean"))
         .alias("Intensity_mean")
     )
-    result = m.compute_permanova_sample(
-        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=10, seed=0
     )
-    assert set(result.columns) == {"f_value", "f_value_shuffled"}
+    assert result is not None
 
 
-def test_compute_permanova_sample_excludes_meta_columns() -> None:
-    """meta_ columns must not be treated as features."""
-    df = _make_feature_df().with_columns(pl.lit("extra").alias("meta_extra"))
-    result = m.compute_permanova_sample(
-        df.sample(n=30, seed=0, shuffle=True), META_BATCH_COL, seed=0
+def test_compute_variant_permanova_uses_cross_batch_pairs() -> None:
+    """If the self-join only paired same-batch samples, F would be undefined
+    (SS_between would need cross-batch information to be meaningful)."""
+    df = _make_feature_df()
+    result = m.compute_variant_permanova(
+        df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=0, seed=0
     )
-    assert result["f_value"][0] is not None
-
-
-# ---------------------------------------------------------------------------
-# bootstrap_permanova
-# ---------------------------------------------------------------------------
-
-
-def test_bootstrap_permanova_row_count() -> None:
-    lf = _make_feature_df().lazy()
-    result = m.bootstrap_permanova(
-        lf,
-        META_BATCH_COL,
-        n_bootstraps=5,
-        sample_size=30,
-        seed=42,
-        n_jobs=1,
-        parallel=False,
-    )
-    assert len(result) == 5
-
-
-def test_bootstrap_permanova_columns() -> None:
-    lf = _make_feature_df().lazy()
-    result = m.bootstrap_permanova(
-        lf,
-        META_BATCH_COL,
-        n_bootstraps=3,
-        sample_size=30,
-        seed=42,
-        n_jobs=1,
-        parallel=False,
-    )
-    assert set(result.columns) == {"f_value", "f_value_shuffled"}
-
-
-def test_bootstrap_permanova_parallel_matches_sequential() -> None:
-    lf = _make_feature_df().lazy()
-    seq = m.bootstrap_permanova(
-        lf,
-        META_BATCH_COL,
-        n_bootstraps=3,
-        sample_size=30,
-        seed=0,
-        n_jobs=1,
-        parallel=False,
-    )
-    par = m.bootstrap_permanova(
-        lf,
-        META_BATCH_COL,
-        n_bootstraps=3,
-        sample_size=30,
-        seed=0,
-        n_jobs=2,
-        parallel=True,
-    )
-    np.testing.assert_allclose(
-        sorted(seq["f_value"].to_list()),
-        sorted(par["f_value"].to_list()),
-        rtol=1e-9,
-    )
-
-
-def test_bootstrap_permanova_separated_batches_median_f_high() -> None:
-    lf = _make_feature_df(n_per_batch=80).lazy()
-    result = m.bootstrap_permanova(
-        lf,
-        META_BATCH_COL,
-        n_bootstraps=5,
-        sample_size=50,
-        seed=42,
-        n_jobs=1,
-        parallel=False,
-    )
-    assert result["f_value"].median() > 5.0
-
-
-def test_bootstrap_permanova_shuffled_f_lower_than_observed() -> None:
-    lf = _make_feature_df(n_per_batch=80).lazy()
-    result = m.bootstrap_permanova(
-        lf,
-        META_BATCH_COL,
-        n_bootstraps=5,
-        sample_size=50,
-        seed=42,
-        n_jobs=1,
-        parallel=False,
-    )
-    assert result["f_value"].mean() > result["f_value_shuffled"].mean()
+    assert np.isfinite(result["f_statistic"])
+    assert result["f_statistic"] > 0
 
 
 # ---------------------------------------------------------------------------
@@ -333,13 +190,12 @@ def test_bootstrap_permanova_shuffled_f_lower_than_observed() -> None:
 def _write_batch_parquets(tmp_path: Path) -> None:
     rng = np.random.default_rng(0)
     for name, loc in [("batch_a", 0.0), ("batch_b", 5.0)]:
-        pl.DataFrame(
-            {
-                "meta_aa_changes": ["WT"] * 40,
-                "Intensity_mean": rng.normal(loc, 0.1, 40).tolist(),
-                "Texture_std": rng.normal(loc, 0.1, 40).tolist(),
-            }
-        ).write_parquet(tmp_path / f"{name}.parquet")
+        data = {
+            "meta_aa_changes": ["WT"] * 20,
+            "Intensity_mean": rng.normal(loc, 0.1, 20).tolist(),
+            "Texture_std": rng.normal(loc, 0.1, 20).tolist(),
+        }
+        pl.DataFrame(data).write_parquet(tmp_path / f"{name}.parquet")
 
 
 def test_main_creates_output_file(tmp_path: Path) -> None:
@@ -356,16 +212,43 @@ def test_main_output_has_correct_columns(tmp_path: Path) -> None:
     with patch("fisseq_data_pipeline.permanova.setup_logging"):
         m.main.__wrapped__(cfg)
     result = pl.read_parquet(tmp_path / "permanova.parquet")
-    assert set(result.columns) == {"f_value", "f_value_shuffled"}
+    assert {"meta_aa_changes", "f_statistic", "p_value", "meta_num_cells"}.issubset(
+        set(result.columns)
+    )
 
 
-def test_main_output_row_count_matches_n_bootstraps(tmp_path: Path) -> None:
+def test_main_output_row_count_one_per_variant(tmp_path: Path) -> None:
     _write_batch_parquets(tmp_path)
-    cfg = make_perm_cfg(tmp_path, str(tmp_path / "*.parquet"), n_bootstraps=4)
+    cfg = make_perm_cfg(tmp_path, str(tmp_path / "*.parquet"))
     with patch("fisseq_data_pipeline.permanova.setup_logging"):
         m.main.__wrapped__(cfg)
     result = pl.read_parquet(tmp_path / "permanova.parquet")
-    assert len(result) == 4
+    assert len(result) == 1  # only one variant ("WT") present
+
+
+def test_main_excludes_single_batch_variants(tmp_path: Path) -> None:
+    rng = np.random.default_rng(0)
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 20,
+            "Intensity_mean": rng.normal(0.0, 0.1, 20).tolist(),
+            "Texture_std": rng.normal(0.0, 0.1, 20).tolist(),
+        }
+    ).write_parquet(tmp_path / "batch_a.parquet")
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1B"] * 20,
+            "Intensity_mean": rng.normal(5.0, 0.1, 20).tolist(),
+            "Texture_std": rng.normal(5.0, 0.1, 20).tolist(),
+        }
+    ).write_parquet(tmp_path / "batch_b.parquet")
+
+    cfg = make_perm_cfg(tmp_path, str(tmp_path / "*.parquet"))
+    with patch("fisseq_data_pipeline.permanova.setup_logging"):
+        m.main.__wrapped__(cfg)
+    result = pl.read_parquet(tmp_path / "permanova.parquet")
+    # "WT" only appears in batch_a and "A1B" only in batch_b -> neither has >1 batch
+    assert len(result) == 0
 
 
 def test_main_output_root_naming(tmp_path: Path) -> None:
@@ -377,24 +260,10 @@ def test_main_output_root_naming(tmp_path: Path) -> None:
     assert (tmp_path / "run1.permanova.parquet").exists()
 
 
-def test_main_variant_class_filter_wt_only(tmp_path: Path) -> None:
-    """When filter is set, non-WT rows are excluded before bootstrapping."""
-    rng = np.random.default_rng(0)
-    for name, loc in [("b1", 0.0), ("b2", 5.0)]:
-        pl.DataFrame(
-            {
-                "meta_aa_changes": ["WT"] * 30 + ["A1B"] * 10,
-                "Intensity_mean": rng.normal(loc, 0.1, 40).tolist(),
-                "Texture_std": rng.normal(loc, 0.1, 40).tolist(),
-            }
-        ).write_parquet(tmp_path / f"{name}.parquet")
-
-    cfg = make_perm_cfg(
-        tmp_path,
-        str(tmp_path / "*.parquet"),
-        variant_class_filter="WT",
-        sample_size=20,
-    )
+def test_main_n_permutations_zero_gives_null_p_value(tmp_path: Path) -> None:
+    _write_batch_parquets(tmp_path)
+    cfg = make_perm_cfg(tmp_path, str(tmp_path / "*.parquet"), n_permutations=0)
     with patch("fisseq_data_pipeline.permanova.setup_logging"):
         m.main.__wrapped__(cfg)
-    assert (tmp_path / "permanova.parquet").exists()
+    result = pl.read_parquet(tmp_path / "permanova.parquet")
+    assert result["p_value"][0] is None
