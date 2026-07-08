@@ -229,3 +229,41 @@ def test_compute_cosine_distance_keeps_suffixed_columns() -> None:
     lf = pl.LazyFrame({"f1": [1.0], "f1_b": [1.0]})
     result = compute_cosine_distance(lf, ["f1"], suffix="_b").collect()
     assert "f1_b" in result.columns
+
+
+def test_compute_cosine_distance_null_feature_excluded_one_side() -> None:
+    # f2 is null on the unsuffixed side, so only f1 is used -> identical -> 0.0
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [None], "f1_b": [1.0], "f2_b": [5.0]})
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_null_feature_excluded_other_side() -> None:
+    # f2 is null on the suffixed side instead -> same exclusion, same result
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [5.0], "f1_b": [1.0], "f2_b": [None]})
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_nan_feature_excluded() -> None:
+    lf = pl.LazyFrame(
+        {"f1": [1.0], "f2": [float("nan")], "f1_b": [1.0], "f2_b": [5.0]}
+    )
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_inf_feature_excluded() -> None:
+    lf = pl.LazyFrame(
+        {"f1": [1.0], "f2": [float("inf")], "f1_b": [1.0], "f2_b": [5.0]}
+    )
+    result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_compute_cosine_distance_all_features_excluded_no_nan() -> None:
+    lf = pl.LazyFrame({"f1": [None]}, schema={"f1": pl.Float64})
+    lf = lf.with_columns(f1_b=pl.lit(None, dtype=pl.Float64))
+    result = compute_cosine_distance(lf, ["f1"], suffix="_b").collect()
+    assert result[COSINE_DIST_COL][0] == pytest.approx(1.0, abs=1e-9)
+    assert not result[COSINE_DIST_COL].is_nan().any()

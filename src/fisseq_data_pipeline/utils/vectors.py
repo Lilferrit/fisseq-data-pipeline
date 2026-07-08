@@ -85,8 +85,13 @@ def compute_cosine_distance(
 
         cosine_distance = 1 - cos_similarity
 
-    Zero-norm vectors are treated as unit vectors so the division does not
-    produce ``NaN``.
+    ``NaN`` and infinite feature values are treated as missing (null). For a
+    given row, a feature is excluded from the norm/dot-product calculation
+    (for both vectors) if it is null in either the unsuffixed or the
+    ``{suffix}``-suffixed copy, so a single bad dimension does not corrupt the
+    whole row's distance. Zero-norm vectors (including rows where every
+    feature was excluded) are treated as unit vectors so the division does
+    not produce ``NaN``.
 
     Parameters
     ----------
@@ -104,11 +109,26 @@ def compute_cosine_distance(
         Input frame with ``tmp_cosine_distance`` appended. The suffixed input
         columns are not dropped; the caller is responsible for that.
     """
-    norm_a = pl.sum_horizontal([pl.col(c).pow(2) for c in feature_cols]).sqrt()
-    norm_b = pl.sum_horizontal(
-        [pl.col(f"{c}{suffix}").pow(2) for c in feature_cols]
+
+    def _safe(expr: pl.Expr) -> pl.Expr:
+        return pl.when(expr.is_finite()).then(expr).otherwise(None).cast(pl.Float64)
+
+    a_vals = [_safe(pl.col(c)) for c in feature_cols]
+    b_vals = [_safe(pl.col(f"{c}{suffix}")) for c in feature_cols]
+    valid = [a.is_not_null() & b.is_not_null() for a, b in zip(a_vals, b_vals)]
+
+    norm_a = pl.sum_horizontal(
+        [pl.when(v).then(a.pow(2)).otherwise(0.0) for a, v in zip(a_vals, valid)]
     ).sqrt()
-    dot = pl.sum_horizontal(pl.col(c) * pl.col(f"{c}{suffix}") for c in feature_cols)
+    norm_b = pl.sum_horizontal(
+        [pl.when(v).then(b.pow(2)).otherwise(0.0) for b, v in zip(b_vals, valid)]
+    ).sqrt()
+    dot = pl.sum_horizontal(
+        [
+            pl.when(v).then(a * b).otherwise(0.0)
+            for a, b, v in zip(a_vals, b_vals, valid)
+        ]
+    )
 
     safe_norm_a = pl.when(norm_a == 0.0).then(1.0).otherwise(norm_a)
     safe_norm_b = pl.when(norm_b == 0.0).then(1.0).otherwise(norm_b)
