@@ -157,7 +157,10 @@ def test_compute_variant_permanova_too_few_samples_returns_none() -> None:
     assert result is None
 
 
-def test_compute_variant_permanova_drops_non_finite_rows() -> None:
+def test_compute_variant_permanova_handles_non_finite_values() -> None:
+    """Non-finite feature values are no longer dropped as whole rows; they're
+    handled per-pair by compute_cosine_distance, so the result should still be
+    well-defined."""
     df = _make_feature_df()
     df = df.with_columns(
         pl.when(pl.int_range(pl.len()) < 3)
@@ -169,6 +172,7 @@ def test_compute_variant_permanova_drops_non_finite_rows() -> None:
         df.lazy(), FEATURE_COLS, META_BATCH_COL, n_permutations=10, seed=0
     )
     assert result is not None
+    assert np.isfinite(result["f_statistic"])
 
 
 def test_compute_variant_permanova_uses_cross_batch_pairs() -> None:

@@ -15,7 +15,7 @@ from .utils.batches import load_batches
 from .utils.constants import FEATURE_SELECTOR, META_BATCH_COL
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
-from .utils.vectors import compute_cosine_distance
+from .utils.vectors import COSINE_DIST_COL, compute_cosine_distance
 
 _cs = ConfigStore.instance()
 
@@ -109,8 +109,9 @@ def compute_variant_permanova(
     Forms all unique unordered sample pairs (including cross-batch pairs) via
     a self cross-join, computes cosine distance per pair with
     :func:`.utils.vectors.compute_cosine_distance`, and derives the F-statistic from
-    the sum-of-squares decomposition. Rows with any non-finite feature value
-    are dropped before pairing.
+    the sum-of-squares decomposition. Null, ``NaN``, and infinite feature values
+    are handled by :func:`.utils.vectors.compute_cosine_distance` itself (excluded
+    per pair rather than dropping whole rows/samples).
 
     Parameters
     ----------
@@ -131,34 +132,22 @@ def compute_variant_permanova(
     dict or None
         ``{"f_statistic": float, "p_value": float or None}``, or ``None`` (with
         a logged warning) if fewer than 2 samples or fewer than 2 batches
-        remain after dropping non-finite rows.
+        are present.
     """
-    finite_mask = pl.all_horizontal(
-        pl.col(c).is_not_null() & pl.col(c).is_finite() for c in feature_cols
-    )
-    indexed_lf = (
-        variant_lf.select([*feature_cols, batch_col])
-        .filter(finite_mask)
-        .with_row_index(_TMP_IDX)
-    )
-    sample_df = indexed_lf.select(batch_col).collect()
-    n = sample_df.height
-    labels = sample_df.get_column(batch_col).cast(pl.Utf8).to_numpy()
-
-    _, group_of_sample, group_sizes = np.unique(
-        labels, return_inverse=True, return_counts=True
-    )
-    a = group_sizes.shape[0]
+    group_counts_df = variant_lf.group_by(batch_col).agg(pl.len().alias("_n")).collect()
+    n = int(group_counts_df.get_column("_n").sum())
+    a = group_counts_df.height
 
     if n < 2 or a < 2:
         logging.warning(
-            "Skipping variant: %d finite sample(s) across %d batch(es) "
+            "Skipping variant: %d sample(s) across %d batch(es) "
             "(need >= 2 samples and >= 2 batches)",
             n,
             a,
         )
         return None
 
+    indexed_lf = variant_lf.select([*feature_cols, batch_col]).with_row_index(_TMP_IDX)
     pairs_lf = indexed_lf.join(indexed_lf, how="cross", suffix="_b").filter(
         pl.col(_TMP_IDX) < pl.col(f"{_TMP_IDX}_b")
     )
@@ -166,16 +155,33 @@ def compute_variant_permanova(
     pair_df = dist_lf.select(
         pl.col(_TMP_IDX).alias("idx_a"),
         pl.col(f"{_TMP_IDX}_b").alias("idx_b"),
-        pl.col("tmp_cosine_distance").alias("dist"),
+        pl.col(batch_col).alias("batch_a"),
+        pl.col(f"{batch_col}_b").alias("batch_b"),
+        pl.col(COSINE_DIST_COL).alias("dist"),
     ).collect()
 
     idx_a = pair_df.get_column("idx_a").to_numpy()
     idx_b = pair_df.get_column("idx_b").to_numpy()
     d2 = pair_df.get_column("dist").to_numpy() ** 2
 
+    all_idx = np.concatenate([idx_a, idx_b])
+    all_labels = np.concatenate(
+        [
+            pair_df.get_column("batch_a").cast(pl.Utf8).to_numpy(),
+            pair_df.get_column("batch_b").cast(pl.Utf8).to_numpy(),
+        ]
+    )
+    sample_labels = np.empty(n, dtype=all_labels.dtype)
+    sample_labels[all_idx] = all_labels
+
+    _, group_of_sample, group_sizes = np.unique(
+        sample_labels, return_inverse=True, return_counts=True
+    )
+
     f_obs = _f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
 
     if n_permutations <= 0:
+        logging.info("f_statistic=%.4f, p_value=None", f_obs)
         return {"f_statistic": f_obs, "p_value": None}
 
     rng = np.random.default_rng(seed)
@@ -187,6 +193,7 @@ def compute_variant_permanova(
             count_ge += 1
     p_value = (count_ge + 1) / (n_permutations + 1)
 
+    logging.info("f_statistic=%.4f, p_value=%.4f", f_obs, p_value)
     return {"f_statistic": f_obs, "p_value": p_value}
 
 
