@@ -130,196 +130,184 @@ class BaseAggregator(abc.ABC):
         raise NotImplementedError
 
 
-class NativeAggregator(BaseAggregator):
-    """
-    Base for aggregators that express their statistic as a single Polars expression.
+def _reference_alias(feat: str) -> str:
+    """Column name for a feature's label-independent reference-pool list."""
+    return f"__reference__{feat}"
 
-    Subclasses declare :attr:`_stat_suffix` and implement :meth:`_expr`. The
-    boilerplate of filtering controls, grouping, filtering the block list, and
-    collecting feature columns is handled here.
+
+def _variant_reference_lists(
+    lf: pl.LazyFrame, label_col: str, feature_cols: list[str]
+) -> pl.LazyFrame:
+    """
+    Build one row per variant label with, for each feature, a list column of
+    that label's own (non-control) values and a label-independent list
+    column of the full control/reference pool for that feature.
+
+    The reference pool is shared by every variant label (a single global
+    control group, not split per-label), so it is aggregated once and
+    cross-joined in rather than replicated per label before grouping.
+    """
+    variant_lists = (
+        lf.filter(~CONTROL_COLUMN)
+        .group_by(label_col)
+        .agg([pl.col(f) for f in feature_cols])
+    )
+    reference_lists = lf.filter(CONTROL_COLUMN).select(
+        [pl.col(f).implode().alias(_reference_alias(f)) for f in feature_cols]
+    )
+    return variant_lists.join(reference_lists, how="cross")
+
+
+def _clean(values: Optional[list]) -> np.ndarray:
+    """Drop None and non-finite entries from a struct-unpacked value list."""
+    return np.fromiter(
+        (v for v in (values or []) if v is not None and np.isfinite(v)), dtype=float
+    )
+
+
+def _finalize(result: float) -> Optional[float]:
+    """None if non-finite, else a plain python float."""
+    return float(result) if np.isfinite(result) else None
+
+
+class FeatureStatAggregator(BaseAggregator):
+    """
+    Base for aggregators that compute one scalar statistic per (label,
+    feature) pair from that label's variant values and the shared reference
+    (control) pool.
+
+    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_mean"``, ``"_EMD"``) and
+    implement :meth:`_compute_feature_stat`. The boilerplate of grouping
+    variant values and the reference pool into list columns, filtering the
+    block list, and constructing the per-feature query is handled here.
     """
 
     _stat_suffix: ClassVar[str]
 
     @abc.abstractmethod
-    def _expr(self, feat: str) -> pl.Expr:
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        """
+        Compute a single statistic from ``values``, a dict with keys
+        ``"variant"`` and ``"reference"`` each mapping to a list of feature
+        values (possibly containing ``None``). Stats that don't need the
+        reference pool (e.g. mean, median) simply ignore that key.
+        """
         raise NotImplementedError
 
-    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        feature_cols = [
+    def _feature_columns(self, lf: pl.LazyFrame) -> list[str]:
+        return [
             f
             for f in lf.select(FEATURE_SELECTOR).collect_schema().names()
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
+
+    def _stat_expr(self, feat: str) -> pl.Expr:
         return (
-            lf.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
-            .agg([self._expr(f) for f in feature_cols])
+            pl.struct(
+                [
+                    pl.col(feat).alias("variant"),
+                    pl.col(_reference_alias(feat)).alias("reference"),
+                ]
+            )
+            .map_elements(self._compute_feature_stat, return_dtype=pl.Float64)
+            .alias(f"{feat}{self._stat_suffix}")
+        )
+
+    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        feature_cols = self._feature_columns(lf)
+        base = _variant_reference_lists(lf, self.label_col, feature_cols)
+        return base.select(
+            [self.label_col] + [self._stat_expr(f) for f in feature_cols]
         )
 
 
-class MeanAggregator(NativeAggregator):
+class MeanAggregator(FeatureStatAggregator):
     """Computes per-group mean for each feature column."""
 
     _stat_suffix = "_mean"
 
-    def _expr(self, feat: str) -> pl.Expr:
-        return pl.col(feat).mean().alias(f"{feat}_mean")
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        vals = _clean(values["variant"])
+        if len(vals) == 0:
+            return None
+        return _finalize(np.mean(vals))
 
 
-class MedianAggregator(NativeAggregator):
+class MedianAggregator(FeatureStatAggregator):
     """Computes per-group median for each feature column."""
 
     _stat_suffix = "_median"
 
-    def _expr(self, feat: str) -> pl.Expr:
-        return pl.col(feat).median().alias(f"{feat}_median")
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        vals = _clean(values["variant"])
+        if len(vals) == 0:
+            return None
+        return _finalize(np.median(vals))
 
 
-class MADAggregator(NativeAggregator):
+class MADAggregator(FeatureStatAggregator):
     """Computes per-group median absolute deviation (MAD) for each feature column."""
 
     _stat_suffix = "_MAD"
 
-    def _expr(self, feat: str) -> pl.Expr:
-        return (
-            (pl.col(feat) - pl.col(feat).median()).abs().median().alias(f"{feat}_MAD")
-        )
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        vals = _clean(values["variant"])
+        if len(vals) == 0:
+            return None
+        return _finalize(np.median(np.abs(vals - np.median(vals))))
 
 
-class StdAggregator(NativeAggregator):
+class StdAggregator(FeatureStatAggregator):
     """Computes per-group standard deviation for each feature column."""
 
     _stat_suffix = "_std"
 
-    def _expr(self, feat: str) -> pl.Expr:
-        return pl.col(feat).std().alias(f"{feat}_std")
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        vals = _clean(values["variant"])
+        if len(vals) < 2:
+            return None
+        return _finalize(np.std(vals, ddof=1))
 
 
-class ReferenceBasedAggregator(BaseAggregator):
-    """
-    Base for aggregators that compare each variant group against a reference
-    distribution using a scalar per-feature statistic.
-
-    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_EMD"``) and implement
-    :meth:`_compute_feature_stat`. The boilerplate of checking for a reference
-    DataFrame, filtering controls, dispatching parallel tasks, null-guarding,
-    and building the output DataFrame is handled here.
-    """
-
-    _stat_suffix: ClassVar[str]
-
-    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        all_cols = lf.collect_schema().names()
-        feature_cols = [
-            f
-            for f in lf.select(FEATURE_SELECTOR).collect_schema().names()
-            if f"{f}{self._stat_suffix}" not in (self.block_list or set())
-        ]
-        variant_labels = lf.filter(~CONTROL_COLUMN).select(self.label_col).unique()
-        controls = lf.filter(CONTROL_COLUMN).drop(self.label_col)
-        expanded = pl.concat(
-            [
-                lf.filter(~CONTROL_COLUMN),
-                controls.join(variant_labels, how="cross").select(all_cols),
-            ]
-        )
-        # Group each label's rows (variant + replicated controls) into lists so
-        # that map_elements below can split them by the control flag.
-        grouped = expanded.group_by(self.label_col).agg(
-            [pl.col(f) for f in feature_cols] + [CONTROL_COLUMN]
-        )
-        compute = self._compute_feature_stat
-        stat_exprs = []
-        for feat in feature_cols:
-
-            def _stat_fn(
-                s: dict,
-                _feat: str = feat,
-                _fn=compute,
-            ) -> Optional[float]:
-                is_ctrl = s[CONTROL_COLUMN_NAME]
-                vals = s[_feat]
-                group_vals = np.fromiter(
-                    (
-                        v
-                        for v, c in zip(vals, is_ctrl)
-                        if not c and v is not None and np.isfinite(v)
-                    ),
-                    dtype=float,
-                )
-                ref_vals = np.fromiter(
-                    (
-                        v
-                        for v, c in zip(vals, is_ctrl)
-                        if c and v is not None and np.isfinite(v)
-                    ),
-                    dtype=float,
-                )
-                if len(group_vals) == 0 or len(ref_vals) == 0:
-                    return None
-                result = _fn(group_vals, ref_vals)
-                return float(result) if np.isfinite(result) else None
-
-            stat_exprs.append(
-                pl.struct([pl.col(feat), CONTROL_COLUMN])
-                .map_elements(_stat_fn, return_dtype=pl.Float64)
-                .alias(f"{feat}{self._stat_suffix}")
-            )
-        return grouped.with_columns(stat_exprs).select(
-            [self.label_col] + [f"{f}{self._stat_suffix}" for f in feature_cols]
-        )
-
-    @abc.abstractmethod
-    def _compute_feature_stat(
-        self, group_vals: np.ndarray, ref_vals: np.ndarray
-    ) -> float:
-        raise NotImplementedError
-
-
-class EMDAggregator(ReferenceBasedAggregator):
+class EMDAggregator(FeatureStatAggregator):
     """
     Computes per-group 1D Wasserstein distances (Earth Mover's Distance)
     against the reference distribution for each feature column.
-
-    Requires ``reference_df`` to be set at construction time.
     """
 
     _stat_suffix = "_EMD"
 
-    def _compute_feature_stat(
-        self, group_vals: np.ndarray, ref_vals: np.ndarray
-    ) -> float:
-        return scipy.stats.wasserstein_distance(group_vals, ref_vals)
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        group_vals = _clean(values["variant"])
+        ref_vals = _clean(values["reference"])
+        if len(group_vals) == 0 or len(ref_vals) == 0:
+            return None
+        return _finalize(scipy.stats.wasserstein_distance(group_vals, ref_vals))
 
 
-class KSAggregator(ReferenceBasedAggregator):
+class KSAggregator(FeatureStatAggregator):
     """
     Computes per-group two-sample Kolmogorov-Smirnov statistics against
     the reference distribution for each feature column.
-
-    Requires ``reference_df`` to be set at construction time.
     """
 
     _stat_suffix = "_KS"
 
-    def _compute_feature_stat(
-        self, group_vals: np.ndarray, ref_vals: np.ndarray
-    ) -> float:
-        return scipy.stats.ks_2samp(group_vals, ref_vals).statistic
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        group_vals = _clean(values["variant"])
+        ref_vals = _clean(values["reference"])
+        if len(group_vals) == 0 or len(ref_vals) == 0:
+            return None
+        return _finalize(scipy.stats.ks_2samp(group_vals, ref_vals).statistic)
 
 
-class QQCorrelationAggregator(ReferenceBasedAggregator):
+class QQCorrelationAggregator(FeatureStatAggregator):
     """
     Computes per-group Q-Q correlation against the reference distribution for
     each feature column.
 
-    Requires ``reference_df`` to be set at construction time.
-
     Parameters
     ----------
-    reference_df : pl.DataFrame or None
-        Reference DataFrame (typically control rows).
     label_col : str
         Variant label column name.
     n_quantiles : int, optional
@@ -337,20 +325,20 @@ class QQCorrelationAggregator(ReferenceBasedAggregator):
         super().__init__(label_col, block_list)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
-    def _compute_feature_stat(
-        self, group_vals: np.ndarray, ref_vals: np.ndarray
-    ) -> float:
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        group_vals = _clean(values["variant"])
+        ref_vals = _clean(values["reference"])
+        if len(group_vals) == 0 or len(ref_vals) == 0:
+            return None
         variant_q = np.quantile(group_vals, self.quantile_points)
         reference_q = np.quantile(ref_vals, self.quantile_points)
-        return scipy.stats.pearsonr(variant_q, reference_q).statistic
+        return _finalize(scipy.stats.pearsonr(variant_q, reference_q).statistic)
 
 
-class AUROCAggregator(ReferenceBasedAggregator):
+class AUROCAggregator(FeatureStatAggregator):
     """
     Computes per-group AUROC against the reference distribution for each
     feature column.
-
-    Requires ``reference_df`` to be set at construction time.
 
     Variant samples are labelled ``1`` and reference samples ``0``.
     ``0.5`` indicates identical distributions; ``1.0`` indicates perfect
@@ -359,24 +347,23 @@ class AUROCAggregator(ReferenceBasedAggregator):
 
     _stat_suffix = "_AUROC"
 
-    def _compute_feature_stat(
-        self, group_vals: np.ndarray, ref_vals: np.ndarray
-    ) -> float:
-        values = np.concatenate([ref_vals, group_vals])
+    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+        group_vals = _clean(values["variant"])
+        ref_vals = _clean(values["reference"])
+        if len(group_vals) == 0 or len(ref_vals) == 0:
+            return None
+        concatenated = np.concatenate([ref_vals, group_vals])
         labels = np.concatenate([np.zeros(len(ref_vals)), np.ones(len(group_vals))])
-        auroc = sklearn.metrics.roc_auc_score(labels, values)
+        auroc = sklearn.metrics.roc_auc_score(labels, concatenated)
         if auroc < 0.5:
             auroc = 1 - auroc
-        return auroc
+        return _finalize(auroc)
 
 
 class MultiAggregator(BaseAggregator):
     """
-    Applies a list of aggregators and joins their results on the label column.
-
-    Each sub-aggregator produces a per-label DataFrame. The results are joined
-    sequentially on ``label_col`` so the label column appears exactly once in
-    the output.
+    Applies a list of aggregators, sharing one variant/reference list
+    structure across all of them.
 
     Parameters
     ----------
@@ -393,11 +380,11 @@ class MultiAggregator(BaseAggregator):
     def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         if not self.aggregators:
             raise ValueError("MultiAggregator requires at least one aggregator")
-        results = [agg.aggregate(lf) for agg in self.aggregators]
-        combined = results[0]
-        for other in results[1:]:
-            combined = combined.join(other, on=self.label_col, how="inner")
-        return combined
+        per_agg_features = [(agg, agg._feature_columns(lf)) for agg in self.aggregators]
+        feature_cols = sorted({f for _, cols in per_agg_features for f in cols})
+        base = _variant_reference_lists(lf, self.label_col, feature_cols)
+        exprs = [agg._stat_expr(f) for agg, cols in per_agg_features for f in cols]
+        return base.select([self.label_col] + exprs)
 
 
 _AGGREGATORS: dict[str, type[BaseAggregator]] = {
