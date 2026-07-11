@@ -397,7 +397,9 @@ def main(cfg: DictConfig) -> None:
                     n_permutations=perm_cfg.n_permutations,
                     seed=perm_cfg.seed,
                 ),
-                return_dtype=pl.Struct({"f_statistic": pl.Float64, "p_value": pl.Float64}),
+                return_dtype=pl.Struct(
+                    {"f_statistic": pl.Float64, "p_value": pl.Float64}
+                ),
             )
             .alias("__stats__")
         )

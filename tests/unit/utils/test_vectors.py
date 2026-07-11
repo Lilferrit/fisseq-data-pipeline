@@ -246,17 +246,13 @@ def test_compute_cosine_distance_null_feature_excluded_other_side() -> None:
 
 
 def test_compute_cosine_distance_nan_feature_excluded() -> None:
-    lf = pl.LazyFrame(
-        {"f1": [1.0], "f2": [float("nan")], "f1_b": [1.0], "f2_b": [5.0]}
-    )
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [float("nan")], "f1_b": [1.0], "f2_b": [5.0]})
     result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
     assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_compute_cosine_distance_inf_feature_excluded() -> None:
-    lf = pl.LazyFrame(
-        {"f1": [1.0], "f2": [float("inf")], "f1_b": [1.0], "f2_b": [5.0]}
-    )
+    lf = pl.LazyFrame({"f1": [1.0], "f2": [float("inf")], "f1_b": [1.0], "f2_b": [5.0]})
     result = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()
     assert result[COSINE_DIST_COL][0] == pytest.approx(0.0, abs=1e-9)
 

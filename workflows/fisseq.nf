@@ -1,14 +1,17 @@
 nextflow.enable.dsl = 2
 
-include { QC_FILTER                } from '../modules/local/qc_filter'
-include { NORMALIZE                } from '../modules/local/normalize'
-include { BATCHVSBATCH_PRE         } from '../modules/local/batchvsbatch_pre'
-include { BATCHVSBATCH_POST        } from '../modules/local/batchvsbatch_post'
-include { OVWT_BATCHWISE           } from '../modules/local/ovwt_batchwise'
-include { OVWT_GLOBAL              } from '../modules/local/ovwt_global'
-include { FEATURE_SELECT_BATCHWISE } from '../modules/local/feature_select_batchwise'
-include { FEATURE_SELECT_GLOBAL    } from '../modules/local/feature_select_global'
-include { PERMANOVA                } from '../modules/local/permanova'
+include { QC_FILTER                 } from '../modules/local/qc_filter'
+include { NORMALIZE                 } from '../modules/local/normalize'
+include { BATCHVSBATCH_PRE          } from '../modules/local/batchvsbatch_pre'
+include { BATCHVSBATCH_POST         } from '../modules/local/batchvsbatch_post'
+include { OVWT_BATCHWISE            } from '../modules/local/ovwt_batchwise'
+include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
+include { FEATURE_SELECT_BATCHWISE  } from '../modules/local/feature_select_batchwise'
+include { FEATURE_SELECT_GLOBAL     } from '../modules/local/feature_select_global'
+include { PERMANOVA                 } from '../modules/local/permanova'
+include { BATCH_CORRECT_FIT         } from '../modules/local/batch_correct_fit'
+include { BATCH_CORRECT_TRANSFORM   } from '../modules/local/batch_correct_transform'
+include { PERMANOVA_BATCH_CORRECTED } from '../modules/local/permanova_batch_corrected'
 
 workflow FisseqPipeline {
     // Validate required parameters (must be inside workflow in DSL2)
@@ -70,4 +73,24 @@ workflow FisseqPipeline {
 
     // Step 9: PERMANOVA — batch-effect assessment (normalized cells)
     PERMANOVA(global_signal)
+
+    // New branch: qc_filtering -> batch_correction -> permanova (independent of normalize)
+    // Step 1: fit centroid batch correction across all batches (global, waits for all QC_FILTER)
+    fit_out = BATCH_CORRECT_FIT(qc_signal).fit_outputs  // tuple(stats_vb, centroids), single emission
+
+    // Step 2: apply batch correction (per batch); .combine() broadcasts the single
+    // fit_out pair onto every per-batch tuple from qc_ch.
+    bc_transform_input_ch = qc_ch
+        .map { stem, fc, bc, vpb -> [ stem, fc ] }
+        .combine(fit_out)
+
+    BATCH_CORRECT_TRANSFORM(bc_transform_input_ch)
+    bc_ch = BATCH_CORRECT_TRANSFORM.out.corrected  // tuple(batch_stem, corrected_parquet)
+
+    // Single-element signal that fires once all BATCH_CORRECT_TRANSFORM batches are done.
+    bc_signal = bc_ch.map { stem, p -> stem }.collect()
+        .map { _stems -> input_dir_abs }
+
+    // Step 3: PERMANOVA on batch-corrected cells
+    PERMANOVA_BATCH_CORRECTED(bc_signal)
 }

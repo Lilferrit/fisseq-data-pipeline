@@ -288,6 +288,72 @@ def test_permanova_f_statistic_is_finite(pipeline_outputs):
 
 
 # ---------------------------------------------------------------------------
+# Batch correction branch (qc_filtering -> batch_correction -> permanova),
+# independent of the normalize branch above.
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_batch_correction_fit_outputs(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    fit_dir = exp_dir / "batch_correction" / "fit"
+    assert (fit_dir / "stats_vb.parquet").exists()
+    assert (fit_dir / "centroids.parquet").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_batch_correction_cells_outputs(pipeline_outputs, batch_stem):
+    exp_dir, _ = pipeline_outputs
+    assert (exp_dir / "batch_correction" / "cells" / f"{batch_stem}.parquet").exists()
+
+
+def test_pipeline_batch_correction_permanova_outputs(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    assert (exp_dir / "batch_correction" / "permanova" / "permanova.parquet").exists()
+
+
+def test_batch_correction_permanova_has_expected_columns(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
+    )
+    expected = {"meta_aa_changes", "f_statistic", "p_value", "meta_num_cells"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+def test_batch_correction_permanova_uses_both_batches(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
+    )
+    assert (df["meta_batch_num_unique"] == 2).all()
+
+
+def test_batch_correction_permanova_f_statistic_is_finite(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
+    )
+    assert df["f_statistic"].is_finite().all()
+    assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
+
+
+def test_batch_correction_wt_means_converge_across_batches(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df1 = pl.read_parquet(exp_dir / "batch_correction" / "cells" / "batch1.parquet")
+    df2 = pl.read_parquet(exp_dir / "batch_correction" / "cells" / "batch2.parquet")
+    wt1 = df1.filter(pl.col("meta_aa_changes") == "WT")
+    wt2 = df2.filter(pl.col("meta_aa_changes") == "WT")
+    feature_cols = [c for c in df1.columns if not c.startswith("meta_")]
+    for col in feature_cols:
+        mean1 = wt1[col].drop_nulls().mean()
+        mean2 = wt2[col].drop_nulls().mean()
+        assert abs(mean1 - mean2) < 0.5, (
+            f"WT mean for {col} did not converge across batches after batch correction"
+        )
+
+
+# ---------------------------------------------------------------------------
 # OvwtPipeline (ovwt.nf) — session fixture and tests
 # ---------------------------------------------------------------------------
 
