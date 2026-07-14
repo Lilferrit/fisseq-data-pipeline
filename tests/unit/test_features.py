@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import numpy as np
 import polars as pl
 import pytest
 import scipy.stats
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.features as m
-from fisseq_data_pipeline.features import TMP_IDX_COL, FeatureSelectConfig
 from fisseq_data_pipeline.utils.constants import (
     IMPACT_SCORE_COL,
     META_BARCODE_COL,
     META_BATCH_COL,
 )
+from fisseq_data_pipeline.utils.splits import TMP_IDX_COL
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -39,56 +38,6 @@ def corr_df_pair() -> tuple[pl.DataFrame, pl.DataFrame]:
         }
     )
     return df1, df2
-
-
-@pytest.fixture
-def pseudo_rep_df() -> pl.DataFrame:
-    """Cell-level dataset with constant feature values per variant.
-
-    Both pseudo-replicates will produce identical aggregates, giving r = 1.0.
-    Four cells per group ensures each replicate half gets at least 2 cells for
-    the stratified split.
-    """
-    n = 4
-    return pl.DataFrame(
-        {
-            "meta_aa_changes": ["WT"] * n + ["A1A"] * n + ["A1B"] * n + ["A1C"] * n,
-            "meta_is_control": [True] * n + [False] * (3 * n),
-            "f1": [0.0] * n + [1.0] * n + [5.0] * n + [10.0] * n,
-        }
-    )
-
-
-# ---------------------------------------------------------------------------
-# get_replicate_lf
-# ---------------------------------------------------------------------------
-
-
-def test_get_replicate_lf_includes_matching_rows() -> None:
-    lf = pl.DataFrame({TMP_IDX_COL: [0, 1, 2, 3], "f1": [1.0, 2.0, 3.0, 4.0]}).lazy()
-    result = m.get_replicate_lf(lf, [0, 2]).collect()
-    assert sorted(result[TMP_IDX_COL].to_list()) == [0, 2]
-
-
-def test_get_replicate_lf_excludes_non_matching_rows() -> None:
-    lf = pl.DataFrame({TMP_IDX_COL: [0, 1, 2, 3], "f1": [1.0, 2.0, 3.0, 4.0]}).lazy()
-    result = m.get_replicate_lf(lf, [0, 2]).collect()
-    assert 1 not in result[TMP_IDX_COL].to_list()
-    assert 3 not in result[TMP_IDX_COL].to_list()
-
-
-def test_get_replicate_lf_empty_idx_returns_empty() -> None:
-    lf = pl.DataFrame({TMP_IDX_COL: [0, 1, 2], "f1": [1.0, 2.0, 3.0]}).lazy()
-    result = m.get_replicate_lf(lf, []).collect()
-    assert len(result) == 0
-
-
-def test_get_replicate_lf_preserves_all_columns() -> None:
-    lf = pl.DataFrame(
-        {TMP_IDX_COL: [0, 1], "f1": [1.0, 2.0], "meta_foo": ["a", "b"]}
-    ).lazy()
-    result = m.get_replicate_lf(lf, [0]).collect()
-    assert set(result.columns) == {TMP_IDX_COL, "f1", "meta_foo"}
 
 
 # ---------------------------------------------------------------------------
@@ -149,61 +98,6 @@ def test_compute_feature_correlations_matches_scipy(
     )
     assert row["r"] == pytest.approx(expected_r)
     assert row["p_value"] == pytest.approx(expected_p)
-
-
-# ---------------------------------------------------------------------------
-# pseudo_replicate_correlation
-# ---------------------------------------------------------------------------
-
-
-def test_pseudo_replicate_correlation_output_columns(
-    pseudo_rep_df: pl.DataFrame,
-) -> None:
-    result = m.pseudo_replicate_correlation(
-        pseudo_rep_df.lazy(), "meta_aa_changes", "mean", random_state=0
-    )
-    assert set(result.columns) == {"feature", "r", "r_squared", "p_value"}
-
-
-def test_pseudo_replicate_correlation_one_row_per_aggregated_feature(
-    pseudo_rep_df: pl.DataFrame,
-) -> None:
-    result = m.pseudo_replicate_correlation(
-        pseudo_rep_df.lazy(), "meta_aa_changes", "mean", random_state=0
-    )
-    assert len(result) == 1
-    assert result["feature"][0] == "f1_mean"
-
-
-def test_pseudo_replicate_correlation_constant_features_give_r_one(
-    pseudo_rep_df: pl.DataFrame,
-) -> None:
-    result = m.pseudo_replicate_correlation(
-        pseudo_rep_df.lazy(), "meta_aa_changes", "mean", random_state=0
-    )
-    assert result["r"][0] == pytest.approx(1.0, abs=1e-6)
-
-
-def test_pseudo_replicate_correlation_r_squared_equals_r_squared(
-    pseudo_rep_df: pl.DataFrame,
-) -> None:
-    result = m.pseudo_replicate_correlation(
-        pseudo_rep_df.lazy(), "meta_aa_changes", "mean", random_state=0
-    )
-    r = result["r"][0]
-    assert result["r_squared"][0] == pytest.approx(r**2)
-
-
-def test_pseudo_replicate_correlation_random_state_is_deterministic(
-    pseudo_rep_df: pl.DataFrame,
-) -> None:
-    r1 = m.pseudo_replicate_correlation(
-        pseudo_rep_df.lazy(), "meta_aa_changes", "mean", random_state=7
-    )["r"][0]
-    r2 = m.pseudo_replicate_correlation(
-        pseudo_rep_df.lazy(), "meta_aa_changes", "mean", random_state=7
-    )["r"][0]
-    assert r1 == pytest.approx(r2)
 
 
 # ---------------------------------------------------------------------------
@@ -269,69 +163,302 @@ def test_pyc_feature_select_meta_columns_preserved(agg_df: pl.DataFrame) -> None
 
 
 # ---------------------------------------------------------------------------
-# main()
+# generate_split_main
 # ---------------------------------------------------------------------------
 
 
-def make_feat_cfg(
-    tmp_path,
-    *,
-    output_root=None,
-    minimum_correlation: float = 0.5,
-    aggregator: str = "mean",
-    random_state: int = 0,
-    compute_impact_score: bool = True,
-) -> OmegaConf:
-    """Return a DictConfig for FeatureSelectConfig with sensible test defaults.
+def write_split_input_parquet(tmp_path) -> None:
+    """Cell-level parquet with 4 label groups, 4 cells each (16 rows total)."""
+    n = 4
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * n + ["A1A"] * n + ["A1B"] * n + ["A1C"] * n,
+            "f1": list(range(4 * n)),
+        }
+    ).write_parquet(tmp_path / "split_input.parquet")
 
-    Output is written to ``tmp_path/out/`` so it never collides with the input
-    parquet at ``tmp_path/input.parquet``.
-    """
+
+def make_split_cfg(tmp_path, *, random_state: int = 0) -> OmegaConf:
     return OmegaConf.structured(
-        FeatureSelectConfig(
-            output_dir=str(tmp_path / "out"),
-            output_root=output_root,
-            input_file=str(tmp_path / "input.parquet"),
-            aggregator=aggregator,
-            minimum_correlation=minimum_correlation,
+        m.GenerateSplitConfig(
+            output_dir=str(tmp_path / "split_out"),
+            input_file=str(tmp_path / "split_input.parquet"),
             random_state=random_state,
-            compute_impact_score=compute_impact_score,
         )
     )
 
 
-def write_feat_input_parquet(tmp_path) -> None:
-    """Write cell-level test parquet: WT controls + 3 variants, 4 cells each.
+def test_generate_split_main_writes_both_halves(tmp_path) -> None:
+    write_split_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.generate_split_main.__wrapped__(make_split_cfg(tmp_path))
+    assert (tmp_path / "split_out" / "half1.parquet").exists()
+    assert (tmp_path / "split_out" / "half2.parquet").exists()
 
-    Constant feature values per group mean pseudo-replicates produce r = 1.0.
-    Each variant has 2 distinct barcodes (alternating bc_0 / bc_1) so that
-    meta_barcode_num_unique is predictable in aggregate meta data tests.
-    """
+
+def test_generate_split_main_halves_carry_tmp_idx_col(tmp_path) -> None:
+    write_split_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.generate_split_main.__wrapped__(make_split_cfg(tmp_path))
+    half1 = pl.read_parquet(tmp_path / "split_out" / "half1.parquet")
+    assert half1.columns == [TMP_IDX_COL]
+
+
+def test_generate_split_main_halves_disjoint_and_cover_all_rows(tmp_path) -> None:
+    write_split_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.generate_split_main.__wrapped__(make_split_cfg(tmp_path))
+    half1 = set(
+        pl.read_parquet(tmp_path / "split_out" / "half1.parquet")[TMP_IDX_COL].to_list()
+    )
+    half2 = set(
+        pl.read_parquet(tmp_path / "split_out" / "half2.parquet")[TMP_IDX_COL].to_list()
+    )
+    assert half1.isdisjoint(half2)
+    assert half1 | half2 == set(range(16))
+
+
+def test_generate_split_main_random_state_is_deterministic(tmp_path) -> None:
+    write_split_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.generate_split_main.__wrapped__(make_split_cfg(tmp_path, random_state=7))
+    half1_first = sorted(
+        pl.read_parquet(tmp_path / "split_out" / "half1.parquet")[TMP_IDX_COL].to_list()
+    )
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.generate_split_main.__wrapped__(make_split_cfg(tmp_path, random_state=7))
+    half1_second = sorted(
+        pl.read_parquet(tmp_path / "split_out" / "half1.parquet")[TMP_IDX_COL].to_list()
+    )
+
+    assert half1_first == half1_second
+
+
+# ---------------------------------------------------------------------------
+# correlate_features_main
+# ---------------------------------------------------------------------------
+
+
+def make_corr_cfg(
+    tmp_path, half1_file, half2_file, *, label_column="meta_aa_changes"
+) -> OmegaConf:
+    return OmegaConf.structured(
+        m.CorrelateFeaturesConfig(
+            output_dir=str(tmp_path / "corr_out"),
+            half1_file=str(half1_file),
+            half2_file=str(half2_file),
+            label_column=label_column,
+        )
+    )
+
+
+def test_correlate_features_main_writes_correlations_file(tmp_path) -> None:
+    df1 = pl.DataFrame({"meta_aa_changes": ["A", "B"], "f1_mean": [1.0, 2.0]})
+    df2 = pl.DataFrame({"meta_aa_changes": ["A", "B"], "f1_mean": [1.1, 2.1]})
+    p1, p2 = tmp_path / "half1.parquet", tmp_path / "half2.parquet"
+    df1.write_parquet(p1)
+    df2.write_parquet(p2)
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.correlate_features_main.__wrapped__(make_corr_cfg(tmp_path, p1, p2))
+
+    result = pl.read_parquet(tmp_path / "corr_out" / "correlations.parquet")
+    assert set(result.columns) == {"feature", "r", "r_squared", "p_value"}
+
+
+def test_correlate_features_main_matches_compute_feature_correlations(tmp_path) -> None:
+    df1 = pl.DataFrame({"meta_aa_changes": ["A", "B", "C"], "f1_mean": [1.0, 2.0, 4.0]})
+    df2 = pl.DataFrame({"meta_aa_changes": ["A", "B", "C"], "f1_mean": [2.0, 5.0, 1.0]})
+    p1, p2 = tmp_path / "half1.parquet", tmp_path / "half2.parquet"
+    df1.write_parquet(p1)
+    df2.write_parquet(p2)
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.correlate_features_main.__wrapped__(make_corr_cfg(tmp_path, p1, p2))
+
+    result = pl.read_parquet(tmp_path / "corr_out" / "correlations.parquet")
+    expected = m.compute_feature_correlations(df1, df2, "meta_aa_changes")
+    assert result["r"][0] == pytest.approx(expected["r"][0])
+
+
+# ---------------------------------------------------------------------------
+# blocklist_main
+# ---------------------------------------------------------------------------
+
+
+def make_bl_cfg(
+    tmp_path, correlation_files, *, minimum_correlation: float = 0.5
+) -> OmegaConf:
+    return OmegaConf.structured(
+        m.BlocklistConfig(
+            output_dir=str(tmp_path / "bl_out"),
+            correlation_files=correlation_files,
+            minimum_correlation=minimum_correlation,
+        )
+    )
+
+
+def test_blocklist_main_computes_median_r_across_bootstraps(tmp_path) -> None:
+    corr_dir = tmp_path / "corr"
+    corr_dir.mkdir()
+    for i, r in enumerate([0.9, 0.5, 0.7], start=1):
+        pl.DataFrame(
+            {"feature": ["f1_mean"], "r": [r], "r_squared": [r**2], "p_value": [0.01]}
+        ).write_parquet(corr_dir / f"bootstrap_{i}.parquet")
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.blocklist_main.__wrapped__(make_bl_cfg(tmp_path, str(corr_dir / "*.parquet")))
+
+    result = pl.read_parquet(tmp_path / "bl_out" / "blocklist.parquet")
+    row = result.filter(pl.col("feature") == "f1_mean").to_dicts().pop()
+    assert row["median_r"] == pytest.approx(0.7)
+
+
+def test_blocklist_main_feature_ok_thresholding(tmp_path) -> None:
+    corr_dir = tmp_path / "corr"
+    corr_dir.mkdir()
+    pl.DataFrame(
+        {
+            "feature": ["f1_mean", "f2_mean"],
+            "r": [0.9, 0.2],
+            "r_squared": [0.81, 0.04],
+            "p_value": [0.01, 0.8],
+        }
+    ).write_parquet(corr_dir / "bootstrap_1.parquet")
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.blocklist_main.__wrapped__(
+            make_bl_cfg(tmp_path, str(corr_dir / "*.parquet"), minimum_correlation=0.5)
+        )
+
+    result = pl.read_parquet(tmp_path / "bl_out" / "blocklist.parquet")
+    ok = dict(zip(result["feature"].to_list(), result["feature_ok"].to_list()))
+    assert ok["f1_mean"] is True
+    assert ok["f2_mean"] is False
+
+
+def test_blocklist_main_raises_on_empty_glob(tmp_path) -> None:
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with pytest.raises(ValueError):
+            m.blocklist_main.__wrapped__(
+                make_bl_cfg(tmp_path, str(tmp_path / "nonexistent" / "*.parquet"))
+            )
+
+
+# ---------------------------------------------------------------------------
+# combine_blocklists_main
+# ---------------------------------------------------------------------------
+
+
+def make_cb_cfg(tmp_path, blocklist_files) -> OmegaConf:
+    return OmegaConf.structured(
+        m.CombineBlocklistsConfig(
+            output_dir=str(tmp_path / "cb_out"),
+            blocklist_files=blocklist_files,
+        )
+    )
+
+
+def test_combine_blocklists_main_concatenates_disjoint_features(tmp_path) -> None:
+    bl_dir = tmp_path / "bl"
+    bl_dir.mkdir()
+    pl.DataFrame(
+        {"feature": ["f1_mean"], "median_r": [0.9], "feature_ok": [True]}
+    ).write_parquet(bl_dir / "mean.parquet")
+    pl.DataFrame(
+        {"feature": ["f1_std"], "median_r": [0.3], "feature_ok": [False]}
+    ).write_parquet(bl_dir / "std.parquet")
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        m.combine_blocklists_main.__wrapped__(
+            make_cb_cfg(tmp_path, str(bl_dir / "*.parquet"))
+        )
+
+    result = pl.read_parquet(tmp_path / "cb_out" / "blocklist.parquet")
+    assert set(result["feature"].to_list()) == {"f1_mean", "f1_std"}
+    assert len(result) == 2
+
+
+def test_combine_blocklists_main_raises_on_empty_glob(tmp_path) -> None:
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with pytest.raises(ValueError):
+            m.combine_blocklists_main.__wrapped__(
+                make_cb_cfg(tmp_path, str(tmp_path / "nonexistent" / "*.parquet"))
+            )
+
+
+# ---------------------------------------------------------------------------
+# main() — stage 4, final feature selection
+# ---------------------------------------------------------------------------
+
+
+def write_feat_input_parquet(tmp_path) -> None:
+    """Raw cell-level parquet used only for the metadata join in main()."""
     n = 4
     pl.DataFrame(
         {
             "meta_aa_changes": ["WT"] * n + ["A1A"] * n + ["A1B"] * n + ["A1C"] * n,
             "meta_is_control": [True] * n + [False] * (3 * n),
             META_BARCODE_COL: ["bc_0", "bc_1"] * (2 * n),
-            "f1": [0.0] * n + [1.0] * n + [5.0] * n + [10.0] * n,
-            "f2": [0.0] * n + [2.0] * n + [6.0] * n + [12.0] * n,
         }
     ).write_parquet(tmp_path / "input.parquet")
 
 
-# Correlation DataFrame with one high-r and one low-r feature.
-_KNOWN_CORR = pl.DataFrame(
-    {
-        "feature": ["f1_mean", "f2_mean"],
-        "r": [0.9, 0.2],
-        "r_squared": [0.81, 0.04],
-        "p_value": [0.01, 0.8],
-    }
-)
+def write_feature_type_aggregate(tmp_path) -> None:
+    """Per-feature-type aggregate fixture matching write_feat_input_parquet's
+    cell-level means exactly (mean aggregator over f1=[0]*4,[1]*4,[5]*4,[10]*4
+    and f2=[0]*4,[2]*4,[6]*4,[12]*4 for WT/A1A/A1B/A1C respectively)."""
+    ft_dir = tmp_path / "ft"
+    ft_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A1B", "A1C"],
+            "f1_mean": [1.0, 5.0, 10.0],
+            "f2_mean": [2.0, 6.0, 12.0],
+        }
+    ).write_parquet(ft_dir / "mean.parquet")
+
+
+def write_blocklist(tmp_path, *, block_f2: bool = False) -> None:
+    pl.DataFrame(
+        {"feature": ["f1_mean", "f2_mean"], "feature_ok": [True, not block_f2]}
+    ).write_parquet(tmp_path / "blocklist.parquet")
+
+
+def make_feat_cfg(
+    tmp_path,
+    *,
+    output_root=None,
+    feature_type_files=None,
+    block_list_file=None,
+    compute_impact_score: bool = True,
+) -> OmegaConf:
+    """Return a DictConfig for FinalizeFeatureSelectConfig with test defaults."""
+    if feature_type_files is None:
+        feature_type_files = str(tmp_path / "ft" / "*.parquet")
+    if block_list_file is None:
+        block_list_file = str(tmp_path / "blocklist.parquet")
+    return OmegaConf.structured(
+        m.FinalizeFeatureSelectConfig(
+            output_dir=str(tmp_path / "out"),
+            output_root=output_root,
+            input_file=str(tmp_path / "input.parquet"),
+            feature_type_files=feature_type_files,
+            block_list_file=block_list_file,
+            compute_impact_score=compute_impact_score,
+        )
+    )
+
+
+def _write_default_fixtures(tmp_path, *, block_f2: bool = False) -> None:
+    write_feat_input_parquet(tmp_path)
+    write_feature_type_aggregate(tmp_path)
+    write_blocklist(tmp_path, block_f2=block_f2)
 
 
 def test_main_creates_output_file(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
@@ -340,18 +467,8 @@ def test_main_creates_output_file(tmp_path) -> None:
     assert (tmp_path / "out" / "input.parquet").exists()
 
 
-def test_main_creates_feature_correlations_file(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
-    with patch("fisseq_data_pipeline.features.setup_logging"):
-        with patch(
-            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
-        ):
-            m.main.__wrapped__(make_feat_cfg(tmp_path))
-    assert (tmp_path / "out" / "feature_correlations.parquet").exists()
-
-
 def test_main_output_contains_label_column(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
@@ -362,7 +479,7 @@ def test_main_output_contains_label_column(tmp_path) -> None:
 
 
 def test_main_output_root_names_output_file(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     root = str(tmp_path / "run1")
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
@@ -372,96 +489,65 @@ def test_main_output_root_names_output_file(tmp_path) -> None:
     assert (tmp_path / "run1.input.parquet").exists()
 
 
-def test_main_output_root_names_correlations_file(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
-    root = str(tmp_path / "run1")
-    with patch("fisseq_data_pipeline.features.setup_logging"):
-        with patch(
-            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
-        ):
-            m.main.__wrapped__(make_feat_cfg(tmp_path, output_root=root))
-    assert (tmp_path / "run1.feature_correlations.parquet").exists()
-
-
-def test_main_feature_correlations_has_feature_ok_column(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+def test_main_blocked_feature_absent_from_output(tmp_path) -> None:
+    _write_default_fixtures(tmp_path, block_f2=True)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
-    corr = pl.read_parquet(tmp_path / "out" / "feature_correlations.parquet")
-    assert "feature_ok" in corr.columns
-
-
-def test_main_high_correlation_feature_marked_ok(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
-    with patch("fisseq_data_pipeline.features.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.features.pseudo_replicate_correlation",
-            return_value=_KNOWN_CORR,
-        ):
-            with patch(
-                "pycytominer.feature_select",
-                side_effect=lambda profiles, **_kw: profiles,
-            ):
-                m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
-    corr = pl.read_parquet(tmp_path / "out" / "feature_correlations.parquet")
-    row = corr.filter(pl.col("feature") == "f1_mean").to_dicts().pop()
-    assert row["feature_ok"] is True
-
-
-def test_main_low_correlation_feature_marked_not_ok(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
-    with patch("fisseq_data_pipeline.features.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.features.pseudo_replicate_correlation",
-            return_value=_KNOWN_CORR,
-        ):
-            with patch(
-                "pycytominer.feature_select",
-                side_effect=lambda profiles, **_kw: profiles,
-            ):
-                m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
-    corr = pl.read_parquet(tmp_path / "out" / "feature_correlations.parquet")
-    row = corr.filter(pl.col("feature") == "f2_mean").to_dicts().pop()
-    assert row["feature_ok"] is False
-
-
-def test_main_blocked_feature_absent_from_output(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
-    with patch("fisseq_data_pipeline.features.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.features.pseudo_replicate_correlation",
-            return_value=_KNOWN_CORR,
-        ):
-            with patch(
-                "pycytominer.feature_select",
-                side_effect=lambda profiles, **_kw: profiles,
-            ):
-                m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
     result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "f2_mean" not in result.columns
 
 
 def test_main_unblocked_feature_present_in_output(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path, block_f2=True)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
-            "fisseq_data_pipeline.features.pseudo_replicate_correlation",
-            return_value=_KNOWN_CORR,
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
         ):
-            with patch(
-                "pycytominer.feature_select",
-                side_effect=lambda profiles, **_kw: profiles,
-            ):
-                m.main.__wrapped__(make_feat_cfg(tmp_path, minimum_correlation=0.5))
+            m.main.__wrapped__(make_feat_cfg(tmp_path))
     result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     assert "f1_mean" in result.columns
 
 
-def test_main_pyc_feature_select_called(tmp_path) -> None:
+def test_main_joins_multiple_feature_type_files(tmp_path) -> None:
     write_feat_input_parquet(tmp_path)
+    write_feature_type_aggregate(tmp_path)
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A1B", "A1C"],
+            "f1_std": [0.0, 0.0, 0.0],
+        }
+    ).write_parquet(tmp_path / "ft" / "std.parquet")
+    write_blocklist(tmp_path)
+    pl.DataFrame(
+        {"feature": ["f1_mean", "f2_mean", "f1_std"], "feature_ok": [True, True, True]}
+    ).write_parquet(tmp_path / "blocklist.parquet")
+
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(make_feat_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert {"f1_mean", "f2_mean", "f1_std"}.issubset(set(result.columns))
+
+
+def test_main_raises_on_empty_feature_type_glob(tmp_path) -> None:
+    _write_default_fixtures(tmp_path)
+    with patch("fisseq_data_pipeline.features.setup_logging"):
+        with pytest.raises(ValueError):
+            m.main.__wrapped__(
+                make_feat_cfg(
+                    tmp_path,
+                    feature_type_files=str(tmp_path / "nonexistent" / "*.parquet"),
+                )
+            )
+
+
+def test_main_pyc_feature_select_called(tmp_path) -> None:
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch("pycytominer.feature_select") as mock_fs:
             mock_fs.side_effect = lambda profiles, **kw: profiles
@@ -470,7 +556,7 @@ def test_main_pyc_feature_select_called(tmp_path) -> None:
 
 
 def test_main_pyc_feature_select_dropped_feature_absent(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
 
     def drop_f1_mean(profiles, **_kwargs):
         return profiles.drop(columns=["f1_mean"])
@@ -488,7 +574,7 @@ def test_main_pyc_feature_select_dropped_feature_absent(tmp_path) -> None:
 
 
 def test_main_impact_score_column_present_by_default(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
@@ -499,7 +585,7 @@ def test_main_impact_score_column_present_by_default(tmp_path) -> None:
 
 
 def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
@@ -512,7 +598,7 @@ def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
 def test_main_impact_score_values_are_finite(tmp_path) -> None:
     # A1A is the only synonymous control; its aggregated feature vector is
     # non-zero, so compute_impact_score produces finite scores for all rows.
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
@@ -525,7 +611,7 @@ def test_main_impact_score_values_are_finite(tmp_path) -> None:
 def test_main_synonymous_control_has_zero_impact_score(tmp_path) -> None:
     # After variant_classification the sole synonymous variant (A1A) becomes
     # the control, so its own impact score should be 0.
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
@@ -543,7 +629,7 @@ def test_main_synonymous_control_has_zero_impact_score(tmp_path) -> None:
 
 def _run_main(tmp_path, **kwargs) -> pl.DataFrame:
     """Run main() and return the output parquet."""
-    write_feat_input_parquet(tmp_path)
+    _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
             "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles

@@ -43,6 +43,8 @@ _NF_PARAMS = [
     "50",
     "--bvb_min_batches",
     "2",
+    "--bootstrap",
+    "3",
 ]
 
 _PROJECT_ROOT = Path(__file__).parents[2]
@@ -193,14 +195,14 @@ def test_pipeline_ovwt_global_outputs(pipeline_outputs):
 def test_pipeline_feature_select_batchwise_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     batch_dir = exp_dir / "feature_select_batchwise" / batch_stem
-    assert (batch_dir / f"{batch_stem}.parquet").exists()
-    assert (batch_dir / "feature_correlations.parquet").exists()
+    assert (batch_dir / "output.parquet").exists()
+    assert (batch_dir / "blocklist.parquet").exists()
 
 
 def test_pipeline_feature_select_global_outputs(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "feature_select_global" / "global.parquet").exists()
-    assert (exp_dir / "feature_select_global" / "feature_correlations.parquet").exists()
+    assert (exp_dir / "feature_select_global" / "output.parquet").exists()
+    assert (exp_dir / "feature_select_global" / "blocklist.parquet").exists()
 
 
 def test_pipeline_permanova_outputs(pipeline_outputs):
@@ -246,10 +248,7 @@ def test_ovwt_results_have_auroc_columns(pipeline_outputs, batch_stem):
 def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(
-        exp_dir
-        / "feature_select_batchwise"
-        / batch_stem
-        / "feature_correlations.parquet"
+        exp_dir / "feature_select_batchwise" / batch_stem / "blocklist.parquet"
     )
     assert "feature_ok" in df.columns
 
@@ -262,7 +261,7 @@ def test_ovwt_global_uses_both_batches(pipeline_outputs):
 
 def test_feature_select_global_uses_both_batches(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "feature_select_global" / "global.parquet")
+    df = pl.read_parquet(exp_dir / "feature_select_global" / "output.parquet")
     assert (df["meta_batch_num_unique"] == 2).all()
 
 

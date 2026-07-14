@@ -225,57 +225,6 @@ def test_native_aggregators_exclude_control_rows() -> None:
 
 
 # ---------------------------------------------------------------------------
-# MultiAggregator
-# ---------------------------------------------------------------------------
-
-
-def test_multi_aggregator_columns_include_all_sub_aggregator_outputs(
-    simple_df: pl.DataFrame,
-) -> None:
-    agg = m.MultiAggregator(
-        [m.MeanAggregator(), m.MedianAggregator(), m.StdAggregator()]
-    )
-    result = agg.aggregate(simple_df.lazy()).collect()
-    assert {"meta_aa_changes", "f1_mean", "f2_mean"}.issubset(set(result.columns))
-    assert {"f1_median", "f2_median"}.issubset(set(result.columns))
-    assert {"f1_std", "f2_std"}.issubset(set(result.columns))
-
-
-def test_multi_aggregator_label_column_appears_once(simple_df: pl.DataFrame) -> None:
-    agg = m.MultiAggregator([m.MeanAggregator(), m.MedianAggregator()])
-    result = agg.aggregate(simple_df.lazy()).collect()
-    assert result.columns.count("meta_aa_changes") == 1
-
-
-def test_multi_aggregator_values_match_individual_aggregators(
-    simple_df: pl.DataFrame,
-) -> None:
-    mean_result = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
-    std_result = m.StdAggregator().aggregate(simple_df.lazy()).collect()
-    multi_result = (
-        m.MultiAggregator([m.MeanAggregator(), m.StdAggregator()])
-        .aggregate(simple_df.lazy())
-        .collect()
-    )
-
-    row_a_mean = mean_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
-    row_a_multi = multi_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
-    assert row_a_multi["f1_mean"] == pytest.approx(row_a_mean["f1_mean"])
-
-    row_a_std = std_result.filter(pl.col("meta_aa_changes") == "A").to_dicts().pop()
-    assert row_a_multi["f1_std"] == pytest.approx(row_a_std["f1_std"])
-
-
-def test_multi_aggregator_empty_raises() -> None:
-    with pytest.raises(ValueError, match="at least one"):
-        m.MultiAggregator([]).aggregate(
-            pl.DataFrame(
-                {"meta_aa_changes": ["A"], "meta_is_control": [False], "f1": [1.0]}
-            ).lazy()
-        )
-
-
-# ---------------------------------------------------------------------------
 # aggregate() function
 # ---------------------------------------------------------------------------
 
@@ -299,21 +248,6 @@ def test_aggregate_emd_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
         toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="EMD"
     ).collect()
     assert "WT" not in result["meta_aa_changes"].to_list()
-
-
-def test_aggregate_multi_returns_columns_from_all_non_emd_aggregators(
-    toy_norm_df: pl.DataFrame,
-) -> None:
-    result = m.aggregate(
-        toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="multi"
-    ).collect()
-    assert "meta_aa_changes" in result.columns
-    assert result.columns.count("meta_aa_changes") == 1
-    for suffix in ("_mean", "_median", "_MAD", "_std", "_KS", "_QQ", "_AUROC"):
-        assert any(c.endswith(suffix) for c in result.columns), (
-            f"missing {suffix} columns"
-        )
-    assert not any(c.endswith("_EMD") for c in result.columns)
 
 
 def test_aggregate_unknown_raises() -> None:
@@ -1028,3 +962,98 @@ def test_get_aggregate_meta_data_barcode_counts_not_null(
         meta_lf_with_barcode, "meta_aa_changes"
     ).collect()
     assert result["meta_barcode_counts"].null_count() == 0
+
+
+# ---------------------------------------------------------------------------
+# feature_type_main
+# ---------------------------------------------------------------------------
+
+
+def make_ft_cfg(
+    tmp_path,
+    *,
+    output_root=None,
+    aggregator="mean",
+    index_file=None,
+) -> OmegaConf:
+    """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
+    return OmegaConf.structured(
+        m.FeatureTypeAggregateConfig(
+            output_dir=str(tmp_path / "out"),
+            output_root=output_root,
+            input_file=str(tmp_path / "input.parquet"),
+            aggregator=aggregator,
+            index_file=index_file,
+        )
+    )
+
+
+def test_feature_type_main_output_has_only_label_and_stat_columns(tmp_path) -> None:
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert set(result.columns) == {"meta_aa_changes", "f1_mean", "f2_mean"}
+
+
+def test_feature_type_main_index_file_none_aggregates_all_rows(tmp_path) -> None:
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    # All four groups (WT is control and excluded; A1A, A2A, A1B remain).
+    assert set(result["meta_aa_changes"].to_list()) == {"A1A", "A2A", "A1B"}
+
+
+def test_feature_type_main_index_file_filters_rows(tmp_path) -> None:
+    # Custom dataset (unlike write_agg_input_parquet, whose per-group values
+    # are constant, which would make a single-row filter indistinguishable
+    # from the full-group aggregate): A1B has three distinct f1 values, so
+    # filtering to a subset changes the aggregated mean.
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B", "A1B"],
+            "meta_is_control": [True, True, False, False, False],
+            "f1": [0.0, 0.0, 10.0, 20.0, 30.0],
+        }
+    ).write_parquet(tmp_path / "input.parquet")
+    # Row index 2 is the first A1B row (f1=10.0); rows 0-1 are WT.
+    idx_path = tmp_path / "half1.parquet"
+    pl.DataFrame({"tmp_cell_idx": [2]}).write_parquet(idx_path)
+
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(
+            make_ft_cfg(
+                tmp_path,
+                index_file=str(idx_path),
+                output_root=str(tmp_path / "filtered"),
+            )
+        )
+    filtered_result = pl.read_parquet(tmp_path / "filtered.input.parquet")
+
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(
+            make_ft_cfg(tmp_path, output_root=str(tmp_path / "unfiltered"))
+        )
+    unfiltered_result = pl.read_parquet(tmp_path / "unfiltered.input.parquet")
+
+    # Filtering to a single A1B row means only that A1B row contributes, and
+    # its single-cell mean must equal the raw feature value at that row exactly.
+    assert set(filtered_result["meta_aa_changes"].to_list()) == {"A1B"}
+    filtered_row = filtered_result.filter(pl.col("meta_aa_changes") == "A1B").row(
+        0, named=True
+    )
+    assert filtered_row["f1_mean"] == pytest.approx(10.0)
+
+    unfiltered_row = unfiltered_result.filter(pl.col("meta_aa_changes") == "A1B").row(
+        0, named=True
+    )
+    assert filtered_row["f1_mean"] != pytest.approx(unfiltered_row["f1_mean"])
+
+
+def test_feature_type_main_output_root_naming(tmp_path) -> None:
+    write_agg_input_parquet(tmp_path)
+    root = str(tmp_path / "run1")
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path, output_root=root))
+    assert (tmp_path / "run1.input.parquet").exists()

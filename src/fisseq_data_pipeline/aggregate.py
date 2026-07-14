@@ -11,7 +11,7 @@ import polars as pl
 import scipy.stats
 import sklearn.metrics
 from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .normalize import Normalizer
@@ -19,6 +19,7 @@ from .utils.batches import load_batches
 from .utils.constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECTOR
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
+from .utils.splits import filter_by_index_file
 from .utils.vectors import compute_impact_score
 
 
@@ -31,7 +32,7 @@ class AggregateConfig(LabeledInputConfig):
     ----------
     aggregator : str
         Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,
-        ``EMD``, ``KS``, ``QQ``, ``AUROC``. Defaults to ``"multi"``.
+        ``EMD``, ``KS``, ``QQ``, ``AUROC``. Required.
     save_normalizer : bool
         If ``True``, persist the fitted :class:`.normalize.Normalizer` alongside
         the output. Defaults to ``True``.
@@ -42,7 +43,7 @@ class AggregateConfig(LabeledInputConfig):
         features blocked).
     """
 
-    aggregator: str = "multi"
+    aggregator: str = MISSING
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
     compute_impact_score: bool = True
@@ -360,33 +361,6 @@ class AUROCAggregator(FeatureStatAggregator):
         return _finalize(auroc)
 
 
-class MultiAggregator(BaseAggregator):
-    """
-    Applies a list of aggregators, sharing one variant/reference list
-    structure across all of them.
-
-    Parameters
-    ----------
-    aggregators : list[BaseAggregator]
-        Pre-configured aggregator instances to run. Must share the same
-        ``label_col``.
-    """
-
-    def __init__(self, aggregators: list[BaseAggregator]) -> None:
-        label_col = aggregators[0].label_col if aggregators else "meta_aa_changes"
-        super().__init__(label_col=label_col)
-        self.aggregators = aggregators
-
-    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        if not self.aggregators:
-            raise ValueError("MultiAggregator requires at least one aggregator")
-        per_agg_features = [(agg, agg._feature_columns(lf)) for agg in self.aggregators]
-        feature_cols = sorted({f for _, cols in per_agg_features for f in cols})
-        base = _variant_reference_lists(lf, self.label_col, feature_cols)
-        exprs = [agg._stat_expr(f) for agg, cols in per_agg_features for f in cols]
-        return base.select([self.label_col] + exprs)
-
-
 _AGGREGATORS: dict[str, type[BaseAggregator]] = {
     "mean": MeanAggregator,
     "median": MedianAggregator,
@@ -397,8 +371,6 @@ _AGGREGATORS: dict[str, type[BaseAggregator]] = {
     "QQ": QQCorrelationAggregator,
     "AUROC": AUROCAggregator,
 }
-
-_MULTI_DEFAULT: list[str] = ["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]
 
 
 def aggregate(
@@ -421,7 +393,7 @@ def aggregate(
         Name of the column identifying variant labels.
     aggregator_name : str
         Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,
-        ``EMD``, ``KS``, ``QQ``, ``AUROC``, or ``multi`` (all except EMD).
+        ``EMD``, ``KS``, ``QQ``, ``AUROC``.
     block_list : set[str] or None
         Aggregated output column names to skip (e.g. ``"f1_EMD"``). Blocked
         statistics are not computed and do not appear in the output. Names
@@ -433,21 +405,13 @@ def aggregate(
     pl.LazyFrame
         One row per non-control variant group with computed statistics.
     """
-    valid = set(_AGGREGATORS) | {"multi"}
+    valid = set(_AGGREGATORS)
     if aggregator_name not in valid:
         raise ValueError(
             f"Unknown aggregator {aggregator_name!r}. Choose from: {sorted(valid)}"
         )
 
-    if aggregator_name == "multi":
-        sub_aggs = [
-            _AGGREGATORS[name](label_col=label_col, block_list=block_list)
-            for name in _MULTI_DEFAULT
-        ]
-        agg: BaseAggregator = MultiAggregator(sub_aggs)
-    else:
-        agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
-
+    agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
     return agg.aggregate(lf)
 
 
@@ -545,6 +509,100 @@ def main(cfg: DictConfig) -> None:
             norm_path = output_dir / "normalizer.parquet"
         logging.info("Saving normalizer to %s", norm_path)
         normalizer.save(norm_path)
+
+    logging.info("Done")
+
+
+@dataclasses.dataclass
+class FeatureTypeAggregateConfig(LabeledInputConfig):
+    """
+    Hydra structured configuration for the lean per-feature-type aggregation
+    entry point.
+
+    Shared by the feature-selection pipeline's stage 1 (full aggregation)
+    and stage 2b (per-pseudo-replicate-half aggregation).
+
+    Attributes
+    ----------
+    aggregator : str
+        A concrete key in ``_AGGREGATORS`` (``mean``, ``median``, ``MAD``,
+        ``std``, ``EMD``, ``KS``, ``QQ``, ``AUROC``). Required.
+    index_file : str or None
+        Optional path to a single-column ``TMP_IDX_COL`` parquet file (as
+        written by :func:`fisseq_data_pipeline.features.generate_split_main`)
+        naming a subset of cell-level rows to aggregate over (e.g. one
+        pseudo-replicate half). When ``None``, all rows are aggregated.
+        Defaults to ``None``.
+    """
+
+    aggregator: str = MISSING
+    index_file: Optional[str] = None
+
+
+_cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
+
+
+@hydra.main(
+    version_base=None, config_path=None, config_name="aggregate_feature_type_main"
+)
+def feature_type_main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: aggregate cell-level features for one feature type.
+
+    ``input_file`` is interpreted as a glob pattern via :func:`load_batches`
+    (a concrete non-glob path is a single-file pattern). Rows are optionally
+    filtered to ``index_file`` via :func:`.utils.splits.filter_by_index_file`.
+    Runs the configured single aggregator via :func:`aggregate` and writes a
+    lean output containing only ``[label_column] + <feature type's stat
+    columns>`` — no normalizer, no metadata join, no impact score (those
+    happen once, later, in the final feature-selection stage).
+
+    Relies on the ``meta_is_control`` column already present on the input
+    (set upstream by ``normalize.py``'s WT-based ``control_sample_query``) as
+    the aggregator's reference/control group; does not call
+    :func:`variant_classification`.
+
+    Output path
+    -----------
+    - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``
+    - Single-file input: ``{output_root}.{stem}.parquet`` or
+      ``{output_dir}/{stem}.parquet``
+
+    Configuration
+    -------------
+    Override any field on the command line, e.g.::
+
+        python -m fisseq_data_pipeline.aggregate \\
+            output_dir=./out \\
+            input_file=data/normalized.parquet \\
+            aggregator=mean \\
+            index_file=./half1.parquet
+    """
+    ft_cfg: FeatureTypeAggregateConfig = OmegaConf.to_object(cfg)
+
+    output_dir = pathlib.Path(ft_cfg.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ft_cfg.output_dir = output_dir
+    setup_logging(ft_cfg, "aggregate_feature_type")
+
+    logging.info("Loading input from %s", ft_cfg.input_file)
+    lf, output_stem = load_batches(ft_cfg.input_file)
+
+    logging.info("Filtering by index_file=%s", ft_cfg.index_file)
+    lf = filter_by_index_file(lf, ft_cfg.index_file)
+
+    logging.info("Running %s aggregator", ft_cfg.aggregator)
+    agg_lf = aggregate(
+        lf, label_col=ft_cfg.label_column, aggregator_name=ft_cfg.aggregator
+    )
+
+    if ft_cfg.output_root is not None:
+        out_path = pathlib.Path(f"{ft_cfg.output_root}.{output_stem}.parquet")
+    else:
+        out_path = output_dir / f"{output_stem}.parquet"
+
+    logging.info("Writing output to %s", out_path)
+    agg_lf.sink_parquet(out_path)
 
     logging.info("Done")
 

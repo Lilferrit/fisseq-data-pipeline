@@ -11,11 +11,11 @@ nextflow.enable.dsl = 2
  *        ▼
  *   QC_FILTER  (per batch) ──────────────────────────────────────────────┐
  *        │                                                                │ barcode_counts
- *        ├──► BATCHVSBATCH_PRE        (global, waits for all QC_FILTER)  │
+ *        ├──► BATCHVSBATCH (pre)      (global, waits for all QC_FILTER)  │
  *        ▼                                                                │
  *   NORMALIZE  (per batch)                                                │
  *        │                                                                │
- *        ├──► BATCHVSBATCH_POST       (global, waits for all NORMALIZE)  │
+ *        ├──► BATCHVSBATCH (post)     (global, waits for all NORMALIZE)  │
  *        ├──► OVWT_BATCHWISE          (per batch)                        │
  *        ├──► OVWT_GLOBAL             (global, waits for all NORMALIZE)  │
  *        ├──► FEATURE_SELECT_BATCHWISE (per batch) ◄─────────────────────┘

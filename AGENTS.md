@@ -17,15 +17,21 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
       ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
       │
-      ├──► BATCHVSBATCH_PRE         (global — waits for all QC_FILTER)
+      ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER)
       ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │
-      ├──► BATCHVSBATCH_POST        (global — waits for all batches)
+      ├──► BATCHVSBATCH (post)      (global — waits for all batches)
       ├──► OVWT_BATCHWISE           (per batch)
-      ├──► OVWT_GLOBAL              (global — waits for all batches)
-      ├──► FEATURE_SELECT_BATCHWISE (per batch)
-      └──► FEATURE_SELECT_GLOBAL    (global — waits for all batches)
+      ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
+      └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
+             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
+             GENERATE_SPLIT              (per bootstrap replicate)    │
+               └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
+                     └─► CORRELATE_FEATURES (per bootstrap × feature type)
+                           └─► BLOCKLIST  (gathers all bootstrap replicates per feature type — the one sync point)
+                                 └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
+                                       └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
 ```
 
 **Main components:**
@@ -101,12 +107,37 @@ uv run fisseq-normalize \
 uv run fisseq-aggregate \
     output_dir=./out \
     input_file=out/normalized.parquet \
-    aggregator=multi
+    aggregator=mean
+
+uv run fisseq-aggregate-feature-type \
+    output_dir=./out \
+    input_file=out/normalized.parquet \
+    aggregator=mean
+
+uv run fisseq-generate-split \
+    output_dir=./out \
+    input_file=out/normalized.parquet \
+    random_state=1
+
+uv run fisseq-correlate-features \
+    output_dir=./out \
+    half1_file=out/half1.mean.parquet \
+    half2_file=out/half2.mean.parquet
+
+uv run fisseq-blocklist \
+    output_dir=./out \
+    'correlation_files=out/correlations/mean/*.parquet' \
+    minimum_correlation=0.5
+
+uv run fisseq-combine-blocklists \
+    output_dir=./out \
+    'blocklist_files=out/blocklists/*.parquet'
 
 uv run fisseq-feature-select \
     output_dir=./out \
     input_file=out/normalized.parquet \
-    minimum_correlation=0.5
+    'feature_type_files=out/aggregates/*.parquet' \
+    block_list_file=out/blocklist.parquet
 
 uv run fisseq-permanova \
     output_dir=./out \
@@ -196,8 +227,8 @@ fisseq-data-pipeline/
 │   │   └── vectors.py             # compute_norm, compute_query_dot, compute_cosine_distance, compute_impact_score
 │   ├── qcfilter.py                # QC filtering entry point
 │   ├── normalize.py               # Normalizer class + normalize entry point
-│   ├── aggregate.py               # 9 aggregation strategies + entry point
-│   ├── features.py                # Pseudo-replicate correlation + pycytominer selection
+│   ├── aggregate.py               # 8 aggregation strategies + full-aggregation and per-feature-type entry points
+│   ├── features.py                # Bootstrap split/correlate/blocklist stages + final pycytominer selection
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
 │   ├── ovwtcellscores.py          # Cell scoring via trained models
 │   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value (no pyproject entry)
@@ -206,10 +237,16 @@ fisseq-data-pipeline/
 │   ├── qc_filter.nf
 │   ├── normalize.nf
 │   ├── permanova.nf
+│   ├── batchvsbatch.nf
 │   ├── ovwt_batchwise.nf
 │   ├── ovwt_global.nf
-│   ├── feature_select_batchwise.nf
-│   └── feature_select_global.nf
+│   ├── aggregate_feature_type.nf
+│   ├── generate_split.nf
+│   ├── aggregate_half.nf
+│   ├── correlate_features.nf
+│   ├── blocklist.nf
+│   ├── combine_blocklists.nf
+│   └── finalize_feature_select.nf
 ├── workflows/
 │   └── fisseq.nf                  # Main Nextflow workflow DAG
 ├── main.nf                        # Nextflow entrypoint + parameter defaults
@@ -238,13 +275,15 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`Normalizer`** (`normalize.py`) — fits per-feature z-score stats (mean, std) on a LazyFrame and applies them. Stats are persisted to Parquet (not pickle) and reloaded with `Normalizer.load(path)`. Zero-variance features produce `null` after normalization.
 
-**`BaseAggregator`** (`aggregate.py`) — abstract base for 9 concrete aggregation strategies. `MultiAggregator` chains mean/median/MAD/std/KS/QQ/AUROC and joins results on the label column.
+**`BaseAggregator`** (`aggregate.py`) — abstract base for 8 concrete aggregation strategies (mean, median, MAD, std, EMD, KS, QQ, AUROC). There is no multi-aggregator wrapper; combining feature types happens in Nextflow — `aggregate.feature_type_main` runs once per `params.feature_types` entry, and `features.main` (the final feature-selection stage) joins the per-feature-type outputs on the label column.
 
 **`utils/xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, and `batchvsbatch.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here.
 
 **`load_batches`** (`utils/batches.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
-**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH_PRE/POST, OVWT_GLOBAL, FEATURE_SELECT_GLOBAL, PERMANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet`; all other global processes wait on `global_signal` (all NORMALIZE done) and glob `normalization/cells/*.parquet`.
+**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH, OVWT_GLOBAL, the feature-selection processes, PERMANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH` and `PERMANOVA` are each a single parameterized process (`modules/local/batchvsbatch.nf`, `modules/local/permanova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow) — `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet` with `use_parent_name=true`; `BATCHVSBATCH_POST` waits on `global_signal` (all NORMALIZE done) and globs `normalization/cells/*.parquet`. Likewise `PERMANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `PERMANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet`. All varying bits (glob path, `use_parent_name`, `publishDir` subpath) are passed in as process input values, not hardcoded per-call.
+
+**Feature-selection pipeline** (`workflows/fisseq.nf`) follows the same aliasing pattern, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each invoked once as `*_BATCHWISE` and once as `*_GLOBAL`. Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_types`) and `bootstrap_ch` (`1..params.bootstrap`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_key, feature_type])` — gathering all `params.bootstrap` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.global` (default `true`) gates `OVWT_GLOBAL` and the entire `*_GLOBAL` feature-selection branch — set it to `false` to skip both and only run the batchwise processes (e.g. for datasets where the global bootstrap × feature-type cross product across all batches combined is prohibitively expensive). The batchwise branch, `BATCHVSBATCH`, `PERMANOVA`, and the batch-correction branch are unaffected by this flag.
 
 ### CLI entry points (registered in `pyproject.toml`)
 
@@ -252,8 +291,13 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 |---------|--------|---------|
 | `fisseq-qc-filter` | `qcfilter:main` | Edit distance + barcode QC |
 | `fisseq-normalize` | `normalize:main` | Z-score normalization |
-| `fisseq-aggregate` | `aggregate:main` | Per-variant aggregation |
-| `fisseq-feature-select` | `features:main` | Pseudo-rep + pycytominer feature selection |
+| `fisseq-aggregate` | `aggregate:main` | Standalone per-variant aggregation + normalizer + metadata (not wired into Nextflow) |
+| `fisseq-aggregate-feature-type` | `aggregate:feature_type_main` | Lean per-feature-type aggregation, optionally filtered to an index-file row subset |
+| `fisseq-generate-split` | `features:generate_split_main` | Generate one stratified 50/50 pseudo-replicate split |
+| `fisseq-correlate-features` | `features:correlate_features_main` | Per-feature Pearson correlation between two aggregate halves |
+| `fisseq-blocklist` | `features:blocklist_main` | Median-`r`-across-bootstraps blocklist for one feature type |
+| `fisseq-combine-blocklists` | `features:combine_blocklists_main` | Concatenate per-feature-type blocklists |
+| `fisseq-feature-select` | `features:main` | Final stage: joins per-feature-type aggregates, applies combined blocklist, pycytominer selection |
 | `fisseq-ovwt` | `ovwt:main` | One-vs-WT XGBoost training |
 | `fisseq-ovwt-cell-scores` | `ovwtcellscores:main` | Score cells against trained OvWT models |
 | `fisseq-permanova` | `permanova:main` | Per-variant PERMANOVA (cosine distance) |
@@ -284,11 +328,15 @@ All outputs land under `<input_dir>` alongside the `input/` folder:
     results.parquet
     models.pkl
   feature_select_batchwise/<batch>/
-    <batch>.parquet
-    feature_correlations.parquet
+    aggregates/<feature_type>.parquet                                     # stage 1
+    splits/bootstrap_<n>/half{1,2}.parquet                                # stage 2a
+    half_aggregates/bootstrap_<n>/<feature_type>/half{1,2}.parquet        # stage 2b
+    correlations/<feature_type>/bootstrap_<n>.parquet                    # stage 2c
+    blocklists/<feature_type>.parquet                                    # stage 2d
+    blocklist.parquet                                                    # stage 3 (combined)
+    output.parquet                                                       # stage 4 (final)
   feature_select_global/
-    global.parquet
-    feature_correlations.parquet
+    (same layout, no <batch> nesting)
 ```
 
 ---
@@ -363,15 +411,15 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 5. **Integration tests are slow and require Nextflow.** `tests/integration/test_integration.py` runs the full Nextflow pipeline on synthetic data using a session-scoped fixture. Skipping them (`uv run pytest tests/unit`) is standard for day-to-day development.
 
-6. **Global Nextflow processes glob for published files, not channel outputs.** `BATCHVSBATCH_PRE/POST`, `OVWT_GLOBAL`, and `FEATURE_SELECT_GLOBAL` read from disk after all upstream processes finish. This means: (a) relative `input_dir` paths are resolved to absolute at workflow start; (b) `publishDir` paths in upstream modules must stay in sync with the globs in global modules (`BATCHVSBATCH_PRE` globs `qc_filter/*/filtered_cells.parquet`; others glob `normalization/cells/*.parquet`).
+6. **Global Nextflow processes glob for published files, not channel outputs.** `BATCHVSBATCH`, `OVWT_GLOBAL`, and `FEATURE_SELECT_GLOBAL` read from disk after all upstream processes finish. This means: (a) relative `input_dir` paths are resolved to absolute at workflow start; (b) `publishDir` paths in upstream modules must stay in sync with the globs passed into the global calls (`BATCHVSBATCH_PRE` globs `qc_filter/*/filtered_cells.parquet`; `BATCHVSBATCH_POST` and the other global processes glob `normalization/cells/*.parquet`).
 
-7. **`feature_select_batchwise.nf` uses `output_dir=./out_select`** to avoid a Nextflow staging collision where the output `.parquet` would overwrite the input `.parquet` (same filename). If you change the output naming in `features.py`, update this workaround.
+7. **When `output_root` is set, it takes priority over `output_dir` in the underlying Hydra CLIs** (`aggregate.py`, `features.py`) — the output file lands at `{output_root}.{stem}.parquet` regardless of `output_dir`, matching pre-existing behavior in `aggregate.py:main`/`features.py:main`. `aggregate_feature_type.nf`, `aggregate_half.nf`, and `finalize_feature_select.nf` all pass `output_root` and therefore use `output_dir=.` (not a subdirectory) plus a glob-based `mv` to rename the result to the process's declared output filename. `finalize_feature_select.nf` additionally does `mkdir -p ft && mv ${feature_type_files} ft/` to isolate the multi-file `feature_type_files` input from the co-staged `block_list_file` before globbing. If you change output naming in `features.py`/`aggregate.py`, update these workarounds.
 
 8. **The README contains `pip install` instructions.** Ignore them. This project uses `uv`. See the Setup section above.
 
 9. **`models.pkl` stores XGBoost `Booster` objects as a `dict[str, xgb.Booster]`.** Pickle is used here (not Parquet) because XGBoost's native serialization requires either the Booster API or pickle. Normalizer stats use Parquet (`Normalizer.save`/`Normalizer.load`) — don't confuse the two.
 
-10. **Synonymous variants are used as the control baseline for aggregation**, not WT cells. In `aggregate.py:variant_classification`, synonymous mutations (first and last amino acid identical in `meta_aa_changes`) are flagged as `meta_is_control = True`. In `normalize.py`, the control is WT cells (the SQL `control_sample_query`). These are different steps with different baselines.
+10. **Synonymous variants are used as the control baseline for aggregation**, not WT cells. In `aggregate.py:variant_classification`, synonymous mutations (first and last amino acid identical in `meta_aa_changes`) are flagged as `meta_is_control = True`. In `normalize.py`, the control is WT cells (the SQL `control_sample_query`). These are different steps with different baselines. `aggregate.feature_type_main` relies on the upstream `meta_is_control` (WT-based) column already present on its input and does not call `variant_classification` itself — that only happens later, in `features.main`'s impact-score step, on the aggregated (not cell-level) data.
 
 ---
 

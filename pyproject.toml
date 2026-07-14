@@ -23,7 +23,12 @@ dependencies = [
 [project.scripts]
 fisseq-normalize = "fisseq_data_pipeline.normalize:main"
 fisseq-aggregate = "fisseq_data_pipeline.aggregate:main"
+fisseq-aggregate-feature-type = "fisseq_data_pipeline.aggregate:feature_type_main"
 fisseq-feature-select = "fisseq_data_pipeline.features:main"
+fisseq-generate-split = "fisseq_data_pipeline.features:generate_split_main"
+fisseq-correlate-features = "fisseq_data_pipeline.features:correlate_features_main"
+fisseq-blocklist = "fisseq_data_pipeline.features:blocklist_main"
+fisseq-combine-blocklists = "fisseq_data_pipeline.features:combine_blocklists_main"
 fisseq-ovwt = "fisseq_data_pipeline.ovwt:main"
 fisseq-qc-filter = "fisseq_data_pipeline.qcfilter:main"
 fisseq-permanova = "fisseq_data_pipeline.permanova:main"
