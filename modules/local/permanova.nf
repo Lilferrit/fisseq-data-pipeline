@@ -2,20 +2,20 @@ nextflow.enable.dsl = 2
 
 process PERMANOVA {
     errorStrategy 'ignore'
-    publishDir "${params.input_dir}/permanova", mode: 'copy'
+    publishDir { "${params.input_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
-    val(input_dir)
+    tuple val(input_dir), val(cells_glob), val(publish_subdir)
 
     output:
     path("permanova.parquet")
 
     script:
     """
-    echo "Starting PERMANOVA for global"
+    echo "Starting PERMANOVA for ${publish_subdir}"
     fisseq-permanova \\
         output_dir=. \\
-        "input_file=${input_dir}/normalization/cells/*.parquet" \\
+        "input_file=${cells_glob}" \\
         n_permutations=${params.permanova_n_permutations}
     """
 }

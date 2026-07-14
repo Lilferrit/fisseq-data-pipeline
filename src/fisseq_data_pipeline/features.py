@@ -1,4 +1,5 @@
 import dataclasses
+import glob
 import logging
 import pathlib
 
@@ -8,65 +9,18 @@ import pycytominer
 import scipy.stats
 import sklearn.model_selection
 from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import MISSING, DictConfig, OmegaConf
 
-from .aggregate import AggregateConfig, aggregate, variant_classification
+from .aggregate import variant_classification
+from .config import AppConfig, LabeledInputConfig
 from .utils.batches import load_batches
 from .utils.constants import FEATURE_SELECTOR
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data, get_column
+from .utils.splits import TMP_IDX_COL, add_row_index
 from .utils.vectors import compute_impact_score
 
-TMP_IDX_COL = "tmp_cell_idx"
-
 _cs = ConfigStore.instance()
-
-
-@dataclasses.dataclass
-class FeatureSelectConfig(AggregateConfig):
-    """
-    Hydra structured configuration for the feature-selection entry point.
-
-    Extends :class:`.aggregate.AggregateConfig` with parameters controlling
-    pseudo-replicate splitting and reproducibility filtering.
-
-    Attributes
-    ----------
-    random_state : int
-        Seed passed to :func:`sklearn.model_selection.train_test_split` when
-        splitting cells into pseudo-replicates. Defaults to ``42``.
-    minimum_correlation : float
-        Minimum Pearson *r* required for a feature to pass the reproducibility
-        filter. Features whose pseudo-replicate correlation falls below this
-        threshold are excluded from aggregation. Defaults to ``0.5``.
-    """
-
-    random_state: int = 42
-    minimum_correlation: float = 0.5
-
-
-_cs.store(name="feature_select_main", node=FeatureSelectConfig)
-
-
-def get_replicate_lf(lf: pl.LazyFrame, rep_idx: list[int]) -> pl.LazyFrame:
-    """
-    Filter a LazyFrame to rows belonging to one pseudo-replicate.
-
-    Parameters
-    ----------
-    lf : pl.LazyFrame
-        Cell-level LazyFrame that must contain a ``TMP_IDX_COL`` integer column
-        added by :func:`pseudo_replicate_correlation` before splitting.
-    rep_idx : list[int]
-        Row indices that belong to this replicate half.
-
-    Returns
-    -------
-    pl.LazyFrame
-        Subset of ``lf`` containing only the rows whose ``TMP_IDX_COL`` value
-        is in ``rep_idx``.
-    """
-    return lf.filter(pl.col(TMP_IDX_COL).is_in(set(rep_idx)))
 
 
 def compute_feature_correlations(
@@ -119,56 +73,6 @@ def compute_feature_correlations(
     return pl.DataFrame(result, schema=["feature", "r", "r_squared", "p_value"])
 
 
-def pseudo_replicate_correlation(
-    lf: pl.LazyFrame, label_col: str, aggregator_name: str, random_state: int
-) -> pl.DataFrame:
-    """
-    Estimate feature reliability via pseudo-replicate Pearson correlations.
-
-    Cells are split into two equal halves stratified by variant label. Each
-    half is aggregated independently, and per-feature Pearson *r* between the
-    two aggregate results is returned as a proxy for measurement
-    reproducibility.
-
-    Parameters
-    ----------
-    lf : pl.LazyFrame
-        Cell-level LazyFrame. Must contain ``label_col`` and feature columns.
-    label_col : str
-        Column identifying variant labels, used both for stratified splitting
-        and for aligning the two aggregate results.
-    aggregator_name : str
-        Aggregation method passed through to :func:`.aggregate.aggregate`.
-    random_state : int
-        Random seed for the stratified split, forwarded to
-        :func:`sklearn.model_selection.train_test_split`.
-
-    Returns
-    -------
-    pl.DataFrame
-        One row per feature with columns ``feature``, ``r``, ``r_squared``,
-        and ``p_value`` (from :func:`compute_feature_correlations`).
-    """
-    lf = lf.with_columns(pl.row_index(TMP_IDX_COL))
-    idx = get_column(lf, TMP_IDX_COL)
-    labels = get_column(lf, label_col)
-
-    rep_one_idx, rep_two_idx, _, _ = sklearn.model_selection.train_test_split(
-        idx, labels, stratify=labels, random_state=random_state, test_size=0.5
-    )
-
-    rep_one_lf = get_replicate_lf(lf, rep_one_idx).drop(TMP_IDX_COL)
-    rep_two_lf = get_replicate_lf(lf, rep_two_idx).drop(TMP_IDX_COL)
-
-    rep_one_aggregate_df = aggregate(rep_one_lf, label_col, aggregator_name).collect()
-    rep_two_aggregate_df = aggregate(rep_two_lf, label_col, aggregator_name).collect()
-    rep_correlation_df = compute_feature_correlations(
-        rep_one_aggregate_df, rep_two_aggregate_df, label_col
-    )
-
-    return rep_correlation_df
-
-
 def pyc_feature_select(agg_df: pl.DataFrame) -> pl.DataFrame:
     """
     Select informative features from a per-variant aggregate DataFrame using
@@ -201,30 +105,45 @@ def pyc_feature_select(agg_df: pl.DataFrame) -> pl.DataFrame:
     return pl.from_pandas(select_agg_df_pd)
 
 
-@hydra.main(version_base=None, config_path=None, config_name="feature_select_main")
-def main(cfg: DictConfig) -> None:
+@dataclasses.dataclass
+class GenerateSplitConfig(LabeledInputConfig):
     """
-    Hydra entry point: feature selection via pseudo-replicate correlation and
-    pycytominer.
+    Hydra structured configuration for the pseudo-replicate split-generation
+    entry point.
 
-    Steps
-    -----
-    1. Compute per-feature pseudo-replicate Pearson correlations to estimate
-       measurement reproducibility.
-    2. Mark features with ``r < minimum_correlation`` as blocked and write the
-       full correlation table (including a ``feature_ok`` column) to the output
-       directory.
-    3. Aggregate the full input using :func:`.aggregate.aggregate`, skipping any
-       blocked features.
-    4. Apply :func:`pyc_feature_select` to remove low-variance and redundant
-       features.
-    5. Write the final feature-selected aggregate to disk.
+    Attributes
+    ----------
+    random_state : int
+        Seed for the stratified 50/50
+        :func:`sklearn.model_selection.train_test_split` by ``label_column``.
+        In the Nextflow pipeline this is set directly to the bootstrap-loop
+        index (``1..params.bootstrap``), so each bootstrap replicate gets a
+        distinct, reproducible split. Required.
+    """
+
+    random_state: int = MISSING
+
+
+_cs.store(name="generate_split_main", node=GenerateSplitConfig)
+
+
+@hydra.main(version_base=None, config_path=None, config_name="generate_split_main")
+def generate_split_main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: generate one pseudo-replicate 50/50 split.
+
+    Loads ``input_file``, adds a row-index column
+    (:func:`.utils.splits.add_row_index`), and performs a stratified (by
+    ``label_column``) 50/50 :func:`sklearn.model_selection.train_test_split`
+    at seed ``random_state``. Each half's row indices are written as a
+    single-column (``TMP_IDX_COL``) parquet file, consumable by
+    :func:`fisseq_data_pipeline.aggregate.feature_type_main`'s ``index_file``
+    option.
 
     Output files
     ------------
-    - ``{output_root}.feature_correlations.parquet`` or
-      ``{output_dir}/feature_correlations.parquet``
-    - ``{output_root}.{stem}.{ext}`` or ``{output_dir}/{filename}``
+    - ``{output_dir}/half1.parquet``
+    - ``{output_dir}/half2.parquet``
 
     Configuration
     -------------
@@ -232,65 +151,349 @@ def main(cfg: DictConfig) -> None:
 
         python -m fisseq_data_pipeline.features \\
             output_dir=./out \\
-            input_file=data/cells.parquet \\
-            minimum_correlation=0.5
+            input_file=data/normalized.parquet \\
+            random_state=3
     """
-    feat_cfg: FeatureSelectConfig = OmegaConf.to_object(cfg)
+    split_cfg: GenerateSplitConfig = OmegaConf.to_object(cfg)
+
+    output_dir = pathlib.Path(split_cfg.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    split_cfg.output_dir = output_dir
+    setup_logging(split_cfg, "generate_split")
+
+    logging.info("Loading input from %s", split_cfg.input_file)
+    lf, _ = load_batches(split_cfg.input_file)
+    lf = add_row_index(lf)
+
+    idx = get_column(lf, TMP_IDX_COL)
+    labels = get_column(lf, split_cfg.label_column)
+
+    half1_idx, half2_idx, _, _ = sklearn.model_selection.train_test_split(
+        idx, labels, stratify=labels, random_state=split_cfg.random_state, test_size=0.5
+    )
+
+    logging.info(
+        "Writing half1.parquet (%d rows) and half2.parquet (%d rows)",
+        len(half1_idx),
+        len(half2_idx),
+    )
+    pl.DataFrame({TMP_IDX_COL: half1_idx}).write_parquet(output_dir / "half1.parquet")
+    pl.DataFrame({TMP_IDX_COL: half2_idx}).write_parquet(output_dir / "half2.parquet")
+
+    logging.info("Done")
+
+
+@dataclasses.dataclass
+class CorrelateFeaturesConfig(AppConfig):
+    """
+    Hydra structured configuration for the pseudo-replicate correlation entry
+    point. Extends :class:`.config.AppConfig` (not
+    :class:`.config.LabeledInputConfig`) since there is no cell-level
+    ``input_file`` here — the inputs are two already aggregated
+    per-feature-type parquet files.
+
+    Attributes
+    ----------
+    half1_file : str
+        Path to the first split half's per-feature-type aggregate parquet
+        (output of :func:`fisseq_data_pipeline.aggregate.feature_type_main`
+        with ``index_file=half1.parquet``). Required.
+    half2_file : str
+        Path to the second split half's per-feature-type aggregate parquet.
+        Required.
+    label_column : str
+        Name of the column identifying variant labels. Defaults to
+        ``"meta_aa_changes"``.
+    """
+
+    half1_file: str = MISSING
+    half2_file: str = MISSING
+    label_column: str = "meta_aa_changes"
+
+
+_cs.store(name="correlate_features_main", node=CorrelateFeaturesConfig)
+
+
+@hydra.main(version_base=None, config_path=None, config_name="correlate_features_main")
+def correlate_features_main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: compute per-feature pseudo-replicate Pearson
+    correlations between two aggregate halves.
+
+    Reads ``half1_file`` and ``half2_file`` (both outputs of
+    :func:`fisseq_data_pipeline.aggregate.feature_type_main` for the same
+    feature type, one per split half) and calls
+    :func:`compute_feature_correlations`.
+
+    Output file
+    -----------
+    - ``{output_dir}/correlations.parquet``
+    """
+    corr_cfg: CorrelateFeaturesConfig = OmegaConf.to_object(cfg)
+
+    output_dir = pathlib.Path(corr_cfg.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    corr_cfg.output_dir = output_dir
+    setup_logging(corr_cfg, "correlate_features")
+
+    df1 = pl.read_parquet(corr_cfg.half1_file)
+    df2 = pl.read_parquet(corr_cfg.half2_file)
+    corr_df = compute_feature_correlations(df1, df2, corr_cfg.label_column)
+
+    out_path = output_dir / "correlations.parquet"
+    logging.info("Writing correlations to %s", out_path)
+    corr_df.write_parquet(out_path)
+
+    logging.info("Done")
+
+
+@dataclasses.dataclass
+class BlocklistConfig(AppConfig):
+    """
+    Hydra structured configuration for the per-feature-type blocklist
+    generation entry point.
+
+    Attributes
+    ----------
+    correlation_files : str
+        Glob pattern matching all bootstrap-replicate correlation parquet
+        files for one feature type (outputs of
+        :func:`correlate_features_main`). Required.
+    minimum_correlation : float
+        Minimum median Pearson *r* (across bootstrap replicates) required for
+        a feature to pass. Defaults to ``0.5``.
+    """
+
+    correlation_files: str = MISSING
+    minimum_correlation: float = 0.5
+
+
+_cs.store(name="blocklist_main", node=BlocklistConfig)
+
+
+@hydra.main(version_base=None, config_path=None, config_name="blocklist_main")
+def blocklist_main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: compute a per-feature-type blocklist from N bootstrap
+    correlation tables.
+
+    This is the one intentional synchronization point across bootstrap
+    replicates in the feature-selection pipeline. Globs
+    ``correlation_files``, concatenates all bootstrap-replicate correlation
+    tables for one feature type, computes each feature's median ``r`` across
+    replicates, and marks ``feature_ok = median_r >= minimum_correlation``.
+
+    Output file
+    -----------
+    - ``{output_dir}/blocklist.parquet`` with columns ``feature``,
+      ``median_r``, ``feature_ok``.
+
+    Raises
+    ------
+    ValueError
+        If ``correlation_files`` matches no files.
+    """
+    bl_cfg: BlocklistConfig = OmegaConf.to_object(cfg)
+
+    output_dir = pathlib.Path(bl_cfg.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    bl_cfg.output_dir = output_dir
+    setup_logging(bl_cfg, "blocklist")
+
+    paths = sorted(glob.glob(bl_cfg.correlation_files))
+    if not paths:
+        raise ValueError(f"No files matched glob pattern: {bl_cfg.correlation_files!r}")
+    logging.info("Found %d bootstrap correlation file(s)", len(paths))
+    corr_df = pl.concat([pl.read_parquet(p) for p in paths])
+
+    blocklist_df = (
+        corr_df.group_by("feature")
+        .agg(pl.col("r").median().alias("median_r"))
+        .with_columns(
+            (pl.col("median_r") >= bl_cfg.minimum_correlation).alias("feature_ok")
+        )
+    )
+
+    out_path = output_dir / "blocklist.parquet"
+    logging.info("Writing blocklist to %s", out_path)
+    blocklist_df.write_parquet(out_path)
+
+    logging.info("Done")
+
+
+@dataclasses.dataclass
+class CombineBlocklistsConfig(AppConfig):
+    """
+    Hydra structured configuration for the blocklist-combination entry point.
+
+    Attributes
+    ----------
+    blocklist_files : str
+        Glob pattern matching all per-feature-type blocklist parquet files
+        (outputs of :func:`blocklist_main`). Required.
+    """
+
+    blocklist_files: str = MISSING
+
+
+_cs.store(name="combine_blocklists_main", node=CombineBlocklistsConfig)
+
+
+@hydra.main(version_base=None, config_path=None, config_name="combine_blocklists_main")
+def combine_blocklists_main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: concatenate all per-feature-type blocklists into one
+    combined blocklist.
+
+    Globs ``blocklist_files`` and concatenates them with no deduplication —
+    each feature type's blocklist covers a disjoint set of feature columns
+    (stat-suffixed column names like ``f1_mean`` and ``f1_EMD`` never
+    collide across feature types), so a plain concat is correct.
+
+    Output file
+    -----------
+    - ``{output_dir}/blocklist.parquet``
+
+    Raises
+    ------
+    ValueError
+        If ``blocklist_files`` matches no files.
+    """
+    cb_cfg: CombineBlocklistsConfig = OmegaConf.to_object(cfg)
+
+    output_dir = pathlib.Path(cb_cfg.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cb_cfg.output_dir = output_dir
+    setup_logging(cb_cfg, "combine_blocklists")
+
+    paths = sorted(glob.glob(cb_cfg.blocklist_files))
+    if not paths:
+        raise ValueError(f"No files matched glob pattern: {cb_cfg.blocklist_files!r}")
+    logging.info("Found %d per-feature-type blocklist file(s)", len(paths))
+    combined = pl.concat([pl.read_parquet(p) for p in paths])
+
+    out_path = output_dir / "blocklist.parquet"
+    logging.info("Writing combined blocklist to %s", out_path)
+    combined.write_parquet(out_path)
+
+    logging.info("Done")
+
+
+@dataclasses.dataclass
+class FinalizeFeatureSelectConfig(LabeledInputConfig):
+    """
+    Hydra structured configuration for the final feature-selection entry
+    point: joins per-feature-type aggregates, applies the combined
+    blocklist, and runs pycytominer feature selection.
+
+    ``input_file`` (inherited) is the raw/normalized cell-level input, used
+    only to derive per-variant metadata (:func:`.utils.metadata.get_aggregate_meta_data`).
+
+    Attributes
+    ----------
+    feature_type_files : str
+        Glob pattern matching the per-feature-type full aggregate parquet
+        files produced by :func:`fisseq_data_pipeline.aggregate.feature_type_main`.
+        Each file contains ``[label_column] + <feature type's stat
+        columns>``; all matching files are joined on ``label_column`` to
+        reconstruct the combined per-variant aggregate table. Required.
+    block_list_file : str
+        Path to the combined blocklist parquet, with ``feature`` and
+        ``feature_ok`` columns. Required.
+    compute_impact_score : bool
+        If ``True``, compute per-variant impact score (cosine distance vs
+        synonymous baseline) after feature selection. Defaults to ``True``.
+    """
+
+    feature_type_files: str = MISSING
+    block_list_file: str = MISSING
+    compute_impact_score: bool = True
+
+
+_cs.store(name="feature_select_main", node=FinalizeFeatureSelectConfig)
+
+
+@hydra.main(version_base=None, config_path=None, config_name="feature_select_main")
+def main(cfg: DictConfig) -> None:
+    """
+    Hydra entry point: final feature-selection stage.
+
+    Steps
+    -----
+    1. Load raw cell-level input at ``input_file`` (for metadata join only).
+    2. Glob ``feature_type_files`` and join each per-feature-type aggregate
+       parquet on ``label_column``, reconstructing the combined per-variant
+       aggregate table.
+    3. Load ``block_list_file`` and drop blocked feature columns.
+    4. Run :func:`pyc_feature_select` (variance threshold, pycytominer
+       blocklist, correlation threshold).
+    5. Optionally compute impact score (:func:`.aggregate.variant_classification`
+       + :func:`.utils.vectors.compute_impact_score`).
+    6. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.
+    7. Write output.
+
+    Output path
+    -----------
+    - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``
+    - Single-file input: ``{output_root}.{stem}.parquet`` or
+      ``{output_dir}/{stem}.parquet``
+
+    Configuration
+    -------------
+    Override any field on the command line, e.g.::
+
+        python -m fisseq_data_pipeline.features \\
+            output_dir=./out \\
+            input_file=data/normalized.parquet \\
+            'feature_type_files=./ft/*.parquet' \\
+            block_list_file=./blocklist.parquet
+    """
+    feat_cfg: FinalizeFeatureSelectConfig = OmegaConf.to_object(cfg)
 
     output_dir = pathlib.Path(feat_cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     feat_cfg.output_dir = output_dir
     setup_logging(feat_cfg, "features")
 
-    logging.info("Loading input from %s", feat_cfg.input_file)
+    logging.info("Loading raw input from %s", feat_cfg.input_file)
     lf, output_stem = load_batches(feat_cfg.input_file)
 
-    logging.info("Computing pseudo-replicate correlations")
-    corr_df = pseudo_replicate_correlation(
-        lf,
-        label_col=feat_cfg.label_column,
-        aggregator_name=feat_cfg.aggregator,
-        random_state=feat_cfg.random_state,
-    )
-
-    corr_df = corr_df.with_columns(
-        (pl.col("r") >= feat_cfg.minimum_correlation).alias("feature_ok")
-    )
-    block_list = set(corr_df.filter(~pl.col("feature_ok"))["feature"].to_list())
     logging.info(
-        "Blocking %d features with r < %g",
-        len(block_list),
-        feat_cfg.minimum_correlation,
+        "Loading per-feature-type aggregates from %s", feat_cfg.feature_type_files
     )
+    ft_paths = sorted(glob.glob(feat_cfg.feature_type_files))
+    if not ft_paths:
+        raise ValueError(
+            f"No files matched glob pattern: {feat_cfg.feature_type_files!r}"
+        )
+    agg_df = pl.read_parquet(ft_paths[0])
+    for p in ft_paths[1:]:
+        agg_df = agg_df.join(pl.read_parquet(p), on=feat_cfg.label_column)
 
-    if feat_cfg.output_root is not None:
-        corr_path = pathlib.Path(f"{feat_cfg.output_root}.feature_correlations.parquet")
-        out_path = pathlib.Path(f"{feat_cfg.output_root}.{output_stem}.parquet")
-    else:
-        corr_path = output_dir / "feature_correlations.parquet"
-        out_path = output_dir / f"{output_stem}.parquet"
-
-    logging.info("Writing feature correlations to %s", corr_path)
-    corr_df.write_parquet(corr_path)
-
-    logging.info("Aggregating input with block list")
-    agg_df = aggregate(
-        lf,
-        label_col=feat_cfg.label_column,
-        aggregator_name=feat_cfg.aggregator,
-        block_list=block_list,
-    ).collect()
+    logging.info("Loading block list from %s", feat_cfg.block_list_file)
+    bl_df = pl.read_parquet(feat_cfg.block_list_file)
+    block_list = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
+    logging.info(
+        "Dropping %d blocked feature(s)", len(block_list & set(agg_df.columns))
+    )
+    agg_df = agg_df.drop([c for c in block_list if c in agg_df.columns])
 
     logging.info("Running pycytominer feature selection")
     selected_df = pyc_feature_select(agg_df)
 
-    if cfg.compute_impact_score:
+    if feat_cfg.compute_impact_score:
         logging.info("Computing impact scores")
         selected_lf = variant_classification(selected_df.lazy(), feat_cfg.label_column)
         selected_df = compute_impact_score(selected_lf).collect()
 
+    logging.info("Adding queries to retrieve metadata")
     meta_lf = get_aggregate_meta_data(lf, feat_cfg.label_column)
     selected_lf = selected_df.lazy().join(meta_lf, on=feat_cfg.label_column)
+
+    if feat_cfg.output_root is not None:
+        out_path = pathlib.Path(f"{feat_cfg.output_root}.{output_stem}.parquet")
+    else:
+        out_path = output_dir / f"{output_stem}.parquet"
 
     logging.info("Writing output to %s", out_path)
     selected_lf.sink_parquet(out_path)
