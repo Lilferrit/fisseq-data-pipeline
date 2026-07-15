@@ -1,5 +1,10 @@
 nextflow.enable.dsl = 2
 
+// FisseqPipeline: the default, full end-to-end DAG. Wires together QC_FILTER
+// -> NORMALIZE -> BATCHVSBATCH (pre/post) -> OVWT (batchwise/global) ->
+// bootstrap feature selection (batchwise/global, gated by params.global) ->
+// BATCH_CORRECT_FIT/TRANSFORM -> PERMANOVA (normalized and batch-corrected).
+// See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { QC_FILTER                 } from '../modules/local/qc_filter'
 include { NORMALIZE                 } from '../modules/local/normalize'
 include { BATCHVSBATCH as BATCHVSBATCH_PRE  } from '../modules/local/batchvsbatch'

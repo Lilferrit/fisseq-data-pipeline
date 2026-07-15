@@ -1,3 +1,12 @@
+"""Per-variant multiclass batch classifier for batch-effect detection.
+
+Hydra entry point ``fisseq-batch-vs-batch``, backing the Nextflow process
+``BATCHVSBATCH`` (run once pre- and once post-normalization). Trains one
+multiclass XGBoost model per variant to predict batch label, then extracts a
+one-vs-rest AUROC and Mann-Whitney p-value for every (variant, batch) pair from the
+held-out test split.
+"""
+
 import dataclasses
 import logging
 import pathlib

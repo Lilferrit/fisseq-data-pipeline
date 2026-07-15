@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// COMBINE_BLOCKLISTS: wraps fisseq-combine-blocklists. Feature-selection
+// stage 3 — concatenates every feature type's BLOCKLIST output (for one
+// batch or global) into a single combined blocklist, consumed by
+// FINALIZE_FEATURE_SELECT.
 process COMBINE_BLOCKLISTS {
     errorStrategy 'ignore'
     label 'process_low'

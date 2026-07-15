@@ -1,3 +1,12 @@
+"""Two-pass centroid batch correction for cell-level features.
+
+Hydra entry points ``fisseq-batch-correct-fit`` / ``fisseq-batch-correct-transform``,
+backing the Nextflow processes ``BATCH_CORRECT_FIT`` and ``BATCH_CORRECT_TRANSFORM``.
+Fits per-(variant, batch) statistics and per-variant centroids across all batches,
+then rescales each batch's cells to its variant's centroid and finally to the
+wildtype centroid via :class:`BatchCorrector`.
+"""
+
 import dataclasses
 import logging
 import pathlib

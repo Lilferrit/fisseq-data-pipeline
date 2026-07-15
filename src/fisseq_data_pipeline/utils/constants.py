@@ -1,3 +1,10 @@
+"""Shared column-name constants and Polars selectors used across the pipeline.
+
+Defines the ``meta_*`` column name constants, the ``FEATURE_SELECTOR`` /
+``META_SELECTOR`` Polars selectors distinguishing feature columns from metadata
+columns, and the floating-point epsilon used for near-zero-variance checks.
+"""
+
 from typing import Any
 
 import numpy as np

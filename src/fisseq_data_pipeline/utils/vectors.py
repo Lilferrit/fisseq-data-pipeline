@@ -1,3 +1,10 @@
+"""Cosine-distance and impact-score computation for per-variant feature vectors.
+
+Defines :func:`compute_impact_score`, used by the aggregation and feature-selection
+entry points to measure each variant's cosine distance from the control median,
+scaled to a 0-1 impact score.
+"""
+
 import polars as pl
 
 from .constants import CONTROL_COLUMN_NAME, FEATURE_SELECTOR, IMPACT_SCORE_COL

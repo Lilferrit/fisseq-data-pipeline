@@ -1,3 +1,10 @@
+"""Shared logging setup for every Hydra entry point.
+
+Defines :func:`setup_logging`, which configures a console handler plus a per-run
+log file under ``output_dir`` (optionally prefixed by ``output_root``), called at
+the start of every entry point's ``main()``.
+"""
+
 import logging
 import pathlib
 

@@ -1,3 +1,10 @@
+"""Row-index-based filtering helpers for the bootstrap feature-selection pipeline.
+
+Defines the ``TMP_IDX_COL`` row-index convention and :func:`filter_by_index_file`,
+used to restrict a cell-level LazyFrame to one pseudo-replicate half written by
+:func:`fisseq_data_pipeline.features.generate_split_main`.
+"""
+
 import os
 from typing import Optional
 

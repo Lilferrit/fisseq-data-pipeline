@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// GENERATE_SPLIT: wraps fisseq-generate-split. Feature-selection stage 2a —
+// one stratified 50/50 pseudo-replicate split per (batch or global,
+// bootstrap replicate), seeded by bootstrap_idx. Emits half1.parquet and
+// half2.parquet, consumed by AGGREGATE_HALF.
 process GENERATE_SPLIT {
     errorStrategy 'ignore'
     label 'process_low'

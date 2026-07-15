@@ -65,7 +65,7 @@ The package installs in editable mode, so `fisseq-*` CLI commands are immediatel
 
 ### Cluster / HPC
 
-The repo does not ship a `nextflow.config`. Executor and environment setup are entirely user-provided via a config file passed with `-c`. Copy `example.config` and fill in one of the `beforeScript` options (venv activation, package install) and, if running on a cluster, uncomment and adapt the `sge` profile block.
+The repo ships a `nextflow.config` at the root with default `params` values and commented-out profile stubs (`venv`, `conda`, `singularity`, `sge`). To run on a cluster, write your own config (or copy and adapt `nextflow.config`), uncomment/fill in a `beforeScript` option (venv activation, package install) in a profile block, and pass it with `-c your.config -profile <name>`.
 
 ---
 
@@ -231,7 +231,7 @@ fisseq-data-pipeline/
 │   ├── features.py                # Bootstrap split/correlate/blocklist stages + final pycytominer selection
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
 │   ├── ovwtcellscores.py          # Cell scoring via trained models
-│   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value (no pyproject entry)
+│   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value
 │   └── permanova.py               # Per-variant pairwise PERMANOVA entry point
 ├── modules/local/
 │   ├── qc_filter.nf
@@ -249,8 +249,8 @@ fisseq-data-pipeline/
 │   └── finalize_feature_select.nf
 ├── workflows/
 │   └── fisseq.nf                  # Main Nextflow workflow DAG
-├── main.nf                        # Nextflow entrypoint + parameter defaults
-├── example.config                 # Template user config (env setup, venv/conda/singularity)
+├── main.nf                        # Nextflow entrypoint (dispatches FisseqPipeline/OvwtPipeline)
+├── nextflow.config                # Default params + commented-out profile stubs (venv/conda/singularity/sge)
 ├── tests/
 │   ├── unit/                      # 12 files, fast, synthetic data
 │   └── integration/               # 1 file, slow, full pipeline run
@@ -435,14 +435,34 @@ No CONTRIBUTING.md exists. Based on git history:
 
 ---
 
+## Documentation maintenance
+
+- Any change to CLI flags/Hydra config fields, Nextflow processes/workflow
+  structure, or module responsibilities **must** update the relevant page(s)
+  under `docs/` in the same change — not deferred to a follow-up. Start from
+  `docs/architecture.md` (pipeline DAG/stages), `docs/nextflow.md` (process/param
+  reference), and the relevant `docs/cli/<module>.md` + `docs/api/<module>.md`
+  pair.
+- Any new source file requires a file-level docstring (Python) or top `//`
+  comment block (`.nf`) in the same change, except `__init__.py` — see the
+  existing files for the convention.
+- If a change makes existing documentation inaccurate, fix or remove the stale
+  content in that same change — do not leave it "for later."
+- `README.md` stays a thin pointer (overview + quick start + docs link). If a
+  change would require README content beyond that scope (e.g. describing a new
+  module's behavior), put that content in `docs/` instead, with at most a
+  one-line mention added to the README's stage-flow summary.
+
+---
+
 ## Safety / do-not-touch list
 
 | Path | Reason |
 |------|--------|
-| `site/` | Generated MkDocs output — rebuilt by `mkdocs build` and by CI. Editing directly is overwritten on next build. |
+| `site/` | Generated MkDocs output, gitignored — not tracked in `main`. CI builds it and publishes it directly to the `gh-pages` branch. Build it locally with `mkdocs build`; editing it directly is pointless, it's regenerated every build. |
 | `uv.lock` | Auto-managed by uv. Edit `pyproject.toml` deps instead, then run `uv sync`. |
 | `.venv/` | Managed by uv. Never manually install packages into it. |
 | `<input_dir>/work/` | Nextflow task working directories — created at runtime, contains intermediate data. Delete only via `nextflow clean`. |
 | Any `*.parquet` under `<input_dir>/` | Pipeline output data. Do not modify or commit experiment output files. |
-| `example.config` | Template for users — only update if the config format changes. Do not add personal cluster paths. |
+| `nextflow.config` | Ships default `params` and profile stubs for all users — only update if a param's default or a profile template changes. Do not add personal cluster paths; those belong in a user-supplied `-c your.config`. |
 | `.github/workflows/docs.yml` | Deploys docs to GitHub Pages. Changes here affect live documentation for all users. |

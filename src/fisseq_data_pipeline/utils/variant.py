@@ -1,3 +1,10 @@
+"""Variant label string classification into biological categories.
+
+Defines :func:`classify_variant`, which parses a variant label (e.g. ``"A123G"``)
+into one of ``Frameshift``, ``3nt Deletion``, ``Nonsense``, ``WT``, ``Synonymous``,
+``Single Missense``, or ``Other``.
+"""
+
 import re
 
 

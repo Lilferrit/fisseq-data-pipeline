@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// BLOCKLIST: wraps fisseq-blocklist. Feature-selection stage 2d — the one
+// intentional cross-bootstrap synchronization point: gathers every bootstrap
+// replicate's CORRELATE_FEATURES output for one (batch or global, feature
+// type), and marks each feature ok/blocked by its median correlation.
 process BLOCKLIST {
     errorStrategy 'ignore'
     label 'process_low'
