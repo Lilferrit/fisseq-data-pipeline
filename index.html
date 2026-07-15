@@ -43,53 +43,73 @@
               <ul class="current">
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">Home</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#features">Features</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#command-line-interface-cli">Command-line interface (CLI)</a>
+    <li class="toctree-l2"><a class="reference internal" href="#where-to-start">Where to start</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#data-cleaning">Data cleaning</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#normalization">Normalization</a>
-    </li>
-        </ul>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#running-the-pipeline">Running the Pipeline</a>
-    </li>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration">Configuration</a>
-    </li>
-        </ul>
+    <li class="toctree-l2"><a class="reference internal" href="#pipeline-at-a-glance">Pipeline at a glance</a>
     </li>
     </ul>
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="pipeline/">Pipeline</a>
+                <li class="toctree-l1"><a class="reference internal" href="architecture/">Architecture</a>
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="configuration/">Configuration</a>
+                <li class="toctree-l1"><a class="reference internal" href="installation/">Installation</a>
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="filter/">Filter</a>
+                <li class="toctree-l1"><a class="reference internal" href="nextflow/">Nextflow Workflow</a>
                 </li>
               </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="normalize/">Normalize</a>
-                </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="api/qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="api/utils/">utils</a>
+                  </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="aggregate/">Aggregate</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="config/">Config</a>
-                </li>
-              </ul>
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="utils/">Utils</a>
+                <li class="toctree-l1"><a class="reference internal" href="walkthrough/">Walkthrough</a>
                 </li>
               </ul>
       </div>
@@ -116,42 +136,53 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="fisseq-data-pipeline">FISSEQ Data Pipeline</h1>
-<p>Welcome to the <strong>FISSEQ Data Pipeline</strong> documentation.</p>
-<h2 id="features">Features</h2>
-<h3 id="command-line-interface-cli">Command-line interface (CLI)</h3>
-<p>Access the pipeline with a single entry point:</p>
-<pre><code class="language-bash">  fisseq-data-pipeline [run|configure]
+<p>A Nextflow + Python workflow for processing single-cell CellProfiler morphological
+profiling data from FISSEQ (Fluorescence In-Situ Sequencing) experiments. Each cell
+carries a genetic variant label; the pipeline measures how each variant's cell
+population differs from wildtype (WT) controls using morphological features.</p>
+<h2 id="where-to-start">Where to start</h2>
+<ul>
+<li><strong><a href="architecture/">Architecture</a></strong> — the full pipeline DAG, what each stage
+  produces/consumes, and the key shared abstractions (<code>Normalizer</code>,
+  <code>BaseAggregator</code>, <code>BatchCorrector</code>).</li>
+<li><strong><a href="installation/">Installation</a></strong> — environment setup, including cluster/HPC
+  configuration.</li>
+<li><strong><a href="nextflow/">Nextflow Workflow</a></strong> — the Nextflow processes, how they're wired
+  together, and how to run the pipeline (params, profiles).</li>
+<li><strong>CLI Reference</strong> — one page per Python entry point (QC filter, normalize,
+  aggregate, feature selection, batch correction, PERMANOVA, OvWT, OvWT cell
+  scores, batch-vs-batch), each with its config fields and a runnable example.</li>
+<li><strong>API Reference</strong> — full function/class-level documentation for every module,
+  generated from source docstrings.</li>
+<li><strong><a href="walkthrough/">Walkthrough</a></strong> — a complete end-to-end run, from raw
+  CellProfiler output to final feature-selected results.</li>
+</ul>
+<h2 id="pipeline-at-a-glance">Pipeline at a glance</h2>
+<pre><code class="language-text">input/*.parquet  (one file per batch)
+     │
+     ▼
+QC_FILTER   (per batch)
+     │
+     ├──► BATCHVSBATCH (pre)        (global — waits for all QC_FILTER)
+     ▼
+NORMALIZE   (per batch)
+     │
+     ├──► BATCHVSBATCH (post)       (global — waits for all batches)
+     ├──► OVWT_BATCHWISE             (per batch)
+     ├──► OVWT_GLOBAL                (global, optional — params.global)
+     ├──► Feature selection          (batchwise always; global optional)
+     └──► PERMANOVA (normalized)     (global — waits for all batches)
+
+QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► PERMANOVA (batch-corrected)
 </code></pre>
-<p>For more details on command line usage see <a href="pipeline/">Pipeline</a>.</p>
-<h3 id="data-cleaning">Data cleaning</h3>
-<p>Remove invalid rows and columns — specifically columns that contain all NaN values, followed by rows that contain any remaining NaN values.</p>
-<p>See <a href="filter/">Filter</a>.</p>
-<h3 id="normalization">Normalization</h3>
-<p>Compute z-score normalization statistics on control samples and apply them across the dataset.
-By default z-score normalization is fit only to control samples.
-Fitting only to control samples ensures that biological variation is captured even in the case where biological covariants are largely disjoint across batches.</p>
-<p>See <a href="normalize/">Normalize</a>.</p>
-<h2 id="installation">Installation</h2>
-<p>This package in its current state should be considered experimental, and is thus not hosted on PyPI.
-However, the package may be installed directly from Github using the command:</p>
-<pre><code class="language-bash">pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
-</code></pre>
-<p>You may also clone the repository and install dependencies:</p>
-<pre><code class="language-bash">git clone https://github.com/your-org/fisseq-data-pipeline.git
-cd fisseq-data-pipeline
-pip install -e .
-</code></pre>
-<h3 id="running-the-pipeline">Running the Pipeline</h3>
-<p>After installation the pipeline can be run from the command line.
-For more details see <a href="pipeline/">Pipeline</a>.</p>
-<h3 id="configuration">Configuration</h3>
-<p>The pipeline may be configured using a yaml configuration file.
-For more details see <a href="configuration/">Configuration</a>.</p>
+<p>See <a href="architecture/">Architecture</a> for the full diagram and stage-by-stage detail.</p>
+<p>For a repo overview and quick start, see the
+<a href="https://github.com/Lilferrit/fisseq-data-pipeline">README</a>.</p>
               
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="pipeline/" class="btn btn-neutral float-right" title="Pipeline">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="architecture/" class="btn btn-neutral float-right" title="Architecture">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -175,7 +206,7 @@ For more details see <a href="configuration/">Configuration</a>.</p>
     
     
     
-      <span><a href="pipeline/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="architecture/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>
@@ -195,5 +226,5 @@ For more details see <a href="configuration/">Configuration</a>.</p>
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-03-27 23:00:17.333678+00:00
+Build Date UTC : 2026-07-15 20:05:16.588993+00:00
 -->

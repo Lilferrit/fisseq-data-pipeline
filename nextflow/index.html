@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Nextflow Workflow - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Nextflow Workflow";
+        var mkdocs_page_input_path = "nextflow.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Nextflow Workflow</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#entry-point">Entry point</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#quickstart">Quickstart</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#processes">Processes</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#feature-selection-channel-wiring">Feature-selection channel wiring</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#parameters">Parameters</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#profiles">Profiles</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Nextflow Workflow</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="nextflow-workflow">Nextflow Workflow</h1>
+<h2 id="entry-point">Entry point</h2>
+<p><code>main.nf</code> dispatches to one of two DSL2 workflows based on <code>--workflow</code>:</p>
+<pre><code class="language-groovy">workflow {
+    if (params.workflow == &quot;ovwt&quot;) {
+        OvwtPipeline()
+    } else {
+        FisseqPipeline()
+    }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th><code>--workflow</code></th>
+<th>Workflow</th>
+<th>Definition</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fisseq</code> (default)</td>
+<td><code>FisseqPipeline</code></td>
+<td><code>workflows/fisseq.nf</code></td>
+<td>Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → PERMANOVA)</td>
+</tr>
+<tr>
+<td><code>ovwt</code></td>
+<td><code>OvwtPipeline</code></td>
+<td><code>workflows/ovwt.nf</code></td>
+<td>OvWT classification only: <code>QC_FILTER</code> → <code>OVWT_BATCHWISE</code> → <code>OVWT_CELLSCORES_BATCHWISE</code>, no normalization, batch correction, or feature selection</td>
+</tr>
+</tbody>
+</table>
+<p>Both workflows validate that <code>--input_dir</code> is set and that <code>&lt;input_dir&gt;/input/</code>
+exists and contains at least one <code>.parquet</code> file, then build a per-batch channel
+from <code>&lt;input_dir&gt;/input/*.parquet</code> (one tuple per file, keyed by filename stem).</p>
+<h2 id="quickstart">Quickstart</h2>
+<p>Run directly from GitHub — no cloning required:</p>
+<pre><code class="language-bash">nextflow run Lilferrit/fisseq-data-pipeline \
+    -c your.config \
+    --input_dir /path/to/experiment
+</code></pre>
+<p>Use <code>-r</code> to pin to a branch or release tag; Nextflow caches the pulled revision in
+<code>~/.nextflow/assets</code> (pass <code>-latest</code> to force a refresh). Or, from a local clone:</p>
+<pre><code class="language-bash">nextflow run . --input_dir /path/to/experiment
+</code></pre>
+<p>Resume after an interruption using Nextflow's task-level caching:</p>
+<pre><code class="language-bash">nextflow run . --input_dir /path/to/experiment -resume
+</code></pre>
+<h2 id="processes">Processes</h2>
+<p>Every process wraps one <code>fisseq-*</code> CLI command (see <a href="../cli/qcfilter/">CLI Reference</a>
+for each tool's config fields) and sets <code>errorStrategy 'ignore'</code> so a single failed
+task doesn't abort the whole run.</p>
+<table>
+<thead>
+<tr>
+<th>Process</th>
+<th><code>modules/local/*.nf</code></th>
+<th>Wraps</th>
+<th>Cadence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QC_FILTER</code></td>
+<td><code>qc_filter.nf</code></td>
+<td><code>fisseq-qc-filter</code></td>
+<td>per batch</td>
+</tr>
+<tr>
+<td><code>NORMALIZE</code></td>
+<td><code>normalize.nf</code></td>
+<td><code>fisseq-normalize</code></td>
+<td>per batch</td>
+</tr>
+<tr>
+<td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
+<td><code>batchvsbatch.nf</code></td>
+<td><code>fisseq-batch-vs-batch</code></td>
+<td>global, twice</td>
+</tr>
+<tr>
+<td><code>OVWT_BATCHWISE</code></td>
+<td><code>ovwt_batchwise.nf</code></td>
+<td><code>fisseq-ovwt</code></td>
+<td>per batch</td>
+</tr>
+<tr>
+<td><code>OVWT_GLOBAL</code></td>
+<td><code>ovwt_global.nf</code></td>
+<td><code>fisseq-ovwt</code></td>
+<td>global, optional (<code>params.global</code>)</td>
+</tr>
+<tr>
+<td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
+<td><code>ovwt_cellscores_batchwise.nf</code></td>
+<td><code>fisseq-ovwt-cell-scores</code></td>
+<td>per batch</td>
+</tr>
+<tr>
+<td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
+<td><code>aggregate_feature_type.nf</code></td>
+<td><code>fisseq-aggregate-feature-type</code></td>
+<td>per (batch or global) × feature type</td>
+</tr>
+<tr>
+<td><code>GENERATE_SPLIT</code> (aliased)</td>
+<td><code>generate_split.nf</code></td>
+<td><code>fisseq-generate-split</code></td>
+<td>per (batch or global) × bootstrap replicate</td>
+</tr>
+<tr>
+<td><code>AGGREGATE_HALF</code> (aliased)</td>
+<td><code>aggregate_half.nf</code></td>
+<td><code>fisseq-aggregate-feature-type</code> (with <code>index_file</code>)</td>
+<td>per (batch or global) × bootstrap × feature type × half</td>
+</tr>
+<tr>
+<td><code>CORRELATE_FEATURES</code> (aliased)</td>
+<td><code>correlate_features.nf</code></td>
+<td><code>fisseq-correlate-features</code></td>
+<td>per (batch or global) × bootstrap × feature type</td>
+</tr>
+<tr>
+<td><code>BLOCKLIST</code> (aliased)</td>
+<td><code>blocklist.nf</code></td>
+<td><code>fisseq-blocklist</code></td>
+<td>per (batch or global) × feature type — gathers all bootstrap replicates</td>
+</tr>
+<tr>
+<td><code>COMBINE_BLOCKLISTS</code> (aliased)</td>
+<td><code>combine_blocklists.nf</code></td>
+<td><code>fisseq-combine-blocklists</code></td>
+<td>per (batch or global) — gathers all feature types</td>
+</tr>
+<tr>
+<td><code>FINALIZE_FEATURE_SELECT</code> (aliased)</td>
+<td><code>finalize_feature_select.nf</code></td>
+<td><code>fisseq-feature-select</code></td>
+<td>per (batch or global)</td>
+</tr>
+<tr>
+<td><code>BATCH_CORRECT_FIT</code></td>
+<td><code>batch_correct_fit.nf</code></td>
+<td><code>fisseq-batch-correct-fit</code></td>
+<td>global, waits for all <code>QC_FILTER</code></td>
+</tr>
+<tr>
+<td><code>BATCH_CORRECT_TRANSFORM</code></td>
+<td><code>batch_correct_transform.nf</code></td>
+<td><code>fisseq-batch-correct-transform</code></td>
+<td>per batch</td>
+</tr>
+<tr>
+<td><code>PERMANOVA</code> (aliased <code>_NORMALIZED</code> / <code>_BATCH_CORRECTED</code>)</td>
+<td><code>permanova.nf</code></td>
+<td><code>fisseq-permanova</code></td>
+<td>global, twice</td>
+</tr>
+</tbody>
+</table>
+<p>"Aliased" processes are declared once and invoked twice in <code>workflows/fisseq.nf</code> via
+<code>include { X as Y }</code> (Nextflow forbids calling one process twice under its own name
+in a single workflow) — see <a href="../architecture/">Architecture</a> for what each aliased
+invocation does differently (which cells glob, which <code>publishDir</code> subpath).</p>
+<h3 id="feature-selection-channel-wiring">Feature-selection channel wiring</h3>
+<p>The feature-selection branch (<code>AGGREGATE_FEATURE_TYPE</code> → <code>GENERATE_SPLIT</code> →
+<code>AGGREGATE_HALF</code> → <code>CORRELATE_FEATURES</code> → <code>BLOCKLIST</code> → <code>COMBINE_BLOCKLISTS</code> →
+<code>FINALIZE_FEATURE_SELECT</code>) is the most complex part of the DAG. In
+<code>workflows/fisseq.nf</code>:</p>
+<ul>
+<li><code>feature_types_ch</code> (<code>Channel.fromList(params.feature_types)</code>) and <code>bootstrap_ch</code>
+  (<code>Channel.of(1..params.bootstrap)</code>) are crossed via <code>.combine()</code> to fan out one
+  task per (feature type, bootstrap replicate).</li>
+<li>Each <code>GENERATE_SPLIT</code> output is expanded into two per-half tuples via
+  <code>.flatMap()</code>, then re-paired after <code>AGGREGATE_HALF</code> via
+  <code>.groupTuple(by: [batch_key, bootstrap_idx, feature_type])</code> before correlation.</li>
+<li><code>BLOCKLIST</code>'s <code>.groupTuple(by: [batch_key, feature_type])</code> is the pipeline's only
+  cross-bootstrap synchronization point — it gathers all <code>params.bootstrap</code>
+  correlation replicates for one feature type before computing a median-<code>r</code>
+  threshold.</li>
+<li>The batchwise branch always runs; the global branch (constant <code>global_key =
+  "global"</code> standing in for <code>batch_stem</code>) is gated behind
+  <code>params.global.toString().toBoolean()</code> (an explicit string-to-boolean parse,
+  since Nextflow CLI overrides like <code>--global false</code> arrive as the truthy Groovy
+  string <code>"false"</code>).</li>
+</ul>
+<h2 id="parameters">Parameters</h2>
+<p>Defaults live in <code>nextflow.config</code> at the repo root:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--input_dir</code></td>
+<td><code>null</code> (<strong>required</strong>)</td>
+<td>Root directory containing <code>input/*.parquet</code> batch files.</td>
+</tr>
+<tr>
+<td><code>--workflow</code></td>
+<td><code>"fisseq"</code></td>
+<td>Which workflow to run: <code>"fisseq"</code> or <code>"ovwt"</code>.</td>
+</tr>
+<tr>
+<td><code>--bc_threshold</code></td>
+<td><code>10</code></td>
+<td>Minimum cells per barcode (QC filter).</td>
+</tr>
+<tr>
+<td><code>--variant_bc_threshold</code></td>
+<td><code>4</code></td>
+<td>Minimum distinct barcodes per variant (QC filter).</td>
+</tr>
+<tr>
+<td><code>--edit_distance_threshold</code></td>
+<td><code>1</code></td>
+<td>Maximum allowed edit distance (QC filter).</td>
+</tr>
+<tr>
+<td><code>--bvb_min_cells</code></td>
+<td><code>50</code></td>
+<td>Minimum total cells for a variant to be profiled in batch-vs-batch.</td>
+</tr>
+<tr>
+<td><code>--bvb_min_batches</code></td>
+<td><code>2</code></td>
+<td>Minimum unique batches a variant must appear in for batch-vs-batch.</td>
+</tr>
+<tr>
+<td><code>--permanova_n_permutations</code></td>
+<td><code>999</code></td>
+<td>Label permutations for the per-variant PERMANOVA p-value.</td>
+</tr>
+<tr>
+<td><code>--ovwt_min_cells</code></td>
+<td><code>100</code></td>
+<td>Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of <code>250</code>).</td>
+</tr>
+<tr>
+<td><code>--downsample_wt</code></td>
+<td><code>5000</code></td>
+<td>Wildtype downsample target for OvWT classification.</td>
+</tr>
+<tr>
+<td><code>--feature_types</code></td>
+<td><code>["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]</code></td>
+<td>Aggregators used in feature selection (all of <code>aggregate.py</code>'s 8 aggregators except <code>EMD</code>).</td>
+</tr>
+<tr>
+<td><code>--feature_batch_size</code></td>
+<td><code>100</code></td>
+<td>Bounds peak memory during aggregation; <code>null</code> for a single unbatched pass.</td>
+</tr>
+<tr>
+<td><code>--bootstrap</code></td>
+<td><code>10</code></td>
+<td>Number of pseudo-replicate bootstrap splits for feature selection.</td>
+</tr>
+<tr>
+<td><code>--global</code></td>
+<td><code>true</code></td>
+<td>Whether to run <code>OVWT_GLOBAL</code> and the global feature-selection branch.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="profiles">Profiles</h2>
+<p><code>nextflow.config</code> also ships commented-out profile stubs for <code>venv</code>, <code>conda</code>,
+<code>singularity</code>, and <code>sge</code> executors — see <a href="../installation/#cluster-hpc">Installation</a>
+for how to enable one via a user-supplied <code>-c your.config -profile &lt;name&gt;</code>.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../installation/" class="btn btn-neutral float-left" title="Installation"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../cli/qcfilter/" class="btn btn-neutral float-right" title="QC Filter">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../installation/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../cli/qcfilter/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

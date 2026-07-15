@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>qcfilter - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "qcfilter";
+        var mkdocs_page_input_path = "api/qcfilter.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">qcfilter</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter">qcfilter</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.QcFilterConfig">QcFilterConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.add_qc_queries">add_qc_queries</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.combine_cell_files">combine_cell_files</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.filter_columns">filter_columns</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.get_barcode_counts">get_barcode_counts</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.get_barcodes_per_variant">get_barcodes_per_variant</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.main">main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.qcfilter.read_file">read_file</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">qcfilter</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-qcfilter">API: qcfilter</h1>
+<p>See <a href="../../cli/qcfilter/">CLI Reference: QC Filter</a> for usage.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.qcfilter" class="doc doc-heading">
+            <code>fisseq_data_pipeline.qcfilter</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Edit-distance and barcode-count QC filtering for raw FISSEQ cell data.</p>
+<p>Hydra entry point <code>fisseq-qc-filter</code> / Nextflow process <code>QC_FILTER</code> (first
+pipeline stage). Reads one or more raw CSV/Parquet cell files, renames columns to
+canonical <code>meta_*</code> names, and applies sequential edit-distance, barcode-count,
+and variant-barcode-count filters. Writes <code>filtered_cells.parquet</code>,
+<code>barcode_counts.parquet</code>, and <code>variants_per_barcode.parquet</code>.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.QcFilterConfig" class="doc doc-heading">
+            <code>QcFilterConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="AppConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.AppConfig)" href="../config/#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the QC filter entry point.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>cell_files</code></b>
+                  (<code><span title="typing.Any">Any</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path or list of paths to cell data files (CSV or Parquet).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>bc_threshold</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Minimum number of cells required for a barcode to pass QC.
+Defaults to <code>10</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>variant_bc_threshold</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Minimum number of unique barcodes required for a variant to pass QC.
+Defaults to <code>4</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>edit_distance_threshold</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Maximum edit distance allowed for a cell to pass QC. Defaults to <code>1</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>barcode_col_name</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the barcode column in the input data. Defaults to
+<code>"upBarcode"</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>aa_changes_col_name</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the amino-acid changes column in the input data. Defaults to
+<code>"aaChanges"</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>edit_distance_col_name</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the edit distance column in the input data. Defaults to
+<code>"editDistance"</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>label_column</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the output label column after renaming. Defaults to
+<code>"meta_aa_changes"</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">QcFilterConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the QC filter entry point.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cell_files : Any</span>
+<span class="sd">        Path or list of paths to cell data files (CSV or Parquet).</span>
+<span class="sd">    bc_threshold : int</span>
+<span class="sd">        Minimum number of cells required for a barcode to pass QC.</span>
+<span class="sd">        Defaults to ``10``.</span>
+<span class="sd">    variant_bc_threshold : int</span>
+<span class="sd">        Minimum number of unique barcodes required for a variant to pass QC.</span>
+<span class="sd">        Defaults to ``4``.</span>
+<span class="sd">    edit_distance_threshold : int</span>
+<span class="sd">        Maximum edit distance allowed for a cell to pass QC. Defaults to ``1``.</span>
+<span class="sd">    barcode_col_name : str</span>
+<span class="sd">        Name of the barcode column in the input data. Defaults to</span>
+<span class="sd">        ``&quot;upBarcode&quot;``.</span>
+<span class="sd">    aa_changes_col_name : str</span>
+<span class="sd">        Name of the amino-acid changes column in the input data. Defaults to</span>
+<span class="sd">        ``&quot;aaChanges&quot;``.</span>
+<span class="sd">    edit_distance_col_name : str</span>
+<span class="sd">        Name of the edit distance column in the input data. Defaults to</span>
+<span class="sd">        ``&quot;editDistance&quot;``.</span>
+<span class="sd">    label_column : str</span>
+<span class="sd">        Name of the output label column after renaming. Defaults to</span>
+<span class="sd">        ``&quot;meta_aa_changes&quot;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">cell_files</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">bc_threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">variant_bc_threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="n">edit_distance_threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">barcode_col_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;upBarcode&quot;</span>
+    <span class="n">aa_changes_col_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aaChanges&quot;</span>
+    <span class="n">edit_distance_col_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;editDistance&quot;</span>
+    <span class="n">label_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;meta_aa_changes&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.add_qc_queries" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add_qc_queries</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Apply edit-distance, barcode-level, and variant-level QC filters.</p>
+<p>Filters are applied sequentially:</p>
+<ol>
+<li>Retain rows with <code>META_EDIT_DISTANCE_COL</code> &lt;= <code>cfg.edit_distance_threshold</code>.</li>
+<li>Remove barcodes below <code>cfg.bc_threshold</code> cell count.</li>
+<li>Remove variants below <code>cfg.variant_bc_threshold</code> barcode count.</li>
+</ol>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Cell-level lazy frame to filter.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>cfg</code></b>
+                  (<code><span title="omegaconf.DictConfig">DictConfig</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Hydra config supplying QC thresholds and column names.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="tuple">tuple</span>[<span title="polars.LazyFrame">LazyFrame</span>, <span title="polars.LazyFrame">LazyFrame</span>, <span title="polars.LazyFrame">LazyFrame</span>]</code>
+              –
+              <div class="doc-md-description">
+                <p><code>(filtered_lf, barcode_count_lf, variants_per_barcode_lf)</code> where the
+latter two contain the intermediate QC summary frames.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add_qc_queries</span><span class="p">(</span>
+    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply edit-distance, barcode-level, and variant-level QC filters.</span>
+
+<span class="sd">    Filters are applied sequentially:</span>
+
+<span class="sd">    1. Retain rows with ``META_EDIT_DISTANCE_COL`` &lt;= ``cfg.edit_distance_threshold``.</span>
+<span class="sd">    2. Remove barcodes below ``cfg.bc_threshold`` cell count.</span>
+<span class="sd">    3. Remove variants below ``cfg.variant_bc_threshold`` barcode count.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lf : pl.LazyFrame</span>
+<span class="sd">        Cell-level lazy frame to filter.</span>
+<span class="sd">    cfg : DictConfig</span>
+<span class="sd">        Hydra config supplying QC thresholds and column names.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]</span>
+<span class="sd">        ``(filtered_lf, barcode_count_lf, variants_per_barcode_lf)`` where the</span>
+<span class="sd">        latter two contain the intermediate QC summary frames.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding edit distance QC query&quot;</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">META_EDIT_DISTANCE_COL</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">edit_distance_threshold</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding Barcode Level QC query&quot;</span><span class="p">)</span>
+    <span class="n">barcode_count_lf</span> <span class="o">=</span> <span class="n">get_barcode_counts</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="n">barcode_count_lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;barcode_ok&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_not_null</span><span class="p">())</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="n">META_BARCODE_COL</span>
+        <span class="p">),</span>
+        <span class="n">on</span><span class="o">=</span><span class="n">META_BARCODE_COL</span><span class="p">,</span>
+        <span class="n">how</span><span class="o">=</span><span class="s2">&quot;inner&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding Variant Level QC query&quot;</span><span class="p">)</span>
+    <span class="n">variants_per_barcode_lf</span> <span class="o">=</span> <span class="n">get_barcodes_per_variant</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="n">variants_per_barcode_lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;variant_barcode_count_ok&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_not_null</span><span class="p">()</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">),</span>
+        <span class="n">on</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">,</span>
+        <span class="n">how</span><span class="o">=</span><span class="s2">&quot;inner&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">lf</span><span class="p">,</span> <span class="n">barcode_count_lf</span><span class="p">,</span> <span class="n">variants_per_barcode_lf</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.combine_cell_files" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">combine_cell_files</span><span class="p">(</span><span class="n">cell_files</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Read and concatenate multiple cell files into one lazy frame.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>cell_files</code></b>
+                  (<code><span title="typing.Iterable">Iterable</span>[<span title="os.PathLike">PathLike</span>]</code>)
+              –
+              <div class="doc-md-description">
+                <p>Iterable of paths to cell data files.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Concatenated lazy frame of all input files.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">combine_cell_files</span><span class="p">(</span><span class="n">cell_files</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">PathLike</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read and concatenate multiple cell files into one lazy frame.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cell_files : Iterable[PathLike]</span>
+<span class="sd">        Iterable of paths to cell data files.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        Concatenated lazy frame of all input files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">read_file</span><span class="p">(</span><span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">cell_file</span><span class="p">))</span> <span class="k">for</span> <span class="n">cell_file</span> <span class="ow">in</span> <span class="n">cell_files</span><span class="p">])</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.filter_columns" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">filter_columns</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Rename input columns to canonical meta names and retain only QC-relevant columns.</p>
+<p>Renames <code>cfg.barcode_col_name</code> → <code>META_BARCODE_COL</code>,
+<code>cfg.edit_distance_col_name</code> → <code>META_EDIT_DISTANCE_COL</code>, and
+<code>cfg.aa_changes_col_name</code> → <code>cfg.label_column</code>. Then drops all columns
+except meta columns (<code>meta_</code> prefix) and CellProfiler feature columns
+(starting with an uppercase letter and containing <code>_</code>).</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Lazy frame containing all raw input columns.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>cfg</code></b>
+                  (<code><span title="omegaconf.DictConfig">DictConfig</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Hydra config supplying column name mappings.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Lazy frame retaining only the necessary columns with canonical names.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">filter_columns</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Rename input columns to canonical meta names and retain only QC-relevant columns.</span>
+
+<span class="sd">    Renames ``cfg.barcode_col_name`` → ``META_BARCODE_COL``,</span>
+<span class="sd">    ``cfg.edit_distance_col_name`` → ``META_EDIT_DISTANCE_COL``, and</span>
+<span class="sd">    ``cfg.aa_changes_col_name`` → ``cfg.label_column``. Then drops all columns</span>
+<span class="sd">    except meta columns (``meta_`` prefix) and CellProfiler feature columns</span>
+<span class="sd">    (starting with an uppercase letter and containing ``_``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lf : pl.LazyFrame</span>
+<span class="sd">        Lazy frame containing all raw input columns.</span>
+<span class="sd">    cfg : DictConfig</span>
+<span class="sd">        Hydra config supplying column name mappings.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        Lazy frame retaining only the necessary columns with canonical names.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">aa_changes_col_name</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">edit_distance_col_name</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">META_EDIT_DISTANCE_COL</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">barcode_col_name</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">META_BARCODE_COL</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">schema_names</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span><span class="o">.</span><span class="n">names</span><span class="p">()</span>
+    <span class="n">cell_profiler_columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">schema_names</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">col</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">col</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">isupper</span><span class="p">()</span> <span class="ow">and</span> <span class="s2">&quot;_&quot;</span> <span class="ow">in</span> <span class="n">col</span>
+    <span class="p">]</span>
+    <span class="n">meta_columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">schema_names</span> <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;meta_&quot;</span><span class="p">)]</span>
+
+    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">meta_columns</span> <span class="o">+</span> <span class="n">cell_profiler_columns</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.get_barcode_counts" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_barcode_counts</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Count cells per barcode and flag barcodes meeting the threshold.</p>
+<p>Groups by <code>META_BARCODE_COL</code>, counts occurrences, and adds a
+<code>barcode_ok</code> column (non-null when count &gt;= <code>cfg.bc_threshold</code>).
+Retains the first <code>cfg.label_column</code> per barcode group.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Cell-level lazy frame containing <code>META_BARCODE_COL</code> and
+<code>cfg.label_column</code> (as produced by :func:<code>filter_columns</code>).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>cfg</code></b>
+                  (<code><span title="omegaconf.DictConfig">DictConfig</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Hydra config supplying <code>bc_threshold</code> and <code>label_column</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Lazy frame with one row per barcode, including <code>count</code>,
+<code>cfg.label_column</code>, and <code>barcode_ok</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_barcode_counts</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Count cells per barcode and flag barcodes meeting the threshold.</span>
+
+<span class="sd">    Groups by ``META_BARCODE_COL``, counts occurrences, and adds a</span>
+<span class="sd">    ``barcode_ok`` column (non-null when count &gt;= ``cfg.bc_threshold``).</span>
+<span class="sd">    Retains the first ``cfg.label_column`` per barcode group.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lf : pl.LazyFrame</span>
+<span class="sd">        Cell-level lazy frame containing ``META_BARCODE_COL`` and</span>
+<span class="sd">        ``cfg.label_column`` (as produced by :func:`filter_columns`).</span>
+<span class="sd">    cfg : DictConfig</span>
+<span class="sd">        Hydra config supplying ``bc_threshold`` and ``label_column``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        Lazy frame with one row per barcode, including ``count``,</span>
+<span class="sd">        ``cfg.label_column``, and ``barcode_ok``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">barcode_lf</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">META_BARCODE_COL</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">agg</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;count&quot;</span><span class="p">),</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">(),</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;count&quot;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">bc_threshold</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;count&quot;</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;barcode_ok&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">barcode_lf</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.get_barcodes_per_variant" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_barcodes_per_variant</span><span class="p">(</span><span class="n">cells_lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Count distinct barcodes per variant and flag variants meeting threshold.</p>
+<p>Groups by <code>cfg.label_column</code>, counts barcodes, and adds a
+<code>variant_barcode_count_ok</code> column (non-null when barcode count</p>
+<blockquote>
+<p>= <code>cfg.variant_bc_threshold</code>).</p>
+</blockquote>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>cells_lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Cell-level lazy frame containing <code>META_BARCODE_COL</code> and
+<code>cfg.label_column</code> (as produced by :func:<code>filter_columns</code>).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>cfg</code></b>
+                  (<code><span title="omegaconf.DictConfig">DictConfig</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Hydra config supplying <code>variant_bc_threshold</code> and <code>label_column</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Lazy frame with one row per variant, including <code>barcode_count</code>
+and <code>variant_barcode_count_ok</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_barcodes_per_variant</span><span class="p">(</span><span class="n">cells_lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Count distinct barcodes per variant and flag variants meeting threshold.</span>
+
+<span class="sd">    Groups by ``cfg.label_column``, counts barcodes, and adds a</span>
+<span class="sd">    ``variant_barcode_count_ok`` column (non-null when barcode count</span>
+<span class="sd">    &gt;= ``cfg.variant_bc_threshold``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cells_lf : pl.LazyFrame</span>
+<span class="sd">        Cell-level lazy frame containing ``META_BARCODE_COL`` and</span>
+<span class="sd">        ``cfg.label_column`` (as produced by :func:`filter_columns`).</span>
+<span class="sd">    cfg : DictConfig</span>
+<span class="sd">        Hydra config supplying ``variant_bc_threshold`` and ``label_column``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        Lazy frame with one row per variant, including ``barcode_count``</span>
+<span class="sd">        and ``variant_barcode_count_ok``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">barcodes_per_variant_lf</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">cells_lf</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">agg</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">META_BARCODE_COL</span><span class="p">)</span><span class="o">.</span><span class="n">n_unique</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;barcode_count&quot;</span><span class="p">),</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;barcode_count&quot;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">variant_bc_threshold</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;barcode_count&quot;</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;variant_barcode_count_ok&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">barcodes_per_variant_lf</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: QC filtering of cell-level data files.</p>
+
+
+<details class="steps" open>
+  <summary>Steps</summary>
+  <ol>
+<li>Read and concatenate all <code>cell_files</code> via :func:<code>combine_cell_files</code>.</li>
+<li>Retain only QC-relevant columns via :func:<code>filter_columns</code>.</li>
+<li>Apply edit-distance, barcode-count, and variant-count filters via
+   :func:<code>add_qc_queries</code>.</li>
+<li>Write three output Parquet files to <code>output_dir</code>.</li>
+</ol>
+</details>
+
+<details class="output-files" open>
+  <summary>Output files</summary>
+  <ul>
+<li><code>{prefix}filtered_cells.parquet</code></li>
+<li><code>{prefix}barcode_counts.parquet</code></li>
+<li><code>{prefix}variants_per_barcode.parquet</code></li>
+</ul>
+<p>where <code>prefix</code> is <code>{output_root}.</code> when <code>output_root</code> is set,
+otherwise empty.</p>
+</details>
+
+<details class="configuration" open>
+  <summary>Configuration</summary>
+  <p>Override any field on the command line, e.g.::</p>
+<pre><code>python -m fisseq_data_pipeline.qc_filter \
+    output_dir=./out \
+    'cell_files=[data/cells.parquet]' \
+    bc_threshold=10
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;qc_filter_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: QC filtering of cell-level data files.</span>
+
+<span class="sd">    Steps</span>
+<span class="sd">    -----</span>
+<span class="sd">    1. Read and concatenate all ``cell_files`` via :func:`combine_cell_files`.</span>
+<span class="sd">    2. Retain only QC-relevant columns via :func:`filter_columns`.</span>
+<span class="sd">    3. Apply edit-distance, barcode-count, and variant-count filters via</span>
+<span class="sd">       :func:`add_qc_queries`.</span>
+<span class="sd">    4. Write three output Parquet files to ``output_dir``.</span>
+
+<span class="sd">    Output files</span>
+<span class="sd">    ------------</span>
+<span class="sd">    - ``{prefix}filtered_cells.parquet``</span>
+<span class="sd">    - ``{prefix}barcode_counts.parquet``</span>
+<span class="sd">    - ``{prefix}variants_per_barcode.parquet``</span>
+
+<span class="sd">    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,</span>
+<span class="sd">    otherwise empty.</span>
+
+<span class="sd">    Configuration</span>
+<span class="sd">    -------------</span>
+<span class="sd">    Override any field on the command line, e.g.::</span>
+
+<span class="sd">        python -m fisseq_data_pipeline.qc_filter \\</span>
+<span class="sd">            output_dir=./out \\</span>
+<span class="sd">            &#39;cell_files=[data/cells.parquet]&#39; \\</span>
+<span class="sd">            bc_threshold=10</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">qc_cfg</span><span class="p">:</span> <span class="n">QcFilterConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">qc_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">qc_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">qc_cfg</span><span class="p">,</span> <span class="s2">&quot;qc_filter&quot;</span><span class="p">)</span>
+
+    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">qc_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="n">cell_files</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="nb">list</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">cell_files</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">cell_files</span><span class="p">,</span> <span class="s2">&quot;__iter__&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">cell_files</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+        <span class="k">else</span> <span class="p">[</span><span class="n">cfg</span><span class="o">.</span><span class="n">cell_files</span><span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="n">combined_lf</span> <span class="o">=</span> <span class="n">combine_cell_files</span><span class="p">(</span><span class="n">cell_files</span><span class="p">)</span>
+    <span class="n">combined_lf</span> <span class="o">=</span> <span class="n">filter_columns</span><span class="p">(</span><span class="n">combined_lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">combined_lf</span><span class="p">,</span> <span class="n">barcode_count_lf</span><span class="p">,</span> <span class="n">variants_per_barcode_lf</span> <span class="o">=</span> <span class="n">add_qc_queries</span><span class="p">(</span>
+        <span class="n">combined_lf</span><span class="p">,</span> <span class="n">cfg</span>
+    <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing output files to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">lf</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s2">&quot;filtered_cells&quot;</span><span class="p">,</span> <span class="n">combined_lf</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;barcode_counts&quot;</span><span class="p">,</span> <span class="n">barcode_count_lf</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;variants_per_barcode&quot;</span><span class="p">,</span> <span class="n">variants_per_barcode_lf</span><span class="p">),</span>
+    <span class="p">]:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="n">lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">name</span><span class="si">}</span><span class="s2">.parquet&quot;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.qcfilter.read_file" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">read_file</span><span class="p">(</span><span class="n">cell_file_path</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Read a single cell file into a lazy frame.</p>
+<p>Supports CSV and Parquet formats (extensions <code>.csv</code>, <code>.parquet</code>,
+<code>.parq</code>, <code>.pq</code>). Adds two metadata columns: <code>meta_source_file</code>
+(file path as a string) and <code>meta_source_file_idx</code> (row index within
+the source file).</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>cell_file_path</code></b>
+                  (<code><span title="pathlib.Path">Path</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the cell data file.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Lazy frame of the file contents with metadata columns.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/qcfilter.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">read_file</span><span class="p">(</span><span class="n">cell_file_path</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read a single cell file into a lazy frame.</span>
+
+<span class="sd">    Supports CSV and Parquet formats (extensions ``.csv``, ``.parquet``,</span>
+<span class="sd">    ``.parq``, ``.pq``). Adds two metadata columns: ``meta_source_file``</span>
+<span class="sd">    (file path as a string) and ``meta_source_file_idx`` (row index within</span>
+<span class="sd">    the source file).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cell_file_path : pathlib.Path</span>
+<span class="sd">        Path to the cell data file.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        Lazy frame of the file contents with metadata columns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Scanning file </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">cell_file_path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cell_file_path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s2">&quot;.csv&quot;</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;Lazy evaluation is much slower for CSV files.&quot;</span>
+            <span class="s2">&quot; Consider converting to Parquet for better performance.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_csv</span><span class="p">(</span><span class="n">cell_file_path</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">cell_file_path</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;.parquet&quot;</span><span class="p">,</span> <span class="s2">&quot;.parq&quot;</span><span class="p">,</span> <span class="s2">&quot;.pq&quot;</span><span class="p">]:</span>
+        <span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_parquet</span><span class="p">(</span><span class="n">cell_file_path</span><span class="p">)</span>
+
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cell_file_path</span><span class="p">))</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;meta_source_file&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">row_index</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;meta_source_file_idx&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">lf</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../cli/batchvsbatch/" class="btn btn-neutral float-left" title="Batch vs. Batch"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../normalize/" class="btn btn-neutral float-right" title="normalize">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../../cli/batchvsbatch/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../normalize/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>permanova - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "permanova";
+        var mkdocs_page_input_path = "api/permanova.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">permanova</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq_data_pipeline.permanova">permanova</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.permanova.PermanovaConfig">PermanovaConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.permanova.compute_variant_permanova">compute_variant_permanova</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.permanova.main">main</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">permanova</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-permanova">API: permanova</h1>
+<p>See <a href="../../cli/permanova/">CLI Reference: PERMANOVA</a> for usage.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.permanova" class="doc doc-heading">
+            <code>fisseq_data_pipeline.permanova</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Per-variant PERMANOVA batch-effect assessment via pairwise cosine distance.</p>
+<p>Hydra entry point <code>fisseq-permanova</code>, backing the Nextflow process <code>PERMANOVA</code>
+(run once against normalized cells, once against batch-corrected cells). For each
+variant seen in more than one batch, computes a pseudo-F statistic from all
+pairwise cosine distances (Anderson 2001 sum-of-squares decomposition) and an
+optional permutation p-value.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.permanova.PermanovaConfig" class="doc doc-heading">
+            <code>PermanovaConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="LabeledInputConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.LabeledInputConfig)" href="../config/#fisseq_data_pipeline.config.input.LabeledInputConfig">LabeledInputConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the PERMANOVA entry point.</p>
+<p>Extends :class:<code>.config.LabeledInputConfig</code> with parameters controlling
+per-variant PERMANOVA batch-effect assessment.</p>
+<p><code>input_file</code> is interpreted as a glob pattern. Each matching file is
+treated as a separate batch; the batch name is the filename stem.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>n_permutations</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Number of label permutations used to estimate the p-value for each
+variant. <code>0</code> skips the permutation test entirely (<code>p_value</code> is
+<code>None</code>). Defaults to <code>999</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>seed</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Base random seed for label permutation; variant <code>i</code> (in sorted
+order) uses <code>seed + i</code>. Defaults to <code>42</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/permanova.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">PermanovaConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the PERMANOVA entry point.</span>
+
+<span class="sd">    Extends :class:`.config.LabeledInputConfig` with parameters controlling</span>
+<span class="sd">    per-variant PERMANOVA batch-effect assessment.</span>
+
+<span class="sd">    ``input_file`` is interpreted as a glob pattern. Each matching file is</span>
+<span class="sd">    treated as a separate batch; the batch name is the filename stem.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_permutations : int</span>
+<span class="sd">        Number of label permutations used to estimate the p-value for each</span>
+<span class="sd">        variant. ``0`` skips the permutation test entirely (``p_value`` is</span>
+<span class="sd">        ``None``). Defaults to ``999``.</span>
+<span class="sd">    seed : int</span>
+<span class="sd">        Base random seed for label permutation; variant ``i`` (in sorted</span>
+<span class="sd">        order) uses ``seed + i``. Defaults to ``42``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">999</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.permanova.compute_variant_permanova" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">compute_variant_permanova</span><span class="p">(</span><span class="n">variant_lf</span><span class="p">,</span> <span class="n">feature_cols</span><span class="p">,</span> <span class="n">batch_col</span><span class="p">,</span> <span class="n">n_permutations</span><span class="p">,</span> <span class="n">seed</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one variant.</p>
+<p>Collects the variant's feature matrix and batch labels to NumPy and
+delegates to :func:<code>_compute_permanova_stats</code>, which computes all unique
+unordered sample pairs (including cross-batch pairs) via
+:func:<code>_pairwise_cosine_distance</code> and derives the F-statistic from the
+sum-of-squares decomposition. Null, <code>NaN</code>, and infinite feature values
+are excluded per pair rather than dropping whole rows/samples.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>variant_lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Cell-level lazy frame already filtered to a single variant, containing
+<code>feature_cols</code> and <code>batch_col</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>feature_cols</code></b>
+                  (<code><span title="list">list</span>[<span title="str">str</span>]</code>)
+              –
+              <div class="doc-md-description">
+                <p>Names of the feature columns to use for cosine distance.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>batch_col</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the batch grouping column.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>n_permutations</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Number of label permutations for the p-value. <code>0</code> skips the test.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>seed</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Random seed for label permutation.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="dict">dict</span> or None</code>
+              –
+              <div class="doc-md-description">
+                <p><code>{"f_statistic": float, "p_value": float or None}</code>, or <code>None</code> (with
+a logged warning) if fewer than 2 samples or fewer than 2 batches
+are present.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/permanova.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_variant_permanova</span><span class="p">(</span>
+    <span class="n">variant_lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+    <span class="n">feature_cols</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">batch_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one variant.</span>
+
+<span class="sd">    Collects the variant&#39;s feature matrix and batch labels to NumPy and</span>
+<span class="sd">    delegates to :func:`_compute_permanova_stats`, which computes all unique</span>
+<span class="sd">    unordered sample pairs (including cross-batch pairs) via</span>
+<span class="sd">    :func:`_pairwise_cosine_distance` and derives the F-statistic from the</span>
+<span class="sd">    sum-of-squares decomposition. Null, ``NaN``, and infinite feature values</span>
+<span class="sd">    are excluded per pair rather than dropping whole rows/samples.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    variant_lf : pl.LazyFrame</span>
+<span class="sd">        Cell-level lazy frame already filtered to a single variant, containing</span>
+<span class="sd">        ``feature_cols`` and ``batch_col``.</span>
+<span class="sd">    feature_cols : list[str]</span>
+<span class="sd">        Names of the feature columns to use for cosine distance.</span>
+<span class="sd">    batch_col : str</span>
+<span class="sd">        Name of the batch grouping column.</span>
+<span class="sd">    n_permutations : int</span>
+<span class="sd">        Number of label permutations for the p-value. ``0`` skips the test.</span>
+<span class="sd">    seed : int</span>
+<span class="sd">        Random seed for label permutation.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict or None</span>
+<span class="sd">        ``{&quot;f_statistic&quot;: float, &quot;p_value&quot;: float or None}``, or ``None`` (with</span>
+<span class="sd">        a logged warning) if fewer than 2 samples or fewer than 2 batches</span>
+<span class="sd">        are present.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">collected</span> <span class="o">=</span> <span class="n">variant_lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_cols</span><span class="p">]</span>
+        <span class="o">+</span> <span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">)]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+    <span class="n">batch_labels</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">_compute_permanova_stats</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">batch_labels</span><span class="p">,</span> <span class="n">n_permutations</span><span class="p">,</span> <span class="n">seed</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.permanova.main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: per-variant PERMANOVA batch-effect assessment.</p>
+
+
+<details class="steps" open>
+  <summary>Steps</summary>
+  <ol>
+<li>Glob <code>input_file</code> to find batch files; each file's stem becomes its
+   batch label (added as <code>meta_batch</code>).</li>
+<li>Restrict to variants seen in more than one batch, collect each such
+   variant's feature matrix and batch labels to NumPy in turn, and
+   compute the PERMANOVA pseudo-F statistic (and optional permutation
+   p-value) via :func:<code>_compute_permanova_stats</code>. Variants with fewer
+   than 2 samples/batches, or that raise an exception, are skipped with
+   a logged warning rather than aborting the whole run.</li>
+<li>Join per-variant metadata from :func:<code>.utils.metadata.get_aggregate_meta_data</code>
+   and write results to a Parquet file via <code>sink_parquet</code>.</li>
+</ol>
+</details>
+
+<details class="output-files" open>
+  <summary>Output files</summary>
+  <ul>
+<li><code>{prefix}permanova.parquet</code> — one row per variant, with metadata
+  columns, <code>f_statistic</code>, and <code>p_value</code>.</li>
+</ul>
+<p>where <code>prefix</code> is <code>{output_root}.</code> when <code>output_root</code> is set,
+otherwise empty.</p>
+</details>
+
+<details class="configuration" open>
+  <summary>Configuration</summary>
+  <p>Override any field on the command line, e.g.::</p>
+<pre><code>python -m fisseq_data_pipeline.permanova \
+    output_dir=./out \
+    'input_file=data/batches/*.parquet' \
+    n_permutations=999
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/permanova.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;permanova_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: per-variant PERMANOVA batch-effect assessment.</span>
+
+<span class="sd">    Steps</span>
+<span class="sd">    -----</span>
+<span class="sd">    1. Glob ``input_file`` to find batch files; each file&#39;s stem becomes its</span>
+<span class="sd">       batch label (added as ``meta_batch``).</span>
+<span class="sd">    2. Restrict to variants seen in more than one batch, collect each such</span>
+<span class="sd">       variant&#39;s feature matrix and batch labels to NumPy in turn, and</span>
+<span class="sd">       compute the PERMANOVA pseudo-F statistic (and optional permutation</span>
+<span class="sd">       p-value) via :func:`_compute_permanova_stats`. Variants with fewer</span>
+<span class="sd">       than 2 samples/batches, or that raise an exception, are skipped with</span>
+<span class="sd">       a logged warning rather than aborting the whole run.</span>
+<span class="sd">    3. Join per-variant metadata from :func:`.utils.metadata.get_aggregate_meta_data`</span>
+<span class="sd">       and write results to a Parquet file via ``sink_parquet``.</span>
+
+<span class="sd">    Output files</span>
+<span class="sd">    ------------</span>
+<span class="sd">    - ``{prefix}permanova.parquet`` — one row per variant, with metadata</span>
+<span class="sd">      columns, ``f_statistic``, and ``p_value``.</span>
+
+<span class="sd">    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,</span>
+<span class="sd">    otherwise empty.</span>
+
+<span class="sd">    Configuration</span>
+<span class="sd">    -------------</span>
+<span class="sd">    Override any field on the command line, e.g.::</span>
+
+<span class="sd">        python -m fisseq_data_pipeline.permanova \\</span>
+<span class="sd">            output_dir=./out \\</span>
+<span class="sd">            &#39;input_file=data/batches/*.parquet&#39; \\</span>
+<span class="sd">            n_permutations=999</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">perm_cfg</span><span class="p">:</span> <span class="n">PermanovaConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">perm_cfg</span><span class="p">,</span> <span class="s2">&quot;permanova&quot;</span><span class="p">)</span>
+
+    <span class="n">label_col</span> <span class="o">=</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">label_column</span>
+    <span class="n">batch_col</span> <span class="o">=</span> <span class="n">META_BATCH_COL</span>
+
+    <span class="n">lf</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+
+    <span class="n">feature_cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span><span class="o">.</span><span class="n">names</span><span class="p">())</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using </span><span class="si">%d</span><span class="s2"> feature column(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">))</span>
+
+    <span class="c1"># Per-variant sample/batch counts; used to filter to variants seen in</span>
+    <span class="c1"># more than one batch (mirrors _compute_permanova_stats&#39;s own bail-out).</span>
+    <span class="n">variant_stats_lf</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">_N_COL</span><span class="p">),</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">n_unique</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">_A_COL</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span><span class="o">.</span><span class="n">is_not_null</span><span class="p">())</span>
+    <span class="p">)</span>
+    <span class="n">qualifying_lf</span> <span class="o">=</span> <span class="n">variant_stats_lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">_A_COL</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span>
+
+    <span class="c1"># Collect once, restricted to qualifying variants and pruned to the</span>
+    <span class="c1"># columns needed, so each variant&#39;s feature matrix can be sliced out in</span>
+    <span class="c1"># the loop below without re-scanning the (possibly multi-file) input.</span>
+    <span class="n">restricted_df</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">qualifying_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;semi&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">),</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
+            <span class="o">*</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_cols</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Serial per-variant loop: each variant&#39;s pairwise distance computation</span>
+    <span class="c1"># is now O(n^2) in memory (not O(n^2 * p) fused across all variants), so</span>
+    <span class="c1"># no batching/parallelism is needed here.</span>
+    <span class="n">records</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">variant_idx</span><span class="p">,</span> <span class="n">variant_df</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
+        <span class="n">restricted_df</span><span class="o">.</span><span class="n">partition_by</span><span class="p">(</span><span class="n">label_col</span><span class="p">,</span> <span class="n">maintain_order</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="p">):</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="n">variant_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">label_col</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">X</span> <span class="o">=</span> <span class="n">variant_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+            <span class="n">batch_labels</span> <span class="o">=</span> <span class="n">variant_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">_compute_permanova_stats</span><span class="p">(</span>
+                <span class="n">X</span><span class="p">,</span>
+                <span class="n">batch_labels</span><span class="p">,</span>
+                <span class="n">perm_cfg</span><span class="o">.</span><span class="n">n_permutations</span><span class="p">,</span>
+                <span class="n">perm_cfg</span><span class="o">.</span><span class="n">seed</span> <span class="o">+</span> <span class="n">variant_idx</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Failed to compute PERMANOVA for variant </span><span class="si">%r</span><span class="s2">, skipping:</span><span class="se">\n</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">label</span><span class="p">,</span>
+                <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">(),</span>
+            <span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="n">label_col</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
+                <span class="s2">&quot;f_statistic&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;f_statistic&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;p_value&quot;</span><span class="p">],</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="n">stats_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+        <span class="n">records</span><span class="p">,</span>
+        <span class="n">schema</span><span class="o">=</span><span class="p">{</span>
+            <span class="n">label_col</span><span class="p">:</span> <span class="n">restricted_df</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="n">label_col</span><span class="p">],</span>
+            <span class="s2">&quot;f_statistic&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
+            <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">meta_lf</span> <span class="o">=</span> <span class="n">get_aggregate_meta_data</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">label_col</span><span class="p">)</span>
+    <span class="n">output_lf</span> <span class="o">=</span> <span class="n">stats_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">()</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;inner&quot;</span><span class="p">)</span>
+
+    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">permanova.parquet&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing results to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">output_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../batchcorrect/" class="btn btn-neutral float-left" title="batchcorrect"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../ovwt/" class="btn btn-neutral float-right" title="ovwt">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../batchcorrect/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../ovwt/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

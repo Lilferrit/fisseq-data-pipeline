@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Aggregate - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Aggregate";
+        var mkdocs_page_input_path = "cli/aggregate.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Aggregate</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#aggregators">Aggregators</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq-aggregate-config-fields">fisseq-aggregate config fields</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq-aggregate-feature-type-config-fields">fisseq-aggregate-feature-type config fields</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">CLI Reference</li>
+      <li class="breadcrumb-item active">Aggregate</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="aggregate">Aggregate</h1>
+<p><code>aggregate.py</code> provides two Hydra entry points:</p>
+<ul>
+<li><strong><code>fisseq-aggregate</code></strong> — standalone: aggregates cell-level data to one row per
+  variant, then normalizes the result to a synonymous-variant baseline and
+  attaches per-variant metadata. Not wired into the Nextflow pipeline directly.</li>
+<li><strong><code>fisseq-aggregate-feature-type</code></strong> (Nextflow processes <code>AGGREGATE_FEATURE_TYPE</code>
+  and <code>AGGREGATE_HALF</code>) — a leaner version used by the feature-selection branch:
+  runs a single aggregator, writes only <code>[label_column] + &lt;stat columns&gt;</code>, with no
+  normalizer, metadata join, or impact score.</li>
+</ul>
+<p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
+single-file path.</p>
+<h2 id="aggregators">Aggregators</h2>
+<p>Eight strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
+<code>"multi"</code>/combined option; combining feature types happens in Nextflow by running
+<code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_types</code> entry.</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mean</code></td>
+<td>Per-variant feature mean</td>
+</tr>
+<tr>
+<td><code>median</code></td>
+<td>Per-variant feature median</td>
+</tr>
+<tr>
+<td><code>MAD</code></td>
+<td>Per-variant median absolute deviation</td>
+</tr>
+<tr>
+<td><code>std</code></td>
+<td>Per-variant standard deviation</td>
+</tr>
+<tr>
+<td><code>EMD</code></td>
+<td>Earth Mover's Distance vs. WT/control distribution</td>
+</tr>
+<tr>
+<td><code>KS</code></td>
+<td>Kolmogorov-Smirnov statistic vs. WT/control distribution</td>
+</tr>
+<tr>
+<td><code>QQ</code></td>
+<td>Q-Q Pearson correlation vs. WT/control distribution</td>
+</tr>
+<tr>
+<td><code>AUROC</code></td>
+<td>AUROC vs. WT/control distribution</td>
+</tr>
+</tbody>
+</table>
+<h2 id="fisseq-aggregate-config-fields"><code>fisseq-aggregate</code> config fields</h2>
+<p>Extends <code>LabeledInputConfig</code> (adds <code>input_file</code>, <code>label_column</code>) plus the
+<a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_file</code></td>
+<td><strong>required</strong></td>
+<td>Glob pattern or path to cell-level data.</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td><code>"meta_aa_changes"</code></td>
+<td>Column identifying variant labels.</td>
+</tr>
+<tr>
+<td><code>aggregator</code></td>
+<td><strong>required</strong></td>
+<td>One of the eight aggregators above.</td>
+</tr>
+<tr>
+<td><code>save_normalizer</code></td>
+<td><code>true</code></td>
+<td>Write the synonymous-baseline normalizer.</td>
+</tr>
+<tr>
+<td><code>block_list_file</code></td>
+<td><code>null</code></td>
+<td>Parquet with <code>feature</code> and <code>feature_ok</code> columns; blocked features are skipped.</td>
+</tr>
+<tr>
+<td><code>compute_impact_score</code></td>
+<td><code>true</code></td>
+<td>Append an impact score column derived from variant classification.</td>
+</tr>
+<tr>
+<td><code>feature_batch_size</code></td>
+<td><code>null</code></td>
+<td>If set, process features in chunks of at most this many columns to bound peak memory.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
+single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_dir}/{filename}</code>. Plus
+<code>normalizer.parquet</code> when <code>save_normalizer=true</code>.</p>
+<pre><code class="language-bash">uv run fisseq-aggregate \
+    output_dir=./out \
+    'input_file=data/batches/*.parquet' \
+    aggregator=EMD
+</code></pre>
+<h2 id="fisseq-aggregate-feature-type-config-fields"><code>fisseq-aggregate-feature-type</code> config fields</h2>
+<p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_file</code></td>
+<td><strong>required</strong></td>
+<td>Glob pattern or path to cell-level data.</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td><code>"meta_aa_changes"</code></td>
+<td>Column identifying variant labels.</td>
+</tr>
+<tr>
+<td><code>aggregator</code></td>
+<td><strong>required</strong></td>
+<td>One of the eight aggregators above.</td>
+</tr>
+<tr>
+<td><code>index_file</code></td>
+<td><code>null</code></td>
+<td>Optional path to a single-column row-index parquet (as written by <code>fisseq-generate-split</code>) restricting aggregation to a pseudo-replicate half.</td>
+</tr>
+<tr>
+<td><code>feature_batch_size</code></td>
+<td><code>null</code></td>
+<td>Same as above.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
+single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
+<pre><code class="language-bash">uv run fisseq-aggregate-feature-type \
+    output_dir=./out \
+    input_file=data/normalized.parquet \
+    aggregator=mean \
+    index_file=./half1.parquet
+</code></pre>
+<p>See <a href="../../api/aggregate/">API Reference: aggregate</a> for full function
+documentation, including the <code>BaseAggregator</code> class hierarchy.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../normalize/" class="btn btn-neutral float-left" title="Normalize"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../features/" class="btn btn-neutral float-right" title="Feature Selection">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../normalize/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../features/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

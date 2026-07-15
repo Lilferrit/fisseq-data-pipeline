@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>config - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "config";
+        var mkdocs_page_input_path = "api/config.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">config</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#app">app</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.config.app">app</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#input">input</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.config.input">input</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.config.input.InputConfig">InputConfig</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.config.input.LabeledInputConfig">LabeledInputConfig</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">config</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-config">API: config</h1>
+<p>Hydra structured config hierarchy shared by every entry point:
+<code>AppConfig</code> → <code>InputConfig</code> → <code>LabeledInputConfig</code>. See
+<a href="../../architecture/#key-abstractions">Architecture: Key abstractions</a> for how
+these compose.</p>
+<h2 id="app">app</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.config.app" class="doc doc-heading">
+            <code>fisseq_data_pipeline.config.app</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Base Hydra structured config shared by every pipeline entry point.</p>
+<p>Defines :class:<code>AppConfig</code>, supplying <code>output_dir</code>, <code>output_root</code>, and
+<code>log_level</code> fields common to all Hydra CLIs in this package.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.config.app.AppConfig" class="doc doc-heading">
+            <code>AppConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Shared application-level configuration.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>output_dir</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Directory for outputs produced by the current run (e.g. per-experiment
+results, normalized data, model artifacts). Required.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>output_root</code></b>
+                  (<code><span title="str">str</span> or None</code>)
+              –
+              <div class="doc-md-description">
+                <p>If set, every output file is prefixed <code>{output_root}.{name}</code> instead
+of being placed under <code>output_dir</code>. Optional, defaults to <code>None</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>log_level</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Logging verbosity. One of <code>debug</code>, <code>info</code>, <code>warning</code>, <code>error</code>,
+<code>critical</code>. Defaults to <code>info</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/config/app.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">AppConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Shared application-level configuration.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    output_dir : str</span>
+<span class="sd">        Directory for outputs produced by the current run (e.g. per-experiment</span>
+<span class="sd">        results, normalized data, model artifacts). Required.</span>
+<span class="sd">    output_root : str or None</span>
+<span class="sd">        If set, every output file is prefixed ``{output_root}.{name}`` instead</span>
+<span class="sd">        of being placed under ``output_dir``. Optional, defaults to ``None``.</span>
+<span class="sd">    log_level : str</span>
+<span class="sd">        Logging verbosity. One of ``debug``, ``info``, ``warning``, ``error``,</span>
+<span class="sd">        ``critical``. Defaults to ``info``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">output_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">output_root</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">log_level</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;info&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="input">input</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.config.input" class="doc doc-heading">
+            <code>fisseq_data_pipeline.config.input</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Hydra structured config layers adding an input file and a variant label column.</p>
+<p>Defines :class:<code>InputConfig</code> (adds <code>input_file</code>) and :class:<code>LabeledInputConfig</code>
+(adds <code>label_column</code>), both extending :class:<code>.app.AppConfig</code>. Most pipeline
+entry points' configs extend one of these rather than :class:<code>.app.AppConfig</code>
+directly.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.config.input.InputConfig" class="doc doc-heading">
+            <code>InputConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="AppConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.app.AppConfig)" href="#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a></code></p>
+
+
+
+        <p>Extends AppConfig with a required input file path.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>input_file</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the input file. Required.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/config/input.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InputConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extends AppConfig with a required input file path.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    input_file : str</span>
+<span class="sd">        Path to the input file. Required.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">input_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.config.input.LabeledInputConfig" class="doc doc-heading">
+            <code>LabeledInputConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="InputConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.input.InputConfig)" href="#fisseq_data_pipeline.config.input.InputConfig">InputConfig</a></code></p>
+
+
+
+        <p>Extends InputConfig for steps that operate on variant-labeled data.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>label_column</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the column identifying variant labels. Defaults to
+<code>"meta_aa_changes"</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/config/input.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">LabeledInputConfig</span><span class="p">(</span><span class="n">InputConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extends InputConfig for steps that operate on variant-labeled data.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    label_column : str</span>
+<span class="sd">        Name of the column identifying variant labels. Defaults to</span>
+<span class="sd">        ``&quot;meta_aa_changes&quot;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">label_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;meta_aa_changes&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../batchvsbatch/" class="btn btn-neutral float-left" title="batchvsbatch"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../utils/" class="btn btn-neutral float-right" title="utils">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../batchvsbatch/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../utils/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

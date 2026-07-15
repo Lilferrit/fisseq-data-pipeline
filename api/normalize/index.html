@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>normalize - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "normalize";
+        var mkdocs_page_input_path = "api/normalize.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">normalize</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq_data_pipeline.normalize">normalize</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.normalize.NormalizeConfig">NormalizeConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.normalize.Normalizer">Normalizer</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.normalize.Normalizer.apply">apply</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.normalize.Normalizer.from_lazyframe">from_lazyframe</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.normalize.Normalizer.load">load</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#fisseq_data_pipeline.normalize.Normalizer.save">save</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.normalize.add_control_indicator_column">add_control_indicator_column</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.normalize.main">main</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">normalize</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-normalize">API: normalize</h1>
+<p>See <a href="../../cli/normalize/">CLI Reference: Normalize</a> for usage.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.normalize" class="doc doc-heading">
+            <code>fisseq_data_pipeline.normalize</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Z-score normalization of cell-level features against a control baseline.</p>
+<p>Hydra entry point <code>fisseq-normalize</code> / Nextflow process <code>NORMALIZE</code> (second
+pipeline stage). Fits the :class:<code>Normalizer</code> on rows matching a configurable SQL
+control-sample query (default: WT cells) and applies it to every feature column,
+producing normalized cell-level Parquet output plus an optional serialized
+normalizer.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.normalize.NormalizeConfig" class="doc doc-heading">
+            <code>NormalizeConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="InputConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.InputConfig)" href="../config/#fisseq_data_pipeline.config.input.InputConfig">InputConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the normalization entry point.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>control_sample_query</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>SQL-like WHERE clause identifying control rows used to fit the
+normalizer (e.g. <code>"meta_aa_changes = 'WT'"</code>).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>save_normalizer</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>If <code>True</code>, persist the fitted :class:<code>Normalizer</code> to a parquet file
+alongside the normalized output.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NormalizeConfig</span><span class="p">(</span><span class="n">InputConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the normalization entry point.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    control_sample_query : str</span>
+<span class="sd">        SQL-like WHERE clause identifying control rows used to fit the</span>
+<span class="sd">        normalizer (e.g. ``&quot;meta_aa_changes = &#39;WT&#39;&quot;``).</span>
+<span class="sd">    save_normalizer : bool</span>
+<span class="sd">        If ``True``, persist the fitted :class:`Normalizer` to a parquet file</span>
+<span class="sd">        alongside the normalized output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">control_sample_query</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;meta_aa_changes = &#39;WT&#39;&quot;</span>
+    <span class="n">save_normalizer</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.normalize.Normalizer" class="doc doc-heading">
+            <code>Normalizer</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Container object storing per-feature normalization statistics.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>means</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A DataFrame of shape (n_batches, n_features) containing the mean value
+of each feature for each batch. When batch-wise normalization is not
+used, this has shape (1, n_features).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>stds</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>A DataFrame of shape (n_batches, n_features) containing the standard
+deviation of each feature for each batch. When batch-wise normalization
+is not used, this has shape (1, n_features).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 27</span>
+<span class="normal"> 28</span>
+<span class="normal"> 29</span>
+<span class="normal"> 30</span>
+<span class="normal"> 31</span>
+<span class="normal"> 32</span>
+<span class="normal"> 33</span>
+<span class="normal"> 34</span>
+<span class="normal"> 35</span>
+<span class="normal"> 36</span>
+<span class="normal"> 37</span>
+<span class="normal"> 38</span>
+<span class="normal"> 39</span>
+<span class="normal"> 40</span>
+<span class="normal"> 41</span>
+<span class="normal"> 42</span>
+<span class="normal"> 43</span>
+<span class="normal"> 44</span>
+<span class="normal"> 45</span>
+<span class="normal"> 46</span>
+<span class="normal"> 47</span>
+<span class="normal"> 48</span>
+<span class="normal"> 49</span>
+<span class="normal"> 50</span>
+<span class="normal"> 51</span>
+<span class="normal"> 52</span>
+<span class="normal"> 53</span>
+<span class="normal"> 54</span>
+<span class="normal"> 55</span>
+<span class="normal"> 56</span>
+<span class="normal"> 57</span>
+<span class="normal"> 58</span>
+<span class="normal"> 59</span>
+<span class="normal"> 60</span>
+<span class="normal"> 61</span>
+<span class="normal"> 62</span>
+<span class="normal"> 63</span>
+<span class="normal"> 64</span>
+<span class="normal"> 65</span>
+<span class="normal"> 66</span>
+<span class="normal"> 67</span>
+<span class="normal"> 68</span>
+<span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Normalizer</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Container object storing per-feature normalization statistics.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    means : pl.DataFrame</span>
+<span class="sd">        A DataFrame of shape (n_batches, n_features) containing the mean value</span>
+<span class="sd">        of each feature for each batch. When batch-wise normalization is not</span>
+<span class="sd">        used, this has shape (1, n_features).</span>
+<span class="sd">    stds : pl.DataFrame</span>
+<span class="sd">        A DataFrame of shape (n_batches, n_features) containing the standard</span>
+<span class="sd">        deviation of each feature for each batch. When batch-wise normalization</span>
+<span class="sd">        is not used, this has shape (1, n_features).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">means</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span>
+    <span class="n">stds</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_lazyframe</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span> <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Normalizer&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit a Normalizer by computing per-feature means and standard deviations.</span>
+
+<span class="sd">        NaN values are excluded before computing statistics. Features with zero</span>
+<span class="sd">        or near-zero variance (std &lt; EPS) are stored as ``None`` and will</span>
+<span class="sd">        produce ``NaN`` when applied, acting as a natural indicator that the</span>
+<span class="sd">        feature should be dropped.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        lf : pl.LazyFrame</span>
+<span class="sd">            Input LazyFrame. Must contain a boolean ``CONTROL_COLUMN`` column</span>
+<span class="sd">            when ``fit_only_on_control=True``, and feature columns matched by</span>
+<span class="sd">            ``FEATURE_SELECTOR``.</span>
+<span class="sd">        fit_only_on_control : bool, default True</span>
+<span class="sd">            If ``True``, statistics are computed using only rows where</span>
+<span class="sd">            ``CONTROL_COLUMN`` is ``True``.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Normalizer</span>
+<span class="sd">            A fitted ``Normalizer`` instance with ``means`` and ``stds``</span>
+<span class="sd">            DataFrames of shape ``(1, n_features)``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">fit_only_on_control</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding query to filter for control samples&quot;</span><span class="p">)</span>
+            <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">CONTROL_COLUMN</span><span class="p">)</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">feature_lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+            <span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">fill_nan</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing feature means&quot;</span><span class="p">)</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="n">feature_lf</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing feature standard deviations&quot;</span><span class="p">)</span>
+        <span class="n">stds</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">feature_lf</span><span class="o">.</span><span class="n">std</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+                <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">EPS</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">())</span>
+                <span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">keep</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">means</span><span class="o">=</span><span class="n">means</span><span class="p">,</span> <span class="n">stds</span><span class="o">=</span><span class="n">stds</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Serialize the Normalizer to a Parquet file.</span>
+
+<span class="sd">        Both ``means`` and ``stds`` are written as a single DataFrame with a</span>
+<span class="sd">        ``_stat`` column set to ``&quot;mean&quot;`` or ``&quot;std&quot;`` to distinguish the two</span>
+<span class="sd">        rows. Reload with :meth:`load`.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        path : PathLike</span>
+<span class="sd">            Destination file path (e.g. ``normalizer.parquet``).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">means</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stds</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">&quot;std&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)),</span>
+            <span class="p">]</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Normalizer&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Deserialize a Normalizer from a Parquet file written by :meth:`save`.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        path : PathLike</span>
+<span class="sd">            Path to a Parquet file previously written by :meth:`save`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Normalizer</span>
+<span class="sd">            A ``Normalizer`` instance with ``means`` and ``stds`` restored.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;mean&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span>
+        <span class="n">stds</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;std&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">means</span><span class="o">=</span><span class="n">means</span><span class="p">,</span> <span class="n">stds</span><span class="o">=</span><span class="n">stds</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply z-score normalization to a LazyFrame using the fitted statistics.</span>
+
+<span class="sd">        Each feature column ``c`` is transformed as ``(c - mean_c) / std_c``</span>
+<span class="sd">        using the values stored in ``self.means`` and ``self.stds``.</span>
+
+<span class="sd">        NaNs are converted to nulls both before and after normalization: the</span>
+<span class="sd">        pre-pass ensures NaN inputs don&#39;t propagate into the arithmetic, and</span>
+<span class="sd">        the post-pass converts any NaNs produced by division by a zero-variance</span>
+<span class="sd">        feature (whose std is ``None``) into nulls for consistent downstream</span>
+<span class="sd">        handling. Non-feature columns are passed through unchanged.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        lf : pl.LazyFrame</span>
+<span class="sd">            Input LazyFrame containing feature columns matched by</span>
+<span class="sd">            ``FEATURE_SELECTOR``.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pl.LazyFrame</span>
+<span class="sd">            A LazyFrame with feature columns z-score normalized in-place.</span>
+<span class="sd">            Any non-finite inputs or zero-variance features are represented</span>
+<span class="sd">            as nulls.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding normalization queries&quot;</span><span class="p">)</span>
+        <span class="n">means</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">means</span><span class="o">.</span><span class="n">row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">named</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">stds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stds</span><span class="o">.</span><span class="n">row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">named</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">lf</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">lf</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">fill_nan</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">-</span> <span class="n">means</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">))</span> <span class="o">/</span> <span class="n">stds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span>
+            <span class="p">)</span>
+            <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">fill_nan</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">lf</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="fisseq_data_pipeline.normalize.Normalizer.apply" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">apply</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span></code>
+
+</h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Apply z-score normalization to a LazyFrame using the fitted statistics.</p>
+<p>Each feature column <code>c</code> is transformed as <code>(c - mean_c) / std_c</code>
+using the values stored in <code>self.means</code> and <code>self.stds</code>.</p>
+<p>NaNs are converted to nulls both before and after normalization: the
+pre-pass ensures NaN inputs don't propagate into the arithmetic, and
+the post-pass converts any NaNs produced by division by a zero-variance
+feature (whose std is <code>None</code>) into nulls for consistent downstream
+handling. Non-feature columns are passed through unchanged.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Input LazyFrame containing feature columns matched by
+<code>FEATURE_SELECTOR</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>A LazyFrame with feature columns z-score normalized in-place.
+Any non-finite inputs or zero-variance features are represented
+as nulls.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply z-score normalization to a LazyFrame using the fitted statistics.</span>
+
+<span class="sd">    Each feature column ``c`` is transformed as ``(c - mean_c) / std_c``</span>
+<span class="sd">    using the values stored in ``self.means`` and ``self.stds``.</span>
+
+<span class="sd">    NaNs are converted to nulls both before and after normalization: the</span>
+<span class="sd">    pre-pass ensures NaN inputs don&#39;t propagate into the arithmetic, and</span>
+<span class="sd">    the post-pass converts any NaNs produced by division by a zero-variance</span>
+<span class="sd">    feature (whose std is ``None``) into nulls for consistent downstream</span>
+<span class="sd">    handling. Non-feature columns are passed through unchanged.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lf : pl.LazyFrame</span>
+<span class="sd">        Input LazyFrame containing feature columns matched by</span>
+<span class="sd">        ``FEATURE_SELECTOR``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        A LazyFrame with feature columns z-score normalized in-place.</span>
+<span class="sd">        Any non-finite inputs or zero-variance features are represented</span>
+<span class="sd">        as nulls.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding normalization queries&quot;</span><span class="p">)</span>
+    <span class="n">means</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">means</span><span class="o">.</span><span class="n">row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">named</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">stds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stds</span><span class="o">.</span><span class="n">row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">named</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">lf</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">fill_nan</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">-</span> <span class="n">means</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">))</span> <span class="o">/</span> <span class="n">stds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">fill_nan</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">lf</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="fisseq_data_pipeline.normalize.Normalizer.from_lazyframe" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_lazyframe</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+</h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Fit a Normalizer by computing per-feature means and standard deviations.</p>
+<p>NaN values are excluded before computing statistics. Features with zero
+or near-zero variance (std &lt; EPS) are stored as <code>None</code> and will
+produce <code>NaN</code> when applied, acting as a natural indicator that the
+feature should be dropped.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Input LazyFrame. Must contain a boolean <code>CONTROL_COLUMN</code> column
+when <code>fit_only_on_control=True</code>, and feature columns matched by
+<code>FEATURE_SELECTOR</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>fit_only_on_control</code></b>
+                  (<code><span title="bool">bool</span></code>, default:
+                      <code>True</code>
+)
+              –
+              <div class="doc-md-description">
+                <p>If <code>True</code>, statistics are computed using only rows where
+<code>CONTROL_COLUMN</code> is <code>True</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><a class="autorefs autorefs-internal" title="Normalizer
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.normalize.Normalizer)" href="#fisseq_data_pipeline.normalize.Normalizer">Normalizer</a></code>
+              –
+              <div class="doc-md-description">
+                <p>A fitted <code>Normalizer</code> instance with <code>means</code> and <code>stds</code>
+DataFrames of shape <code>(1, n_features)</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span>
+<span class="normal">82</span>
+<span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span>
+<span class="normal">89</span>
+<span class="normal">90</span>
+<span class="normal">91</span>
+<span class="normal">92</span>
+<span class="normal">93</span>
+<span class="normal">94</span>
+<span class="normal">95</span>
+<span class="normal">96</span>
+<span class="normal">97</span>
+<span class="normal">98</span>
+<span class="normal">99</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">from_lazyframe</span><span class="p">(</span>
+    <span class="bp">cls</span><span class="p">,</span> <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Normalizer&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fit a Normalizer by computing per-feature means and standard deviations.</span>
+
+<span class="sd">    NaN values are excluded before computing statistics. Features with zero</span>
+<span class="sd">    or near-zero variance (std &lt; EPS) are stored as ``None`` and will</span>
+<span class="sd">    produce ``NaN`` when applied, acting as a natural indicator that the</span>
+<span class="sd">    feature should be dropped.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lf : pl.LazyFrame</span>
+<span class="sd">        Input LazyFrame. Must contain a boolean ``CONTROL_COLUMN`` column</span>
+<span class="sd">        when ``fit_only_on_control=True``, and feature columns matched by</span>
+<span class="sd">        ``FEATURE_SELECTOR``.</span>
+<span class="sd">    fit_only_on_control : bool, default True</span>
+<span class="sd">        If ``True``, statistics are computed using only rows where</span>
+<span class="sd">        ``CONTROL_COLUMN`` is ``True``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Normalizer</span>
+<span class="sd">        A fitted ``Normalizer`` instance with ``means`` and ``stds``</span>
+<span class="sd">        DataFrames of shape ``(1, n_features)``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">fit_only_on_control</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding query to filter for control samples&quot;</span><span class="p">)</span>
+        <span class="n">lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">CONTROL_COLUMN</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">feature_lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">fill_nan</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing feature means&quot;</span><span class="p">)</span>
+    <span class="n">means</span> <span class="o">=</span> <span class="n">feature_lf</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing feature standard deviations&quot;</span><span class="p">)</span>
+    <span class="n">stds</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">feature_lf</span><span class="o">.</span><span class="n">std</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">()</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">EPS</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">cs</span><span class="o">.</span><span class="n">numeric</span><span class="p">())</span>
+            <span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">keep</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">means</span><span class="o">=</span><span class="n">means</span><span class="p">,</span> <span class="n">stds</span><span class="o">=</span><span class="n">stds</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="fisseq_data_pipeline.normalize.Normalizer.load" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">load</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+</h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Deserialize a Normalizer from a Parquet file written by :meth:<code>save</code>.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>path</code></b>
+                  (<code><span title="os.PathLike">PathLike</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to a Parquet file previously written by :meth:<code>save</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><a class="autorefs autorefs-internal" title="Normalizer
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.normalize.Normalizer)" href="#fisseq_data_pipeline.normalize.Normalizer">Normalizer</a></code>
+              –
+              <div class="doc-md-description">
+                <p>A <code>Normalizer</code> instance with <code>means</code> and <code>stds</code> restored.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Normalizer&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Deserialize a Normalizer from a Parquet file written by :meth:`save`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    path : PathLike</span>
+<span class="sd">        Path to a Parquet file previously written by :meth:`save`.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Normalizer</span>
+<span class="sd">        A ``Normalizer`` instance with ``means`` and ``stds`` restored.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">means</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;mean&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span>
+    <span class="n">stds</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;std&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">means</span><span class="o">=</span><span class="n">means</span><span class="p">,</span> <span class="n">stds</span><span class="o">=</span><span class="n">stds</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="fisseq_data_pipeline.normalize.Normalizer.save" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">save</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
+
+</h5>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Serialize the Normalizer to a Parquet file.</p>
+<p>Both <code>means</code> and <code>stds</code> are written as a single DataFrame with a
+<code>_stat</code> column set to <code>"mean"</code> or <code>"std"</code> to distinguish the two
+rows. Reload with :meth:<code>load</code>.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>path</code></b>
+                  (<code><span title="os.PathLike">PathLike</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Destination file path (e.g. <code>normalizer.parquet</code>).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">PathLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Serialize the Normalizer to a Parquet file.</span>
+
+<span class="sd">    Both ``means`` and ``stds`` are written as a single DataFrame with a</span>
+<span class="sd">    ``_stat`` column set to ``&quot;mean&quot;`` or ``&quot;std&quot;`` to distinguish the two</span>
+<span class="sd">    rows. Reload with :meth:`load`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    path : PathLike</span>
+<span class="sd">        Destination file path (e.g. ``normalizer.parquet``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">means</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stds</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">&quot;std&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_stat&quot;</span><span class="p">)),</span>
+        <span class="p">]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.normalize.add_control_indicator_column" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add_control_indicator_column</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Append a boolean <code>CONTROL_COLUMN</code> to a LazyFrame using a SQL predicate.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>lf</code></b>
+                  (<code><span title="polars.LazyFrame">LazyFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Input LazyFrame to annotate.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>cfg</code></b>
+                  (<code><a class="autorefs autorefs-internal" title="NormalizeConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.normalize.NormalizeConfig)" href="#fisseq_data_pipeline.normalize.NormalizeConfig">NormalizeConfig</a></code>)
+              –
+              <div class="doc-md-description">
+                <p>Configuration supplying <code>control_sample_query</code>, a SQL-like WHERE
+clause evaluated against the frame (e.g. <code>"meta_aa_changes = 'WT'"</code>).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.LazyFrame">LazyFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>The input frame with an additional boolean <code>CONTROL_COLUMN</code> column
+that is <code>True</code> for rows matching the query.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add_control_indicator_column</span><span class="p">(</span>
+    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">cfg</span><span class="p">:</span> <span class="n">NormalizeConfig</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Append a boolean ``CONTROL_COLUMN`` to a LazyFrame using a SQL predicate.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lf : pl.LazyFrame</span>
+<span class="sd">        Input LazyFrame to annotate.</span>
+<span class="sd">    cfg : NormalizeConfig</span>
+<span class="sd">        Configuration supplying ``control_sample_query``, a SQL-like WHERE</span>
+<span class="sd">        clause evaluated against the frame (e.g. ``&quot;meta_aa_changes = &#39;WT&#39;&quot;``).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.LazyFrame</span>
+<span class="sd">        The input frame with an additional boolean ``CONTROL_COLUMN`` column</span>
+<span class="sd">        that is ``True`` for rows matching the query.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">sql_expr</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">control_sample_query</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">CONTROL_COLUMN_NAME</span><span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.normalize.main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: fit and apply z-score normalization to a parquet file.</p>
+<p>Reads the input file at <code>input_file</code>, adds a control indicator column
+via :func:<code>add_control_indicator_column</code>, fits a :class:<code>Normalizer</code> on
+the control rows, applies it, and writes the result.</p>
+
+
+<details class="output-path" open>
+  <summary>Output path</summary>
+  <ul>
+<li>If <code>output_root</code> is set: <code>{output_root}.{stem}.{ext}</code></li>
+<li>Otherwise: <code>{output_dir}/{filename}</code> (same name as the input file)</li>
+</ul>
+<p>If <code>save_normalizer</code> is <code>True</code>, the fitted :class:<code>Normalizer</code> is also
+written alongside the output using the same root/dir convention with the
+name <code>normalizer.parquet</code>.</p>
+</details>
+
+<details class="configuration" open>
+  <summary>Configuration</summary>
+  <p>Override any field on the command line, e.g.::</p>
+<pre><code>python -m fisseq_data_pipeline.normalize \
+    output_dir=./out \
+    input_file=data/cells.parquet
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/normalize.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;normalize_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: fit and apply z-score normalization to a parquet file.</span>
+
+<span class="sd">    Reads the input file at ``input_file``, adds a control indicator column</span>
+<span class="sd">    via :func:`add_control_indicator_column`, fits a :class:`Normalizer` on</span>
+<span class="sd">    the control rows, applies it, and writes the result.</span>
+
+<span class="sd">    Output path</span>
+<span class="sd">    -----------</span>
+<span class="sd">    - If ``output_root`` is set: ``{output_root}.{stem}.{ext}``</span>
+<span class="sd">    - Otherwise: ``{output_dir}/{filename}`` (same name as the input file)</span>
+
+<span class="sd">    If ``save_normalizer`` is ``True``, the fitted :class:`Normalizer` is also</span>
+<span class="sd">    written alongside the output using the same root/dir convention with the</span>
+<span class="sd">    name ``normalizer.parquet``.</span>
+
+<span class="sd">    Configuration</span>
+<span class="sd">    -------------</span>
+<span class="sd">    Override any field on the command line, e.g.::</span>
+
+<span class="sd">        python -m fisseq_data_pipeline.normalize \\</span>
+<span class="sd">            output_dir=./out \\</span>
+<span class="sd">            input_file=data/cells.parquet</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">norm_cfg</span><span class="p">:</span> <span class="n">NormalizeConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">norm_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">norm_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">norm_cfg</span><span class="p">,</span> <span class="s2">&quot;normalize&quot;</span><span class="p">)</span>
+
+    <span class="n">input_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">norm_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading input from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">input_path</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_parquet</span><span class="p">(</span><span class="n">input_path</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">add_control_indicator_column</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">norm_cfg</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting normalizer&quot;</span><span class="p">)</span>
+    <span class="n">normalizer</span> <span class="o">=</span> <span class="n">Normalizer</span><span class="o">.</span><span class="n">from_lazyframe</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Applying normalizer&quot;</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">normalizer</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span>
+
+    <span class="n">stem</span> <span class="o">=</span> <span class="n">input_path</span><span class="o">.</span><span class="n">stem</span>
+    <span class="n">ext</span> <span class="o">=</span> <span class="n">input_path</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">norm_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">norm_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="n">input_path</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing output to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">norm_cfg</span><span class="o">.</span><span class="n">save_normalizer</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">norm_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">norm_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">norm_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.normalizer.parquet&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">norm_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalizer.parquet&quot;</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving normalizer to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">norm_path</span><span class="p">)</span>
+        <span class="n">normalizer</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">norm_path</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../qcfilter/" class="btn btn-neutral float-left" title="qcfilter"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../aggregate/" class="btn btn-neutral float-right" title="aggregate">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../qcfilter/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../aggregate/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

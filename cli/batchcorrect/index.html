@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Batch Correction - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Batch Correction";
+        var mkdocs_page_input_path = "cli/batchcorrect.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Batch Correction</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq-batch-correct-fit-batch_correct_fit">fisseq-batch-correct-fit (BATCH_CORRECT_FIT)</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq-batch-correct-transform-batch_correct_transform">fisseq-batch-correct-transform (BATCH_CORRECT_TRANSFORM)</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../api/utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">CLI Reference</li>
+      <li class="breadcrumb-item active">Batch Correction</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="batch-correction">Batch Correction</h1>
+<p><code>batchcorrect.py</code> implements two-pass centroid batch correction as two Hydra entry
+points, backing the Nextflow processes <code>BATCH_CORRECT_FIT</code> and
+<code>BATCH_CORRECT_TRANSFORM</code>. Fitting computes per-(variant, batch) statistics and
+per-variant centroids across all batches; transforming rescales one batch's cells
+first to its variant's own centroid, then to the wildtype centroid.</p>
+<p>Both configs extend <code>LabeledInputConfig</code> plus the
+<a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
+<h2 id="fisseq-batch-correct-fit-batch_correct_fit"><code>fisseq-batch-correct-fit</code> (<code>BATCH_CORRECT_FIT</code>)</h2>
+<p>Runs once globally, after all batches have been QC-filtered.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_file</code></td>
+<td><strong>required</strong></td>
+<td>Glob pattern matching one file per batch.</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td><code>"meta_aa_changes"</code></td>
+<td>Column identifying variant labels.</td>
+</tr>
+<tr>
+<td><code>wt_label</code></td>
+<td><code>"WT"</code></td>
+<td>Value of <code>label_column</code> identifying wildtype rows.</td>
+</tr>
+<tr>
+<td><code>use_parent_name</code></td>
+<td><code>false</code></td>
+<td>If <code>true</code>, label each batch by its file's parent directory name instead of the file stem — needed when every batch file shares the same name (e.g. <code>qc_filter/*/filtered_cells.parquet</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output</strong>: <code>stats_vb.parquet</code> (per-(variant, batch) statistics), <code>centroids.parquet</code>
+(per-variant centroids).</p>
+<pre><code class="language-bash">uv run fisseq-batch-correct-fit \
+    output_dir=./out \
+    'input_file=data/batches/*.parquet'
+</code></pre>
+<h2 id="fisseq-batch-correct-transform-batch_correct_transform"><code>fisseq-batch-correct-transform</code> (<code>BATCH_CORRECT_TRANSFORM</code>)</h2>
+<p>Runs once per batch.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_file</code></td>
+<td><strong>required</strong></td>
+<td>Path to one batch's cell-level parquet.</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td><code>"meta_aa_changes"</code></td>
+<td>Column identifying variant labels.</td>
+</tr>
+<tr>
+<td><code>stats_file</code></td>
+<td><strong>required</strong></td>
+<td>Path to the <code>stats_vb.parquet</code> written by the fit step.</td>
+</tr>
+<tr>
+<td><code>centroids_file</code></td>
+<td><strong>required</strong></td>
+<td>Path to the <code>centroids.parquet</code> written by the fit step.</td>
+</tr>
+<tr>
+<td><code>batch</code></td>
+<td><strong>required</strong></td>
+<td>Label identifying which batch <code>input_file</code> belongs to (passed explicitly, since batch files may share an identical name).</td>
+</tr>
+<tr>
+<td><code>wt_label</code></td>
+<td><code>"WT"</code></td>
+<td>Value of <code>label_column</code> identifying wildtype rows.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output</strong>: <code>{output_dir}/{filename}</code> (same name as the input file), or
+<code>{output_root}.{stem}.{ext}</code> when <code>output_root</code> is set.</p>
+<pre><code class="language-bash">uv run fisseq-batch-correct-transform \
+    output_dir=./out \
+    input_file=data/batch1.parquet \
+    batch=batch1 \
+    stats_file=./fit/stats_vb.parquet \
+    centroids_file=./fit/centroids.parquet
+</code></pre>
+<p>See <a href="../../api/batchcorrect/">API Reference: batchcorrect</a> for full function
+documentation, including the <code>BatchCorrector</code> class.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../features/" class="btn btn-neutral float-left" title="Feature Selection"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../permanova/" class="btn btn-neutral float-right" title="PERMANOVA">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../features/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../permanova/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

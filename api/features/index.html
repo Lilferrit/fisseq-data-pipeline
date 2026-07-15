@@ -1,0 +1,2046 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>features - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "features";
+        var mkdocs_page_input_path = "api/features.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">features</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq_data_pipeline.features">features</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.BlocklistConfig">BlocklistConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.CombineBlocklistsConfig">CombineBlocklistsConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.CorrelateFeaturesConfig">CorrelateFeaturesConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.FinalizeFeatureSelectConfig">FinalizeFeatureSelectConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.GenerateSplitConfig">GenerateSplitConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.blocklist_main">blocklist_main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.combine_blocklists_main">combine_blocklists_main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.compute_feature_correlations">compute_feature_correlations</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.correlate_features_main">correlate_features_main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.generate_split_main">generate_split_main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.main">main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.features.pyc_feature_select">pyc_feature_select</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">features</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-features">API: features</h1>
+<p>See <a href="../../cli/features/">CLI Reference: Feature Selection</a> for usage.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.features" class="doc doc-heading">
+            <code>fisseq_data_pipeline.features</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Bootstrap pseudo-replicate feature selection pipeline.</p>
+<p>Hydra entry points backing the Nextflow processes <code>GENERATE_SPLIT</code>,
+<code>CORRELATE_FEATURES</code>, <code>BLOCKLIST</code>, <code>COMBINE_BLOCKLISTS</code>, and
+<code>FINALIZE_FEATURE_SELECT</code> (per-feature-type aggregation itself lives in
+:mod:<code>.aggregate</code>, run as <code>AGGREGATE_HALF</code>): split cells into stratified
+pseudo-replicate halves, correlate per-feature-type aggregates between halves across
+bootstrap replicates, derive a per-feature blocklist from the median correlation, and
+apply it plus pycytominer feature selection to produce the final per-variant
+aggregate.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.features.BlocklistConfig" class="doc doc-heading">
+            <code>BlocklistConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="AppConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.AppConfig)" href="../config/#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the per-feature-type blocklist
+generation entry point.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>correlation_files</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Glob pattern matching all bootstrap-replicate correlation parquet
+files for one feature type (outputs of
+:func:<code>correlate_features_main</code>). Required.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>minimum_correlation</code></b>
+                  (<code><span title="float">float</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Minimum median Pearson <em>r</em> (across bootstrap replicates) required for
+a feature to pass. Defaults to <code>0.5</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BlocklistConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the per-feature-type blocklist</span>
+<span class="sd">    generation entry point.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    correlation_files : str</span>
+<span class="sd">        Glob pattern matching all bootstrap-replicate correlation parquet</span>
+<span class="sd">        files for one feature type (outputs of</span>
+<span class="sd">        :func:`correlate_features_main`). Required.</span>
+<span class="sd">    minimum_correlation : float</span>
+<span class="sd">        Minimum median Pearson *r* (across bootstrap replicates) required for</span>
+<span class="sd">        a feature to pass. Defaults to ``0.5``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">correlation_files</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">minimum_correlation</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.features.CombineBlocklistsConfig" class="doc doc-heading">
+            <code>CombineBlocklistsConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="AppConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.AppConfig)" href="../config/#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the blocklist-combination entry point.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>blocklist_files</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Glob pattern matching all per-feature-type blocklist parquet files
+(outputs of :func:<code>blocklist_main</code>). Required.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CombineBlocklistsConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the blocklist-combination entry point.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    blocklist_files : str</span>
+<span class="sd">        Glob pattern matching all per-feature-type blocklist parquet files</span>
+<span class="sd">        (outputs of :func:`blocklist_main`). Required.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">blocklist_files</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.features.CorrelateFeaturesConfig" class="doc doc-heading">
+            <code>CorrelateFeaturesConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="AppConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.AppConfig)" href="../config/#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the pseudo-replicate correlation entry
+point. Extends :class:<code>.config.AppConfig</code> (not
+:class:<code>.config.LabeledInputConfig</code>) since there is no cell-level
+<code>input_file</code> here — the inputs are two already aggregated
+per-feature-type parquet files.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>half1_file</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the first split half's per-feature-type aggregate parquet
+(output of :func:<code>fisseq_data_pipeline.aggregate.feature_type_main</code>
+with <code>index_file=half1.parquet</code>). Required.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>half2_file</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the second split half's per-feature-type aggregate parquet.
+Required.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>label_column</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the column identifying variant labels. Defaults to
+<code>"meta_aa_changes"</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CorrelateFeaturesConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the pseudo-replicate correlation entry</span>
+<span class="sd">    point. Extends :class:`.config.AppConfig` (not</span>
+<span class="sd">    :class:`.config.LabeledInputConfig`) since there is no cell-level</span>
+<span class="sd">    ``input_file`` here — the inputs are two already aggregated</span>
+<span class="sd">    per-feature-type parquet files.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    half1_file : str</span>
+<span class="sd">        Path to the first split half&#39;s per-feature-type aggregate parquet</span>
+<span class="sd">        (output of :func:`fisseq_data_pipeline.aggregate.feature_type_main`</span>
+<span class="sd">        with ``index_file=half1.parquet``). Required.</span>
+<span class="sd">    half2_file : str</span>
+<span class="sd">        Path to the second split half&#39;s per-feature-type aggregate parquet.</span>
+<span class="sd">        Required.</span>
+<span class="sd">    label_column : str</span>
+<span class="sd">        Name of the column identifying variant labels. Defaults to</span>
+<span class="sd">        ``&quot;meta_aa_changes&quot;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">half1_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">half2_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">label_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;meta_aa_changes&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.features.FinalizeFeatureSelectConfig" class="doc doc-heading">
+            <code>FinalizeFeatureSelectConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="LabeledInputConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.LabeledInputConfig)" href="../config/#fisseq_data_pipeline.config.input.LabeledInputConfig">LabeledInputConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the final feature-selection entry
+point: joins per-feature-type aggregates, applies the combined
+blocklist, and runs pycytominer feature selection.</p>
+<p><code>input_file</code> (inherited) is the raw/normalized cell-level input, used
+only to derive per-variant metadata (:func:<code>.utils.metadata.get_aggregate_meta_data</code>).</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>feature_type_files</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Glob pattern matching the per-feature-type full aggregate parquet
+files produced by :func:<code>fisseq_data_pipeline.aggregate.feature_type_main</code>.
+Each file contains <code>[label_column] + &lt;feature type's stat
+columns&gt;</code>; all matching files are joined on <code>label_column</code> to
+reconstruct the combined per-variant aggregate table. Required.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>block_list_file</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the combined blocklist parquet, with <code>feature</code> and
+<code>feature_ok</code> columns. Required.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>compute_impact_score</code></b>
+                  (<code><span title="bool">bool</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>If <code>True</code>, compute per-variant impact score (cosine distance vs
+synonymous baseline) after feature selection. Defaults to <code>True</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FinalizeFeatureSelectConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the final feature-selection entry</span>
+<span class="sd">    point: joins per-feature-type aggregates, applies the combined</span>
+<span class="sd">    blocklist, and runs pycytominer feature selection.</span>
+
+<span class="sd">    ``input_file`` (inherited) is the raw/normalized cell-level input, used</span>
+<span class="sd">    only to derive per-variant metadata (:func:`.utils.metadata.get_aggregate_meta_data`).</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    feature_type_files : str</span>
+<span class="sd">        Glob pattern matching the per-feature-type full aggregate parquet</span>
+<span class="sd">        files produced by :func:`fisseq_data_pipeline.aggregate.feature_type_main`.</span>
+<span class="sd">        Each file contains ``[label_column] + &lt;feature type&#39;s stat</span>
+<span class="sd">        columns&gt;``; all matching files are joined on ``label_column`` to</span>
+<span class="sd">        reconstruct the combined per-variant aggregate table. Required.</span>
+<span class="sd">    block_list_file : str</span>
+<span class="sd">        Path to the combined blocklist parquet, with ``feature`` and</span>
+<span class="sd">        ``feature_ok`` columns. Required.</span>
+<span class="sd">    compute_impact_score : bool</span>
+<span class="sd">        If ``True``, compute per-variant impact score (cosine distance vs</span>
+<span class="sd">        synonymous baseline) after feature selection. Defaults to ``True``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">feature_type_files</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">block_list_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+    <span class="n">compute_impact_score</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.features.GenerateSplitConfig" class="doc doc-heading">
+            <code>GenerateSplitConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="LabeledInputConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.LabeledInputConfig)" href="../config/#fisseq_data_pipeline.config.input.LabeledInputConfig">LabeledInputConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the pseudo-replicate split-generation
+entry point.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>random_state</code></b>
+                  (<code><span title="int">int</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Seed for the stratified 50/50
+:func:<code>sklearn.model_selection.train_test_split</code> by <code>label_column</code>.
+In the Nextflow pipeline this is set directly to the bootstrap-loop
+index (<code>1..params.bootstrap</code>), so each bootstrap replicate gets a
+distinct, reproducible split. Required.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">GenerateSplitConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the pseudo-replicate split-generation</span>
+<span class="sd">    entry point.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    random_state : int</span>
+<span class="sd">        Seed for the stratified 50/50</span>
+<span class="sd">        :func:`sklearn.model_selection.train_test_split` by ``label_column``.</span>
+<span class="sd">        In the Nextflow pipeline this is set directly to the bootstrap-loop</span>
+<span class="sd">        index (``1..params.bootstrap``), so each bootstrap replicate gets a</span>
+<span class="sd">        distinct, reproducible split. Required.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">MISSING</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.blocklist_main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">blocklist_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: compute a per-feature-type blocklist from N bootstrap
+correlation tables.</p>
+<p>This is the one intentional synchronization point across bootstrap
+replicates in the feature-selection pipeline. Globs
+<code>correlation_files</code>, concatenates all bootstrap-replicate correlation
+tables for one feature type, computes each feature's median <code>r</code> across
+replicates, and marks <code>feature_ok = median_r &gt;= minimum_correlation</code>.</p>
+
+
+<details class="output-file" open>
+  <summary>Output file</summary>
+  <ul>
+<li><code>{output_dir}/blocklist.parquet</code> with columns <code>feature</code>,
+  <code>median_r</code>, <code>feature_ok</code>.</li>
+</ul>
+</details>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Raises:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If <code>correlation_files</code> matches no files.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;blocklist_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">blocklist_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: compute a per-feature-type blocklist from N bootstrap</span>
+<span class="sd">    correlation tables.</span>
+
+<span class="sd">    This is the one intentional synchronization point across bootstrap</span>
+<span class="sd">    replicates in the feature-selection pipeline. Globs</span>
+<span class="sd">    ``correlation_files``, concatenates all bootstrap-replicate correlation</span>
+<span class="sd">    tables for one feature type, computes each feature&#39;s median ``r`` across</span>
+<span class="sd">    replicates, and marks ``feature_ok = median_r &gt;= minimum_correlation``.</span>
+
+<span class="sd">    Output file</span>
+<span class="sd">    -----------</span>
+<span class="sd">    - ``{output_dir}/blocklist.parquet`` with columns ``feature``,</span>
+<span class="sd">      ``median_r``, ``feature_ok``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``correlation_files`` matches no files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">bl_cfg</span><span class="p">:</span> <span class="n">BlocklistConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">bl_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">bl_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">bl_cfg</span><span class="p">,</span> <span class="s2">&quot;blocklist&quot;</span><span class="p">)</span>
+
+    <span class="n">paths</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">bl_cfg</span><span class="o">.</span><span class="n">correlation_files</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">paths</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No files matched glob pattern: </span><span class="si">{</span><span class="n">bl_cfg</span><span class="o">.</span><span class="n">correlation_files</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Found </span><span class="si">%d</span><span class="s2"> bootstrap correlation file(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths</span><span class="p">))</span>
+    <span class="n">corr_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">])</span>
+
+    <span class="n">blocklist_df</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">corr_df</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;feature&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;r&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">median</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;median_r&quot;</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;median_r&quot;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">bl_cfg</span><span class="o">.</span><span class="n">minimum_correlation</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;feature_ok&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;blocklist.parquet&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing blocklist to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">blocklist_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.combine_blocklists_main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">combine_blocklists_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: concatenate all per-feature-type blocklists into one
+combined blocklist.</p>
+<p>Globs <code>blocklist_files</code> and concatenates them with no deduplication —
+each feature type's blocklist covers a disjoint set of feature columns
+(stat-suffixed column names like <code>f1_mean</code> and <code>f1_EMD</code> never
+collide across feature types), so a plain concat is correct.</p>
+
+
+<details class="output-file" open>
+  <summary>Output file</summary>
+  <ul>
+<li><code>{output_dir}/blocklist.parquet</code></li>
+</ul>
+</details>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Raises:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="ValueError">ValueError</span></code>
+              –
+              <div class="doc-md-description">
+                <p>If <code>blocklist_files</code> matches no files.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;combine_blocklists_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">combine_blocklists_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: concatenate all per-feature-type blocklists into one</span>
+<span class="sd">    combined blocklist.</span>
+
+<span class="sd">    Globs ``blocklist_files`` and concatenates them with no deduplication —</span>
+<span class="sd">    each feature type&#39;s blocklist covers a disjoint set of feature columns</span>
+<span class="sd">    (stat-suffixed column names like ``f1_mean`` and ``f1_EMD`` never</span>
+<span class="sd">    collide across feature types), so a plain concat is correct.</span>
+
+<span class="sd">    Output file</span>
+<span class="sd">    -----------</span>
+<span class="sd">    - ``{output_dir}/blocklist.parquet``</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``blocklist_files`` matches no files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cb_cfg</span><span class="p">:</span> <span class="n">CombineBlocklistsConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">cb_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">cb_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">cb_cfg</span><span class="p">,</span> <span class="s2">&quot;combine_blocklists&quot;</span><span class="p">)</span>
+
+    <span class="n">paths</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">cb_cfg</span><span class="o">.</span><span class="n">blocklist_files</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">paths</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No files matched glob pattern: </span><span class="si">{</span><span class="n">cb_cfg</span><span class="o">.</span><span class="n">blocklist_files</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Found </span><span class="si">%d</span><span class="s2"> per-feature-type blocklist file(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths</span><span class="p">))</span>
+    <span class="n">combined</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">])</span>
+
+    <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;blocklist.parquet&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing combined blocklist to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">combined</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.compute_feature_correlations" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">compute_feature_correlations</span><span class="p">(</span><span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">,</span> <span class="n">label_col</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Compute per-feature Pearson correlations between two aggregate DataFrames.</p>
+<p>Both DataFrames are joined on <code>label_col</code> so that each row pairs the
+per-label aggregate from replicate 1 with the corresponding value from
+replicate 2. Pearson <em>r</em>, <em>r²</em>, and the two-tailed <em>p</em>-value are reported
+for each feature column.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>df1</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Aggregate DataFrame for the first pseudo-replicate. Must contain
+<code>label_col</code> and one or more feature columns (no <code>meta_</code> prefix).</p>
+              </div>
+            </li>
+            <li>
+              <b><code>df2</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Aggregate DataFrame for the second pseudo-replicate. Same schema as
+<code>df1</code>.</p>
+              </div>
+            </li>
+            <li>
+              <b><code>label_col</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Name of the column used to align the two DataFrames (e.g.
+<code>"meta_aa_changes"</code>).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.DataFrame">DataFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>One row per feature with columns <code>feature</code>, <code>r</code>, <code>r_squared</code>,
+and <code>p_value</code>.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span>
+<span class="normal">82</span>
+<span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_feature_correlations</span><span class="p">(</span>
+    <span class="n">df1</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">df2</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">label_col</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute per-feature Pearson correlations between two aggregate DataFrames.</span>
+
+<span class="sd">    Both DataFrames are joined on ``label_col`` so that each row pairs the</span>
+<span class="sd">    per-label aggregate from replicate 1 with the corresponding value from</span>
+<span class="sd">    replicate 2. Pearson *r*, *r²*, and the two-tailed *p*-value are reported</span>
+<span class="sd">    for each feature column.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    df1 : pl.DataFrame</span>
+<span class="sd">        Aggregate DataFrame for the first pseudo-replicate. Must contain</span>
+<span class="sd">        ``label_col`` and one or more feature columns (no ``meta_`` prefix).</span>
+<span class="sd">    df2 : pl.DataFrame</span>
+<span class="sd">        Aggregate DataFrame for the second pseudo-replicate. Same schema as</span>
+<span class="sd">        ``df1``.</span>
+<span class="sd">    label_col : str</span>
+<span class="sd">        Name of the column used to align the two DataFrames (e.g.</span>
+<span class="sd">        ``&quot;meta_aa_changes&quot;``).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.DataFrame</span>
+<span class="sd">        One row per feature with columns ``feature``, ``r``, ``r_squared``,</span>
+<span class="sd">        and ``p_value``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">df1</span> <span class="o">=</span> <span class="n">df1</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">))</span>
+    <span class="n">df2</span> <span class="o">=</span> <span class="n">df2</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">))</span>
+    <span class="n">df_joined</span> <span class="o">=</span> <span class="n">df1</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">df2</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;_right&quot;</span><span class="p">)</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">df1</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">feature</span> <span class="o">==</span> <span class="n">label_col</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">left_col</span> <span class="o">=</span> <span class="n">df_joined</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="n">right_col</span> <span class="o">=</span> <span class="n">df_joined</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feature</span><span class="si">}</span><span class="s2">_right&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+
+        <span class="n">corr</span><span class="p">,</span> <span class="n">p_val</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">pearsonr</span><span class="p">(</span><span class="n">left_col</span><span class="p">,</span> <span class="n">right_col</span><span class="p">)</span>
+        <span class="n">stat</span> <span class="o">=</span> <span class="n">corr</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">({</span><span class="s2">&quot;feature&quot;</span><span class="p">:</span> <span class="n">feature</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">:</span> <span class="n">corr</span><span class="p">,</span> <span class="s2">&quot;r_squared&quot;</span><span class="p">:</span> <span class="n">stat</span><span class="p">,</span> <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">p_val</span><span class="p">})</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;feature&quot;</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="s2">&quot;r_squared&quot;</span><span class="p">,</span> <span class="s2">&quot;p_value&quot;</span><span class="p">])</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.correlate_features_main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">correlate_features_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: compute per-feature pseudo-replicate Pearson
+correlations between two aggregate halves.</p>
+<p>Reads <code>half1_file</code> and <code>half2_file</code> (both outputs of
+:func:<code>fisseq_data_pipeline.aggregate.feature_type_main</code> for the same
+feature type, one per split half) and calls
+:func:<code>compute_feature_correlations</code>.</p>
+
+
+<details class="output-file" open>
+  <summary>Output file</summary>
+  <ul>
+<li><code>{output_dir}/correlations.parquet</code></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;correlate_features_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">correlate_features_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: compute per-feature pseudo-replicate Pearson</span>
+<span class="sd">    correlations between two aggregate halves.</span>
+
+<span class="sd">    Reads ``half1_file`` and ``half2_file`` (both outputs of</span>
+<span class="sd">    :func:`fisseq_data_pipeline.aggregate.feature_type_main` for the same</span>
+<span class="sd">    feature type, one per split half) and calls</span>
+<span class="sd">    :func:`compute_feature_correlations`.</span>
+
+<span class="sd">    Output file</span>
+<span class="sd">    -----------</span>
+<span class="sd">    - ``{output_dir}/correlations.parquet``</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">corr_cfg</span><span class="p">:</span> <span class="n">CorrelateFeaturesConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">corr_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">corr_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">corr_cfg</span><span class="p">,</span> <span class="s2">&quot;correlate_features&quot;</span><span class="p">)</span>
+
+    <span class="n">df1</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">corr_cfg</span><span class="o">.</span><span class="n">half1_file</span><span class="p">)</span>
+    <span class="n">df2</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">corr_cfg</span><span class="o">.</span><span class="n">half2_file</span><span class="p">)</span>
+    <span class="n">corr_df</span> <span class="o">=</span> <span class="n">compute_feature_correlations</span><span class="p">(</span><span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">,</span> <span class="n">corr_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+
+    <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;correlations.parquet&quot;</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing correlations to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">corr_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.generate_split_main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">generate_split_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: generate one pseudo-replicate 50/50 split.</p>
+<p>Loads <code>input_file</code>, adds a row-index column
+(:func:<code>.utils.splits.add_row_index</code>), and performs a stratified (by
+<code>label_column</code>) 50/50 :func:<code>sklearn.model_selection.train_test_split</code>
+at seed <code>random_state</code>. Each half's row indices are written as a
+single-column (<code>TMP_IDX_COL</code>) parquet file, consumable by
+:func:<code>fisseq_data_pipeline.aggregate.feature_type_main</code>'s <code>index_file</code>
+option.</p>
+
+
+<details class="output-files" open>
+  <summary>Output files</summary>
+  <ul>
+<li><code>{output_dir}/half1.parquet</code></li>
+<li><code>{output_dir}/half2.parquet</code></li>
+</ul>
+</details>
+
+<details class="configuration" open>
+  <summary>Configuration</summary>
+  <p>Override any field on the command line, e.g.::</p>
+<pre><code>python -m fisseq_data_pipeline.features \
+    output_dir=./out \
+    input_file=data/normalized.parquet \
+    random_state=3
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;generate_split_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_split_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: generate one pseudo-replicate 50/50 split.</span>
+
+<span class="sd">    Loads ``input_file``, adds a row-index column</span>
+<span class="sd">    (:func:`.utils.splits.add_row_index`), and performs a stratified (by</span>
+<span class="sd">    ``label_column``) 50/50 :func:`sklearn.model_selection.train_test_split`</span>
+<span class="sd">    at seed ``random_state``. Each half&#39;s row indices are written as a</span>
+<span class="sd">    single-column (``TMP_IDX_COL``) parquet file, consumable by</span>
+<span class="sd">    :func:`fisseq_data_pipeline.aggregate.feature_type_main`&#39;s ``index_file``</span>
+<span class="sd">    option.</span>
+
+<span class="sd">    Output files</span>
+<span class="sd">    ------------</span>
+<span class="sd">    - ``{output_dir}/half1.parquet``</span>
+<span class="sd">    - ``{output_dir}/half2.parquet``</span>
+
+<span class="sd">    Configuration</span>
+<span class="sd">    -------------</span>
+<span class="sd">    Override any field on the command line, e.g.::</span>
+
+<span class="sd">        python -m fisseq_data_pipeline.features \\</span>
+<span class="sd">            output_dir=./out \\</span>
+<span class="sd">            input_file=data/normalized.parquet \\</span>
+<span class="sd">            random_state=3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">split_cfg</span><span class="p">:</span> <span class="n">GenerateSplitConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">split_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">split_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">split_cfg</span><span class="p">,</span> <span class="s2">&quot;generate_split&quot;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading input from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">split_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+    <span class="n">lf</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">split_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">add_row_index</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span>
+
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">get_column</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">TMP_IDX_COL</span><span class="p">)</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">get_column</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">split_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+
+    <span class="n">half1_idx</span><span class="p">,</span> <span class="n">half2_idx</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">sklearn</span><span class="o">.</span><span class="n">model_selection</span><span class="o">.</span><span class="n">train_test_split</span><span class="p">(</span>
+        <span class="n">idx</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">stratify</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">split_cfg</span><span class="o">.</span><span class="n">random_state</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.5</span>
+    <span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Writing half1.parquet (</span><span class="si">%d</span><span class="s2"> rows) and half2.parquet (</span><span class="si">%d</span><span class="s2"> rows)&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">half1_idx</span><span class="p">),</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">half2_idx</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="n">TMP_IDX_COL</span><span class="p">:</span> <span class="n">half1_idx</span><span class="p">})</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;half1.parquet&quot;</span><span class="p">)</span>
+    <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="n">TMP_IDX_COL</span><span class="p">:</span> <span class="n">half2_idx</span><span class="p">})</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;half2.parquet&quot;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: final feature-selection stage.</p>
+
+
+<details class="steps" open>
+  <summary>Steps</summary>
+  <ol>
+<li>Load raw cell-level input at <code>input_file</code> (for metadata join only).</li>
+<li>Glob <code>feature_type_files</code> and join each per-feature-type aggregate
+   parquet on <code>label_column</code>, reconstructing the combined per-variant
+   aggregate table.</li>
+<li>Load <code>block_list_file</code> and drop blocked feature columns.</li>
+<li>Run :func:<code>pyc_feature_select</code> (variance threshold, pycytominer
+   blocklist, correlation threshold).</li>
+<li>Optionally compute impact score (:func:<code>.aggregate.variant_classification</code></li>
+<li>:func:<code>.utils.vectors.compute_impact_score</code>).</li>
+<li>Join per-variant metadata via :func:<code>.utils.metadata.get_aggregate_meta_data</code>.</li>
+<li>Write output.</li>
+</ol>
+</details>
+
+<details class="output-path" open>
+  <summary>Output path</summary>
+  <ul>
+<li>Glob input: <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code></li>
+<li>Single-file input: <code>{output_root}.{stem}.parquet</code> or
+  <code>{output_dir}/{stem}.parquet</code></li>
+</ul>
+</details>
+
+<details class="configuration" open>
+  <summary>Configuration</summary>
+  <p>Override any field on the command line, e.g.::</p>
+<pre><code>python -m fisseq_data_pipeline.features \
+    output_dir=./out \
+    input_file=data/normalized.parquet \
+    'feature_type_files=./ft/*.parquet' \
+    block_list_file=./blocklist.parquet
+</code></pre>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;feature_select_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: final feature-selection stage.</span>
+
+<span class="sd">    Steps</span>
+<span class="sd">    -----</span>
+<span class="sd">    1. Load raw cell-level input at ``input_file`` (for metadata join only).</span>
+<span class="sd">    2. Glob ``feature_type_files`` and join each per-feature-type aggregate</span>
+<span class="sd">       parquet on ``label_column``, reconstructing the combined per-variant</span>
+<span class="sd">       aggregate table.</span>
+<span class="sd">    3. Load ``block_list_file`` and drop blocked feature columns.</span>
+<span class="sd">    4. Run :func:`pyc_feature_select` (variance threshold, pycytominer</span>
+<span class="sd">       blocklist, correlation threshold).</span>
+<span class="sd">    5. Optionally compute impact score (:func:`.aggregate.variant_classification`</span>
+<span class="sd">       + :func:`.utils.vectors.compute_impact_score`).</span>
+<span class="sd">    6. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.</span>
+<span class="sd">    7. Write output.</span>
+
+<span class="sd">    Output path</span>
+<span class="sd">    -----------</span>
+<span class="sd">    - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``</span>
+<span class="sd">    - Single-file input: ``{output_root}.{stem}.parquet`` or</span>
+<span class="sd">      ``{output_dir}/{stem}.parquet``</span>
+
+<span class="sd">    Configuration</span>
+<span class="sd">    -------------</span>
+<span class="sd">    Override any field on the command line, e.g.::</span>
+
+<span class="sd">        python -m fisseq_data_pipeline.features \\</span>
+<span class="sd">            output_dir=./out \\</span>
+<span class="sd">            input_file=data/normalized.parquet \\</span>
+<span class="sd">            &#39;feature_type_files=./ft/*.parquet&#39; \\</span>
+<span class="sd">            block_list_file=./blocklist.parquet</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">feat_cfg</span><span class="p">:</span> <span class="n">FinalizeFeatureSelectConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">feat_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">feat_cfg</span><span class="p">,</span> <span class="s2">&quot;features&quot;</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading raw input from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+    <span class="n">lf</span><span class="p">,</span> <span class="n">output_stem</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Loading per-feature-type aggregates from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">feature_type_files</span>
+    <span class="p">)</span>
+    <span class="n">ft_paths</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">feature_type_files</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">ft_paths</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;No files matched glob pattern: </span><span class="si">{</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">feature_type_files</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="n">agg_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">ft_paths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ft_paths</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+        <span class="n">agg_df</span> <span class="o">=</span> <span class="n">agg_df</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">p</span><span class="p">),</span> <span class="n">on</span><span class="o">=</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading block list from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">block_list_file</span><span class="p">)</span>
+    <span class="n">bl_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">block_list_file</span><span class="p">)</span>
+    <span class="n">block_list</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">bl_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;feature_ok&quot;</span><span class="p">))[</span><span class="s2">&quot;feature&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_list</span><span class="p">())</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Dropping </span><span class="si">%d</span><span class="s2"> blocked feature(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">block_list</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">agg_df</span><span class="o">.</span><span class="n">columns</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="n">agg_df</span> <span class="o">=</span> <span class="n">agg_df</span><span class="o">.</span><span class="n">drop</span><span class="p">([</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">block_list</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">agg_df</span><span class="o">.</span><span class="n">columns</span><span class="p">])</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running pycytominer feature selection&quot;</span><span class="p">)</span>
+    <span class="n">selected_df</span> <span class="o">=</span> <span class="n">pyc_feature_select</span><span class="p">(</span><span class="n">agg_df</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">compute_impact_score</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing impact scores&quot;</span><span class="p">)</span>
+        <span class="n">selected_lf</span> <span class="o">=</span> <span class="n">variant_classification</span><span class="p">(</span><span class="n">selected_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">(),</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+        <span class="n">selected_df</span> <span class="o">=</span> <span class="n">compute_impact_score</span><span class="p">(</span><span class="n">selected_lf</span><span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding queries to retrieve metadata&quot;</span><span class="p">)</span>
+    <span class="n">meta_lf</span> <span class="o">=</span> <span class="n">get_aggregate_meta_data</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+    <span class="n">selected_lf</span> <span class="o">=</span> <span class="n">selected_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">()</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing output to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+    <span class="n">selected_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.features.pyc_feature_select" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">pyc_feature_select</span><span class="p">(</span><span class="n">agg_df</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Select informative features from a per-variant aggregate DataFrame using
+pycytominer.</p>
+<p>Applies three sequential filters via :func:<code>pycytominer.feature_select</code>:
+low-variance removal (<code>variance_threshold</code>), pycytominer's built-in
+blocklist, and redundancy removal (<code>correlation_threshold</code>).</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Parameters:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>agg_df</code></b>
+                  (<code><span title="polars.DataFrame">DataFrame</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Per-variant aggregate DataFrame. Feature columns must match
+<code>FEATURE_SELECTOR</code> (i.e. no <code>meta_</code> prefix).</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Returns:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+                  <code><span title="polars.DataFrame">DataFrame</span></code>
+              –
+              <div class="doc-md-description">
+                <p>Subset of <code>agg_df</code> retaining only the features that pass all three
+filters. Non-feature (<code>meta_</code>) columns are preserved unchanged.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">pyc_feature_select</span><span class="p">(</span><span class="n">agg_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select informative features from a per-variant aggregate DataFrame using</span>
+<span class="sd">    pycytominer.</span>
+
+<span class="sd">    Applies three sequential filters via :func:`pycytominer.feature_select`:</span>
+<span class="sd">    low-variance removal (``variance_threshold``), pycytominer&#39;s built-in</span>
+<span class="sd">    blocklist, and redundancy removal (``correlation_threshold``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    agg_df : pl.DataFrame</span>
+<span class="sd">        Per-variant aggregate DataFrame. Feature columns must match</span>
+<span class="sd">        ``FEATURE_SELECTOR`` (i.e. no ``meta_`` prefix).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pl.DataFrame</span>
+<span class="sd">        Subset of ``agg_df`` retaining only the features that pass all three</span>
+<span class="sd">        filters. Non-feature (``meta_``) columns are preserved unchanged.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">select_agg_df_pd</span> <span class="o">=</span> <span class="n">pycytominer</span><span class="o">.</span><span class="n">feature_select</span><span class="p">(</span>
+        <span class="n">profiles</span><span class="o">=</span><span class="n">agg_df</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">(),</span>
+        <span class="n">features</span><span class="o">=</span><span class="n">agg_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span>
+        <span class="n">image_features</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">samples</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">,</span>
+        <span class="n">operation</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;variance_threshold&quot;</span><span class="p">,</span> <span class="s2">&quot;blocklist&quot;</span><span class="p">,</span> <span class="s2">&quot;correlation_threshold&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">select_agg_df_pd</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../aggregate/" class="btn btn-neutral float-left" title="aggregate"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../batchcorrect/" class="btn btn-neutral float-right" title="batchcorrect">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../aggregate/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../batchcorrect/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
