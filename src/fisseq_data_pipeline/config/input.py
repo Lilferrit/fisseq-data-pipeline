@@ -1,3 +1,11 @@
+"""Hydra structured config layers adding an input file and a variant label column.
+
+Defines :class:`InputConfig` (adds ``input_file``) and :class:`LabeledInputConfig`
+(adds ``label_column``), both extending :class:`.app.AppConfig`. Most pipeline
+entry points' configs extend one of these rather than :class:`.app.AppConfig`
+directly.
+"""
+
 import dataclasses
 
 from omegaconf import MISSING

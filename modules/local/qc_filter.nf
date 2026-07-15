@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// QC_FILTER: wraps fisseq-qc-filter. Runs once per batch parquet in input/,
+// applying edit-distance, barcode-count, and variant-barcode-count filters.
+// Publishes filtered_cells.parquet, barcode_counts.parquet, and
+// variants_per_barcode.parquet under qc_filter/<batch_stem>/.
 process QC_FILTER {
     errorStrategy 'ignore'
     publishDir { "${params.input_dir}/qc_filter/${batch_stem}" }, mode: 'copy'

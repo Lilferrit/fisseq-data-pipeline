@@ -1,5 +1,8 @@
 nextflow.enable.dsl = 2
 
+// OVWT_CELLSCORES_BATCHWISE: wraps fisseq-ovwt-cell-scores. Scores a batch's
+// cells (or, in workflows/ovwt.nf, just its held-out test split index) against
+// the trained one-vs-wildtype models produced by OVWT_BATCHWISE for that batch.
 process OVWT_CELLSCORES_BATCHWISE {
     errorStrategy 'ignore'
     publishDir { "${params.input_dir}/ovwt_cellscores_batchwise/${batch_stem}" }, mode: 'copy'

@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// BATCH_CORRECT_TRANSFORM: wraps fisseq-batch-correct-transform. Runs once
+// per batch, applying the BATCH_CORRECT_FIT statistics to rescale that
+// batch's QC-filtered cells to the wildtype centroid. Publishes the
+// corrected batch under batch_correction/cells/.
 process BATCH_CORRECT_TRANSFORM {
     errorStrategy 'ignore'
     publishDir "${params.input_dir}/batch_correction/cells", mode: 'copy'

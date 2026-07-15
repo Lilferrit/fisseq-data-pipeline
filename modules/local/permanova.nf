@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// PERMANOVA: wraps fisseq-permanova. Parameterized over which cells glob and
+// publish subdirectory to use, so workflows/fisseq.nf invokes this process
+// twice via `include { PERMANOVA as X }` aliasing: once against normalized
+// cells, once against batch-corrected cells.
 process PERMANOVA {
     errorStrategy 'ignore'
     publishDir { "${params.input_dir}/${publish_subdir}" }, mode: 'copy'

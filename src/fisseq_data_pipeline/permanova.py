@@ -1,3 +1,12 @@
+"""Per-variant PERMANOVA batch-effect assessment via pairwise cosine distance.
+
+Hydra entry point ``fisseq-permanova``, backing the Nextflow process ``PERMANOVA``
+(run once against normalized cells, once against batch-corrected cells). For each
+variant seen in more than one batch, computes a pseudo-F statistic from all
+pairwise cosine distances (Anderson 2001 sum-of-squares decomposition) and an
+optional permutation p-value.
+"""
+
 import dataclasses
 import logging
 import pathlib

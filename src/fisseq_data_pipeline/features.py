@@ -1,3 +1,15 @@
+"""Bootstrap pseudo-replicate feature selection pipeline.
+
+Hydra entry points backing the Nextflow processes ``GENERATE_SPLIT``,
+``CORRELATE_FEATURES``, ``BLOCKLIST``, ``COMBINE_BLOCKLISTS``, and
+``FINALIZE_FEATURE_SELECT`` (per-feature-type aggregation itself lives in
+:mod:`.aggregate`, run as ``AGGREGATE_HALF``): split cells into stratified
+pseudo-replicate halves, correlate per-feature-type aggregates between halves across
+bootstrap replicates, derive a per-feature blocklist from the median correlation, and
+apply it plus pycytominer feature selection to produce the final per-variant
+aggregate.
+"""
+
 import dataclasses
 import glob
 import logging

@@ -1,14 +1,32 @@
 site_name: Fisseq Data Pipeline
 nav:
   - Home: index.md
-  - Pipeline: pipeline.md
-  - Configuration: configuration.md
-  - Filter: filter.md
-  - Normalize: normalize.md
-  - Aggregate: aggregate.md
-  - Feature Selection: features.md
-  - Config: config.md
-  - Utils: utils.md
+  - Architecture: architecture.md
+  - Installation: installation.md
+  - Nextflow Workflow: nextflow.md
+  - CLI Reference:
+      - QC Filter: cli/qcfilter.md
+      - Normalize: cli/normalize.md
+      - Aggregate: cli/aggregate.md
+      - Feature Selection: cli/features.md
+      - Batch Correction: cli/batchcorrect.md
+      - PERMANOVA: cli/permanova.md
+      - One-vs-WT: cli/ovwt.md
+      - OvWT Cell Scores: cli/ovwtcellscores.md
+      - Batch vs. Batch: cli/batchvsbatch.md
+  - API Reference:
+      - qcfilter: api/qcfilter.md
+      - normalize: api/normalize.md
+      - aggregate: api/aggregate.md
+      - features: api/features.md
+      - batchcorrect: api/batchcorrect.md
+      - permanova: api/permanova.md
+      - ovwt: api/ovwt.md
+      - ovwtcellscores: api/ovwtcellscores.md
+      - batchvsbatch: api/batchvsbatch.md
+      - config: api/config.md
+      - utils: api/utils.md
+  - Walkthrough: walkthrough.md
 theme:
   name: readthedocs
 plugins:

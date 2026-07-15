@@ -1,5 +1,9 @@
 nextflow.enable.dsl = 2
 
+// OvwtPipeline: lighter alternative to FisseqPipeline, selected via
+// `--workflow ovwt`. Wires QC_FILTER -> OVWT_BATCHWISE ->
+// OVWT_CELLSCORES_BATCHWISE only — no normalization, batch correction, or
+// feature selection.
 include { QC_FILTER                 } from '../modules/local/qc_filter'
 include { OVWT_BATCHWISE            } from '../modules/local/ovwt_batchwise'
 include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'

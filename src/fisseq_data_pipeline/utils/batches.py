@@ -1,3 +1,10 @@
+"""Glob-based loading of per-batch Parquet files into one labeled LazyFrame.
+
+Defines :func:`load_batches`, used by nearly every Hydra entry point whose
+``input_file`` accepts a glob pattern (one file per batch, tagged with
+``meta_batch`` from the filename stem or parent directory name).
+"""
+
 import glob as _glob
 import logging
 import pathlib

@@ -1,3 +1,11 @@
+"""Shared XGBoost configuration, DMatrix construction, and split helpers.
+
+Defines :class:`XGBoostParams` / :class:`XGBoostConfig` (shared Hydra sub-config)
+and :func:`get_dmatrix` / :func:`get_dmatrix_multiclass` /
+:func:`split_indices_stratified`, used by :mod:`.ovwt`, :mod:`.ovwtcellscores`, and
+:mod:`.batchvsbatch`.
+"""
+
 import dataclasses
 from typing import Optional
 

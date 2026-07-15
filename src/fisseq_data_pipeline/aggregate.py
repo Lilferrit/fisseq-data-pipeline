@@ -1,3 +1,13 @@
+"""Per-variant cell-level feature aggregation strategies.
+
+Defines 8 concrete :class:`BaseAggregator` implementations (mean, median, MAD, std,
+EMD, KS, QQ, AUROC) and two Hydra entry points: ``fisseq-aggregate`` (standalone,
+normalizes to synonymous baseline and attaches metadata) and
+``fisseq-aggregate-feature-type`` (Nextflow processes ``AGGREGATE_FEATURE_TYPE`` and
+``AGGREGATE_HALF`` — lean per-feature-type aggregation used by the feature-selection
+branch).
+"""
+
 import abc
 import dataclasses
 import functools

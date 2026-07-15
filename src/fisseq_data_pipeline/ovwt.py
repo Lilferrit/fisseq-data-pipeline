@@ -1,3 +1,12 @@
+"""One-vs-wildtype XGBoost variant classification.
+
+Hydra entry point ``fisseq-ovwt``, backing the Nextflow processes ``OVWT_BATCHWISE``
+and ``OVWT_GLOBAL``. Trains a separate binary XGBoost classifier per non-wildtype
+variant against a shared 80/10/10 stratified split, optionally downsampling
+wildtype cells, and writes per-variant AUROC/accuracy results plus the trained
+models.
+"""
+
 import dataclasses
 import functools
 import logging

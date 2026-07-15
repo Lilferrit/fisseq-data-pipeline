@@ -1,5 +1,10 @@
 nextflow.enable.dsl = 2
 
+// BATCHVSBATCH: wraps fisseq-batch-vs-batch. Parameterized over which cells
+// glob, use_parent_name, and publish subdirectory to use, so
+// workflows/fisseq.nf invokes this process twice via
+// `include { BATCHVSBATCH as X }` aliasing: once pre-normalization
+// (QC-filtered cells) and once post-normalization.
 process BATCHVSBATCH {
     errorStrategy 'ignore'
     publishDir { "${params.input_dir}/batchvsbatch/${publish_subdir}" }, mode: 'copy'
