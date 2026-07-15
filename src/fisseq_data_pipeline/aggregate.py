@@ -1,5 +1,6 @@
 import abc
 import dataclasses
+import functools
 import logging
 import pathlib
 import re
@@ -41,12 +42,17 @@ class AggregateConfig(LabeledInputConfig):
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
         ``False`` are excluded from aggregation. Defaults to ``None`` (no
         features blocked).
+    feature_batch_size : int or None
+        If set, split features into chunks of at most this many columns per
+        aggregation pass to bound peak memory. Defaults to ``None`` (no
+        batching; all features processed in a single pass).
     """
 
     aggregator: str = MISSING
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
     compute_impact_score: bool = True
+    feature_batch_size: Optional[int] = None
 
 
 _cs = ConfigStore.instance()
@@ -131,38 +137,59 @@ class BaseAggregator(abc.ABC):
         raise NotImplementedError
 
 
-def _reference_alias(feat: str) -> str:
-    """Column name for a feature's label-independent reference-pool list."""
-    return f"__reference__{feat}"
-
-
-def _variant_reference_lists(
-    lf: pl.LazyFrame, label_col: str, feature_cols: list[str]
-) -> pl.LazyFrame:
+def _collect_reference_pool(
+    lf: pl.LazyFrame, feature_cols: list[str]
+) -> dict[str, np.ndarray]:
     """
-    Build one row per variant label with, for each feature, a list column of
-    that label's own (non-control) values and a label-independent list
-    column of the full control/reference pool for that feature.
+    Collect the control/reference pool for ``feature_cols`` once, as plain
+    numpy arrays shared by reference (not copied) across every variant
+    group's stat computation.
 
     The reference pool is shared by every variant label (a single global
-    control group, not split per-label), so it is aggregated once and
-    cross-joined in rather than replicated per label before grouping.
+    control group, not split per-label), so collecting it once here and
+    looking it up by feature name avoids replicating it once per label
+    (which a join into the per-label LazyFrame would do).
+
+    Values are raw (nulls become NaN via ``to_numpy()``); cleaning is the
+    caller's responsibility via :func:`_clean`, which already drops
+    non-finite values, so the null->NaN conversion is a no-op for
+    correctness.
     """
-    variant_lists = (
-        lf.filter(~CONTROL_COLUMN)
-        .group_by(label_col)
-        .agg([pl.col(f) for f in feature_cols])
-    )
-    reference_lists = lf.filter(CONTROL_COLUMN).select(
-        [pl.col(f).implode().alias(_reference_alias(f)) for f in feature_cols]
-    )
-    return variant_lists.join(reference_lists, how="cross")
+    if not feature_cols:
+        return {}
+    ref_df = lf.filter(CONTROL_COLUMN).select(feature_cols).collect()
+    return {f: ref_df[f].to_numpy() for f in feature_cols}
 
 
-def _clean(values: Optional[list]) -> np.ndarray:
-    """Drop None and non-finite entries from a struct-unpacked value list."""
+def _native_clean(feat: str) -> pl.Expr:
+    """
+    Native-Polars equivalent of :func:`_clean` applied to a per-label list
+    column: drop null, NaN, and Inf entries from the list for ``feat`` before
+    any further native list-based computation. ``is_finite()`` on a Float64
+    element is ``False`` for null/NaN/Inf alike, matching ``_clean``'s
+    ``v is not None and np.isfinite(v)`` filter exactly (verified against
+    empty, single-value, null-mixed, NaN, and Inf cases).
+    """
+    return pl.col(feat).list.eval(pl.element().filter(pl.element().is_finite()))
+
+
+def _chunk(items: list[str], size: Optional[int]) -> list[list[str]]:
+    """
+    Split ``items`` into chunks of at most ``size`` elements. ``size`` of
+    ``None`` or ``<= 0`` means "no batching" (a single chunk containing all
+    items) — a defensive no-op rather than a footgun for ``size=0``.
+    """
+    if size is None or size <= 0:
+        return [items]
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _clean(values) -> np.ndarray:
+    """Drop None and non-finite entries from a value list or numpy array."""
+    if values is None:
+        values = []
     return np.fromiter(
-        (v for v in (values or []) if v is not None and np.isfinite(v)), dtype=float
+        (v for v in values if v is not None and np.isfinite(v)), dtype=float
     )
 
 
@@ -181,19 +208,55 @@ class FeatureStatAggregator(BaseAggregator):
     implement :meth:`_compute_feature_stat`. The boilerplate of grouping
     variant values and the reference pool into list columns, filtering the
     block list, and constructing the per-feature query is handled here.
+
+    Subclasses that don't need SciPy/scikit-learn or the reference pool
+    (e.g. mean, median, std, MAD) can instead override :meth:`_native_expr`
+    to return a native Polars expression for a feature's stat. This stays
+    entirely in Arrow (no Python boxing via ``map_elements``) and lets the
+    query engine stream/parallelize the computation. When
+    :meth:`_native_expr` returns ``None`` (the default) for a feature,
+    :meth:`_stat_expr` falls back to the struct + ``map_elements`` +
+    :meth:`_compute_feature_stat` path. The reference pool is only collected
+    for features whose :meth:`_native_expr` returns ``None`` (see
+    :meth:`_aggregate_feature_batch`), since native-expression stats never
+    need it.
     """
 
     _stat_suffix: ClassVar[str]
 
     @abc.abstractmethod
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         """
-        Compute a single statistic from ``values``, a dict with keys
-        ``"variant"`` and ``"reference"`` each mapping to a list of feature
-        values (possibly containing ``None``). Stats that don't need the
-        reference pool (e.g. mean, median) simply ignore that key.
+        Compute a single statistic for ``feat`` from ``values``, a dict with
+        key ``"variant"`` mapping to that label's list of feature values
+        (possibly containing ``None``). ``reference_pool`` maps feature name
+        to that feature's control/reference values (a shared numpy array,
+        not copied); stats that don't need it (e.g. mean, median) simply
+        ignore it.
         """
         raise NotImplementedError
+
+    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
+        """
+        Return a native Polars expression that computes this aggregator's
+        statistic for ``feat`` directly from that feature's per-label
+        variant list column, bypassing ``map_elements`` and the reference
+        pool entirely. Return ``None`` (the default) to fall back to the
+        struct + ``map_elements`` + :meth:`_compute_feature_stat` path,
+        e.g. for stats that require SciPy/scikit-learn (EMD, KS, QQ, AUROC)
+        or that cannot be reconciled exactly against :func:`_clean`'s
+        null/NaN/Inf-dropping semantics using native list expressions.
+
+        Subclasses that override this must reproduce :func:`_clean`'s
+        semantics exactly: null, NaN, and Inf entries are all excluded
+        before the statistic is computed, and an empty (or, for std, a
+        single-element) cleaned list yields ``null`` in the output —
+        matching :func:`_finalize`'s "non-finite result -> null" behavior
+        for the final scalar too.
+        """
+        return None
 
     def _feature_columns(self, lf: pl.LazyFrame) -> list[str]:
         return [
@@ -202,23 +265,70 @@ class FeatureStatAggregator(BaseAggregator):
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
 
-    def _stat_expr(self, feat: str) -> pl.Expr:
+    def _stat_expr(self, feat: str, reference_pool: dict[str, np.ndarray]) -> pl.Expr:
+        native = self._native_expr(feat)
+        if native is not None:
+            return native.alias(f"{feat}{self._stat_suffix}")
         return (
-            pl.struct(
-                [
-                    pl.col(feat).alias("variant"),
-                    pl.col(_reference_alias(feat)).alias("reference"),
-                ]
+            pl.struct([pl.col(feat).alias("variant")])
+            .map_elements(
+                functools.partial(
+                    self._compute_feature_stat,
+                    feat=feat,
+                    reference_pool=reference_pool,
+                ),
+                return_dtype=pl.Float64,
             )
-            .map_elements(self._compute_feature_stat, return_dtype=pl.Float64)
             .alias(f"{feat}{self._stat_suffix}")
         )
 
-    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+    def aggregate(
+        self, lf: pl.LazyFrame, feature_batch_size: Optional[int] = None
+    ) -> pl.LazyFrame:
+        """
+        Compute per-label statistics for every non-block-listed feature.
+
+        Parameters
+        ----------
+        lf : pl.LazyFrame
+            Input LazyFrame.
+        feature_batch_size : int or None
+            If set, features are processed in chunks of at most this many
+            columns at a time (each chunk performs its own group_by/agg and
+            reference-pool collection), and per-chunk results are joined
+            back together on ``label_col``. This trades some redundant
+            group_by work for a lower peak-memory list-column
+            materialization per chunk. ``None`` (default) processes all
+            features in a single pass, identical to unbatched behavior.
+        """
         feature_cols = self._feature_columns(lf)
-        base = _variant_reference_lists(lf, self.label_col, feature_cols)
-        return base.select(
-            [self.label_col] + [self._stat_expr(f) for f in feature_cols]
+        batches = _chunk(feature_cols, feature_batch_size)
+        results = [self._aggregate_feature_batch(lf, cols) for cols in batches]
+
+        out = results[0]
+        for r in results[1:]:
+            out = out.join(r, on=self.label_col, how="inner")
+        return out
+
+    def _aggregate_feature_batch(
+        self, lf: pl.LazyFrame, feature_cols: list[str]
+    ) -> pl.LazyFrame:
+        # Only features that fall back to the map_elements path (i.e. whose
+        # _native_expr returns None) need the reference pool; native-only
+        # aggregators (mean/median/std/MAD) never touch it, so skip
+        # collecting it entirely when nothing in this batch needs it.
+        non_native_cols = [f for f in feature_cols if self._native_expr(f) is None]
+        reference_pool = (
+            _collect_reference_pool(lf, non_native_cols) if non_native_cols else {}
+        )
+        variant_lists = (
+            lf.filter(~CONTROL_COLUMN)
+            .group_by(self.label_col)
+            .agg([pl.col(f) for f in feature_cols])
+        )
+        return variant_lists.select(
+            [self.label_col]
+            + [self._stat_expr(f, reference_pool) for f in feature_cols]
         )
 
 
@@ -227,7 +337,12 @@ class MeanAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_mean"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
+        return _native_clean(feat).list.mean()
+
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         vals = _clean(values["variant"])
         if len(vals) == 0:
             return None
@@ -239,7 +354,12 @@ class MedianAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_median"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
+        return _native_clean(feat).list.median()
+
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         vals = _clean(values["variant"])
         if len(vals) == 0:
             return None
@@ -251,7 +371,18 @@ class MADAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_MAD"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
+        # Verified against np.median(np.abs(vals - np.median(vals))) for
+        # empty, single-value, normal, and NaN/Inf-present cases — matches
+        # exactly (see test_mad_native_matches_numpy_with_nan_inf_present).
+        cleaned = _native_clean(feat)
+        return cleaned.list.eval(
+            (pl.element() - pl.element().median()).abs()
+        ).list.median()
+
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         vals = _clean(values["variant"])
         if len(vals) == 0:
             return None
@@ -263,7 +394,15 @@ class StdAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_std"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
+        # Confirmed: list.std(ddof=1) returns null for lists of length < 2,
+        # matching the len(vals) < 2 -> None check in _compute_feature_stat
+        # below (see test_std_native_single_value_group_returns_null).
+        return _native_clean(feat).list.std(ddof=1)
+
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         vals = _clean(values["variant"])
         if len(vals) < 2:
             return None
@@ -278,9 +417,11 @@ class EMDAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_EMD"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         group_vals = _clean(values["variant"])
-        ref_vals = _clean(values["reference"])
+        ref_vals = _clean(reference_pool[feat])
         if len(group_vals) == 0 or len(ref_vals) == 0:
             return None
         return _finalize(scipy.stats.wasserstein_distance(group_vals, ref_vals))
@@ -294,9 +435,11 @@ class KSAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_KS"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         group_vals = _clean(values["variant"])
-        ref_vals = _clean(values["reference"])
+        ref_vals = _clean(reference_pool[feat])
         if len(group_vals) == 0 or len(ref_vals) == 0:
             return None
         return _finalize(scipy.stats.ks_2samp(group_vals, ref_vals).statistic)
@@ -326,9 +469,11 @@ class QQCorrelationAggregator(FeatureStatAggregator):
         super().__init__(label_col, block_list)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         group_vals = _clean(values["variant"])
-        ref_vals = _clean(values["reference"])
+        ref_vals = _clean(reference_pool[feat])
         if len(group_vals) == 0 or len(ref_vals) == 0:
             return None
         variant_q = np.quantile(group_vals, self.quantile_points)
@@ -348,9 +493,11 @@ class AUROCAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_AUROC"
 
-    def _compute_feature_stat(self, values: dict) -> Optional[float]:
+    def _compute_feature_stat(
+        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    ) -> Optional[float]:
         group_vals = _clean(values["variant"])
-        ref_vals = _clean(values["reference"])
+        ref_vals = _clean(reference_pool[feat])
         if len(group_vals) == 0 or len(ref_vals) == 0:
             return None
         concatenated = np.concatenate([ref_vals, group_vals])
@@ -378,6 +525,7 @@ def aggregate(
     label_col: str,
     aggregator_name: str,
     block_list: Optional[set[str]] = None,
+    feature_batch_size: Optional[int] = None,
 ) -> pl.LazyFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
@@ -399,6 +547,10 @@ def aggregate(
         statistics are not computed and do not appear in the output. Names
         that do not match any aggregated output are silently ignored. Defaults
         to ``None``.
+    feature_batch_size : int or None
+        If set, split features into chunks of at most this many columns per
+        aggregation pass to bound peak memory. Defaults to ``None`` (no
+        batching; all features processed in a single pass).
 
     Returns
     -------
@@ -412,7 +564,7 @@ def aggregate(
         )
 
     agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
-    return agg.aggregate(lf)
+    return agg.aggregate(lf, feature_batch_size=feature_batch_size)
 
 
 @hydra.main(version_base=None, config_path=None, config_name="aggregate_main")
@@ -476,6 +628,7 @@ def main(cfg: DictConfig) -> None:
             label_col=agg_cfg.label_column,
             aggregator_name=agg_cfg.aggregator,
             block_list=block_list,
+            feature_batch_size=agg_cfg.feature_batch_size,
         ),
         agg_cfg.label_column,
     )
@@ -533,10 +686,15 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         naming a subset of cell-level rows to aggregate over (e.g. one
         pseudo-replicate half). When ``None``, all rows are aggregated.
         Defaults to ``None``.
+    feature_batch_size : int or None
+        If set, split features into chunks of at most this many columns per
+        aggregation pass to bound peak memory. Defaults to ``None`` (no
+        batching; all features processed in a single pass).
     """
 
     aggregator: str = MISSING
     index_file: Optional[str] = None
+    feature_batch_size: Optional[int] = None
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
@@ -593,7 +751,10 @@ def feature_type_main(cfg: DictConfig) -> None:
 
     logging.info("Running %s aggregator", ft_cfg.aggregator)
     agg_lf = aggregate(
-        lf, label_col=ft_cfg.label_column, aggregator_name=ft_cfg.aggregator
+        lf,
+        label_col=ft_cfg.label_column,
+        aggregator_name=ft_cfg.aggregator,
+        feature_batch_size=ft_cfg.feature_batch_size,
     )
 
     if ft_cfg.output_root is not None:

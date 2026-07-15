@@ -24,7 +24,8 @@ process AGGREGATE_HALF {
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\
         aggregator=${feature_type} \\
-        index_file=${index_file}
+        index_file=${index_file} \\
+        feature_batch_size=${params.feature_batch_size}
     mv ${feature_type}.*.parquet half${half_num}_agg.parquet
     """
 }

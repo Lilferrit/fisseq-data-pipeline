@@ -1,5 +1,4 @@
 import dataclasses
-import functools
 import logging
 import pathlib
 import traceback
@@ -16,7 +15,6 @@ from .utils.batches import load_batches
 from .utils.constants import FEATURE_SELECTOR, META_BATCH_COL
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
-from .utils.vectors import COSINE_DIST_COL, compute_cosine_distance
 
 _cs = ConfigStore.instance()
 
@@ -49,11 +47,8 @@ class PermanovaConfig(LabeledInputConfig):
 
 _cs.store(name="permanova_main", node=PermanovaConfig)
 
-_TMP_IDX = "__row_idx__"
-_PAIRS_COL = "__pairs__"
 _N_COL = "__n__"
 _A_COL = "__a__"
-_VARIANT_IDX_COL = "__variant_idx__"
 
 
 def _f_statistic(
@@ -101,6 +96,134 @@ def _f_statistic(
     return (ss_between / (a - 1)) / (ss_within / (n - a))
 
 
+def _pairwise_cosine_distance(X: np.ndarray) -> np.ndarray:
+    """
+    Compute the full symmetric n x n cosine-distance matrix for a feature
+    matrix ``X`` (n samples x p features), replicating
+    :func:`.utils.vectors.compute_cosine_distance`'s per-pair, per-dimension
+    null/``NaN``/infinite-value masking without materializing an n^2 x p
+    intermediate.
+
+    For a pair of rows (i, j), feature dimension k contributes to the dot
+    product and both norms only if ``X[i, k]`` and ``X[j, k]`` are both
+    finite; excluded dimensions contribute 0. If a row's resulting norm is 0
+    (e.g. every dimension was excluded for that pair), it is treated as 1 so
+    the division does not produce ``NaN`` -- matching
+    :func:`.utils.vectors.compute_cosine_distance`'s zero-norm guard exactly,
+    including the edge case where every dimension is excluded (distance is
+    then exactly ``1.0``).
+
+    Derivation: let ``M`` be the 0/1 finite-value mask, ``Z`` the
+    zero-filled values, and ``W`` the zero-filled squared values (all n x p).
+    Then for pair (i, j), ``dot = sum_k M[i,k]*M[j,k]*X[i,k]*X[j,k] =
+    (Z @ Z.T)[i,j]`` (since a zeroed factor already contributes 0), and
+    ``norm_a^2 = sum_k M[i,k]*M[j,k]*X[i,k]**2 = sum_k M[j,k]*W[i,k] =
+    (W @ M.T)[i,j]``, with ``norm_b^2`` (the pair's other side) equal to
+    ``M @ W.T = (W @ M.T).T`` by symmetry. This reduces the computation to
+    three O(n^2 x p)-time, O(n^2)-memory matrix multiplications instead of
+    an O(n^2 x p)-memory pairwise join.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        n x p array of feature values; non-finite entries (``NaN``, ``inf``)
+        are treated as missing.
+
+    Returns
+    -------
+    np.ndarray
+        n x n symmetric matrix of cosine distances.
+    """
+    finite = np.isfinite(X)
+    mask = finite.astype(np.float64)
+    zeroed = np.where(finite, X, 0.0)
+    squared = np.where(finite, X * X, 0.0)
+
+    dot = zeroed @ zeroed.T
+    norm_a_sq = squared @ mask.T
+    norm_b_sq = norm_a_sq.T
+
+    norm_a = np.sqrt(norm_a_sq)
+    norm_b = np.sqrt(norm_b_sq)
+    safe_norm_a = np.where(norm_a == 0.0, 1.0, norm_a)
+    safe_norm_b = np.where(norm_b == 0.0, 1.0, norm_b)
+
+    return 1.0 - dot / (safe_norm_a * safe_norm_b)
+
+
+def _compute_permanova_stats(
+    X: np.ndarray,
+    batch_labels: np.ndarray,
+    n_permutations: int,
+    seed: int,
+) -> Optional[dict]:
+    """
+    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one
+    variant's already-collected feature matrix and batch labels.
+
+    Computes the full pairwise cosine-distance matrix via
+    :func:`_pairwise_cosine_distance`, extracts the condensed upper triangle
+    as unordered sample pairs, and derives the F-statistic via
+    :func:`_f_statistic`'s sum-of-squares decomposition.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        n x p feature matrix for one variant. Non-finite entries are
+        treated as missing (handled per-pair, per-dimension).
+    batch_labels : np.ndarray
+        Length-n array of batch identifiers.
+    n_permutations : int
+        Number of label permutations used to estimate the p-value. ``0``
+        skips the permutation test entirely (``p_value`` is ``None``).
+    seed : int
+        Random seed for label permutation.
+
+    Returns
+    -------
+    dict or None
+        ``{"f_statistic": float, "p_value": float or None}``, or ``None``
+        (with a logged warning) if fewer than 2 samples or fewer than 2
+        batches are present.
+    """
+    n = X.shape[0]
+    _, group_of_sample, group_sizes = np.unique(
+        batch_labels, return_inverse=True, return_counts=True
+    )
+    a = group_sizes.shape[0]
+
+    if n < 2 or a < 2:
+        logging.warning(
+            "Skipping variant: %d sample(s) across %d batch(es) "
+            "(need >= 2 samples and >= 2 batches)",
+            n,
+            a,
+        )
+        return None
+
+    cosine_dist = _pairwise_cosine_distance(X)
+    idx_a, idx_b = np.triu_indices(n, k=1)
+    d2 = cosine_dist[idx_a, idx_b] ** 2
+
+    f_obs = _f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
+
+    if n_permutations <= 0:
+        logging.info("f_statistic=%.4f, p_value=None", f_obs)
+        return {"f_statistic": f_obs, "p_value": None}
+
+    rng = np.random.default_rng(seed)
+    count_ge = 0
+    for _ in range(n_permutations):
+        perm_group = rng.permutation(group_of_sample)
+        f_perm = _f_statistic(d2, idx_a, idx_b, perm_group, group_sizes, n, a)
+        if f_perm >= f_obs:
+            count_ge += 1
+    p_value = (count_ge + 1) / (n_permutations + 1)
+
+    logging.info("f_statistic=%.4f, p_value=%.4f", f_obs, p_value)
+    return {"f_statistic": f_obs, "p_value": p_value}
+
+
 def compute_variant_permanova(
     variant_lf: pl.LazyFrame,
     feature_cols: list[str],
@@ -111,12 +234,12 @@ def compute_variant_permanova(
     """
     Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one variant.
 
-    Forms all unique unordered sample pairs (including cross-batch pairs) via
-    a self cross-join, computes cosine distance per pair with
-    :func:`.utils.vectors.compute_cosine_distance`, and derives the F-statistic from
-    the sum-of-squares decomposition. Null, ``NaN``, and infinite feature values
-    are handled by :func:`.utils.vectors.compute_cosine_distance` itself (excluded
-    per pair rather than dropping whole rows/samples).
+    Collects the variant's feature matrix and batch labels to NumPy and
+    delegates to :func:`_compute_permanova_stats`, which computes all unique
+    unordered sample pairs (including cross-batch pairs) via
+    :func:`_pairwise_cosine_distance` and derives the F-statistic from the
+    sum-of-squares decomposition. Null, ``NaN``, and infinite feature values
+    are excluded per pair rather than dropping whole rows/samples.
 
     Parameters
     ----------
@@ -139,153 +262,14 @@ def compute_variant_permanova(
         a logged warning) if fewer than 2 samples or fewer than 2 batches
         are present.
     """
-    group_counts_df = variant_lf.group_by(batch_col).agg(pl.len().alias("_n")).collect()
-    n = int(group_counts_df.get_column("_n").sum())
-    a = group_counts_df.height
-
-    if n < 2 or a < 2:
-        logging.warning(
-            "Skipping variant: %d sample(s) across %d batch(es) "
-            "(need >= 2 samples and >= 2 batches)",
-            n,
-            a,
-        )
-        return None
-
-    indexed_lf = variant_lf.select([*feature_cols, batch_col]).with_row_index(_TMP_IDX)
-    pairs_lf = indexed_lf.join(indexed_lf, how="cross", suffix="_b").filter(
-        pl.col(_TMP_IDX) < pl.col(f"{_TMP_IDX}_b")
-    )
-    dist_lf = compute_cosine_distance(pairs_lf, feature_cols, suffix="_b")
-    pair_df = dist_lf.select(
-        pl.col(_TMP_IDX).alias("idx_a"),
-        pl.col(f"{_TMP_IDX}_b").alias("idx_b"),
-        pl.col(batch_col).alias("batch_a"),
-        pl.col(f"{batch_col}_b").alias("batch_b"),
-        pl.col(COSINE_DIST_COL).alias("dist"),
+    collected = variant_lf.select(
+        [pl.col(c).cast(pl.Float64) for c in feature_cols]
+        + [pl.col(batch_col).cast(pl.Utf8)]
     ).collect()
+    X = collected.select(feature_cols).to_numpy()
+    batch_labels = collected.get_column(batch_col).to_numpy()
 
-    idx_a = pair_df.get_column("idx_a").to_numpy()
-    idx_b = pair_df.get_column("idx_b").to_numpy()
-    d2 = pair_df.get_column("dist").to_numpy() ** 2
-
-    all_idx = np.concatenate([idx_a, idx_b])
-    all_labels = np.concatenate(
-        [
-            pair_df.get_column("batch_a").cast(pl.Utf8).to_numpy(),
-            pair_df.get_column("batch_b").cast(pl.Utf8).to_numpy(),
-        ]
-    )
-    sample_labels = np.empty(n, dtype=all_labels.dtype)
-    sample_labels[all_idx] = all_labels
-
-    _, group_of_sample, group_sizes = np.unique(
-        sample_labels, return_inverse=True, return_counts=True
-    )
-
-    f_obs = _f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
-
-    if n_permutations <= 0:
-        logging.info("f_statistic=%.4f, p_value=None", f_obs)
-        return {"f_statistic": f_obs, "p_value": None}
-
-    rng = np.random.default_rng(seed)
-    count_ge = 0
-    for _ in range(n_permutations):
-        perm_group = rng.permutation(group_of_sample)
-        f_perm = _f_statistic(d2, idx_a, idx_b, perm_group, group_sizes, n, a)
-        if f_perm >= f_obs:
-            count_ge += 1
-    p_value = (count_ge + 1) / (n_permutations + 1)
-
-    logging.info("f_statistic=%.4f, p_value=%.4f", f_obs, p_value)
-    return {"f_statistic": f_obs, "p_value": p_value}
-
-
-def _compute_variant_stats_from_pairs(
-    row: dict, n_permutations: int, seed: int
-) -> dict:
-    """
-    ``map_elements`` callback: PERMANOVA f-statistic/p-value for one variant's
-    pre-aggregated sample pairs.
-
-    Mirrors the second half of :func:`compute_variant_permanova` (sample-label
-    reconstruction, :func:`_f_statistic`, permutation loop), but reads its
-    inputs from a dict of already-materialized Python lists (as handed to it
-    by Polars per aggregated row) instead of collecting a per-variant
-    LazyFrame itself. This lets ``main`` compute every variant's pairs and
-    statistics in a single lazy query instead of one query per variant.
-
-    Parameters
-    ----------
-    row : dict
-        One aggregated row with keys ``_N_COL``, ``_A_COL``,
-        ``_VARIANT_IDX_COL``, and ``_PAIRS_COL`` (a list of
-        ``{"idx_a", "idx_b", "batch_a", "batch_b", "dist"}`` dicts, one per
-        unordered sample pair).
-    n_permutations : int
-        Number of label permutations for the p-value. ``0`` skips the test.
-    seed : int
-        Base random seed; this variant's trial uses ``seed + row[_VARIANT_IDX_COL]``.
-
-    Returns
-    -------
-    dict
-        ``{"f_statistic": float or None, "p_value": float or None}``.
-        Both are ``None`` if fewer than 2 samples or fewer than 2 batches are
-        present, or if computation raised an exception (logged as a warning).
-    """
-    try:
-        n, a = row[_N_COL], row[_A_COL]
-        if n < 2 or a < 2:
-            logging.warning(
-                "Skipping variant: %d sample(s) across %d batch(es) "
-                "(need >= 2 samples and >= 2 batches)",
-                n,
-                a,
-            )
-            return {"f_statistic": None, "p_value": None}
-
-        pairs = row[_PAIRS_COL]
-        idx_a = np.array([p["idx_a"] for p in pairs], dtype=np.int64)
-        idx_b = np.array([p["idx_b"] for p in pairs], dtype=np.int64)
-        d2 = np.array([p["dist"] for p in pairs], dtype=np.float64) ** 2
-        all_idx = np.concatenate([idx_a, idx_b])
-        all_labels = np.concatenate(
-            [
-                np.array([p["batch_a"] for p in pairs]),
-                np.array([p["batch_b"] for p in pairs]),
-            ]
-        )
-        sample_labels = np.empty(n, dtype=all_labels.dtype)
-        sample_labels[all_idx] = all_labels
-        _, group_of_sample, group_sizes = np.unique(
-            sample_labels, return_inverse=True, return_counts=True
-        )
-
-        f_obs = _f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
-
-        if n_permutations <= 0:
-            logging.info("f_statistic=%.4f, p_value=None", f_obs)
-            return {"f_statistic": f_obs, "p_value": None}
-
-        rng = np.random.default_rng(seed + row[_VARIANT_IDX_COL])
-        count_ge = 0
-        for _ in range(n_permutations):
-            perm_group = rng.permutation(group_of_sample)
-            f_perm = _f_statistic(d2, idx_a, idx_b, perm_group, group_sizes, n, a)
-            if f_perm >= f_obs:
-                count_ge += 1
-        p_value = (count_ge + 1) / (n_permutations + 1)
-
-        logging.info("f_statistic=%.4f, p_value=%.4f", f_obs, p_value)
-        return {"f_statistic": f_obs, "p_value": p_value}
-    except Exception:
-        logging.warning(
-            "Failed to compute PERMANOVA for variant, skipping:\n%s",
-            traceback.format_exc(),
-        )
-        return {"f_statistic": None, "p_value": None}
+    return _compute_permanova_stats(X, batch_labels, n_permutations, seed)
 
 
 @hydra.main(version_base=None, config_path=None, config_name="permanova_main")
@@ -297,14 +281,12 @@ def main(cfg: DictConfig) -> None:
     -----
     1. Glob ``input_file`` to find batch files; each file's stem becomes its
        batch label (added as ``meta_batch``).
-    2. In a single lazy query: self-join the frame on the label column to form
-       every unordered same-variant sample pair, compute per-pair cosine
-       distance, and aggregate each variant's pairs into a list-of-structs
-       column. A single ``map_elements`` call
-       (:func:`_compute_variant_stats_from_pairs`) then computes the PERMANOVA
-       pseudo-F statistic (and optional permutation p-value) per variant, reusing
-       :func:`_f_statistic`. Variants with fewer than 2 samples/batches, or that
-       raise an exception, are dropped with a warning.
+    2. Restrict to variants seen in more than one batch, collect each such
+       variant's feature matrix and batch labels to NumPy in turn, and
+       compute the PERMANOVA pseudo-F statistic (and optional permutation
+       p-value) via :func:`_compute_permanova_stats`. Variants with fewer
+       than 2 samples/batches, or that raise an exception, are skipped with
+       a logged warning rather than aborting the whole run.
     3. Join per-variant metadata from :func:`.utils.metadata.get_aggregate_meta_data`
        and write results to a Parquet file via ``sink_parquet``.
 
@@ -340,8 +322,8 @@ def main(cfg: DictConfig) -> None:
     feature_cols = list(lf.select(FEATURE_SELECTOR).collect_schema().names())
     logging.info("Using %d feature column(s)", len(feature_cols))
 
-    # Per-variant sample/batch counts; also used to filter to variants seen in
-    # more than one batch (mirrors compute_variant_permanova's own bail-out).
+    # Per-variant sample/batch counts; used to filter to variants seen in
+    # more than one batch (mirrors _compute_permanova_stats's own bail-out).
     variant_stats_lf = (
         lf.group_by(label_col)
         .agg(pl.len().alias(_N_COL), pl.col(batch_col).n_unique().alias(_A_COL))
@@ -349,67 +331,65 @@ def main(cfg: DictConfig) -> None:
     )
     qualifying_lf = variant_stats_lf.filter(pl.col(_A_COL) > 1).select(label_col)
 
-    # Restrict to qualifying variants and assign a per-variant-local row index.
-    indexed_lf = (
+    # Collect once, restricted to qualifying variants and pruned to the
+    # columns needed, so each variant's feature matrix can be sliced out in
+    # the loop below without re-scanning the (possibly multi-file) input.
+    restricted_df = (
         lf.join(qualifying_lf, on=label_col, how="semi")
-        .select([label_col, batch_col, *feature_cols])
-        .with_columns(pl.int_range(pl.len()).over(label_col).alias(_TMP_IDX))
+        .select(
+            pl.col(label_col),
+            pl.col(batch_col).cast(pl.Utf8),
+            *[pl.col(c).cast(pl.Float64) for c in feature_cols],
+        )
+        .sort(label_col)
+        .collect()
     )
 
-    # Self merge on the variant column: joining on label_col restricts pairs
-    # to same-variant rows. Filter by index to keep each unordered pair once.
-    pairs_lf = indexed_lf.join(indexed_lf, on=label_col, suffix="_b").filter(
-        pl.col(_TMP_IDX) < pl.col(f"{_TMP_IDX}_b")
-    )
-    dist_lf = compute_cosine_distance(pairs_lf, feature_cols, suffix="_b")
+    # Serial per-variant loop: each variant's pairwise distance computation
+    # is now O(n^2) in memory (not O(n^2 * p) fused across all variants), so
+    # no batching/parallelism is needed here.
+    records: list[dict] = []
+    for variant_idx, variant_df in enumerate(
+        restricted_df.partition_by(label_col, maintain_order=True)
+    ):
+        label = variant_df.get_column(label_col)[0]
+        try:
+            X = variant_df.select(feature_cols).to_numpy()
+            batch_labels = variant_df.get_column(batch_col).to_numpy()
+            result = _compute_permanova_stats(
+                X,
+                batch_labels,
+                perm_cfg.n_permutations,
+                perm_cfg.seed + variant_idx,
+            )
+        except Exception:
+            logging.warning(
+                "Failed to compute PERMANOVA for variant %r, skipping:\n%s",
+                label,
+                traceback.format_exc(),
+            )
+            continue
+        if result is None:
+            continue
+        records.append(
+            {
+                label_col: label,
+                "f_statistic": result["f_statistic"],
+                "p_value": result["p_value"],
+            }
+        )
 
-    # Aggregate each variant's pairs into a single list-of-structs column.
-    pairs_agg_lf = (
-        dist_lf.select(
-            label_col,
-            pl.col(_TMP_IDX).alias("idx_a"),
-            pl.col(f"{_TMP_IDX}_b").alias("idx_b"),
-            pl.col(batch_col).cast(pl.Utf8).alias("batch_a"),
-            pl.col(f"{batch_col}_b").cast(pl.Utf8).alias("batch_b"),
-            pl.col(COSINE_DIST_COL).alias("dist"),
-        )
-        .group_by(label_col)
-        .agg(
-            pl.struct(["idx_a", "idx_b", "batch_a", "batch_b", "dist"]).alias(
-                _PAIRS_COL
-            )
-        )
-        .join(variant_stats_lf, on=label_col, how="inner")
-        .with_columns(
-            (pl.col(label_col).rank(method="dense").cast(pl.Int64) - 1).alias(
-                _VARIANT_IDX_COL
-            )
-        )
-    )
-
-    # Single map_elements call computes f_statistic/p_value per variant.
-    stats_lf = (
-        pairs_agg_lf.with_columns(
-            pl.struct([label_col, _PAIRS_COL, _N_COL, _A_COL, _VARIANT_IDX_COL])
-            .map_elements(
-                functools.partial(
-                    _compute_variant_stats_from_pairs,
-                    n_permutations=perm_cfg.n_permutations,
-                    seed=perm_cfg.seed,
-                ),
-                return_dtype=pl.Struct(
-                    {"f_statistic": pl.Float64, "p_value": pl.Float64}
-                ),
-            )
-            .alias("__stats__")
-        )
-        .unnest("__stats__")
-        .select([label_col, "f_statistic", "p_value"])
-        .filter(pl.col("f_statistic").is_not_null())
+    stats_df = pl.DataFrame(
+        records,
+        schema={
+            label_col: restricted_df.schema[label_col],
+            "f_statistic": pl.Float64,
+            "p_value": pl.Float64,
+        },
     )
 
     meta_lf = get_aggregate_meta_data(lf, label_col)
-    output_lf = stats_lf.join(meta_lf, on=label_col, how="inner")
+    output_lf = stats_df.lazy().join(meta_lf, on=label_col, how="inner")
 
     prefix = f"{perm_cfg.output_root}." if perm_cfg.output_root is not None else ""
     out_path = output_dir / f"{prefix}permanova.parquet"

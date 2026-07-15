@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 import fisseq_data_pipeline.permanova as m
 from fisseq_data_pipeline.permanova import PermanovaConfig
 from fisseq_data_pipeline.utils.constants import META_BATCH_COL
+from fisseq_data_pipeline.utils.vectors import COSINE_DIST_COL, compute_cosine_distance
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -101,6 +102,49 @@ def test_f_statistic_separated_groups_larger_than_mixed() -> None:
         return result["f_statistic"]
 
     assert _f_for(df_sep) > _f_for(df_mix)
+
+
+# ---------------------------------------------------------------------------
+# _pairwise_cosine_distance
+# ---------------------------------------------------------------------------
+
+
+def test_pairwise_cosine_distance_matches_polars_path_with_nonfinite_values() -> None:
+    """The vectorized NumPy matmul path must exactly reproduce
+    compute_cosine_distance's per-pair, per-dimension null/NaN/inf masking,
+    including a null, a NaN, and an infinite feature value."""
+    X = np.array(
+        [
+            [1.0, 2.0],
+            [3.0, np.nan],
+            [np.inf, 4.0],
+        ]
+    )
+    result = m._pairwise_cosine_distance(X)
+
+    for i in range(3):
+        for j in range(3):
+            lf = pl.LazyFrame(
+                {
+                    "f1": [X[i, 0]],
+                    "f2": [X[i, 1]],
+                    "f1_b": [X[j, 0]],
+                    "f2_b": [X[j, 1]],
+                }
+            )
+            expected = compute_cosine_distance(lf, ["f1", "f2"], suffix="_b").collect()[
+                COSINE_DIST_COL
+            ][0]
+            assert result[i, j] == pytest.approx(expected, abs=1e-9)
+
+
+def test_pairwise_cosine_distance_all_features_excluded_is_exactly_one() -> None:
+    """When every dimension is non-finite for a pair, both norms are forced
+    to 1.0 and dot is 0.0, so the distance must be exactly 1.0, not NaN."""
+    X = np.array([[np.nan], [np.nan]])
+    result = m._pairwise_cosine_distance(X)
+    assert result[0, 1] == pytest.approx(1.0, abs=1e-9)
+    assert result[1, 0] == pytest.approx(1.0, abs=1e-9)
 
 
 # ---------------------------------------------------------------------------

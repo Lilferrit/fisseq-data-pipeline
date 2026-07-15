@@ -135,6 +135,41 @@ def test_emd_aggregator_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None
 
 
 # ---------------------------------------------------------------------------
+# _collect_reference_pool
+# ---------------------------------------------------------------------------
+
+
+def test_reference_pool_collected_once(toy_norm_df: pl.DataFrame) -> None:
+    with patch(
+        "fisseq_data_pipeline.aggregate._collect_reference_pool",
+        wraps=m._collect_reference_pool,
+    ) as spy:
+        m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert spy.call_count == 1
+
+
+def test_reference_pool_values_match_control_rows(toy_norm_df: pl.DataFrame) -> None:
+    pool = m._collect_reference_pool(toy_norm_df.lazy(), ["f1", "f2"])
+    expected_f1 = toy_norm_df.filter(pl.col("meta_is_control"))["f1"].to_list()
+    expected_f2 = toy_norm_df.filter(pl.col("meta_is_control"))["f2"].to_list()
+    assert pool["f1"].tolist() == expected_f1
+    assert pool["f2"].tolist() == expected_f2
+
+
+def test_reference_pool_none_becomes_nan_but_clean_still_drops_it() -> None:
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "WT"],
+            "meta_is_control": [True, True, True],
+            "f1": pl.Series([1.0, None, 3.0], dtype=pl.Float64),
+        }
+    )
+    pool = m._collect_reference_pool(df.lazy(), ["f1"])
+    assert np.isnan(pool["f1"][1])
+    assert m._clean(pool["f1"]).tolist() == [1.0, 3.0]
+
+
+# ---------------------------------------------------------------------------
 # Null-value fixtures
 # ---------------------------------------------------------------------------
 
@@ -225,6 +260,145 @@ def test_native_aggregators_exclude_control_rows() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _native_expr — native vs map_elements parity
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def single_value_group_df() -> pl.DataFrame:
+    """Group A has three values; group B has exactly one (std edge case)."""
+    return pl.DataFrame(
+        {
+            "meta_aa_changes": ["A", "A", "A", "B"],
+            "meta_is_control": [False, False, False, False],
+            "f1": [1.0, 2.0, 3.0, 5.0],
+        }
+    )
+
+
+@pytest.fixture
+def nan_inf_group_df() -> pl.DataFrame:
+    """Group A mixes finite values with None, NaN, and Inf."""
+    return pl.DataFrame(
+        {
+            "meta_aa_changes": ["A", "A", "A", "A"],
+            "meta_is_control": [False, False, False, False],
+            "f1": pl.Series([1.0, None, float("nan"), float("inf")], dtype=pl.Float64),
+        }
+    ).vstack(
+        pl.DataFrame(
+            {
+                "meta_aa_changes": ["A"],
+                "meta_is_control": [False],
+                "f1": pl.Series([2.0], dtype=pl.Float64),
+            }
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "agg_cls,col",
+    [
+        (m.MeanAggregator, "f1_mean"),
+        (m.MedianAggregator, "f1_median"),
+        (m.StdAggregator, "f1_std"),
+        (m.MADAggregator, "f1_MAD"),
+    ],
+)
+@pytest.mark.parametrize(
+    "df_fixture",
+    ["simple_df", "null_df", "toy_norm_df", "single_value_group_df"],
+)
+def test_native_matches_map_elements_baseline(
+    agg_cls, col, df_fixture, request, monkeypatch
+) -> None:
+    df: pl.DataFrame = request.getfixturevalue(df_fixture)
+    native_result = _sorted(agg_cls().aggregate(df.lazy()).collect())
+
+    monkeypatch.setattr(agg_cls, "_native_expr", lambda self, feat: None)
+    forced_map_elements_result = _sorted(agg_cls().aggregate(df.lazy()).collect())
+
+    assert native_result.equals(forced_map_elements_result)
+
+
+def test_std_native_single_value_group_returns_null(
+    single_value_group_df: pl.DataFrame,
+) -> None:
+    result = m.StdAggregator().aggregate(single_value_group_df.lazy()).collect()
+    row_b = _get_row(result, "B")
+    assert row_b["f1_std"] is None
+
+
+def test_mad_native_matches_numpy_with_nan_inf_present(
+    nan_inf_group_df: pl.DataFrame,
+) -> None:
+    result = m.MADAggregator().aggregate(nan_inf_group_df.lazy()).collect()
+    row_a = _get_row(result, "A")
+    finite_vals = np.array([1.0, 2.0])
+    expected = np.median(np.abs(finite_vals - np.median(finite_vals)))
+    assert row_a["f1_MAD"] == pytest.approx(expected)
+
+
+def test_std_native_matches_numpy_with_nan_inf_present(
+    nan_inf_group_df: pl.DataFrame,
+) -> None:
+    result = m.StdAggregator().aggregate(nan_inf_group_df.lazy()).collect()
+    row_a = _get_row(result, "A")
+    finite_vals = np.array([1.0, 2.0])
+    expected = np.std(finite_vals, ddof=1)
+    assert row_a["f1_std"] == pytest.approx(expected)
+
+
+def test_native_expr_default_returns_none_for_reference_based_aggregators() -> None:
+    for agg_cls in (
+        m.EMDAggregator,
+        m.KSAggregator,
+        m.QQCorrelationAggregator,
+        m.AUROCAggregator,
+    ):
+        assert agg_cls()._native_expr("f1") is None
+
+
+def test_reference_pool_not_collected_for_native_aggregators(
+    simple_df: pl.DataFrame,
+) -> None:
+    for agg_cls in (
+        m.MeanAggregator,
+        m.MedianAggregator,
+        m.StdAggregator,
+        m.MADAggregator,
+    ):
+        with patch(
+            "fisseq_data_pipeline.aggregate._collect_reference_pool",
+            wraps=m._collect_reference_pool,
+        ) as spy:
+            agg_cls().aggregate(simple_df.lazy()).collect()
+        assert spy.call_count == 0
+
+
+def test_reference_pool_still_collected_for_map_elements_aggregators(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    for agg_cls in (m.EMDAggregator, m.AUROCAggregator):
+        with patch(
+            "fisseq_data_pipeline.aggregate._collect_reference_pool",
+            wraps=m._collect_reference_pool,
+        ) as spy:
+            agg_cls().aggregate(toy_norm_df.lazy()).collect()
+        assert spy.call_count == 1
+
+
+def test_native_and_batching_combine_correctly(many_features_df: pl.DataFrame) -> None:
+    unbatched = m.MeanAggregator().aggregate(many_features_df.lazy()).collect()
+    batched = (
+        m.MeanAggregator()
+        .aggregate(many_features_df.lazy(), feature_batch_size=2)
+        .collect()
+    )
+    assert _sorted(unbatched).equals(_sorted(batched))
+
+
+# ---------------------------------------------------------------------------
 # aggregate() function
 # ---------------------------------------------------------------------------
 
@@ -259,6 +433,116 @@ def test_aggregate_unknown_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# feature_batch_size
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def many_features_df() -> pl.DataFrame:
+    """Two variant groups, six feature columns (f1..f6), no control rows."""
+    return pl.DataFrame(
+        {
+            "meta_aa_changes": ["A", "A", "A", "B", "B", "B"],
+            "meta_is_control": [False, False, False, False, False, False],
+            "f1": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+            "f2": [4.0, 5.0, 6.0, 40.0, 50.0, 60.0],
+            "f3": [7.0, 8.0, 9.0, 70.0, 80.0, 90.0],
+            "f4": [1.5, 2.5, 3.5, 15.0, 25.0, 35.0],
+            "f5": [2.0, 3.0, 4.0, 20.0, 30.0, 40.0],
+            "f6": [0.5, 1.5, 2.5, 5.0, 15.0, 25.0],
+        }
+    )
+
+
+def _sorted(df: pl.DataFrame) -> pl.DataFrame:
+    return df.select(sorted(df.columns)).sort("meta_aa_changes")
+
+
+def test_feature_batch_size_none_matches_unbatched(simple_df: pl.DataFrame) -> None:
+    unbatched = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
+    explicit_none = (
+        m.MeanAggregator()
+        .aggregate(simple_df.lazy(), feature_batch_size=None)
+        .collect()
+    )
+    assert _sorted(unbatched).equals(_sorted(explicit_none))
+
+
+def test_feature_batch_size_splits_and_rejoins_identically(
+    many_features_df: pl.DataFrame,
+) -> None:
+    unbatched = m.MeanAggregator().aggregate(many_features_df.lazy()).collect()
+    batched = (
+        m.MeanAggregator()
+        .aggregate(many_features_df.lazy(), feature_batch_size=2)
+        .collect()
+    )
+    assert _sorted(unbatched).equals(_sorted(batched))
+
+
+def test_feature_batch_size_with_reference_based_aggregator(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    unbatched = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
+    batched = (
+        m.EMDAggregator().aggregate(toy_norm_df.lazy(), feature_batch_size=1).collect()
+    )
+    assert _sorted(unbatched).equals(_sorted(batched))
+
+
+def test_feature_batch_size_preserves_all_labels(
+    many_features_df: pl.DataFrame,
+) -> None:
+    unbatched = m.MeanAggregator().aggregate(many_features_df.lazy()).collect()
+    batched = (
+        m.MeanAggregator()
+        .aggregate(many_features_df.lazy(), feature_batch_size=2)
+        .collect()
+    )
+    assert set(batched["meta_aa_changes"]) == set(unbatched["meta_aa_changes"])
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_feature_batch_size_zero_or_negative_is_noop(
+    simple_df: pl.DataFrame, size: int
+) -> None:
+    unbatched = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
+    result = (
+        m.MeanAggregator()
+        .aggregate(simple_df.lazy(), feature_batch_size=size)
+        .collect()
+    )
+    assert _sorted(unbatched).equals(_sorted(result))
+
+
+def test_aggregate_feature_batch_size_threads_through(
+    many_features_df: pl.DataFrame,
+) -> None:
+    unbatched = m.aggregate(
+        many_features_df.lazy(), label_col="meta_aa_changes", aggregator_name="mean"
+    ).collect()
+    batched = m.aggregate(
+        many_features_df.lazy(),
+        label_col="meta_aa_changes",
+        aggregator_name="mean",
+        feature_batch_size=2,
+    ).collect()
+    assert _sorted(unbatched).equals(_sorted(batched))
+
+
+def test_main_feature_batch_size_config_field_default_none(tmp_path) -> None:
+    cfg = make_agg_cfg(tmp_path)
+    assert OmegaConf.to_object(cfg).feature_batch_size is None
+
+
+def test_feature_type_main_feature_batch_size_config_field_default_none(
+    tmp_path,
+) -> None:
+    cfg = make_ft_cfg(tmp_path)
+    assert OmegaConf.to_object(cfg).feature_batch_size is None
+
+
+# ---------------------------------------------------------------------------
 # main()
 # ---------------------------------------------------------------------------
 
@@ -271,6 +555,7 @@ def make_agg_cfg(
     aggregator="mean",
     block_list_file=None,
     compute_impact_score=True,
+    feature_batch_size=None,
 ) -> OmegaConf:
     """Return a DictConfig for AggregateConfig with sensible test defaults."""
     return OmegaConf.structured(
@@ -282,6 +567,7 @@ def make_agg_cfg(
             aggregator=aggregator,
             block_list_file=block_list_file,
             compute_impact_score=compute_impact_score,
+            feature_batch_size=feature_batch_size,
         )
     )
 
@@ -376,6 +662,21 @@ def test_main_saves_normalizer_when_configured(tmp_path):
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path, save_normalizer=True))
     assert (tmp_path / "out" / "normalizer.parquet").exists()
+
+
+def test_main_feature_batch_size_end_to_end(tmp_path):
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path, feature_batch_size=1))
+    batched = pl.read_parquet(tmp_path / "out" / "input.parquet")
+
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path))
+    unbatched = pl.read_parquet(tmp_path / "out" / "input.parquet")
+
+    assert set(batched.columns) == set(unbatched.columns)
+    assert _sorted(batched).equals(_sorted(unbatched))
 
 
 # ---------------------------------------------------------------------------
@@ -975,6 +1276,7 @@ def make_ft_cfg(
     output_root=None,
     aggregator="mean",
     index_file=None,
+    feature_batch_size=None,
 ) -> OmegaConf:
     """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
     return OmegaConf.structured(
@@ -984,6 +1286,7 @@ def make_ft_cfg(
             input_file=str(tmp_path / "input.parquet"),
             aggregator=aggregator,
             index_file=index_file,
+            feature_batch_size=feature_batch_size,
         )
     )
 
