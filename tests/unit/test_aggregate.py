@@ -260,7 +260,7 @@ def test_native_aggregators_exclude_control_rows() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _native_expr — native vs map_elements parity
+# Native aggregators — edge cases
 # ---------------------------------------------------------------------------
 
 
@@ -296,31 +296,6 @@ def nan_inf_group_df() -> pl.DataFrame:
     )
 
 
-@pytest.mark.parametrize(
-    "agg_cls,col",
-    [
-        (m.MeanAggregator, "f1_mean"),
-        (m.MedianAggregator, "f1_median"),
-        (m.StdAggregator, "f1_std"),
-        (m.MADAggregator, "f1_MAD"),
-    ],
-)
-@pytest.mark.parametrize(
-    "df_fixture",
-    ["simple_df", "null_df", "toy_norm_df", "single_value_group_df"],
-)
-def test_native_matches_map_elements_baseline(
-    agg_cls, col, df_fixture, request, monkeypatch
-) -> None:
-    df: pl.DataFrame = request.getfixturevalue(df_fixture)
-    native_result = _sorted(agg_cls().aggregate(df.lazy()).collect())
-
-    monkeypatch.setattr(agg_cls, "_native_expr", lambda self, feat: None)
-    forced_map_elements_result = _sorted(agg_cls().aggregate(df.lazy()).collect())
-
-    assert native_result.equals(forced_map_elements_result)
-
-
 def test_std_native_single_value_group_returns_null(
     single_value_group_df: pl.DataFrame,
 ) -> None:
@@ -347,16 +322,6 @@ def test_std_native_matches_numpy_with_nan_inf_present(
     finite_vals = np.array([1.0, 2.0])
     expected = np.std(finite_vals, ddof=1)
     assert row_a["f1_std"] == pytest.approx(expected)
-
-
-def test_native_expr_default_returns_none_for_reference_based_aggregators() -> None:
-    for agg_cls in (
-        m.EMDAggregator,
-        m.KSAggregator,
-        m.QQCorrelationAggregator,
-        m.AUROCAggregator,
-    ):
-        assert agg_cls()._native_expr("f1") is None
 
 
 def test_reference_pool_not_collected_for_native_aggregators(
@@ -530,16 +495,16 @@ def test_aggregate_feature_batch_size_threads_through(
     assert _sorted(unbatched).equals(_sorted(batched))
 
 
-def test_main_feature_batch_size_config_field_default_none(tmp_path) -> None:
+def test_main_feature_batch_size_config_field_default_is_200(tmp_path) -> None:
     cfg = make_agg_cfg(tmp_path)
-    assert OmegaConf.to_object(cfg).feature_batch_size is None
+    assert OmegaConf.to_object(cfg).feature_batch_size == 200
 
 
-def test_feature_type_main_feature_batch_size_config_field_default_none(
+def test_feature_type_main_feature_batch_size_config_field_default_is_200(
     tmp_path,
 ) -> None:
     cfg = make_ft_cfg(tmp_path)
-    assert OmegaConf.to_object(cfg).feature_batch_size is None
+    assert OmegaConf.to_object(cfg).feature_batch_size == 200
 
 
 # ---------------------------------------------------------------------------
@@ -555,7 +520,7 @@ def make_agg_cfg(
     aggregator="mean",
     block_list_file=None,
     compute_impact_score=True,
-    feature_batch_size=None,
+    feature_batch_size=200,
 ) -> OmegaConf:
     """Return a DictConfig for AggregateConfig with sensible test defaults."""
     return OmegaConf.structured(
@@ -1276,7 +1241,7 @@ def make_ft_cfg(
     output_root=None,
     aggregator="mean",
     index_file=None,
-    feature_batch_size=None,
+    feature_batch_size=200,
 ) -> OmegaConf:
     """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
     return OmegaConf.structured(

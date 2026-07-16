@@ -10,10 +10,10 @@ branch).
 
 import abc
 import dataclasses
-import functools
 import logging
 import pathlib
 import re
+import time
 from typing import ClassVar, Optional
 
 import hydra
@@ -54,15 +54,17 @@ class AggregateConfig(LabeledInputConfig):
         features blocked).
     feature_batch_size : int or None
         If set, split features into chunks of at most this many columns per
-        aggregation pass to bound peak memory. Defaults to ``None`` (no
-        batching; all features processed in a single pass).
+        aggregation pass to bound peak memory. Each chunk collects its
+        variant and reference rows into numpy arrays, so batching bounds how
+        much of that data is materialized in memory at once. Defaults to
+        ``200``. Set to ``None`` for a single unbatched pass.
     """
 
     aggregator: str = MISSING
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
     compute_impact_score: bool = True
-    feature_batch_size: Optional[int] = None
+    feature_batch_size: Optional[int] = 200
 
 
 _cs = ConfigStore.instance()
@@ -104,47 +106,6 @@ def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
         .map_elements(_is_synonymous, return_dtype=pl.Boolean)
         .alias(CONTROL_COLUMN_NAME)
     )
-
-
-class BaseAggregator(abc.ABC):
-    """
-    Abstract base class for all aggregators.
-
-    Parameters
-    ----------
-    label_col : str
-        Name of the column used to identify variant groups. Defaults to
-        ``"meta_aa_changes"``.
-    block_list : set[str] or None
-        Aggregated output column names to skip (e.g. ``"f1_EMD"``). Blocked
-        statistics are not computed. Defaults to ``None``.
-    """
-
-    def __init__(
-        self,
-        label_col: str = "meta_aa_changes",
-        block_list: Optional[set[str]] = None,
-    ) -> None:
-        self.label_col = label_col
-        self.block_list = block_list
-
-    @abc.abstractmethod
-    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """
-        Compute per-label statistics.
-
-        Parameters
-        ----------
-        lf : pl.LazyFrame
-            Input LazyFrame containing the label column, a ``CONTROL_COLUMN``
-            boolean column, and feature columns.
-
-        Returns
-        -------
-        pl.LazyFrame
-            One row per non-control variant group with computed statistics.
-        """
-        raise NotImplementedError
 
 
 def _collect_reference_pool(
@@ -208,65 +169,82 @@ def _finalize(result: float) -> Optional[float]:
     return float(result) if np.isfinite(result) else None
 
 
-class FeatureStatAggregator(BaseAggregator):
+def _native_aggregate_feature_batch(
+    lf: pl.LazyFrame, label_col: str, feature_cols: list[str], exprs: list[pl.Expr]
+) -> pl.LazyFrame:
     """
-    Base for aggregators that compute one scalar statistic per (label,
-    feature) pair from that label's variant values and the shared reference
-    (control) pool.
+    Shared group_by/select boilerplate for native aggregators: group
+    non-control rows by ``label_col`` into per-label list columns, then
+    select ``exprs`` (one aliased native-Polars-expression per feature)
+    against those list columns. Stays entirely in Arrow — no Python boxing.
+    """
+    variant_lists = (
+        lf.filter(~CONTROL_COLUMN)
+        .group_by(label_col)
+        .agg([pl.col(f) for f in feature_cols])
+    )
+    return variant_lists.select([label_col] + exprs)
 
-    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_mean"``, ``"_EMD"``) and
-    implement :meth:`_compute_feature_stat`. The boilerplate of grouping
-    variant values and the reference pool into list columns, filtering the
-    block list, and constructing the per-feature query is handled here.
 
-    Subclasses that don't need SciPy/scikit-learn or the reference pool
-    (e.g. mean, median, std, MAD) can instead override :meth:`_native_expr`
-    to return a native Polars expression for a feature's stat. This stays
-    entirely in Arrow (no Python boxing via ``map_elements``) and lets the
-    query engine stream/parallelize the computation. When
-    :meth:`_native_expr` returns ``None`` (the default) for a feature,
-    :meth:`_stat_expr` falls back to the struct + ``map_elements`` +
-    :meth:`_compute_feature_stat` path. The reference pool is only collected
-    for features whose :meth:`_native_expr` returns ``None`` (see
-    :meth:`_aggregate_feature_batch`), since native-expression stats never
-    need it.
+class BaseAggregator(abc.ABC):
+    """
+    Base class for all aggregators.
+
+    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_mean"``, ``"_EMD"``).
+    :meth:`aggregate` is the public orchestration entry point: it chunks
+    features (via :func:`_chunk`), computes each chunk via
+    :meth:`_aggregate_feature_batch`, and joins per-chunk results back
+    together on ``label_col``.
+
+    The default :meth:`_aggregate_feature_batch` is a numpy-vectorized path:
+    it collects each chunk's variant and reference rows into numpy arrays
+    once, then loops over (group, feature) pairs calling :meth:`_compute_stat`
+    with already-cleaned numpy arrays — no Arrow struct boxing, no
+    per-row Python calls. Subclasses that need SciPy/scikit-learn or the
+    reference pool (EMD, KS, QQ, AUROC) implement only :meth:`_compute_stat`.
+
+    Subclasses that can express their statistic as a native Polars
+    list-expression (mean, median, std, MAD) instead override
+    :meth:`_aggregate_feature_batch` directly, bypassing the numpy path and
+    the reference pool entirely — Polars-native list expressions are faster
+    than anything the numpy path could offer for these. Such subclasses do
+    not implement :meth:`_compute_stat`.
+
+    Parameters
+    ----------
+    label_col : str
+        Name of the column used to identify variant groups. Defaults to
+        ``"meta_aa_changes"``.
+    block_list : set[str] or None
+        Aggregated output column names to skip (e.g. ``"f1_EMD"``). Blocked
+        statistics are not computed. Defaults to ``None``.
     """
 
     _stat_suffix: ClassVar[str]
 
-    @abc.abstractmethod
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    def __init__(
+        self,
+        label_col: str = "meta_aa_changes",
+        block_list: Optional[set[str]] = None,
+    ) -> None:
+        self.label_col = label_col
+        self.block_list = block_list
+
+    def _compute_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
     ) -> Optional[float]:
         """
-        Compute a single statistic for ``feat`` from ``values``, a dict with
-        key ``"variant"`` mapping to that label's list of feature values
-        (possibly containing ``None``). ``reference_pool`` maps feature name
-        to that feature's control/reference values (a shared numpy array,
-        not copied); stats that don't need it (e.g. mean, median) simply
-        ignore it.
+        Compute a single statistic from a label's cleaned variant values
+        (``group_vals``) and the cleaned reference/control pool
+        (``ref_vals``) for one feature. Called only by the default numpy
+        :meth:`_aggregate_feature_batch`, and only with non-empty,
+        already-``_clean``ed arrays (the caller owns the empty-array
+        short-circuit). Only implemented by aggregators that use the
+        default numpy path (EMD, KS, QQ, AUROC); native aggregators
+        (mean/median/std/MAD) override :meth:`_aggregate_feature_batch`
+        instead and never call this.
         """
         raise NotImplementedError
-
-    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
-        """
-        Return a native Polars expression that computes this aggregator's
-        statistic for ``feat`` directly from that feature's per-label
-        variant list column, bypassing ``map_elements`` and the reference
-        pool entirely. Return ``None`` (the default) to fall back to the
-        struct + ``map_elements`` + :meth:`_compute_feature_stat` path,
-        e.g. for stats that require SciPy/scikit-learn (EMD, KS, QQ, AUROC)
-        or that cannot be reconciled exactly against :func:`_clean`'s
-        null/NaN/Inf-dropping semantics using native list expressions.
-
-        Subclasses that override this must reproduce :func:`_clean`'s
-        semantics exactly: null, NaN, and Inf entries are all excluded
-        before the statistic is computed, and an empty (or, for std, a
-        single-element) cleaned list yields ``null`` in the output —
-        matching :func:`_finalize`'s "non-finite result -> null" behavior
-        for the final scalar too.
-        """
-        return None
 
     def _feature_columns(self, lf: pl.LazyFrame) -> list[str]:
         return [
@@ -274,23 +252,6 @@ class FeatureStatAggregator(BaseAggregator):
             for f in lf.select(FEATURE_SELECTOR).collect_schema().names()
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
-
-    def _stat_expr(self, feat: str, reference_pool: dict[str, np.ndarray]) -> pl.Expr:
-        native = self._native_expr(feat)
-        if native is not None:
-            return native.alias(f"{feat}{self._stat_suffix}")
-        return (
-            pl.struct([pl.col(feat).alias("variant")])
-            .map_elements(
-                functools.partial(
-                    self._compute_feature_stat,
-                    feat=feat,
-                    reference_pool=reference_pool,
-                ),
-                return_dtype=pl.Float64,
-            )
-            .alias(f"{feat}{self._stat_suffix}")
-        )
 
     def aggregate(
         self, lf: pl.LazyFrame, feature_batch_size: Optional[int] = None
@@ -301,19 +262,39 @@ class FeatureStatAggregator(BaseAggregator):
         Parameters
         ----------
         lf : pl.LazyFrame
-            Input LazyFrame.
+            Input LazyFrame containing the label column, a ``CONTROL_COLUMN``
+            boolean column, and feature columns.
         feature_batch_size : int or None
             If set, features are processed in chunks of at most this many
-            columns at a time (each chunk performs its own group_by/agg and
-            reference-pool collection), and per-chunk results are joined
-            back together on ``label_col``. This trades some redundant
-            group_by work for a lower peak-memory list-column
-            materialization per chunk. ``None`` (default) processes all
-            features in a single pass, identical to unbatched behavior.
+            columns at a time (each chunk performs its own collection and
+            computation), and per-chunk results are joined back together on
+            ``label_col``. This trades some redundant work for a lower
+            peak-memory materialization per chunk. ``None`` (default)
+            processes all features in a single pass, identical to unbatched
+            behavior. The module-level :func:`aggregate` function and the
+            Hydra configs default this to ``200`` instead, to bound memory
+            in production pipeline runs.
+
+        Returns
+        -------
+        pl.LazyFrame
+            One row per non-control variant group with computed statistics.
         """
         feature_cols = self._feature_columns(lf)
         batches = _chunk(feature_cols, feature_batch_size)
-        results = [self._aggregate_feature_batch(lf, cols) for cols in batches]
+        logging.info(
+            "%s: %d feature(s) to aggregate in %d chunk(s) (feature_batch_size=%s)",
+            type(self).__name__,
+            len(feature_cols),
+            len(batches),
+            feature_batch_size,
+        )
+        results = [
+            self._aggregate_feature_batch(
+                lf, cols, batch_idx=i, total_batches=len(batches)
+            )
+            for i, cols in enumerate(batches, start=1)
+        ]
 
         out = results[0]
         for r in results[1:]:
@@ -321,105 +302,179 @@ class FeatureStatAggregator(BaseAggregator):
         return out
 
     def _aggregate_feature_batch(
-        self, lf: pl.LazyFrame, feature_cols: list[str]
+        self,
+        lf: pl.LazyFrame,
+        feature_cols: list[str],
+        batch_idx: int,
+        total_batches: int,
     ) -> pl.LazyFrame:
-        # Only features that fall back to the map_elements path (i.e. whose
-        # _native_expr returns None) need the reference pool; native-only
-        # aggregators (mean/median/std/MAD) never touch it, so skip
-        # collecting it entirely when nothing in this batch needs it.
-        non_native_cols = [f for f in feature_cols if self._native_expr(f) is None]
-        reference_pool = (
-            _collect_reference_pool(lf, non_native_cols) if non_native_cols else {}
-        )
-        variant_lists = (
-            lf.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
-            .agg([pl.col(f) for f in feature_cols])
-        )
-        return variant_lists.select(
-            [self.label_col]
-            + [self._stat_expr(f, reference_pool) for f in feature_cols]
+        """
+        Compute this chunk's statistics for every feature in
+        ``feature_cols``, one row per non-control variant group. Default
+        implementation: the numpy path (see module docstring / class
+        docstring). Native aggregators override this entirely.
+        """
+        t0 = time.perf_counter()
+
+        reference_pool = _collect_reference_pool(lf, feature_cols)
+        variant_df = (
+            lf.filter(~CONTROL_COLUMN).select([self.label_col] + feature_cols).collect()
         )
 
+        labels = variant_df[self.label_col].to_numpy()
+        order = np.argsort(labels, kind="stable")
+        sorted_labels = labels[order]
+        unique_labels, group_starts = np.unique(sorted_labels, return_index=True)
+        n_groups = len(unique_labels)
 
-class MeanAggregator(FeatureStatAggregator):
+        cleaned_ref = {f: _clean(reference_pool[f]) for f in feature_cols}
+        n_ref_rows = len(next(iter(reference_pool.values()))) if reference_pool else 0
+
+        columns: dict[str, object] = {
+            self.label_col: pl.Series(self.label_col, unique_labels)
+        }
+        for feat in feature_cols:
+            feat_sorted = variant_df[feat].to_numpy()[order]
+            groups = np.split(feat_sorted, group_starts[1:]) if n_groups else []
+            ref_vals = cleaned_ref[feat]
+            stats: list[Optional[float]] = []
+            for group_vals in groups:
+                cleaned_group = _clean(group_vals)
+                if len(cleaned_group) == 0 or len(ref_vals) == 0:
+                    stats.append(None)
+                else:
+                    stats.append(self._compute_stat(cleaned_group, ref_vals))
+            columns[f"{feat}{self._stat_suffix}"] = pl.Series(
+                f"{feat}{self._stat_suffix}", stats, dtype=pl.Float64
+            )
+
+        elapsed = time.perf_counter() - t0
+        logging.info(
+            "%s chunk %d/%d: %d feature(s), %d variant group(s), %d reference row(s), %.3fs",
+            type(self).__name__,
+            batch_idx,
+            total_batches,
+            len(feature_cols),
+            n_groups,
+            n_ref_rows,
+            elapsed,
+        )
+        return pl.DataFrame(columns).lazy()
+
+
+class MeanAggregator(BaseAggregator):
     """Computes per-group mean for each feature column."""
 
     _stat_suffix = "_mean"
 
-    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
-        return _native_clean(feat).list.mean()
+    def _aggregate_feature_batch(
+        self,
+        lf: pl.LazyFrame,
+        feature_cols: list[str],
+        batch_idx: int,
+        total_batches: int,
+    ) -> pl.LazyFrame:
+        exprs = [
+            _native_clean(f).list.mean().alias(f"{f}{self._stat_suffix}")
+            for f in feature_cols
+        ]
+        logging.info(
+            "%s chunk %d/%d: %d feature(s) (native)",
+            type(self).__name__,
+            batch_idx,
+            total_batches,
+            len(feature_cols),
+        )
+        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
-    ) -> Optional[float]:
-        vals = _clean(values["variant"])
-        if len(vals) == 0:
-            return None
-        return _finalize(np.mean(vals))
 
-
-class MedianAggregator(FeatureStatAggregator):
+class MedianAggregator(BaseAggregator):
     """Computes per-group median for each feature column."""
 
     _stat_suffix = "_median"
 
-    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
-        return _native_clean(feat).list.median()
+    def _aggregate_feature_batch(
+        self,
+        lf: pl.LazyFrame,
+        feature_cols: list[str],
+        batch_idx: int,
+        total_batches: int,
+    ) -> pl.LazyFrame:
+        exprs = [
+            _native_clean(f).list.median().alias(f"{f}{self._stat_suffix}")
+            for f in feature_cols
+        ]
+        logging.info(
+            "%s chunk %d/%d: %d feature(s) (native)",
+            type(self).__name__,
+            batch_idx,
+            total_batches,
+            len(feature_cols),
+        )
+        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
-    ) -> Optional[float]:
-        vals = _clean(values["variant"])
-        if len(vals) == 0:
-            return None
-        return _finalize(np.median(vals))
 
-
-class MADAggregator(FeatureStatAggregator):
+class MADAggregator(BaseAggregator):
     """Computes per-group median absolute deviation (MAD) for each feature column."""
 
     _stat_suffix = "_MAD"
 
-    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
+    def _aggregate_feature_batch(
+        self,
+        lf: pl.LazyFrame,
+        feature_cols: list[str],
+        batch_idx: int,
+        total_batches: int,
+    ) -> pl.LazyFrame:
         # Verified against np.median(np.abs(vals - np.median(vals))) for
         # empty, single-value, normal, and NaN/Inf-present cases — matches
         # exactly (see test_mad_native_matches_numpy_with_nan_inf_present).
-        cleaned = _native_clean(feat)
-        return cleaned.list.eval(
-            (pl.element() - pl.element().median()).abs()
-        ).list.median()
+        exprs = [
+            _native_clean(f)
+            .list.eval((pl.element() - pl.element().median()).abs())
+            .list.median()
+            .alias(f"{f}{self._stat_suffix}")
+            for f in feature_cols
+        ]
+        logging.info(
+            "%s chunk %d/%d: %d feature(s) (native)",
+            type(self).__name__,
+            batch_idx,
+            total_batches,
+            len(feature_cols),
+        )
+        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
-    ) -> Optional[float]:
-        vals = _clean(values["variant"])
-        if len(vals) == 0:
-            return None
-        return _finalize(np.median(np.abs(vals - np.median(vals))))
 
-
-class StdAggregator(FeatureStatAggregator):
+class StdAggregator(BaseAggregator):
     """Computes per-group standard deviation for each feature column."""
 
     _stat_suffix = "_std"
 
-    def _native_expr(self, feat: str) -> Optional[pl.Expr]:
-        # Confirmed: list.std(ddof=1) returns null for lists of length < 2,
-        # matching the len(vals) < 2 -> None check in _compute_feature_stat
-        # below (see test_std_native_single_value_group_returns_null).
-        return _native_clean(feat).list.std(ddof=1)
+    def _aggregate_feature_batch(
+        self,
+        lf: pl.LazyFrame,
+        feature_cols: list[str],
+        batch_idx: int,
+        total_batches: int,
+    ) -> pl.LazyFrame:
+        # Confirmed: list.std(ddof=1) returns null for lists of length < 2
+        # (see test_std_native_single_value_group_returns_null).
+        exprs = [
+            _native_clean(f).list.std(ddof=1).alias(f"{f}{self._stat_suffix}")
+            for f in feature_cols
+        ]
+        logging.info(
+            "%s chunk %d/%d: %d feature(s) (native)",
+            type(self).__name__,
+            batch_idx,
+            total_batches,
+            len(feature_cols),
+        )
+        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
-    ) -> Optional[float]:
-        vals = _clean(values["variant"])
-        if len(vals) < 2:
-            return None
-        return _finalize(np.std(vals, ddof=1))
 
-
-class EMDAggregator(FeatureStatAggregator):
+class EMDAggregator(BaseAggregator):
     """
     Computes per-group 1D Wasserstein distances (Earth Mover's Distance)
     against the reference distribution for each feature column.
@@ -427,17 +482,13 @@ class EMDAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_EMD"
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    def _compute_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
     ) -> Optional[float]:
-        group_vals = _clean(values["variant"])
-        ref_vals = _clean(reference_pool[feat])
-        if len(group_vals) == 0 or len(ref_vals) == 0:
-            return None
         return _finalize(scipy.stats.wasserstein_distance(group_vals, ref_vals))
 
 
-class KSAggregator(FeatureStatAggregator):
+class KSAggregator(BaseAggregator):
     """
     Computes per-group two-sample Kolmogorov-Smirnov statistics against
     the reference distribution for each feature column.
@@ -445,17 +496,13 @@ class KSAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_KS"
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    def _compute_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
     ) -> Optional[float]:
-        group_vals = _clean(values["variant"])
-        ref_vals = _clean(reference_pool[feat])
-        if len(group_vals) == 0 or len(ref_vals) == 0:
-            return None
         return _finalize(scipy.stats.ks_2samp(group_vals, ref_vals).statistic)
 
 
-class QQCorrelationAggregator(FeatureStatAggregator):
+class QQCorrelationAggregator(BaseAggregator):
     """
     Computes per-group Q-Q correlation against the reference distribution for
     each feature column.
@@ -479,19 +526,15 @@ class QQCorrelationAggregator(FeatureStatAggregator):
         super().__init__(label_col, block_list)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    def _compute_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
     ) -> Optional[float]:
-        group_vals = _clean(values["variant"])
-        ref_vals = _clean(reference_pool[feat])
-        if len(group_vals) == 0 or len(ref_vals) == 0:
-            return None
         variant_q = np.quantile(group_vals, self.quantile_points)
         reference_q = np.quantile(ref_vals, self.quantile_points)
         return _finalize(scipy.stats.pearsonr(variant_q, reference_q).statistic)
 
 
-class AUROCAggregator(FeatureStatAggregator):
+class AUROCAggregator(BaseAggregator):
     """
     Computes per-group AUROC against the reference distribution for each
     feature column.
@@ -503,13 +546,9 @@ class AUROCAggregator(FeatureStatAggregator):
 
     _stat_suffix = "_AUROC"
 
-    def _compute_feature_stat(
-        self, values: dict, feat: str, reference_pool: dict[str, np.ndarray]
+    def _compute_stat(
+        self, group_vals: np.ndarray, ref_vals: np.ndarray
     ) -> Optional[float]:
-        group_vals = _clean(values["variant"])
-        ref_vals = _clean(reference_pool[feat])
-        if len(group_vals) == 0 or len(ref_vals) == 0:
-            return None
         concatenated = np.concatenate([ref_vals, group_vals])
         labels = np.concatenate([np.zeros(len(ref_vals)), np.ones(len(group_vals))])
         auroc = sklearn.metrics.roc_auc_score(labels, concatenated)
@@ -535,7 +574,7 @@ def aggregate(
     label_col: str,
     aggregator_name: str,
     block_list: Optional[set[str]] = None,
-    feature_batch_size: Optional[int] = None,
+    feature_batch_size: Optional[int] = 200,
 ) -> pl.LazyFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
@@ -559,8 +598,10 @@ def aggregate(
         to ``None``.
     feature_batch_size : int or None
         If set, split features into chunks of at most this many columns per
-        aggregation pass to bound peak memory. Defaults to ``None`` (no
-        batching; all features processed in a single pass).
+        aggregation pass to bound peak memory. Each chunk collects its
+        variant and reference rows into numpy arrays, so batching bounds how
+        much of that data is materialized in memory at once. Defaults to
+        ``200``. Set to ``None`` for a single unbatched pass.
 
     Returns
     -------
@@ -698,13 +739,15 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         Defaults to ``None``.
     feature_batch_size : int or None
         If set, split features into chunks of at most this many columns per
-        aggregation pass to bound peak memory. Defaults to ``None`` (no
-        batching; all features processed in a single pass).
+        aggregation pass to bound peak memory. Each chunk collects its
+        variant and reference rows into numpy arrays, so batching bounds how
+        much of that data is materialized in memory at once. Defaults to
+        ``200``. Set to ``None`` for a single unbatched pass.
     """
 
     aggregator: str = MISSING
     index_file: Optional[str] = None
-    feature_batch_size: Optional[int] = None
+    feature_batch_size: Optional[int] = 200
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)

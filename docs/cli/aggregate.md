@@ -43,7 +43,7 @@ Extends `LabeledInputConfig` (adds `input_file`, `label_column`) plus the
 | `save_normalizer` | `true` | Write the synonymous-baseline normalizer. |
 | `block_list_file` | `null` | Parquet with `feature` and `feature_ok` columns; blocked features are skipped. |
 | `compute_impact_score` | `true` | Append an impact score column derived from variant classification. |
-| `feature_batch_size` | `null` | If set, process features in chunks of at most this many columns to bound peak memory. |
+| `feature_batch_size` | `200` | If set, process features in chunks of at most this many columns to bound peak memory. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.{ext}` or `{output_dir}/{filename}`. Plus
@@ -66,7 +66,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `aggregator` | **required** | One of the eight aggregators above. |
 | `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `fisseq-generate-split`) restricting aggregation to a pseudo-replicate half. |
-| `feature_batch_size` | `null` | Same as above. |
+| `feature_batch_size` | `200` | Same as above. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
