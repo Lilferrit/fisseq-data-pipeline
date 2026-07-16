@@ -152,7 +152,7 @@
 <p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
 single-file path.</p>
 <h2 id="aggregators">Aggregators</h2>
-<p>Eight strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
+<p>Seven strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
 <code>"multi"</code>/combined option; combining feature types happens in Nextflow by running
 <code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_types</code> entry.</p>
 <table>
@@ -180,10 +180,6 @@ single-file path.</p>
 <td>Per-variant standard deviation</td>
 </tr>
 <tr>
-<td><code>EMD</code></td>
-<td>Earth Mover's Distance vs. WT/control distribution</td>
-</tr>
-<tr>
 <td><code>KS</code></td>
 <td>Kolmogorov-Smirnov statistic vs. WT/control distribution</td>
 </tr>
@@ -193,7 +189,7 @@ single-file path.</p>
 </tr>
 <tr>
 <td><code>AUROC</code></td>
-<td>AUROC vs. WT/control distribution</td>
+<td>AUROC vs. WT/control distribution. Directional: <code>0.5</code> means identical distributions, <code>1.0</code> means the variant is consistently higher than the reference, <code>0.0</code> means consistently lower (not symmetrized to <code>[0.5, 1]</code>).</td>
 </tr>
 </tbody>
 </table>
@@ -222,7 +218,7 @@ single-file path.</p>
 <tr>
 <td><code>aggregator</code></td>
 <td><strong>required</strong></td>
-<td>One of the eight aggregators above.</td>
+<td>One of the seven aggregators above.</td>
 </tr>
 <tr>
 <td><code>save_normalizer</code></td>
@@ -241,7 +237,7 @@ single-file path.</p>
 </tr>
 <tr>
 <td><code>feature_batch_size</code></td>
-<td><code>200</code></td>
+<td><code>500</code></td>
 <td>If set, process features in chunks of at most this many columns to bound peak memory.</td>
 </tr>
 </tbody>
@@ -252,7 +248,7 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <pre><code class="language-bash">uv run fisseq-aggregate \
     output_dir=./out \
     'input_file=data/batches/*.parquet' \
-    aggregator=EMD
+    aggregator=KS
 </code></pre>
 <h2 id="fisseq-aggregate-feature-type-config-fields"><code>fisseq-aggregate-feature-type</code> config fields</h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
@@ -278,7 +274,7 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <tr>
 <td><code>aggregator</code></td>
 <td><strong>required</strong></td>
-<td>One of the eight aggregators above.</td>
+<td>One of the seven aggregators above.</td>
 </tr>
 <tr>
 <td><code>index_file</code></td>
@@ -287,7 +283,7 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 </tr>
 <tr>
 <td><code>feature_batch_size</code></td>
-<td><code>200</code></td>
+<td><code>500</code></td>
 <td>Same as above.</td>
 </tr>
 </tbody>
