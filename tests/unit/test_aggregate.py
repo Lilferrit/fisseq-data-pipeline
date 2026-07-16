@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ import numpy as np
 import polars as pl
 import pytest
 import scipy.stats
+import sklearn.metrics
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.aggregate as m
@@ -102,36 +104,195 @@ def test_variant_classification_custom_label_col():
 
 
 # ---------------------------------------------------------------------------
-# ReferenceBaseAggregator / EMDAggregator
+# KSAggregator / AUROCAggregator / QQCorrelationAggregator — native vs.
+# scipy/sklearn ground truth
 # ---------------------------------------------------------------------------
 
 
-def test_emd_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
-    result = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
-    assert {"meta_aa_changes", "f1_EMD", "f2_EMD"}.issubset(set(result.columns))
+@pytest.fixture
+def native_stats_df() -> pl.DataFrame:
+    """
+    Reference pool (WT, continuous) plus three variant groups exercising
+    different value shapes: RANDOM (continuous, no ties), TIES (repeated
+    integer values), SINGLE (one distinct value repeated).
+    """
+    rng = np.random.default_rng(0)
+    ref_vals = rng.standard_normal(40).tolist()
+    random_vals = rng.standard_normal(12).tolist()
+    tie_vals = [1.0, 1.0, 2.0, 2.0, 2.0, 3.0]
+    single_vals = [5.0] * 4
 
-
-def test_emd_aggregator_matches_scipy(toy_norm_df: pl.DataFrame) -> None:
-    result = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
-
-    row = result.filter(pl.col("meta_aa_changes") == "A1B").to_dicts().pop()
-
-    ref_f1 = [0.0, 1.0, 10.0, 11.0]
-    ref_f2 = [5.0, 7.0, 1.0, 3.0]
-    var_f1 = [2.0, 3.0, 13.0, 14.0]
-    var_f2 = [6.0, 6.0, 0.0, 2.0]
-
-    assert row["f1_EMD"] == pytest.approx(
-        scipy.stats.wasserstein_distance(var_f1, ref_f1), rel=1e-12, abs=1e-12
+    labels = (
+        ["WT"] * len(ref_vals)
+        + ["RANDOM"] * len(random_vals)
+        + ["TIES"] * len(tie_vals)
+        + ["SINGLE"] * len(single_vals)
     )
-    assert row["f2_EMD"] == pytest.approx(
-        scipy.stats.wasserstein_distance(var_f2, ref_f2), rel=1e-12, abs=1e-12
+    values = ref_vals + random_vals + tie_vals + single_vals
+    return pl.DataFrame(
+        {
+            "meta_aa_changes": labels,
+            "meta_is_control": [lbl == "WT" for lbl in labels],
+            "f1": values,
+        }
     )
 
 
-def test_emd_aggregator_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
-    result = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
+def _group_and_ref(df: pl.DataFrame, label: str) -> tuple[list[float], list[float]]:
+    ref = df.filter(pl.col("meta_is_control"))["f1"].to_list()
+    group = df.filter(pl.col("meta_aa_changes") == label)["f1"].to_list()
+    return group, ref
+
+
+def test_ks_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
+    result = m.KSAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert {"meta_aa_changes", "f1_KS", "f2_KS"}.issubset(set(result.columns))
+
+
+def test_ks_aggregator_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
+    result = m.KSAggregator().aggregate(toy_norm_df.lazy()).collect()
     assert "WT" not in result["meta_aa_changes"].to_list()
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES", "SINGLE"])
+def test_ks_aggregator_matches_scipy(native_stats_df: pl.DataFrame, label: str) -> None:
+    result = m.KSAggregator().aggregate(native_stats_df.lazy()).collect()
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    expected = scipy.stats.ks_2samp(group, ref).statistic
+    assert row["f1_KS"] == pytest.approx(expected, abs=1e-9)
+
+
+def test_auroc_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
+    result = m.AUROCAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert {"meta_aa_changes", "f1_AUROC", "f2_AUROC"}.issubset(set(result.columns))
+
+
+def test_auroc_aggregator_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
+    result = m.AUROCAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert "WT" not in result["meta_aa_changes"].to_list()
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES", "SINGLE"])
+def test_auroc_aggregator_matches_sklearn_unsymmetrized(
+    native_stats_df: pl.DataFrame, label: str
+) -> None:
+    """Raw (un-symmetrized) sklearn.metrics.roc_auc_score — no `1 - auroc` folding."""
+    result = m.AUROCAggregator().aggregate(native_stats_df.lazy()).collect()
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    labels = [0] * len(ref) + [1] * len(group)
+    expected = sklearn.metrics.roc_auc_score(labels, ref + group)
+    assert row["f1_AUROC"] == pytest.approx(expected, abs=1e-9)
+
+
+def test_auroc_aggregator_directional_higher_approaches_one() -> None:
+    """Variant consistently higher than reference -> AUROC near 1.0."""
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 5 + ["A"] * 5,
+            "meta_is_control": [True] * 5 + [False] * 5,
+            "f1": [0.0, 1.0, 2.0, 3.0, 4.0] + [10.0, 11.0, 12.0, 13.0, 14.0],
+        }
+    )
+    row = _get_row(m.AUROCAggregator().aggregate(df.lazy()).collect(), "A")
+    assert row["f1_AUROC"] == pytest.approx(1.0)
+
+
+def test_auroc_aggregator_directional_lower_approaches_zero() -> None:
+    """Variant consistently lower than reference -> AUROC near 0.0.
+
+    Regression guard for symmetrization: the old ``if auroc < 0.5: auroc =
+    1 - auroc`` behavior would have folded this to ~1.0 instead.
+    """
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 5 + ["A"] * 5,
+            "meta_is_control": [True] * 5 + [False] * 5,
+            "f1": [10.0, 11.0, 12.0, 13.0, 14.0] + [0.0, 1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    row = _get_row(m.AUROCAggregator().aggregate(df.lazy()).collect(), "A")
+    assert row["f1_AUROC"] == pytest.approx(0.0)
+
+
+def test_auroc_aggregator_fully_overlapping_near_half() -> None:
+    """Variant and reference drawn from the identical set of values -> AUROC near 0.5."""
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 6 + ["A"] * 6,
+            "meta_is_control": [True] * 6 + [False] * 6,
+            "f1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] * 2,
+        }
+    )
+    row = _get_row(m.AUROCAggregator().aggregate(df.lazy()).collect(), "A")
+    assert row["f1_AUROC"] == pytest.approx(0.5)
+
+
+def test_qq_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
+    result = m.QQCorrelationAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert {"meta_aa_changes", "f1_QQ", "f2_QQ"}.issubset(set(result.columns))
+
+
+def test_qq_aggregator_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
+    result = m.QQCorrelationAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert "WT" not in result["meta_aa_changes"].to_list()
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES"])
+def test_qq_aggregator_matches_scipy_default_n_quantiles(
+    native_stats_df: pl.DataFrame, label: str
+) -> None:
+    result = m.QQCorrelationAggregator().aggregate(native_stats_df.lazy()).collect()
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    probs = np.linspace(0, 1, 100)
+    expected = scipy.stats.pearsonr(
+        np.quantile(group, probs), np.quantile(ref, probs)
+    ).statistic
+    assert row["f1_QQ"] == pytest.approx(expected, abs=1e-8)
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES"])
+def test_qq_aggregator_matches_scipy_custom_n_quantiles(
+    native_stats_df: pl.DataFrame, label: str
+) -> None:
+    n_quantiles = 17
+    result = (
+        m.QQCorrelationAggregator(n_quantiles=n_quantiles)
+        .aggregate(native_stats_df.lazy())
+        .collect()
+    )
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    probs = np.linspace(0, 1, n_quantiles)
+    expected = scipy.stats.pearsonr(
+        np.quantile(group, probs), np.quantile(ref, probs)
+    ).statistic
+    assert row["f1_QQ"] == pytest.approx(expected, abs=1e-8)
+
+
+def test_qq_aggregator_single_value_group_returns_null(
+    native_stats_df: pl.DataFrame,
+) -> None:
+    """A constant-valued group has an exactly constant quantile profile, so
+    the correlation is mathematically undefined (matches scipy's
+    ConstantInputWarning -> nan -> None convention)."""
+    result = m.QQCorrelationAggregator().aggregate(native_stats_df.lazy()).collect()
+    row = _get_row(result, "SINGLE")
+    assert row["f1_QQ"] is None
+
+
+def test_qq_aggregator_constant_reference_returns_null() -> None:
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 5 + ["A"] * 3,
+            "meta_is_control": [True] * 5 + [False] * 3,
+            "f1": [7.0] * 5 + [1.0, 2.0, 3.0],
+        }
+    )
+    row = _get_row(m.QQCorrelationAggregator().aggregate(df.lazy()).collect(), "A")
+    assert row["f1_QQ"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +305,7 @@ def test_reference_pool_collected_once(toy_norm_df: pl.DataFrame) -> None:
         "fisseq_data_pipeline.aggregate._collect_reference_pool",
         wraps=m._collect_reference_pool,
     ) as spy:
-        m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
+        m.KSAggregator().aggregate(toy_norm_df.lazy()).collect()
     assert spy.call_count == 1
 
 
@@ -341,10 +502,10 @@ def test_reference_pool_not_collected_for_native_aggregators(
         assert spy.call_count == 0
 
 
-def test_reference_pool_still_collected_for_map_elements_aggregators(
+def test_reference_pool_still_collected_for_reference_based_aggregators(
     toy_norm_df: pl.DataFrame,
 ) -> None:
-    for agg_cls in (m.EMDAggregator, m.AUROCAggregator):
+    for agg_cls in (m.KSAggregator, m.QQCorrelationAggregator, m.AUROCAggregator):
         with patch(
             "fisseq_data_pipeline.aggregate._collect_reference_pool",
             wraps=m._collect_reference_pool,
@@ -368,11 +529,11 @@ def test_native_and_batching_combine_correctly(many_features_df: pl.DataFrame) -
 # ---------------------------------------------------------------------------
 
 
-def test_aggregate_emd_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
+def test_aggregate_ks_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
     result = m.aggregate(
-        toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="EMD"
+        toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="KS"
     ).collect()
-    assert {"meta_aa_changes", "f1_EMD", "f2_EMD"}.issubset(set(result.columns))
+    assert {"meta_aa_changes", "f1_KS", "f2_KS"}.issubset(set(result.columns))
 
 
 def test_aggregate_mean_returns_expected_columns(simple_df: pl.DataFrame) -> None:
@@ -382,9 +543,9 @@ def test_aggregate_mean_returns_expected_columns(simple_df: pl.DataFrame) -> Non
     assert {"meta_aa_changes", "f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
-def test_aggregate_emd_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
+def test_aggregate_ks_excludes_control_rows(toy_norm_df: pl.DataFrame) -> None:
     result = m.aggregate(
-        toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="EMD"
+        toy_norm_df.lazy(), label_col="meta_aa_changes", aggregator_name="KS"
     ).collect()
     assert "WT" not in result["meta_aa_changes"].to_list()
 
@@ -445,13 +606,14 @@ def test_feature_batch_size_splits_and_rejoins_identically(
     assert _sorted(unbatched).equals(_sorted(batched))
 
 
+@pytest.mark.parametrize(
+    "agg_cls", [m.KSAggregator, m.QQCorrelationAggregator, m.AUROCAggregator]
+)
 def test_feature_batch_size_with_reference_based_aggregator(
-    toy_norm_df: pl.DataFrame,
+    toy_norm_df: pl.DataFrame, agg_cls
 ) -> None:
-    unbatched = m.EMDAggregator().aggregate(toy_norm_df.lazy()).collect()
-    batched = (
-        m.EMDAggregator().aggregate(toy_norm_df.lazy(), feature_batch_size=1).collect()
-    )
+    unbatched = agg_cls().aggregate(toy_norm_df.lazy()).collect()
+    batched = agg_cls().aggregate(toy_norm_df.lazy(), feature_batch_size=1).collect()
     assert _sorted(unbatched).equals(_sorted(batched))
 
 
@@ -495,16 +657,24 @@ def test_aggregate_feature_batch_size_threads_through(
     assert _sorted(unbatched).equals(_sorted(batched))
 
 
-def test_main_feature_batch_size_config_field_default_is_200(tmp_path) -> None:
-    cfg = make_agg_cfg(tmp_path)
-    assert OmegaConf.to_object(cfg).feature_batch_size == 200
+def test_aggregate_config_feature_batch_size_default_is_500() -> None:
+    # Checked directly on the dataclass field rather than through
+    # make_agg_cfg(), which always passes its own explicit
+    # feature_batch_size=200 test-helper default regardless of what
+    # AggregateConfig's own field default is.
+    field = next(
+        f for f in dataclasses.fields(AggregateConfig) if f.name == "feature_batch_size"
+    )
+    assert field.default == 500
 
 
-def test_feature_type_main_feature_batch_size_config_field_default_is_200(
-    tmp_path,
-) -> None:
-    cfg = make_ft_cfg(tmp_path)
-    assert OmegaConf.to_object(cfg).feature_batch_size == 200
+def test_feature_type_aggregate_config_feature_batch_size_default_is_500() -> None:
+    field = next(
+        f
+        for f in dataclasses.fields(m.FeatureTypeAggregateConfig)
+        if f.name == "feature_batch_size"
+    )
+    assert field.default == 500
 
 
 # ---------------------------------------------------------------------------
@@ -715,52 +885,6 @@ def _ref_based_null_df() -> pl.DataFrame:
             "f2": pl.Series([5.0, 6.0, 7.0, None, None, None], dtype=pl.Float64),
         }
     )
-
-
-def test_emd_aggregator_ignores_nulls_in_variant() -> None:
-    full = _ref_based_null_df()
-    row = (
-        m.EMDAggregator()
-        .aggregate(full.lazy())
-        .filter(pl.col("meta_aa_changes") == "A1B")
-        .collect()
-        .to_dicts()
-        .pop()
-    )
-    expected = scipy.stats.wasserstein_distance([10.0, 30.0], [1.0, 3.0])
-    assert row["f1_EMD"] == pytest.approx(expected)
-
-
-def test_emd_aggregator_all_null_variant_returns_null() -> None:
-    full = _ref_based_null_df()
-    row = (
-        m.EMDAggregator()
-        .aggregate(full.lazy())
-        .filter(pl.col("meta_aa_changes") == "A1B")
-        .collect()
-        .to_dicts()
-        .pop()
-    )
-    assert row["f2_EMD"] is None
-
-
-def test_emd_aggregator_all_null_reference_returns_null() -> None:
-    full = pl.DataFrame(
-        {
-            "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
-            "meta_is_control": [True, True, False, False],
-            "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
-        }
-    )
-    row = (
-        m.EMDAggregator()
-        .aggregate(full.lazy())
-        .filter(pl.col("meta_aa_changes") == "A1B")
-        .collect()
-        .to_dicts()
-        .pop()
-    )
-    assert row["f1_EMD"] is None
 
 
 def test_ks_aggregator_ignores_nulls_in_variant() -> None:
@@ -1011,17 +1135,18 @@ def test_aggregate_unknown_feature_in_block_list_ignored(
     assert {"f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
+@pytest.mark.parametrize("aggregator_name", ["KS", "QQ", "AUROC"])
 def test_aggregate_block_list_with_reference_based_aggregator(
-    toy_norm_df: pl.DataFrame,
+    toy_norm_df: pl.DataFrame, aggregator_name: str
 ) -> None:
     result = m.aggregate(
         toy_norm_df.lazy(),
         label_col="meta_aa_changes",
-        aggregator_name="EMD",
-        block_list={"f1_EMD"},
+        aggregator_name=aggregator_name,
+        block_list={f"f1_{aggregator_name}"},
     ).collect()
-    assert "f1_EMD" not in result.columns
-    assert "f2_EMD" in result.columns
+    assert f"f1_{aggregator_name}" not in result.columns
+    assert f"f2_{aggregator_name}" in result.columns
 
 
 def test_main_block_list_file_excludes_features(tmp_path) -> None:

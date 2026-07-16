@@ -18,7 +18,6 @@ import pathlib
 import hydra
 import polars as pl
 import pycytominer
-import scipy.stats
 import sklearn.model_selection
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
@@ -43,8 +42,7 @@ def compute_feature_correlations(
 
     Both DataFrames are joined on ``label_col`` so that each row pairs the
     per-label aggregate from replicate 1 with the corresponding value from
-    replicate 2. Pearson *r*, *r²*, and the two-tailed *p*-value are reported
-    for each feature column.
+    replicate 2. Pearson *r* and *r²* are reported for each feature column.
 
     Parameters
     ----------
@@ -61,28 +59,20 @@ def compute_feature_correlations(
     Returns
     -------
     pl.DataFrame
-        One row per feature with columns ``feature``, ``r``, ``r_squared``,
-        and ``p_value``.
+        One row per feature with columns ``feature``, ``r``, and ``r_squared``.
     """
     df1 = df1.select(FEATURE_SELECTOR, pl.col(label_col))
     df2 = df2.select(FEATURE_SELECTOR, pl.col(label_col))
     df_joined = df1.join(df2, on=label_col, suffix="_right")
 
-    result = []
-    for feature in df1.columns:
-        if feature == label_col:
-            continue
+    features = [c for c in df1.columns if c != label_col]
+    corrs = df_joined.select(pl.corr(f, f"{f}_right").alias(f) for f in features).row(0)
 
-        left_col = df_joined.get_column(feature).to_numpy()
-        right_col = df_joined.get_column(f"{feature}_right").to_numpy()
-
-        corr, p_val = scipy.stats.pearsonr(left_col, right_col)
-        stat = corr**2
-        result.append(
-            ({"feature": feature, "r": corr, "r_squared": stat, "p_value": p_val})
-        )
-
-    return pl.DataFrame(result, schema=["feature", "r", "r_squared", "p_value"])
+    result = [
+        {"feature": feature, "r": corr, "r_squared": None if corr is None else corr**2}
+        for feature, corr in zip(features, corrs)
+    ]
+    return pl.DataFrame(result, schema=["feature", "r", "r_squared"])
 
 
 def pyc_feature_select(agg_df: pl.DataFrame) -> pl.DataFrame:
@@ -359,7 +349,7 @@ def combine_blocklists_main(cfg: DictConfig) -> None:
 
     Globs ``blocklist_files`` and concatenates them with no deduplication —
     each feature type's blocklist covers a disjoint set of feature columns
-    (stat-suffixed column names like ``f1_mean`` and ``f1_EMD`` never
+    (stat-suffixed column names like ``f1_mean`` and ``f1_KS`` never
     collide across feature types), so a plain concat is correct.
 
     Output file

@@ -275,7 +275,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`Normalizer`** (`normalize.py`) — fits per-feature z-score stats (mean, std) on a LazyFrame and applies them. Stats are persisted to Parquet (not pickle) and reloaded with `Normalizer.load(path)`. Zero-variance features produce `null` after normalization.
 
-**`BaseAggregator`** (`aggregate.py`) — abstract base for 8 concrete aggregation strategies (mean, median, MAD, std, EMD, KS, QQ, AUROC). There is no multi-aggregator wrapper; combining feature types happens in Nextflow — `aggregate.feature_type_main` runs once per `params.feature_types` entry, and `features.main` (the final feature-selection stage) joins the per-feature-type outputs on the label column.
+**`BaseAggregator`** (`aggregate.py`) — abstract base for 7 concrete aggregation strategies (mean, median, MAD, std, KS, QQ, AUROC). There is no multi-aggregator wrapper; combining feature types happens in Nextflow — `aggregate.feature_type_main` runs once per `params.feature_types` entry, and `features.main` (the final feature-selection stage) joins the per-feature-type outputs on the label column.
 
 **`utils/xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, and `batchvsbatch.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here.
 
