@@ -50,7 +50,7 @@ def test_compute_feature_correlations_output_columns(
 ) -> None:
     df1, df2 = corr_df_pair
     result = m.compute_feature_correlations(df1, df2, "meta_aa_changes")
-    assert set(result.columns) == {"feature", "r", "r_squared", "p_value"}
+    assert set(result.columns) == {"feature", "r", "r_squared"}
 
 
 def test_compute_feature_correlations_one_row_per_feature(
@@ -93,11 +93,8 @@ def test_compute_feature_correlations_matches_scipy(
     df1, df2 = corr_df_pair
     result = m.compute_feature_correlations(df1, df2, "meta_aa_changes")
     row = result.filter(pl.col("feature") == "f1").to_dicts().pop()
-    expected_r, expected_p = scipy.stats.pearsonr(
-        df1["f1"].to_numpy(), df2["f1"].to_numpy()
-    )
+    expected_r, _ = scipy.stats.pearsonr(df1["f1"].to_numpy(), df2["f1"].to_numpy())
     assert row["r"] == pytest.approx(expected_r)
-    assert row["p_value"] == pytest.approx(expected_p)
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +261,7 @@ def test_correlate_features_main_writes_correlations_file(tmp_path) -> None:
         m.correlate_features_main.__wrapped__(make_corr_cfg(tmp_path, p1, p2))
 
     result = pl.read_parquet(tmp_path / "corr_out" / "correlations.parquet")
-    assert set(result.columns) == {"feature", "r", "r_squared", "p_value"}
+    assert set(result.columns) == {"feature", "r", "r_squared"}
 
 
 def test_correlate_features_main_matches_compute_feature_correlations(tmp_path) -> None:
@@ -304,7 +301,7 @@ def test_blocklist_main_computes_median_r_across_bootstraps(tmp_path) -> None:
     corr_dir.mkdir()
     for i, r in enumerate([0.9, 0.5, 0.7], start=1):
         pl.DataFrame(
-            {"feature": ["f1_mean"], "r": [r], "r_squared": [r**2], "p_value": [0.01]}
+            {"feature": ["f1_mean"], "r": [r], "r_squared": [r**2]}
         ).write_parquet(corr_dir / f"bootstrap_{i}.parquet")
 
     with patch("fisseq_data_pipeline.features.setup_logging"):
@@ -323,7 +320,6 @@ def test_blocklist_main_feature_ok_thresholding(tmp_path) -> None:
             "feature": ["f1_mean", "f2_mean"],
             "r": [0.9, 0.2],
             "r_squared": [0.81, 0.04],
-            "p_value": [0.01, 0.8],
         }
     ).write_parquet(corr_dir / "bootstrap_1.parquet")
 

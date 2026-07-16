@@ -91,8 +91,8 @@ reloaded with `Normalizer.load(path)`. Zero-variance features produce `null` aft
 normalization. Used by both `normalize.py` (fit on WT cells) and `aggregate.py`
 (fit on synonymous-variant aggregates).
 
-**`BaseAggregator`** (`aggregate.py`) — abstract base for 8 concrete aggregation
-strategies: mean, median, MAD, std, EMD, KS, QQ, AUROC. There is no multi-aggregator
+**`BaseAggregator`** (`aggregate.py`) — abstract base for 7 concrete aggregation
+strategies: mean, median, MAD, std, KS, QQ, AUROC. There is no multi-aggregator
 wrapper — combining feature types happens in Nextflow: `aggregate.feature_type_main`
 runs once per `params.feature_types` entry, and `features.main` (the final
 feature-selection stage) joins the per-feature-type outputs on the label column.
