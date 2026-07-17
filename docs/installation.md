@@ -26,6 +26,22 @@ The package installs in editable mode, so `fisseq-*` CLI commands are immediatel
 available via `uv run fisseq-qc-filter`, `uv run fisseq-normalize`, etc. See the
 [CLI Reference](cli/qcfilter.md) for every available command.
 
+### Install with pip (no clone)
+
+If you just need the `fisseq-*` CLI tools available on `PATH` — e.g. on a
+compute node, in a container, or for a quick one-off install — `pip install`
+directly from GitHub instead of cloning and using `uv sync`:
+
+```bash
+pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
+```
+
+Pin a branch, tag, or commit with `@`:
+
+```bash
+pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git@main
+```
+
 To run the pipeline directly from GitHub without cloning, see the
 [Nextflow Workflow](nextflow.md) page's Quickstart section — Nextflow can pull and
 cache the repository itself.
