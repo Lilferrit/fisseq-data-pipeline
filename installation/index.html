@@ -54,6 +54,10 @@
     <li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#install">Install</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#install-with-pip-no-clone">Install with pip (no clone)</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#cluster-hpc">Cluster / HPC</a>
     </li>
@@ -160,6 +164,15 @@ uv run pre-commit install
 <p>The package installs in editable mode, so <code>fisseq-*</code> CLI commands are immediately
 available via <code>uv run fisseq-qc-filter</code>, <code>uv run fisseq-normalize</code>, etc. See the
 <a href="../cli/qcfilter/">CLI Reference</a> for every available command.</p>
+<h3 id="install-with-pip-no-clone">Install with pip (no clone)</h3>
+<p>If you just need the <code>fisseq-*</code> CLI tools available on <code>PATH</code> — e.g. on a
+compute node, in a container, or for a quick one-off install — <code>pip install</code>
+directly from GitHub instead of cloning and using <code>uv sync</code>:</p>
+<pre><code class="language-bash">pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
+</code></pre>
+<p>Pin a branch, tag, or commit with <code>@</code>:</p>
+<pre><code class="language-bash">pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git@main
+</code></pre>
 <p>To run the pipeline directly from GitHub without cloning, see the
 <a href="../nextflow/">Nextflow Workflow</a> page's Quickstart section — Nextflow can pull and
 cache the repository itself.</p>
