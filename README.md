@@ -25,6 +25,12 @@ cd fisseq-data-pipeline
 uv sync --group dev
 ```
 
+Or install the package straight from GitHub with `pip` (no clone needed):
+
+```bash
+pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
+```
+
 Run the full pipeline end to end with [Nextflow](https://www.nextflow.io/) (≥ 23.10):
 
 ```bash
