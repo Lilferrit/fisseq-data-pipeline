@@ -235,11 +235,6 @@ single-file path.</p>
 <td><code>true</code></td>
 <td>Append an impact score column derived from variant classification.</td>
 </tr>
-<tr>
-<td><code>feature_batch_size</code></td>
-<td><code>500</code></td>
-<td>If set, process features in chunks of at most this many columns to bound peak memory.</td>
-</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
@@ -280,11 +275,6 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <td><code>index_file</code></td>
 <td><code>null</code></td>
 <td>Optional path to a single-column row-index parquet (as written by <code>fisseq-generate-split</code>) restricting aggregation to a pseudo-replicate half.</td>
-</tr>
-<tr>
-<td><code>feature_batch_size</code></td>
-<td><code>500</code></td>
-<td>Same as above.</td>
 </tr>
 </tbody>
 </table>
