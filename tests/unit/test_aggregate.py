@@ -295,28 +295,31 @@ def test_qq_aggregator_constant_reference_returns_null() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _collect_reference_pool
+# ReferenceBasedAggregator._reference_lf
 # ---------------------------------------------------------------------------
 
 
 def test_reference_pool_collected_once(toy_norm_df: pl.DataFrame) -> None:
-    with patch(
-        "fisseq_data_pipeline.aggregate._collect_reference_pool",
-        wraps=m._collect_reference_pool,
+    with patch.object(
+        m.ReferenceBasedAggregator,
+        "_reference_lf",
+        wraps=m.ReferenceBasedAggregator._reference_lf,
     ) as spy:
         m.KSAggregator().aggregate(toy_norm_df.lazy()).collect()
     assert spy.call_count == 1
 
 
 def test_reference_pool_values_match_control_rows(toy_norm_df: pl.DataFrame) -> None:
-    pool = m._collect_reference_pool(toy_norm_df.lazy(), ["f1", "f2"])
+    pool = m.ReferenceBasedAggregator._reference_lf(
+        toy_norm_df.lazy(), ["f1", "f2"]
+    ).collect()
     expected_f1 = toy_norm_df.filter(pl.col("meta_is_control"))["f1"].to_list()
     expected_f2 = toy_norm_df.filter(pl.col("meta_is_control"))["f2"].to_list()
-    assert pool["f1"].tolist() == expected_f1
-    assert pool["f2"].tolist() == expected_f2
+    assert pool["f1_ref"][0].to_list() == expected_f1
+    assert pool["f2_ref"][0].to_list() == expected_f2
 
 
-def test_reference_pool_none_becomes_nan_but_clean_still_drops_it() -> None:
+def test_reference_pool_drops_non_finite_values() -> None:
     df = pl.DataFrame(
         {
             "meta_aa_changes": ["WT", "WT", "WT"],
@@ -324,9 +327,8 @@ def test_reference_pool_none_becomes_nan_but_clean_still_drops_it() -> None:
             "f1": pl.Series([1.0, None, 3.0], dtype=pl.Float64),
         }
     )
-    pool = m._collect_reference_pool(df.lazy(), ["f1"])
-    assert np.isnan(pool["f1"][1])
-    assert m._clean(pool["f1"]).tolist() == [1.0, 3.0]
+    pool = m.ReferenceBasedAggregator._reference_lf(df.lazy(), ["f1"]).collect()
+    assert pool["f1_ref"][0].to_list() == [1.0, 3.0]
 
 
 # ---------------------------------------------------------------------------
@@ -493,9 +495,10 @@ def test_reference_pool_not_collected_for_native_aggregators(
         m.StdAggregator,
         m.MADAggregator,
     ):
-        with patch(
-            "fisseq_data_pipeline.aggregate._collect_reference_pool",
-            wraps=m._collect_reference_pool,
+        with patch.object(
+            m.ReferenceBasedAggregator,
+            "_reference_lf",
+            wraps=m.ReferenceBasedAggregator._reference_lf,
         ) as spy:
             agg_cls().aggregate(simple_df.lazy()).collect()
         assert spy.call_count == 0
@@ -505,9 +508,10 @@ def test_reference_pool_still_collected_for_reference_based_aggregators(
     toy_norm_df: pl.DataFrame,
 ) -> None:
     for agg_cls in (m.KSAggregator, m.QQCorrelationAggregator, m.AUROCAggregator):
-        with patch(
-            "fisseq_data_pipeline.aggregate._collect_reference_pool",
-            wraps=m._collect_reference_pool,
+        with patch.object(
+            m.ReferenceBasedAggregator,
+            "_reference_lf",
+            wraps=m.ReferenceBasedAggregator._reference_lf,
         ) as spy:
             agg_cls().aggregate(toy_norm_df.lazy()).collect()
         assert spy.call_count == 1

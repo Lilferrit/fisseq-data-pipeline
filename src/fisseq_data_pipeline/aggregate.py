@@ -98,138 +98,18 @@ def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     )
 
 
-def _collect_reference_pool(
-    lf: pl.LazyFrame, feature_cols: list[str]
-) -> dict[str, np.ndarray]:
-    """
-    Collect the control/reference pool for ``feature_cols`` once, as plain
-    numpy arrays shared by reference (not copied) across every variant
-    group's stat computation.
-
-    The reference pool is shared by every variant label (a single global
-    control group, not split per-label), so collecting it once here and
-    looking it up by feature name avoids replicating it once per label
-    (which a join into the per-label LazyFrame would do).
-
-    Values are raw (nulls become NaN via ``to_numpy()``); cleaning is the
-    caller's responsibility via :func:`_clean`, which already drops
-    non-finite values, so the null->NaN conversion is a no-op for
-    correctness.
-    """
-    if not feature_cols:
-        return {}
-    ref_df = lf.filter(CONTROL_COLUMN).select(feature_cols).collect()
-    return {f: ref_df[f].to_numpy() for f in feature_cols}
-
-
-def _collect_clean_reference_pool(
-    lf: pl.LazyFrame, feature_cols: list[str]
-) -> dict[str, np.ndarray]:
-    """
-    :func:`_collect_reference_pool` followed by :func:`_clean` per feature —
-    the reference-based native aggregators (KS, AUROC, QQ) all need the
-    same "collect once, clean once per feature" reference array to embed
-    as a Polars literal, so this is the shared entry point for all three
-    rather than each repeating the two-step pattern.
-    """
-    raw = _collect_reference_pool(lf, feature_cols)
-    return {f: _clean(raw[f]) for f in feature_cols}
-
-
-def _native_clean(feat: str) -> pl.Expr:
-    """
-    Native-Polars equivalent of :func:`_clean` applied to a per-label list
-    column: drop null, NaN, and Inf entries from the list for ``feat`` before
-    any further native list-based computation. ``is_finite()`` on a Float64
-    element is ``False`` for null/NaN/Inf alike, matching ``_clean``'s
-    ``v is not None and np.isfinite(v)`` filter exactly (verified against
-    empty, single-value, null-mixed, NaN, and Inf cases).
-    """
-    return pl.col(feat).list.eval(pl.element().filter(pl.element().is_finite()))
-
-
-def _native_quantiles(list_expr: pl.Expr, probs: np.ndarray) -> pl.Expr:
-    """
-    Per-row quantiles of a list column at fixed probability points
-    ``probs``, matching ``np.quantile(..., interpolation="linear")``
-    bit-for-bit (verified across 200 randomized trials, including
-    single-element and empty lists).
-
-    Computed via one sort + a per-row index gather rather than one
-    ``list.eval(...quantile...)`` call per probability point: with 100
-    quantile points and hundreds of features per aggregation call, the naive
-    one-expression-per-point approach makes the ``.select()`` call
-    contain ``n_quantiles * n_features`` sub-expressions (50,000 at
-    the defaults), which measured *slower* than the numpy loop it replaces
-    (247.9s vs a 157.4s baseline at 500 labels x 500 features x 100
-    quantiles). This version measured 22.5s at the same scale.
-
-    ``null_on_oob=True`` on the gathers is required, not defensive
-    padding: an empty list (``n=0``) produces negative/garbage indices
-    after the ``(n - 1)`` scaling, and Polars' ``when/otherwise`` does not
-    short-circuit — the ``otherwise`` branch is evaluated for every row
-    before the mask is applied, so an out-of-bounds gather raises
-    regardless of whether that row's result is later discarded (confirmed
-    directly: without ``null_on_oob``, a single empty group anywhere in the
-    data crashes the whole query with ``OutOfBoundsError``).
-    """
-    n = list_expr.list.len()
-    sorted_list = list_expr.list.eval(pl.element().sort())
-    probs_lit = pl.lit(pl.Series([probs.tolist()]))
-    idx = probs_lit * (n - 1).cast(pl.Float64)
-    lower_f = idx.list.eval(pl.element().floor())
-    upper_f = idx.list.eval(
-        (pl.element().floor() + 1).clip(upper_bound=pl.element().max())
-    )
-    frac = idx.list.eval(pl.element() - pl.element().floor())
-    lower_idx = lower_f.list.eval(pl.element().cast(pl.UInt32))
-    upper_idx = upper_f.list.eval(pl.element().cast(pl.UInt32))
-    lower_vals = sorted_list.list.gather(lower_idx, null_on_oob=True)
-    upper_vals = sorted_list.list.gather(upper_idx, null_on_oob=True)
-    return lower_vals + frac * (upper_vals - lower_vals)
-
-
-def _clean(values) -> np.ndarray:
-    """Drop None and non-finite entries from a value list or numpy array."""
-    if values is None:
-        values = []
-    return np.fromiter(
-        (v for v in values if v is not None and np.isfinite(v)), dtype=float
-    )
-
-
-def _native_aggregate_feature_batch(
-    lf: pl.LazyFrame, label_col: str, feature_cols: list[str], exprs: list[pl.Expr]
-) -> pl.LazyFrame:
-    """
-    Shared group_by/select boilerplate for native aggregators: group
-    non-control rows by ``label_col`` into per-label list columns, then
-    select ``exprs`` (one aliased native-Polars-expression per feature)
-    against those list columns. Stays entirely in Arrow — no Python boxing.
-    """
-    variant_lists = (
-        lf.filter(~CONTROL_COLUMN)
-        .group_by(label_col)
-        .agg([pl.col(f) for f in feature_cols])
-    )
-    return variant_lists.select([label_col] + exprs)
-
-
 class BaseAggregator(abc.ABC):
     """
     Base class for all aggregators.
 
-    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_mean"``, ``"_KS"``).
-    :meth:`aggregate` is the public orchestration entry point: it computes
-    statistics for every feature via :meth:`_aggregate_feature_batch`.
-
-    Every concrete aggregator implements :meth:`_aggregate_feature_batch`
-    directly as native Polars list expressions over per-label list columns
-    (built by grouping non-control rows on ``label_col``) — no numpy
-    materialization, no per-(group, feature) Python loop. Aggregators that
-    need the reference/control pool (KS, QQ, AUROC) collect it once via
-    :func:`_collect_reference_pool` and embed it as a broadcast Polars
-    literal, rather than replicating it per variant group.
+    Subclasses declare :attr:`_stat_suffix` (e.g. ``"_mean"``, ``"_KS"``) and
+    implement :meth:`_feature_expr`, a native Polars list expression for one
+    feature. :meth:`aggregate` handles everything else: resolving feature
+    columns, building the reference pool (only for :class:`ReferenceBasedAggregator`
+    subclasses — see :meth:`_reference_lf`), grouping non-control rows into
+    per-label list columns, and assembling the final per-feature
+    expressions — entirely in Arrow, no numpy materialization, no
+    per-(group, feature) Python loop.
 
     Parameters
     ----------
@@ -258,6 +138,60 @@ class BaseAggregator(abc.ABC):
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
 
+    @staticmethod
+    def _native_clean(feat: str) -> pl.Expr:
+        """
+        Drop null, NaN, and Inf entries from a per-label list column for
+        ``feat`` before any further native list-based computation.
+        ``is_finite()`` on a Float64 element is ``False`` for null/NaN/Inf
+        alike (verified against empty, single-value, null-mixed, NaN, and
+        Inf cases) — the same filter :meth:`ReferenceBasedAggregator._reference_lf`
+        applies to the flat reference-pool columns.
+        """
+        return pl.col(feat).list.eval(pl.element().filter(pl.element().is_finite()))
+
+    @staticmethod
+    def _reference_lf(
+        lf: pl.LazyFrame, feature_cols: list[str]
+    ) -> Optional[pl.LazyFrame]:
+        """
+        Reference frame to cross-join before computing :meth:`_feature_expr`,
+        or ``None``. Overridden by :class:`ReferenceBasedAggregator`; plain
+        aggregators (mean/median/MAD/std) don't need a reference pool at
+        all.
+        """
+        return None
+
+    def _native_aggregate_feature_batch(
+        self,
+        lf: pl.LazyFrame,
+        feature_cols: list[str],
+        exprs: list[pl.Expr],
+        reference_lf: Optional[pl.LazyFrame],
+    ) -> pl.LazyFrame:
+        """
+        Shared group_by/select boilerplate: group non-control rows by
+        ``self.label_col`` into per-label list columns, then select
+        ``exprs`` (one aliased native-Polars-expression per feature)
+        against those list columns. Stays entirely in Arrow — no Python
+        boxing.
+
+        ``reference_lf``, if given, is the single-row
+        :meth:`ReferenceBasedAggregator._reference_lf` output; it's
+        cross-joined onto the per-label list frame so every variant-group
+        row also carries each feature's ``{feat}_ref`` reference list
+        column. A single-row cross join only broadcasts the reference row
+        onto every existing group row — it does not multiply row count.
+        """
+        variant_lists = (
+            lf.filter(~CONTROL_COLUMN)
+            .group_by(self.label_col)
+            .agg([pl.col(f) for f in feature_cols])
+        )
+        if reference_lf is not None:
+            variant_lists = variant_lists.join(reference_lf, how="cross")
+        return variant_lists.select([self.label_col] + exprs)
+
     def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         """
         Compute per-label statistics for every non-block-listed feature.
@@ -279,19 +213,55 @@ class BaseAggregator(abc.ABC):
             type(self).__name__,
             len(feature_cols),
         )
-        return self._aggregate_feature_batch(lf, feature_cols)
+        reference_lf = self._reference_lf(lf, feature_cols)
+        exprs = [self._feature_expr(f) for f in feature_cols]
+        return self._native_aggregate_feature_batch(
+            lf, feature_cols, exprs, reference_lf
+        )
 
     @abc.abstractmethod
-    def _aggregate_feature_batch(
-        self, lf: pl.LazyFrame, feature_cols: list[str]
-    ) -> pl.LazyFrame:
+    def _feature_expr(self, feat: str) -> pl.Expr:
         """
-        Compute statistics for every feature in ``feature_cols``, one row
-        per non-control variant group. Every concrete subclass implements
-        this as native Polars list expressions (see class docstring) —
-        there is no shared default.
+        Native Polars expression computing this aggregator's statistic for
+        one feature, evaluated against the per-label list columns (and, for
+        :class:`ReferenceBasedAggregator` subclasses, the cross-joined
+        ``{feat}_ref`` column) built by :meth:`aggregate`.
         """
         raise NotImplementedError
+
+
+class ReferenceBasedAggregator(BaseAggregator):
+    """
+    Base for aggregators that compare each variant group against a shared
+    control/reference pool (KS, QQ, AUROC): builds the single-row reference
+    frame and lets :meth:`BaseAggregator.aggregate` cross-join it in
+    automatically.
+    """
+
+    @staticmethod
+    def _reference_lf(lf: pl.LazyFrame, feature_cols: list[str]) -> pl.LazyFrame:
+        """
+        Single-row LazyFrame holding one ``{feat}_ref`` list column per
+        feature with the finite control-row values for that feature.
+
+        The reference pool is shared by every variant label (a single
+        global control group, not split per-label), so this stays a single
+        row and is cross-joined onto the per-label variant-list frame
+        rather than collected eagerly: the reference pool and the
+        per-group variant lists then live in the same lazy query graph,
+        letting the streaming engine manage memory instead of Python
+        holding numpy arrays for the whole aggregation call.
+
+        ``is_finite()`` is ``False`` for null/NaN/Inf alike, so filtering
+        on it drops all three in one pass — the same set
+        :meth:`BaseAggregator._native_clean` drops from per-group list
+        columns.
+        """
+        exprs = [
+            pl.col(f).filter(pl.col(f).is_finite()).implode().alias(f"{f}_ref")
+            for f in feature_cols
+        ]
+        return lf.filter(CONTROL_COLUMN).select(exprs)
 
 
 class MeanAggregator(BaseAggregator):
@@ -299,21 +269,8 @@ class MeanAggregator(BaseAggregator):
 
     _stat_suffix = "_mean"
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
-        exprs = [
-            _native_clean(f).list.mean().alias(f"{f}{self._stat_suffix}")
-            for f in feature_cols
-        ]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
-        )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
+    def _feature_expr(self, feat: str) -> pl.Expr:
+        return self._native_clean(feat).list.mean().alias(f"{feat}{self._stat_suffix}")
 
 
 class MedianAggregator(BaseAggregator):
@@ -321,21 +278,10 @@ class MedianAggregator(BaseAggregator):
 
     _stat_suffix = "_median"
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
-        exprs = [
-            _native_clean(f).list.median().alias(f"{f}{self._stat_suffix}")
-            for f in feature_cols
-        ]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
+    def _feature_expr(self, feat: str) -> pl.Expr:
+        return (
+            self._native_clean(feat).list.median().alias(f"{feat}{self._stat_suffix}")
         )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
 
 class MADAggregator(BaseAggregator):
@@ -343,27 +289,16 @@ class MADAggregator(BaseAggregator):
 
     _stat_suffix = "_MAD"
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
+    def _feature_expr(self, feat: str) -> pl.Expr:
         # Verified against np.median(np.abs(vals - np.median(vals))) for
         # empty, single-value, normal, and NaN/Inf-present cases — matches
         # exactly (see test_mad_native_matches_numpy_with_nan_inf_present).
-        exprs = [
-            _native_clean(f)
+        return (
+            self._native_clean(feat)
             .list.eval((pl.element() - pl.element().median()).abs())
             .list.median()
-            .alias(f"{f}{self._stat_suffix}")
-            for f in feature_cols
-        ]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
+            .alias(f"{feat}{self._stat_suffix}")
         )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
 
 class StdAggregator(BaseAggregator):
@@ -371,26 +306,17 @@ class StdAggregator(BaseAggregator):
 
     _stat_suffix = "_std"
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
+    def _feature_expr(self, feat: str) -> pl.Expr:
         # Confirmed: list.std(ddof=1) returns null for lists of length < 2
         # (see test_std_native_single_value_group_returns_null).
-        exprs = [
-            _native_clean(f).list.std(ddof=1).alias(f"{f}{self._stat_suffix}")
-            for f in feature_cols
-        ]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
+        return (
+            self._native_clean(feat)
+            .list.std(ddof=1)
+            .alias(f"{feat}{self._stat_suffix}")
         )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
 
 
-class KSAggregator(BaseAggregator):
+class KSAggregator(ReferenceBasedAggregator):
     """
     Computes per-group two-sample Kolmogorov-Smirnov statistics against
     the reference distribution for each feature column.
@@ -398,25 +324,10 @@ class KSAggregator(BaseAggregator):
 
     _stat_suffix = "_KS"
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
-        cleaned_ref = _collect_clean_reference_pool(lf, feature_cols)
-        exprs = [self._ks_expr(feat, cleaned_ref[feat]) for feat in feature_cols]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
-        )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
-
-    def _ks_expr(self, feat: str, ref_vals: np.ndarray) -> pl.Expr:
+    def _feature_expr(self, feat: str) -> pl.Expr:
         alias = f"{feat}{self._stat_suffix}"
-        n_ref = len(ref_vals)
-        if n_ref == 0:
-            return pl.lit(None, dtype=pl.Float64).alias(alias)
+        ref_list = pl.col(f"{feat}_ref")
+        n_ref = ref_list.list.len()
 
         # Signed-weight cumulative-sum KS statistic: +1/n_group per variant
         # value, -1/n_ref per reference value. Sort the combined values,
@@ -426,13 +337,12 @@ class KSAggregator(BaseAggregator):
         # exceed the true statistic). Verified against
         # scipy.stats.ks_2samp across 500 randomized trials, including
         # tie-heavy integer data and n=1 groups.
-        group_list = _native_clean(feat)
-        ref_val_lit = pl.lit(pl.Series([ref_vals.tolist()]))
-        ref_w_lit = pl.lit(pl.Series([[-1.0 / n_ref] * n_ref]))
+        group_list = self._native_clean(feat)
 
         g_weight = group_list.list.eval((pl.element() * 0 + 1.0) / pl.element().count())
-        combined_val = pl.concat_list([group_list, ref_val_lit])
-        combined_w = pl.concat_list([g_weight, ref_w_lit])
+        ref_weight = ref_list.list.eval((pl.element() * 0 - 1.0) / pl.element().count())
+        combined_val = pl.concat_list([group_list, ref_list])
+        combined_w = pl.concat_list([g_weight, ref_weight])
 
         order = combined_val.list.eval(pl.element().arg_sort())
         val_sorted = combined_val.list.gather(order)
@@ -453,11 +363,17 @@ class KSAggregator(BaseAggregator):
         # which never wins the subsequent max since a KS statistic is >= 0.
         ks_stat = (candidate * is_last_f).list.max()
 
-        result = pl.when(group_list.list.len() == 0).then(None).otherwise(ks_stat)
+        result = (
+            pl.when(n_ref == 0)
+            .then(None)
+            .when(group_list.list.len() == 0)
+            .then(None)
+            .otherwise(ks_stat)
+        )
         return result.alias(alias)
 
 
-class QQCorrelationAggregator(BaseAggregator):
+class QQCorrelationAggregator(ReferenceBasedAggregator):
     """
     Computes per-group Q-Q correlation against the reference distribution for
     each feature column.
@@ -481,51 +397,80 @@ class QQCorrelationAggregator(BaseAggregator):
         super().__init__(label_col, block_list)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
-        cleaned_ref = _collect_clean_reference_pool(lf, feature_cols)
-        exprs = [self._qq_expr(feat, cleaned_ref[feat]) for feat in feature_cols]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
-        )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
+    @staticmethod
+    def _native_quantiles(list_expr: pl.Expr, probs: np.ndarray) -> pl.Expr:
+        """
+        Per-row quantiles of a list column at fixed probability points
+        ``probs``, matching ``np.quantile(..., interpolation="linear")``
+        bit-for-bit (verified across 200 randomized trials, including
+        single-element and empty lists).
 
-    def _qq_expr(self, feat: str, ref_vals: np.ndarray) -> pl.Expr:
+        Computed via one sort + a per-row index gather rather than one
+        ``list.eval(...quantile...)`` call per probability point: with 100
+        quantile points and hundreds of features per aggregation call, the
+        naive one-expression-per-point approach makes the ``.select()``
+        call contain ``n_quantiles * n_features`` sub-expressions (50,000
+        at the defaults), which measured *slower* than the numpy loop it
+        replaces (247.9s vs a 157.4s baseline at 500 labels x 500 features
+        x 100 quantiles). This version measured 22.5s at the same scale.
+
+        ``null_on_oob=True`` on the gathers is required, not defensive
+        padding: an empty list (``n=0``) produces negative/garbage indices
+        after the ``(n - 1)`` scaling, and Polars' ``when/otherwise`` does
+        not short-circuit — the ``otherwise`` branch is evaluated for every
+        row before the mask is applied, so an out-of-bounds gather raises
+        regardless of whether that row's result is later discarded
+        (confirmed directly: without ``null_on_oob``, a single empty group
+        anywhere in the data crashes the whole query with
+        ``OutOfBoundsError``).
+        """
+        n = list_expr.list.len()
+        sorted_list = list_expr.list.eval(pl.element().sort())
+        probs_lit = pl.lit(pl.Series([probs.tolist()]))
+        idx = probs_lit * (n - 1).cast(pl.Float64)
+        lower_f = idx.list.eval(pl.element().floor())
+        upper_f = idx.list.eval(
+            (pl.element().floor() + 1).clip(upper_bound=pl.element().max())
+        )
+        frac = idx.list.eval(pl.element() - pl.element().floor())
+        lower_idx = lower_f.list.eval(pl.element().cast(pl.UInt32))
+        upper_idx = upper_f.list.eval(pl.element().cast(pl.UInt32))
+        lower_vals = sorted_list.list.gather(lower_idx, null_on_oob=True)
+        upper_vals = sorted_list.list.gather(upper_idx, null_on_oob=True)
+        return lower_vals + frac * (upper_vals - lower_vals)
+
+    def _feature_expr(self, feat: str) -> pl.Expr:
         alias = f"{feat}{self._stat_suffix}"
-        if len(ref_vals) == 0:
-            return pl.lit(None, dtype=pl.Float64).alias(alias)
+        ref_list = pl.col(f"{feat}_ref")
+        n_ref = ref_list.list.len()
 
         # Reference-side quantiles and their centering are fixed per
-        # feature (the reference pool doesn't vary by group), so compute
-        # them once here in plain numpy rather than per group.
-        ref_q = np.quantile(ref_vals, self.quantile_points)
-        if ref_q.max() == ref_q.min():
-            # Constant reference quantile profile (e.g. a single distinct
-            # reference value) -> correlation is undefined for every group
-            # regardless of its own data (scipy.stats.pearsonr would raise
-            # ConstantInputWarning and return nan here).
-            return pl.lit(None, dtype=pl.Float64).alias(alias)
-        y_mean = ref_q.mean()
-        y_centered_lit = pl.lit(pl.Series([(ref_q - y_mean).tolist()]))
-        var_y_sum = float(np.sum((ref_q - y_mean) ** 2))
+        # feature (the reference pool doesn't vary by group) but are now
+        # computed per row via _native_quantiles rather than once in plain
+        # numpy, since the reference pool lives in the query graph — every
+        # row gets the identical broadcast reference list post-cross-join,
+        # so this recomputes the same quantiles redundantly per group
+        # rather than once per feature.
+        ref_q = self._native_quantiles(ref_list, self.quantile_points)
+        # Constant reference quantile profile (e.g. a single distinct
+        # reference value) -> correlation is undefined for every group
+        # regardless of its own data (scipy.stats.pearsonr would raise
+        # ConstantInputWarning and return nan here).
+        ref_constant = ref_q.list.max() == ref_q.list.min()
+        y_centered = ref_q.list.eval(pl.element() - pl.element().mean())
+        var_y_sum = y_centered.list.eval(pl.element() ** 2).list.sum()
 
-        group_list = _native_clean(feat)
-        variant_q = _native_quantiles(group_list, self.quantile_points)
+        group_list = self._native_clean(feat)
+        variant_q = self._native_quantiles(group_list, self.quantile_points)
 
         # Pearson r, computed manually (mean-center each side, then
         # dot-product over sqrt of sum-of-squares) rather than via
         # pl.corr, which correlates two *columns across rows* — not the
         # paired elements *within* one row's two quantile lists.
         x_centered = variant_q.list.eval(pl.element() - pl.element().mean())
-        num = (x_centered * y_centered_lit).list.sum()
+        num = (x_centered * y_centered).list.sum()
         denom_x = x_centered.list.eval(pl.element() ** 2).list.sum()
         denom = (denom_x * var_y_sum).sqrt()
-        r = pl.when(denom == 0).then(None).otherwise(num / denom)
 
         # A group with a single distinct value has an exactly constant
         # quantile profile (quantile(0) == quantile(1) == that value, since
@@ -540,13 +485,24 @@ class QQCorrelationAggregator(BaseAggregator):
         # correlation instead of null — caught directly via a real n=1
         # group during verification.
         is_constant_group = group_list.list.n_unique() <= 1
-        r = pl.when(is_constant_group).then(None).otherwise(r)
 
-        result = pl.when(group_list.list.len() == 0).then(None).otherwise(r)
+        result = (
+            pl.when(n_ref == 0)
+            .then(None)
+            .when(ref_constant)
+            .then(None)
+            .when(group_list.list.len() == 0)
+            .then(None)
+            .when(is_constant_group)
+            .then(None)
+            .when(denom == 0)
+            .then(None)
+            .otherwise(num / denom)
+        )
         return result.alias(alias)
 
 
-class AUROCAggregator(BaseAggregator):
+class AUROCAggregator(ReferenceBasedAggregator):
     """
     Computes per-group AUROC against the reference distribution for each
     feature column.
@@ -562,25 +518,10 @@ class AUROCAggregator(BaseAggregator):
 
     _stat_suffix = "_AUROC"
 
-    def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-    ) -> pl.LazyFrame:
-        cleaned_ref = _collect_clean_reference_pool(lf, feature_cols)
-        exprs = [self._auroc_expr(feat, cleaned_ref[feat]) for feat in feature_cols]
-        logging.info(
-            "%s: %d feature(s) (native)",
-            type(self).__name__,
-            len(feature_cols),
-        )
-        return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
-
-    def _auroc_expr(self, feat: str, ref_vals: np.ndarray) -> pl.Expr:
+    def _feature_expr(self, feat: str) -> pl.Expr:
         alias = f"{feat}{self._stat_suffix}"
-        n_ref = len(ref_vals)
-        if n_ref == 0:
-            return pl.lit(None, dtype=pl.Float64).alias(alias)
+        ref_list = pl.col(f"{feat}_ref")
+        n_ref = ref_list.list.len()
 
         # Rank-sum (Mann-Whitney U) identity: rank the combined pool with
         # average ranks for ties (matches sklearn.metrics.roc_auc_score's
@@ -588,16 +529,21 @@ class AUROCAggregator(BaseAggregator):
         # continuous and tied data). concat_list preserves element order,
         # so the group's own ranks are exactly the first n_group entries
         # of the ranked combined list.
-        group_list = _native_clean(feat)
-        ref_lit = pl.lit(pl.Series([ref_vals.tolist()]))
-        combined = pl.concat_list([group_list, ref_lit])
+        group_list = self._native_clean(feat)
+        combined = pl.concat_list([group_list, ref_list])
         ranks = combined.list.eval(pl.element().rank(method="average"))
         n_group = group_list.list.len()
         group_rank_sum = ranks.list.slice(0, n_group).list.sum()
         u = group_rank_sum - n_group * (n_group + 1) / 2
         auroc = u / (n_group * n_ref)
 
-        result = pl.when(n_group == 0).then(None).otherwise(auroc)
+        result = (
+            pl.when(n_ref == 0)
+            .then(None)
+            .when(n_group == 0)
+            .then(None)
+            .otherwise(auroc)
+        )
         return result.alias(alias)
 
 
