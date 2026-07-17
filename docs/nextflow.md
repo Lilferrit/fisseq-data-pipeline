@@ -116,7 +116,6 @@ Defaults live in `nextflow.config` at the repo root:
 | `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
 | `--downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
 | `--feature_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (all 7 of `aggregate.py`'s aggregators). |
-| `--feature_batch_size` | `200` | Bounds peak memory during aggregation; `null` for a single unbatched pass. |
 | `--bootstrap` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
 | `--global` | `true` | Whether to run `OVWT_GLOBAL` and the global feature-selection branch. |
 
