@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 from unittest.mock import patch
 
@@ -514,16 +513,6 @@ def test_reference_pool_still_collected_for_reference_based_aggregators(
         assert spy.call_count == 1
 
 
-def test_native_and_batching_combine_correctly(many_features_df: pl.DataFrame) -> None:
-    unbatched = m.MeanAggregator().aggregate(many_features_df.lazy()).collect()
-    batched = (
-        m.MeanAggregator()
-        .aggregate(many_features_df.lazy(), feature_batch_size=2)
-        .collect()
-    )
-    assert _sorted(unbatched).equals(_sorted(batched))
-
-
 # ---------------------------------------------------------------------------
 # aggregate() function
 # ---------------------------------------------------------------------------
@@ -559,125 +548,6 @@ def test_aggregate_unknown_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
-# feature_batch_size
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def many_features_df() -> pl.DataFrame:
-    """Two variant groups, six feature columns (f1..f6), no control rows."""
-    return pl.DataFrame(
-        {
-            "meta_aa_changes": ["A", "A", "A", "B", "B", "B"],
-            "meta_is_control": [False, False, False, False, False, False],
-            "f1": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
-            "f2": [4.0, 5.0, 6.0, 40.0, 50.0, 60.0],
-            "f3": [7.0, 8.0, 9.0, 70.0, 80.0, 90.0],
-            "f4": [1.5, 2.5, 3.5, 15.0, 25.0, 35.0],
-            "f5": [2.0, 3.0, 4.0, 20.0, 30.0, 40.0],
-            "f6": [0.5, 1.5, 2.5, 5.0, 15.0, 25.0],
-        }
-    )
-
-
-def _sorted(df: pl.DataFrame) -> pl.DataFrame:
-    return df.select(sorted(df.columns)).sort("meta_aa_changes")
-
-
-def test_feature_batch_size_none_matches_unbatched(simple_df: pl.DataFrame) -> None:
-    unbatched = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
-    explicit_none = (
-        m.MeanAggregator()
-        .aggregate(simple_df.lazy(), feature_batch_size=None)
-        .collect()
-    )
-    assert _sorted(unbatched).equals(_sorted(explicit_none))
-
-
-def test_feature_batch_size_splits_and_rejoins_identically(
-    many_features_df: pl.DataFrame,
-) -> None:
-    unbatched = m.MeanAggregator().aggregate(many_features_df.lazy()).collect()
-    batched = (
-        m.MeanAggregator()
-        .aggregate(many_features_df.lazy(), feature_batch_size=2)
-        .collect()
-    )
-    assert _sorted(unbatched).equals(_sorted(batched))
-
-
-@pytest.mark.parametrize(
-    "agg_cls", [m.KSAggregator, m.QQCorrelationAggregator, m.AUROCAggregator]
-)
-def test_feature_batch_size_with_reference_based_aggregator(
-    toy_norm_df: pl.DataFrame, agg_cls
-) -> None:
-    unbatched = agg_cls().aggregate(toy_norm_df.lazy()).collect()
-    batched = agg_cls().aggregate(toy_norm_df.lazy(), feature_batch_size=1).collect()
-    assert _sorted(unbatched).equals(_sorted(batched))
-
-
-def test_feature_batch_size_preserves_all_labels(
-    many_features_df: pl.DataFrame,
-) -> None:
-    unbatched = m.MeanAggregator().aggregate(many_features_df.lazy()).collect()
-    batched = (
-        m.MeanAggregator()
-        .aggregate(many_features_df.lazy(), feature_batch_size=2)
-        .collect()
-    )
-    assert set(batched["meta_aa_changes"]) == set(unbatched["meta_aa_changes"])
-
-
-@pytest.mark.parametrize("size", [0, -1])
-def test_feature_batch_size_zero_or_negative_is_noop(
-    simple_df: pl.DataFrame, size: int
-) -> None:
-    unbatched = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
-    result = (
-        m.MeanAggregator()
-        .aggregate(simple_df.lazy(), feature_batch_size=size)
-        .collect()
-    )
-    assert _sorted(unbatched).equals(_sorted(result))
-
-
-def test_aggregate_feature_batch_size_threads_through(
-    many_features_df: pl.DataFrame,
-) -> None:
-    unbatched = m.aggregate(
-        many_features_df.lazy(), label_col="meta_aa_changes", aggregator_name="mean"
-    ).collect()
-    batched = m.aggregate(
-        many_features_df.lazy(),
-        label_col="meta_aa_changes",
-        aggregator_name="mean",
-        feature_batch_size=2,
-    ).collect()
-    assert _sorted(unbatched).equals(_sorted(batched))
-
-
-def test_aggregate_config_feature_batch_size_default_is_500() -> None:
-    # Checked directly on the dataclass field rather than through
-    # make_agg_cfg(), which always passes its own explicit
-    # feature_batch_size=200 test-helper default regardless of what
-    # AggregateConfig's own field default is.
-    field = next(
-        f for f in dataclasses.fields(AggregateConfig) if f.name == "feature_batch_size"
-    )
-    assert field.default == 500
-
-
-def test_feature_type_aggregate_config_feature_batch_size_default_is_500() -> None:
-    field = next(
-        f
-        for f in dataclasses.fields(m.FeatureTypeAggregateConfig)
-        if f.name == "feature_batch_size"
-    )
-    assert field.default == 500
-
-
-# ---------------------------------------------------------------------------
 # main()
 # ---------------------------------------------------------------------------
 
@@ -690,7 +560,6 @@ def make_agg_cfg(
     aggregator="mean",
     block_list_file=None,
     compute_impact_score=True,
-    feature_batch_size=200,
 ) -> OmegaConf:
     """Return a DictConfig for AggregateConfig with sensible test defaults."""
     return OmegaConf.structured(
@@ -702,7 +571,6 @@ def make_agg_cfg(
             aggregator=aggregator,
             block_list_file=block_list_file,
             compute_impact_score=compute_impact_score,
-            feature_batch_size=feature_batch_size,
         )
     )
 
@@ -797,21 +665,6 @@ def test_main_saves_normalizer_when_configured(tmp_path):
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.main.__wrapped__(make_agg_cfg(tmp_path, save_normalizer=True))
     assert (tmp_path / "out" / "normalizer.parquet").exists()
-
-
-def test_main_feature_batch_size_end_to_end(tmp_path):
-    write_agg_input_parquet(tmp_path)
-    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
-        m.main.__wrapped__(make_agg_cfg(tmp_path, feature_batch_size=1))
-    batched = pl.read_parquet(tmp_path / "out" / "input.parquet")
-
-    write_agg_input_parquet(tmp_path)
-    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
-        m.main.__wrapped__(make_agg_cfg(tmp_path))
-    unbatched = pl.read_parquet(tmp_path / "out" / "input.parquet")
-
-    assert set(batched.columns) == set(unbatched.columns)
-    assert _sorted(batched).equals(_sorted(unbatched))
 
 
 # ---------------------------------------------------------------------------
@@ -1366,7 +1219,6 @@ def make_ft_cfg(
     output_root=None,
     aggregator="mean",
     index_file=None,
-    feature_batch_size=200,
 ) -> OmegaConf:
     """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
     return OmegaConf.structured(
@@ -1376,7 +1228,6 @@ def make_ft_cfg(
             input_file=str(tmp_path / "input.parquet"),
             aggregator=aggregator,
             index_file=index_file,
-            feature_batch_size=feature_batch_size,
         )
     )
 

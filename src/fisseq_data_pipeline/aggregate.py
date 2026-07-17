@@ -13,7 +13,6 @@ import dataclasses
 import logging
 import pathlib
 import re
-import time
 from typing import ClassVar, Optional
 
 import hydra
@@ -50,19 +49,12 @@ class AggregateConfig(LabeledInputConfig):
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
         ``False`` are excluded from aggregation. Defaults to ``None`` (no
         features blocked).
-    feature_batch_size : int or None
-        If set, split features into chunks of at most this many columns per
-        aggregation pass to bound peak memory. Each chunk collects its
-        variant and reference rows into numpy arrays, so batching bounds how
-        much of that data is materialized in memory at once. Defaults to
-        ``500``. Set to ``None`` for a single unbatched pass.
     """
 
     aggregator: str = MISSING
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
     compute_impact_score: bool = True
-    feature_batch_size: Optional[int] = 500
 
 
 _cs = ConfigStore.instance()
@@ -136,9 +128,9 @@ def _collect_clean_reference_pool(
     """
     :func:`_collect_reference_pool` followed by :func:`_clean` per feature —
     the reference-based native aggregators (KS, AUROC, QQ) all need the
-    same "collect once per chunk, clean once per feature" reference array
-    to embed as a Polars literal, so this is the shared entry point for all
-    three rather than each repeating the two-step pattern.
+    same "collect once, clean once per feature" reference array to embed
+    as a Polars literal, so this is the shared entry point for all three
+    rather than each repeating the two-step pattern.
     """
     raw = _collect_reference_pool(lf, feature_cols)
     return {f: _clean(raw[f]) for f in feature_cols}
@@ -165,9 +157,9 @@ def _native_quantiles(list_expr: pl.Expr, probs: np.ndarray) -> pl.Expr:
 
     Computed via one sort + a per-row index gather rather than one
     ``list.eval(...quantile...)`` call per probability point: with 100
-    quantile points and hundreds of features per chunk, the naive
-    one-expression-per-point approach makes the chunk's ``.select()`` call
-    contain ``n_quantiles * feature_batch_size`` sub-expressions (50,000 at
+    quantile points and hundreds of features per aggregation call, the naive
+    one-expression-per-point approach makes the ``.select()`` call
+    contain ``n_quantiles * n_features`` sub-expressions (50,000 at
     the defaults), which measured *slower* than the numpy loop it replaces
     (247.9s vs a 157.4s baseline at 500 labels x 500 features x 100
     quantiles). This version measured 22.5s at the same scale.
@@ -179,7 +171,7 @@ def _native_quantiles(list_expr: pl.Expr, probs: np.ndarray) -> pl.Expr:
     before the mask is applied, so an out-of-bounds gather raises
     regardless of whether that row's result is later discarded (confirmed
     directly: without ``null_on_oob``, a single empty group anywhere in the
-    chunk crashes the whole query with ``OutOfBoundsError``).
+    data crashes the whole query with ``OutOfBoundsError``).
     """
     n = list_expr.list.len()
     sorted_list = list_expr.list.eval(pl.element().sort())
@@ -195,17 +187,6 @@ def _native_quantiles(list_expr: pl.Expr, probs: np.ndarray) -> pl.Expr:
     lower_vals = sorted_list.list.gather(lower_idx, null_on_oob=True)
     upper_vals = sorted_list.list.gather(upper_idx, null_on_oob=True)
     return lower_vals + frac * (upper_vals - lower_vals)
-
-
-def _chunk(items: list[str], size: Optional[int]) -> list[list[str]]:
-    """
-    Split ``items`` into chunks of at most ``size`` elements. ``size`` of
-    ``None`` or ``<= 0`` means "no batching" (a single chunk containing all
-    items) — a defensive no-op rather than a footgun for ``size=0``.
-    """
-    if size is None or size <= 0:
-        return [items]
-    return [items[i : i + size] for i in range(0, len(items), size)]
 
 
 def _clean(values) -> np.ndarray:
@@ -239,18 +220,16 @@ class BaseAggregator(abc.ABC):
     Base class for all aggregators.
 
     Subclasses declare :attr:`_stat_suffix` (e.g. ``"_mean"``, ``"_KS"``).
-    :meth:`aggregate` is the public orchestration entry point: it chunks
-    features (via :func:`_chunk`), computes each chunk via
-    :meth:`_aggregate_feature_batch`, and joins per-chunk results back
-    together on ``label_col``.
+    :meth:`aggregate` is the public orchestration entry point: it computes
+    statistics for every feature via :meth:`_aggregate_feature_batch`.
 
     Every concrete aggregator implements :meth:`_aggregate_feature_batch`
     directly as native Polars list expressions over per-label list columns
     (built by grouping non-control rows on ``label_col``) — no numpy
     materialization, no per-(group, feature) Python loop. Aggregators that
-    need the reference/control pool (KS, QQ, AUROC) collect it once per
-    chunk via :func:`_collect_reference_pool` and embed it as a broadcast
-    Polars literal, rather than replicating it per variant group.
+    need the reference/control pool (KS, QQ, AUROC) collect it once via
+    :func:`_collect_reference_pool` and embed it as a broadcast Polars
+    literal, rather than replicating it per variant group.
 
     Parameters
     ----------
@@ -279,9 +258,7 @@ class BaseAggregator(abc.ABC):
             if f"{f}{self._stat_suffix}" not in (self.block_list or set())
         ]
 
-    def aggregate(
-        self, lf: pl.LazyFrame, feature_batch_size: Optional[int] = None
-    ) -> pl.LazyFrame:
+    def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         """
         Compute per-label statistics for every non-block-listed feature.
 
@@ -290,16 +267,6 @@ class BaseAggregator(abc.ABC):
         lf : pl.LazyFrame
             Input LazyFrame containing the label column, a ``CONTROL_COLUMN``
             boolean column, and feature columns.
-        feature_batch_size : int or None
-            If set, features are processed in chunks of at most this many
-            columns at a time (each chunk performs its own collection and
-            computation), and per-chunk results are joined back together on
-            ``label_col``. This trades some redundant work for a lower
-            peak-memory materialization per chunk. ``None`` (default)
-            processes all features in a single pass, identical to unbatched
-            behavior. The module-level :func:`aggregate` function and the
-            Hydra configs default this to ``500`` instead, to bound memory
-            in production pipeline runs.
 
         Returns
         -------
@@ -307,47 +274,25 @@ class BaseAggregator(abc.ABC):
             One row per non-control variant group with computed statistics.
         """
         feature_cols = self._feature_columns(lf)
-        batches = _chunk(feature_cols, feature_batch_size)
         logging.info(
-            "%s: %d feature(s) to aggregate in %d chunk(s) (feature_batch_size=%s)",
+            "%s: %d feature(s) to aggregate",
             type(self).__name__,
             len(feature_cols),
-            len(batches),
-            feature_batch_size,
         )
-        results = [
-            self._aggregate_feature_batch(
-                lf, cols, batch_idx=i, total_batches=len(batches)
-            )
-            for i, cols in enumerate(batches, start=1)
-        ]
-
-        out = results[0]
-        for r in results[1:]:
-            out = out.join(r, on=self.label_col, how="inner")
-        return out
+        return self._aggregate_feature_batch(lf, feature_cols)
 
     @abc.abstractmethod
     def _aggregate_feature_batch(
-        self,
-        lf: pl.LazyFrame,
-        feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
+        self, lf: pl.LazyFrame, feature_cols: list[str]
     ) -> pl.LazyFrame:
         """
-        Compute this chunk's statistics for every feature in
-        ``feature_cols``, one row per non-control variant group. Every
-        concrete subclass implements this as native Polars list
-        expressions (see class docstring) — there is no shared default.
+        Compute statistics for every feature in ``feature_cols``, one row
+        per non-control variant group. Every concrete subclass implements
+        this as native Polars list expressions (see class docstring) —
+        there is no shared default.
         """
         raise NotImplementedError
 
-        labels = variant_df[self.label_col].to_numpy()
-        order = np.argsort(labels, kind="stable")
-        sorted_labels = labels[order]
-        unique_labels, group_starts = np.unique(sorted_labels, return_index=True)
-        n_groups = len(unique_labels)
 
 class MeanAggregator(BaseAggregator):
     """Computes per-group mean for each feature column."""
@@ -358,18 +303,14 @@ class MeanAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         exprs = [
             _native_clean(f).list.mean().alias(f"{f}{self._stat_suffix}")
             for f in feature_cols
         ]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -384,18 +325,14 @@ class MedianAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         exprs = [
             _native_clean(f).list.median().alias(f"{f}{self._stat_suffix}")
             for f in feature_cols
         ]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -410,8 +347,6 @@ class MADAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         # Verified against np.median(np.abs(vals - np.median(vals))) for
         # empty, single-value, normal, and NaN/Inf-present cases — matches
@@ -424,10 +359,8 @@ class MADAggregator(BaseAggregator):
             for f in feature_cols
         ]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -442,8 +375,6 @@ class StdAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         # Confirmed: list.std(ddof=1) returns null for lists of length < 2
         # (see test_std_native_single_value_group_returns_null).
@@ -452,10 +383,8 @@ class StdAggregator(BaseAggregator):
             for f in feature_cols
         ]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -473,16 +402,12 @@ class KSAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         cleaned_ref = _collect_clean_reference_pool(lf, feature_cols)
         exprs = [self._ks_expr(feat, cleaned_ref[feat]) for feat in feature_cols]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -560,16 +485,12 @@ class QQCorrelationAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         cleaned_ref = _collect_clean_reference_pool(lf, feature_cols)
         exprs = [self._qq_expr(feat, cleaned_ref[feat]) for feat in feature_cols]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -645,16 +566,12 @@ class AUROCAggregator(BaseAggregator):
         self,
         lf: pl.LazyFrame,
         feature_cols: list[str],
-        batch_idx: int,
-        total_batches: int,
     ) -> pl.LazyFrame:
         cleaned_ref = _collect_clean_reference_pool(lf, feature_cols)
         exprs = [self._auroc_expr(feat, cleaned_ref[feat]) for feat in feature_cols]
         logging.info(
-            "%s chunk %d/%d: %d feature(s) (native)",
+            "%s: %d feature(s) (native)",
             type(self).__name__,
-            batch_idx,
-            total_batches,
             len(feature_cols),
         )
         return _native_aggregate_feature_batch(lf, self.label_col, feature_cols, exprs)
@@ -700,7 +617,6 @@ def aggregate(
     label_col: str,
     aggregator_name: str,
     block_list: Optional[set[str]] = None,
-    feature_batch_size: Optional[int] = 500,
 ) -> pl.LazyFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
@@ -722,12 +638,6 @@ def aggregate(
         statistics are not computed and do not appear in the output. Names
         that do not match any aggregated output are silently ignored. Defaults
         to ``None``.
-    feature_batch_size : int or None
-        If set, split features into chunks of at most this many columns per
-        aggregation pass to bound peak memory. Each chunk collects its
-        variant and reference rows into numpy arrays, so batching bounds how
-        much of that data is materialized in memory at once. Defaults to
-        ``500``. Set to ``None`` for a single unbatched pass.
 
     Returns
     -------
@@ -741,7 +651,7 @@ def aggregate(
         )
 
     agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
-    return agg.aggregate(lf, feature_batch_size=feature_batch_size)
+    return agg.aggregate(lf)
 
 
 @hydra.main(version_base=None, config_path=None, config_name="aggregate_main")
@@ -805,7 +715,6 @@ def main(cfg: DictConfig) -> None:
             label_col=agg_cfg.label_column,
             aggregator_name=agg_cfg.aggregator,
             block_list=block_list,
-            feature_batch_size=agg_cfg.feature_batch_size,
         ),
         agg_cfg.label_column,
     )
@@ -863,17 +772,10 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         naming a subset of cell-level rows to aggregate over (e.g. one
         pseudo-replicate half). When ``None``, all rows are aggregated.
         Defaults to ``None``.
-    feature_batch_size : int or None
-        If set, split features into chunks of at most this many columns per
-        aggregation pass to bound peak memory. Each chunk collects its
-        variant and reference rows into numpy arrays, so batching bounds how
-        much of that data is materialized in memory at once. Defaults to
-        ``500``. Set to ``None`` for a single unbatched pass.
     """
 
     aggregator: str = MISSING
     index_file: Optional[str] = None
-    feature_batch_size: Optional[int] = 500
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
@@ -933,7 +835,6 @@ def feature_type_main(cfg: DictConfig) -> None:
         lf,
         label_col=ft_cfg.label_column,
         aggregator_name=ft_cfg.aggregator,
-        feature_batch_size=ft_cfg.feature_batch_size,
     )
 
     if ft_cfg.output_root is not None:

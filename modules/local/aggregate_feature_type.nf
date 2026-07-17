@@ -22,8 +22,7 @@ process AGGREGATE_FEATURE_TYPE {
         output_dir=. \\
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\
-        aggregator=${feature_type} \\
-        feature_batch_size=${params.feature_batch_size}
+        aggregator=${feature_type}
     mv ${feature_type}.*.parquet ${feature_type}.parquet
     """
 }
