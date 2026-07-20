@@ -5,6 +5,7 @@ nav:
   - Installation: installation.md
   - Nextflow Workflow: nextflow.md
   - CLI Reference:
+      - Input: cli/input.md
       - QC Filter: cli/qcfilter.md
       - Normalize: cli/normalize.md
       - Aggregate: cli/aggregate.md
@@ -15,6 +16,7 @@ nav:
       - OvWT Cell Scores: cli/ovwtcellscores.md
       - Batch vs. Batch: cli/batchvsbatch.md
   - API Reference:
+      - input: api/input.md
       - qcfilter: api/qcfilter.md
       - normalize: api/normalize.md
       - aggregate: api/aggregate.md

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 import pytest
+import yaml
 
 # ---------------------------------------------------------------------------
 # Synthetic data
@@ -15,10 +16,14 @@ import pytest
 # 10 WT barcodes × 6 cells = 60 WT cells
 # 5 A1A barcodes × 6 cells = 30 Synonymous cells  (A→A at position 1)
 # 5 M1K barcodes × 6 cells = 30 Single Missense cells
+# 5 M1K:downsampled-half barcodes x 6 cells = 30 tagged Single Missense cells,
+# which must pool with the untagged M1K rows under meta_aa_changes == "M1K"
+# once qcfilter.py's filter_columns strips the ":downsampled-half" tag.
 _VARIANTS = {
     "WT": ("bc_wt_{i:02d}", 10, 6),
     "A1A": ("bc_syn_{i:02d}", 5, 6),
     "M1K": ("bc_mis_{i:02d}", 5, 6),
+    "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 6),
 }
 
 _FEATURE_COLS = [
@@ -152,6 +157,24 @@ def test_pipeline_qc_outputs(pipeline_outputs, batch_stem):
     assert (qc / "filtered_cells.parquet").exists()
     assert (qc / "barcode_counts.parquet").exists()
     assert (qc / "variants_per_barcode.parquet").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_tagged_variant_pools_with_base(pipeline_outputs, batch_stem):
+    """A raw aaChanges value of 'M1K:downsampled-half' is split by
+    qcfilter.py's filter_columns into meta_aa_changes == 'M1K' (pooled with
+    the untagged M1K rows) and meta_variant_tag == 'downsampled-half'."""
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "qc_filter" / batch_stem / "filtered_cells.parquet")
+    m1k = df.filter(pl.col("meta_aa_changes") == "M1K")
+    # Both the untagged (bc_mis_*) and tagged (bc_mis_tag_*) M1K groups are
+    # 5 barcodes x 6 cells = 30 cells each in _write_batch, so pooling both
+    # under one meta_aa_changes group yields 60 cells.
+    assert m1k.shape[0] == 60
+
+    tags = set(m1k["meta_variant_tag"].to_list())
+    assert tags == {None, "downsampled-half"}
+    assert "M1K:downsampled-half" not in df["meta_aa_changes"].to_list()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
@@ -408,3 +431,94 @@ def test_ovwt_pipeline_cell_scores_row_count_matches_test_index(
         exp_dir / "ovwt_cellscores_batchwise" / batch_stem / "cell_scores.parquet"
     )
     assert len(scores_df) == len(index_df)
+
+
+# ---------------------------------------------------------------------------
+# params.config_dir — optional INPUT stage (workflows/fisseq.nf,
+# workflows/ovwt.nf). Uses the lighter OvwtPipeline so this test isn't
+# bottlenecked by the full feature-selection DAG; the thing under test is the
+# INPUT -> QC_FILTER channel wiring, not downstream analysis.
+# ---------------------------------------------------------------------------
+
+
+def _write_input_config(path: Path, source_path: Path) -> None:
+    with open(path, "w") as f:
+        yaml.safe_dump({"input_paths": [str(source_path)]}, f)
+
+
+def _run_config_dir_pipeline(
+    exp_dir: Path, config_dir: Path
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--workflow",
+            "ovwt",
+            "--input_dir",
+            str(exp_dir),
+            "--config_dir",
+            str(config_dir),
+            *_OVWT_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+
+@pytest.fixture(scope="session")
+def config_dir_pipeline_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_config_dir_experiment")
+    # One pre-staged batch, directly under input/, to exercise both code
+    # paths (pre-staged glob + config-driven INPUT) feeding the same run.
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+
+    # One config-driven batch: raw source data lives outside input/, and a
+    # YAML config in config_dir points INPUT at it.
+    raw_dir = tmp_path_factory.mktemp("nf_config_dir_raw")
+    _write_batch(raw_dir / "batch2_source.parquet", seed=99)
+    config_dir = exp_dir / "configs"
+    config_dir.mkdir()
+    _write_input_config(config_dir / "batch2.yaml", raw_dir / "batch2_source.parquet")
+
+    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    return exp_dir, result
+
+
+def test_config_dir_pipeline_exits_cleanly(config_dir_pipeline_outputs):
+    _, result = config_dir_pipeline_outputs
+    assert result.returncode == 0, result.stderr
+
+
+def test_config_dir_generates_input_parquet(config_dir_pipeline_outputs):
+    exp_dir, _ = config_dir_pipeline_outputs
+    assert (exp_dir / "input" / "batch2.parquet").exists()
+
+
+def test_config_dir_pre_staged_batch_still_processed(config_dir_pipeline_outputs):
+    exp_dir, _ = config_dir_pipeline_outputs
+    assert (exp_dir / "qc_filter" / "batch1").exists()
+
+
+def test_config_dir_batch_not_double_processed(config_dir_pipeline_outputs):
+    """Regression test for the glob/channel dedup in workflows/ovwt.nf: the
+    config-derived batch2 must be QC-filtered exactly once, not twice (once
+    from INPUT's live channel output, once from a stale glob re-match of the
+    file INPUT published to disk)."""
+    exp_dir, _ = config_dir_pipeline_outputs
+    qc_dir = exp_dir / "qc_filter" / "batch2"
+    assert qc_dir.exists()
+
+    df = pl.read_parquet(qc_dir / "filtered_cells.parquet")
+    # Same variant/barcode/cell-count shape as _write_batch produces for any
+    # single batch (60 WT + 30 Synonymous + 30 Missense + 30 tagged-Missense
+    # cells, all passing the loose _OVWT_NF_PARAMS QC thresholds) — a doubled
+    # channel would produce exactly 2x this row count.
+    expected_cells = sum(n * c for _, n, c in _VARIANTS.values())
+    assert df.shape[0] == expected_cells

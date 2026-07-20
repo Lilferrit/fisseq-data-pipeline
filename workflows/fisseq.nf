@@ -5,6 +5,7 @@ nextflow.enable.dsl = 2
 // bootstrap feature selection (batchwise/global, gated by params.global) ->
 // BATCH_CORRECT_FIT/TRANSFORM -> PERMANOVA (normalized and batch-corrected).
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
+include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
 include { NORMALIZE                 } from '../modules/local/normalize'
 include { BATCHVSBATCH as BATCHVSBATCH_PRE  } from '../modules/local/batchvsbatch'
@@ -35,22 +36,54 @@ workflow FisseqPipeline {
     if (params.input_dir == null) {
         error "ERROR: --input_dir is required.\n  Usage: nextflow run fisseq.nf --input_dir /path/to/data"
     }
-    def inputSubdir = file("${params.input_dir}/input")
-    if (!inputSubdir.isDirectory()) {
-        error "ERROR: ${params.input_dir}/input does not exist or is not a directory"
+
+    // If params.config_dir is set, INPUT generates one input/*.parquet per
+    // YAML config file there, merged with any pre-staged files already in
+    // <input_dir>/input/. config_files is listed eagerly (not via a Channel)
+    // so its basenames can be used synchronously below to dedupe against the
+    // pre-staged glob.
+    def config_files = []
+    if (params.config_dir != null) {
+        def configSubdir = file(params.config_dir)
+        if (!configSubdir.isDirectory()) {
+            error "ERROR: ${params.config_dir} does not exist or is not a directory"
+        }
+        config_files = configSubdir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
+        if (config_files.size() == 0) {
+            error "ERROR: No .yaml files found in ${params.config_dir}"
+        }
     }
-    def inputParquets = inputSubdir.listFiles()?.findAll { it.name.endsWith('.parquet') } ?: []
-    if (inputParquets.size() == 0) {
-        error "ERROR: No .parquet files found in ${params.input_dir}/input"
+    def config_names = config_files.collect { it.baseName } as Set
+
+    def inputSubdir = file("${params.input_dir}/input")
+    def inputParquets = inputSubdir.isDirectory()
+        ? (inputSubdir.listFiles()?.findAll { it.name.endsWith('.parquet') } ?: [])
+        : []
+    if (inputParquets.size() == 0 && config_files.size() == 0) {
+        error "ERROR: No .parquet files found in ${params.input_dir}/input and no --config_dir supplied"
     }
 
     // Resolve input_dir to absolute path so global process scripts can glob published outputs.
     // Relative paths (e.g. ".") break inside Nextflow work directories.
     def input_dir_abs = file(params.input_dir).toAbsolutePath().toString()
 
-    // Source channel: one tuple per batch parquet in input/
-    input_ch = Channel.fromPath("${params.input_dir}/input/*.parquet")
+    // Pre-staged glob channel, excluding any batch name INPUT will
+    // (re-)produce this run. Without this filter, a re-run whose input/
+    // already contains a config-derived file from a prior run (published via
+    // INPUT's publishDir) would feed that batch into QC_FILTER twice: once
+    // from INPUT's live channel output, once from this glob re-matching the
+    // file INPUT already published to disk.
+    glob_input_ch = Channel.fromPath("${params.input_dir}/input/*.parquet")
         .map { f -> [ f.baseName, f ] }
+        .filter { name, f -> !(name in config_names) }
+
+    if (params.config_dir != null) {
+        config_ch = Channel.fromList(config_files).map { f -> [ f.baseName, f ] }
+        generated_ch = INPUT(config_ch)
+        input_ch = glob_input_ch.mix(generated_ch)
+    } else {
+        input_ch = glob_input_ch
+    }
 
     // Step 1: QC filter (per batch)
     qc_ch = QC_FILTER(input_ch).qc_outputs

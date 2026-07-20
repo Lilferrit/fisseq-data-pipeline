@@ -12,6 +12,12 @@ The **FISSEQ Data Pipeline** is a Nextflow + Python workflow for processing sing
 **End-to-end data flow:**
 
 ```
+config/*.yaml  (optional, one file per batch — variant selection + downsampling spec)
+      │
+      ▼
+    INPUT      (per config, optional — gated by params.config_dir)
+      │
+      ▼
 input/*.parquet  (one file per batch, CellProfiler morphological features + barcode annotations)
       │
       ▼
@@ -225,6 +231,7 @@ fisseq-data-pipeline/
 │   │   ├── variant.py             # classify_variant
 │   │   ├── metadata.py            # get_column, get_aggregate_meta_data
 │   │   └── vectors.py             # compute_norm, compute_query_dot, compute_cosine_distance, compute_impact_score
+│   ├── input.py                   # Optional input-file generation entry point (variant selection + downsampling)
 │   ├── qcfilter.py                # QC filtering entry point
 │   ├── normalize.py               # Normalizer class + normalize entry point
 │   ├── aggregate.py               # 8 aggregation strategies + full-aggregation and per-feature-type entry points
@@ -234,6 +241,7 @@ fisseq-data-pipeline/
 │   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value
 │   └── permanova.py               # Per-variant pairwise PERMANOVA entry point
 ├── modules/local/
+│   ├── input.nf
 │   ├── qc_filter.nf
 │   ├── normalize.nf
 │   ├── permanova.nf
@@ -289,6 +297,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 | Command | Module | Purpose |
 |---------|--------|---------|
+| `fisseq-input` | `input:main` | Optional upstream stage: variant selection + downsampling from a YAML spec, producing one `input/*.parquet` file |
 | `fisseq-qc-filter` | `qcfilter:main` | Edit distance + barcode QC |
 | `fisseq-normalize` | `normalize:main` | Z-score normalization |
 | `fisseq-aggregate` | `aggregate:main` | Standalone per-variant aggregation + normalizer + metadata (not wired into Nextflow) |
@@ -420,6 +429,10 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 9. **`models.pkl` stores XGBoost `Booster` objects as a `dict[str, xgb.Booster]`.** Pickle is used here (not Parquet) because XGBoost's native serialization requires either the Booster API or pickle. Normalizer stats use Parquet (`Normalizer.save`/`Normalizer.load`) — don't confuse the two.
 
 10. **Synonymous variants are used as the control baseline for aggregation**, not WT cells. In `aggregate.py:variant_classification`, synonymous mutations (first and last amino acid identical in `meta_aa_changes`) are flagged as `meta_is_control = True`. In `normalize.py`, the control is WT cells (the SQL `control_sample_query`). These are different steps with different baselines. `aggregate.feature_type_main` relies on the upstream `meta_is_control` (WT-based) column already present on its input and does not call `variant_classification` itself — that only happens later, in `features.main`'s impact-score step, on the aggregated (not cell-level) data.
+
+11. **`aaChanges` may carry a `:<tag>` metadata suffix** (e.g. `V123A:downsampled-half`, produced by `input.py`'s optional pseudo-variant step). The tag is stripped exactly once, in `qcfilter.py:filter_columns` — `meta_aa_changes` is always the tag-stripped base and `meta_variant_tag` holds the tag (`null` when absent). Every stage after `QC_FILTER` therefore already sees clean, pooled variant labels; do not re-strip or re-parse tags downstream — if you need to segment on the tag, use `meta_variant_tag` directly. `utils/variant.py:classify_variant` assumes its input is already tag-stripped.
+
+12. **`params.config_dir`** (optional) generates `input/*.parquet` files via the `INPUT` process instead of requiring them pre-staged. If a batch name exists both as a pre-staged file and as a `config_dir/*.yaml`, the config-derived version silently wins (the pre-staged file is filtered out of the glob channel in `workflows/fisseq.nf`/`workflows/ovwt.nf`). Like every other process, `INPUT` uses `errorStrategy 'ignore'` — a failed config conversion just drops that batch from the run rather than aborting, so a "missing" batch in the output may mean its `INPUT` task failed, not that it was never requested.
 
 ---
 

@@ -10,8 +10,8 @@ variant's cell population differs from wildtype (WT) controls using
 morphological features. The high-level shape:
 
 ```text
-cell-level features -> QC filtering -> normalization -> batch-effect checks
-    -> one-vs-WT classification -> bootstrap feature selection
+(optional) YAML config -> cell-level features -> QC filtering -> normalization
+    -> batch-effect checks -> one-vs-WT classification -> bootstrap feature selection
     -> batch correction -> PERMANOVA batch-effect testing
 ```
 

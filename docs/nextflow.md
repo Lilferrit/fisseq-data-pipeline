@@ -22,6 +22,9 @@ workflow {
 Both workflows validate that `--input_dir` is set and that `<input_dir>/input/`
 exists and contains at least one `.parquet` file, then build a per-batch channel
 from `<input_dir>/input/*.parquet` (one tuple per file, keyed by filename stem).
+If `--config_dir` is also set, that non-empty-check is relaxed (see
+[Optional INPUT stage](#optional-input-stage) below) since `<input_dir>/input/`
+may not exist yet on a first config-driven run.
 
 ## Quickstart
 
@@ -54,6 +57,7 @@ task doesn't abort the whole run.
 
 | Process | `modules/local/*.nf` | Wraps | Cadence |
 | ------- | --------------------- | ----- | ------- |
+| `INPUT` | `input.nf` | `fisseq-input` | per config file, optional (`params.config_dir`) |
 | `QC_FILTER` | `qc_filter.nf` | `fisseq-qc-filter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `fisseq-normalize` | per batch |
 | `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice |
@@ -75,6 +79,33 @@ task doesn't abort the whole run.
 `include { X as Y }` (Nextflow forbids calling one process twice under its own name
 in a single workflow) — see [Architecture](architecture.md) for what each aliased
 invocation does differently (which cells glob, which `publishDir` subpath).
+
+### Optional `INPUT` stage
+
+When `--config_dir` is set, `INPUT` runs once per `*.yaml` file found there
+(`fisseq-input`, see [CLI Reference: Input](cli/input.md)) and publishes its output
+into `<input_dir>/input/`, the same directory pre-staged batch files live in. Both
+`workflows/fisseq.nf` and `workflows/ovwt.nf` merge this generated channel with the
+pre-existing `Channel.fromPath("<input_dir>/input/*.parquet")` glob channel via
+`.mix()`, so `QC_FILTER` sees one unified stream regardless of which code path
+produced a given batch.
+
+Two subtleties worth knowing:
+
+- **Double-processing guard.** `Channel.fromPath(glob)` is evaluated once, at
+  workflow-construction time — it does not wait for `INPUT` to finish. On a re-run
+  where `<input_dir>/input/` already contains a file `INPUT` previously published
+  there, the glob channel would match it independently of `INPUT`'s live output for
+  this run, feeding the same batch into `QC_FILTER` twice. Both workflows avoid this
+  by eagerly listing `config_dir`'s `*.yaml` basenames up front and filtering those
+  names out of the glob channel before `.mix()`-ing in `INPUT`'s real output.
+- **Precedence.** If a batch name exists both as a pre-staged file in `input/` and as
+  a `config_dir/*.yaml`, the config-derived version silently wins — the pre-staged
+  file is excluded from the glob channel by the same filter.
+
+Like every other process, `INPUT` uses `errorStrategy 'ignore'`: a failed conversion
+for one config file simply drops that batch from the run (it is excluded from both
+the glob and the generated channel), rather than aborting the whole pipeline.
 
 ### Feature-selection channel wiring
 
@@ -106,6 +137,7 @@ Defaults live in `nextflow.config` at the repo root:
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
 | `--input_dir` | `null` (**required**) | Root directory containing `input/*.parquet` batch files. |
+| `--config_dir` | `null` | Optional directory of YAML configs; each generates one `input/*.parquet` via `INPUT`, merged with any pre-staged files in `input/`. See [Optional INPUT stage](#optional-input-stage). |
 | `--workflow` | `"fisseq"` | Which workflow to run: `"fisseq"` or `"ovwt"`. |
 | `--bc_threshold` | `10` | Minimum cells per barcode (QC filter). |
 | `--variant_bc_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
