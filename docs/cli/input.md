@@ -20,14 +20,18 @@ Extends the common `output_dir` / `output_root` / `log_level` fields (see
 
 ```yaml
 input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
-top_n_missense: 50                # optional, default 50
+top_n_missense: null              # optional, default null (keep all Single Missense variants)
 downsample_fraction: null         # optional, default null (disabled)
 downsample_seed: 0                # optional, default 0
+feature_allowlist_file: null      # optional, default null (no allowlist)
+feature_blocklist_file: null      # optional, default null (no blocklist)
 ```
 
 - `input_paths` — one or more raw cell-score files (CSV or Parquet), concatenated.
-- `top_n_missense` — number of Single Missense variants (by cell count) to keep,
-  alongside Synonymous, WT, and Frameshift variants.
+- `top_n_missense` — if set, the number of Single Missense variants (by cell
+  count) to keep, alongside Synonymous, WT, and Frameshift variants. Omit or
+  set to `null` (the default) to keep all Single Missense variants without
+  any top-N restriction.
 - `downsample_fraction` — if set to a value in `(0, 1]`, generates reproducibly
   downsampled "pseudo variant" rows for the kept Synonymous and Single Missense
   variants, tagged `<aaChanges>:downsampled-half` (e.g. `V123A` ->
@@ -35,6 +39,13 @@ downsample_seed: 0                # optional, default 0
   pseudo-variant generation entirely.
 - `downsample_seed` — seed for the deterministic downsample selection; only used
   when `downsample_fraction` is set.
+- `feature_allowlist_file` / `feature_blocklist_file` — optional paths to plain
+  text files, one fnmatch-style glob pattern per line (e.g.
+  `Cells_AreaShape_*`), matched against feature column names. If an allowlist
+  is given, only feature columns matching at least one of its patterns are
+  kept; if a blocklist is also given, matching columns are then dropped from
+  what remains (allowlist is applied first). Identity columns (`upBarcode`,
+  `editDistance`, `aaChanges`) and metadata columns are unaffected.
 
 ## Output files
 
