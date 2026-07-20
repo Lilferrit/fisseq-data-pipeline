@@ -19,5 +19,6 @@ CONTROL_COLUMN: pl.Expr = pl.col(CONTROL_COLUMN_NAME)
 META_BARCODE_COL: str = "meta_barcode"
 META_BATCH_COL: str = "meta_batch"
 META_EDIT_DISTANCE_COL: str = "meta_edit_distance"
+META_VARIANT_TAG_COL: str = "meta_variant_tag"
 META_VARIANT_CLASS: str = "meta_variant_class"
 IMPACT_SCORE_COL: str = "meta_impact_score"

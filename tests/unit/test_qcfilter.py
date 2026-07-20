@@ -137,6 +137,17 @@ class TestGetBarcodesPerVariant:
 
         assert result.shape[0] == 2
 
+    def test_tagged_and_untagged_rows_pool_together(self, cfg):
+        """A tagged variant (e.g. 'V1:downsampled-half') pools with its
+        untagged base 'V1' under a single meta_aa_changes group, since
+        tag-stripping happens in filter_columns before this function runs."""
+        df = _make_filtered_df(["bc1", "bc2"], ["V1", "V1:downsampled-half"], cfg=cfg)
+        result = get_barcodes_per_variant(df.lazy(), cfg).collect()
+
+        assert result.shape[0] == 1
+        assert result["meta_aa_changes"][0] == "V1"
+        assert result["barcode_count"][0] == 2
+
 
 # ---------------------------------------------------------------------------
 # add_qc_queries
@@ -244,6 +255,22 @@ class TestFilterColumns:
 
         assert "nuclei_intensity" not in result.columns
         assert "someExtra" not in result.columns
+
+    def test_tagged_variant_is_split(self, cfg):
+        """A ':'-delimited tag is split off into meta_variant_tag."""
+        df = _make_cell_df(["bc1"], ["M1K:downsampled-half"])
+        result = filter_columns(df.lazy(), cfg).collect()
+
+        assert result["meta_aa_changes"][0] == "M1K"
+        assert result["meta_variant_tag"][0] == "downsampled-half"
+
+    def test_untagged_variant_has_null_tag(self, cfg):
+        """A variant with no ':' gets a null meta_variant_tag."""
+        df = _make_cell_df(["bc1"], ["M1K"])
+        result = filter_columns(df.lazy(), cfg).collect()
+
+        assert result["meta_aa_changes"][0] == "M1K"
+        assert result["meta_variant_tag"][0] is None
 
 
 # ---------------------------------------------------------------------------

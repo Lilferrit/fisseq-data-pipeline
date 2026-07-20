@@ -19,7 +19,11 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import AppConfig
-from .utils.constants import META_BARCODE_COL, META_EDIT_DISTANCE_COL
+from .utils.constants import (
+    META_BARCODE_COL,
+    META_EDIT_DISTANCE_COL,
+    META_VARIANT_TAG_COL,
+)
 from .utils.log import setup_logging
 
 
@@ -259,11 +263,16 @@ def filter_columns(lf: pl.LazyFrame, cfg: DictConfig) -> pl.LazyFrame:
     """
     Rename input columns to canonical meta names and retain only QC-relevant columns.
 
-    Renames ``cfg.barcode_col_name`` → ``META_BARCODE_COL``,
-    ``cfg.edit_distance_col_name`` → ``META_EDIT_DISTANCE_COL``, and
-    ``cfg.aa_changes_col_name`` → ``cfg.label_column``. Then drops all columns
-    except meta columns (``meta_`` prefix) and CellProfiler feature columns
-    (starting with an uppercase letter and containing ``_``).
+    Renames ``cfg.barcode_col_name`` → ``META_BARCODE_COL`` and
+    ``cfg.edit_distance_col_name`` → ``META_EDIT_DISTANCE_COL``.
+    ``cfg.aa_changes_col_name`` is split on the first ``":"`` into a base
+    label (``cfg.label_column``) and an optional tag (``META_VARIANT_TAG_COL``,
+    ``null`` when no tag is present) — this is the single point in the
+    pipeline where a raw, possibly-tagged variant label (e.g.
+    ``"M1K:downsampled-half"``) resolves into the canonical
+    ``meta_aa_changes`` value every downstream stage consumes. Then drops all
+    columns except meta columns (``meta_`` prefix) and CellProfiler feature
+    columns (starting with an uppercase letter and containing ``_``).
 
     Parameters
     ----------
@@ -277,8 +286,10 @@ def filter_columns(lf: pl.LazyFrame, cfg: DictConfig) -> pl.LazyFrame:
     pl.LazyFrame
         Lazy frame retaining only the necessary columns with canonical names.
     """
+    aa_changes_split = pl.col(cfg.aa_changes_col_name).str.splitn(":", 2)
     lf = lf.with_columns(
-        pl.col(cfg.aa_changes_col_name).alias(cfg.label_column),
+        aa_changes_split.struct.field("field_0").alias(cfg.label_column),
+        aa_changes_split.struct.field("field_1").alias(META_VARIANT_TAG_COL),
         pl.col(cfg.edit_distance_col_name).alias(META_EDIT_DISTANCE_COL),
         pl.col(cfg.barcode_col_name).alias(META_BARCODE_COL),
     )

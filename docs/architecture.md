@@ -8,6 +8,12 @@ default `FisseqPipeline`; see [Nextflow Workflow](nextflow.md) for the lighter
 documented in the [CLI Reference](cli/qcfilter.md).
 
 ```text
+config/*.yaml  (optional, one file per batch — variant selection + downsampling spec)
+     │
+     ▼
+   INPUT       (per config, optional — gated by params.config_dir)
+     │
+     ▼
 input/*.parquet  (one file per batch, CellProfiler morphological features + barcode annotations)
      │
      ▼
@@ -58,6 +64,7 @@ Nextflow channel outputs directly.
 
 | Stage | Python module | Nextflow process(es) | Produces |
 | ----- | -------------- | --------------------- | -------- |
+| Input generation (optional) | `input.py` | `INPUT` | `input/<name>.parquet`, from a YAML variant-selection/downsampling spec |
 | QC filtering | `qcfilter.py` | `QC_FILTER` | `filtered_cells.parquet`, `barcode_counts.parquet`, `variants_per_barcode.parquet` |
 | Batch-effect check (pre) | `batchvsbatch.py` | `BATCHVSBATCH` (pre) | `results.parquet` |
 | Normalization | `normalize.py` | `NORMALIZE` | normalized cells + `normalizer.parquet` |

@@ -12,7 +12,6 @@ import abc
 import dataclasses
 import logging
 import pathlib
-import re
 from typing import ClassVar, Optional
 
 import hydra
@@ -28,6 +27,7 @@ from .utils.constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECT
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
 from .utils.splits import filter_by_index_file
+from .utils.variant import classify_variant
 from .utils.vectors import compute_impact_score
 
 
@@ -61,14 +61,6 @@ _cs = ConfigStore.instance()
 _cs.store(name="aggregate_main", node=AggregateConfig)
 
 
-def _is_synonymous(v: str) -> bool:
-    """Return True iff v encodes a synonymous (same-amino-acid) substitution."""
-    if "fs" in v or v.endswith("-") or "X" in v or "*" in v or "WT" in v:
-        return False
-    match = re.match(r"([A-Z])(\d+)([A-Z])", v)
-    return match is not None and match.group(1) == match.group(3)
-
-
 def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     """
     Add a boolean ``CONTROL_COLUMN_NAME`` column to a LazyFrame.
@@ -76,7 +68,7 @@ def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     The added column is ``True`` for rows whose variant label (in ``label_col``)
     encodes a synonymous amino-acid substitution — i.e. the same amino acid
     appears before and after the position — as determined by
-    :func:`_is_synonymous`.
+    :func:`classify_variant`.
 
     Parameters
     ----------
@@ -93,7 +85,9 @@ def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     """
     return lf.with_columns(
         pl.col(label_col)
-        .map_elements(_is_synonymous, return_dtype=pl.Boolean)
+        .map_elements(
+            lambda v: classify_variant(v) == "Synonymous", return_dtype=pl.Boolean
+        )
         .alias(CONTROL_COLUMN_NAME)
     )
 
