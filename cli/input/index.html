@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="shortcut icon" href="../../img/favicon.ico" />
-    <title>Batch Correction - Fisseq Data Pipeline</title>
+    <title>Input - Fisseq Data Pipeline</title>
     <link rel="stylesheet" href="../../css/theme.css" />
     <link rel="stylesheet" href="../../css/theme_extra.css" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
@@ -13,8 +13,8 @@
     
       <script>
         // Current page data
-        var mkdocs_page_name = "Batch Correction";
-        var mkdocs_page_input_path = "cli/batchcorrect.md";
+        var mkdocs_page_name = "Input";
+        var mkdocs_page_input_path = "cli/input.md";
         var mkdocs_page_url = null;
       </script>
     
@@ -58,7 +58,21 @@
               </ul>
               <p class="caption"><span class="caption-text">CLI Reference</span></p>
               <ul class="current">
-                  <li class="toctree-l1"><a class="reference internal" href="../input/">Input</a>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Input</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#config-fields">Config fields</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#config_path-yaml-schema">config_path YAML schema</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#output-files">Output files</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#example">Example</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#common-config-fields">Common config fields</a>
+    </li>
+    </ul>
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">QC Filter</a>
                   </li>
@@ -68,13 +82,7 @@
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../features/">Feature Selection</a>
                   </li>
-                  <li class="toctree-l1 current"><a class="reference internal current" href="#">Batch Correction</a>
-    <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#fisseq-batch-correct-fit-batch_correct_fit">fisseq-batch-correct-fit (BATCH_CORRECT_FIT)</a>
-    </li>
-    <li class="toctree-l2"><a class="reference internal" href="#fisseq-batch-correct-transform-batch_correct_transform">fisseq-batch-correct-transform (BATCH_CORRECT_TRANSFORM)</a>
-    </li>
-    </ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">Batch Correction</a>
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../permanova/">PERMANOVA</a>
                   </li>
@@ -131,7 +139,7 @@
   <ul class="wy-breadcrumbs">
     <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
           <li class="breadcrumb-item">CLI Reference</li>
-      <li class="breadcrumb-item active">Batch Correction</li>
+      <li class="breadcrumb-item active">Input</li>
     <li class="wy-breadcrumbs-aside">
     </li>
   </ul>
@@ -140,16 +148,16 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
             <div class="section" itemprop="articleBody">
               
-                <h1 id="batch-correction">Batch Correction</h1>
-<p><code>batchcorrect.py</code> implements two-pass centroid batch correction as two Hydra entry
-points, backing the Nextflow processes <code>BATCH_CORRECT_FIT</code> and
-<code>BATCH_CORRECT_TRANSFORM</code>. Fitting computes per-(variant, batch) statistics and
-per-variant centroids across all batches; transforming rescales one batch's cells
-first to its variant's own centroid, then to the wildtype centroid.</p>
-<p>Both configs extend <code>LabeledInputConfig</code> plus the
-<a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
-<h2 id="fisseq-batch-correct-fit-batch_correct_fit"><code>fisseq-batch-correct-fit</code> (<code>BATCH_CORRECT_FIT</code>)</h2>
-<p>Runs once globally, after all batches have been QC-filtered.</p>
+                <h1 id="input">Input</h1>
+<p><code>fisseq-input</code> (Nextflow process <code>INPUT</code>, optional — gated by <code>params.config_dir</code>)
+reads a hand-authored YAML config describing one or more raw cell-score files
+(CSV or Parquet), classifies each row's variant, restricts to a fixed set of
+variant classes plus the most common missense variants, and optionally augments
+the result with reproducibly-downsampled "pseudo variant" rows for QC/calibration
+purposes. Writes a single <code>input/</code>-ready cell-level Parquet file.</p>
+<h2 id="config-fields">Config fields</h2>
+<p>Extends the common <code>output_dir</code> / <code>output_root</code> / <code>log_level</code> fields (see
+<a href="#common-config-fields">Common config fields</a> below).</p>
 <table>
 <thead>
 <tr>
@@ -160,35 +168,43 @@ first to its variant's own centroid, then to the wildtype centroid.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>input_file</code></td>
+<td><code>config_path</code></td>
 <td><strong>required</strong></td>
-<td>Glob pattern matching one file per batch.</td>
-</tr>
-<tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
-</tr>
-<tr>
-<td><code>wt_label</code></td>
-<td><code>"WT"</code></td>
-<td>Value of <code>label_column</code> identifying wildtype rows.</td>
-</tr>
-<tr>
-<td><code>use_parent_name</code></td>
-<td><code>false</code></td>
-<td>If <code>true</code>, label each batch by its file's parent directory name instead of the file stem — needed when every batch file shares the same name (e.g. <code>qc_filter/*/filtered_cells.parquet</code>).</td>
+<td>Path to a separate YAML file (see below) describing the input files and downsampling behavior. Parsed independently of the Hydra CLI config.</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Output</strong>: <code>stats_vb.parquet</code> (per-(variant, batch) statistics), <code>centroids.parquet</code>
-(per-variant centroids).</p>
-<pre><code class="language-bash">uv run fisseq-batch-correct-fit \
-    output_dir=./out \
-    'input_file=data/batches/*.parquet'
+<h3 id="config_path-yaml-schema"><code>config_path</code> YAML schema</h3>
+<pre><code class="language-yaml">input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
+top_n_missense: 50                # optional, default 50
+downsample_fraction: null         # optional, default null (disabled)
+downsample_seed: 0                # optional, default 0
 </code></pre>
-<h2 id="fisseq-batch-correct-transform-batch_correct_transform"><code>fisseq-batch-correct-transform</code> (<code>BATCH_CORRECT_TRANSFORM</code>)</h2>
-<p>Runs once per batch.</p>
+<ul>
+<li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.</li>
+<li><code>top_n_missense</code> — number of Single Missense variants (by cell count) to keep,
+  alongside Synonymous, WT, and Frameshift variants.</li>
+<li><code>downsample_fraction</code> — if set to a value in <code>(0, 1]</code>, generates reproducibly
+  downsampled "pseudo variant" rows for the kept Synonymous and Single Missense
+  variants, tagged <code>&lt;aaChanges&gt;:downsampled-half</code> (e.g. <code>V123A</code> -&gt;
+  <code>V123A:downsampled-half</code>). Disabled by default — omit or set to <code>null</code> to skip
+  pseudo-variant generation entirely.</li>
+<li><code>downsample_seed</code> — seed for the deterministic downsample selection; only used
+  when <code>downsample_fraction</code> is set.</li>
+</ul>
+<h2 id="output-files">Output files</h2>
+<p>Written to <code>output_dir</code>, prefixed <code>{output_root}.</code> when <code>output_root</code> is set:</p>
+<ul>
+<li><code>output.parquet</code> — the selected/filtered (and optionally downsampled) cells,
+  ready to be placed in <code>&lt;input_dir&gt;/input/</code></li>
+</ul>
+<h2 id="example">Example</h2>
+<pre><code class="language-bash">uv run fisseq-input \
+    output_dir=./out \
+    config_path=configs/batch1.yaml
+</code></pre>
+<h2 id="common-config-fields">Common config fields</h2>
+<p>Every CLI tool's config extends <code>AppConfig</code>, which supplies:</p>
 <table>
 <thead>
 <tr>
@@ -199,54 +215,29 @@ first to its variant's own centroid, then to the wildtype centroid.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>input_file</code></td>
+<td><code>output_dir</code></td>
 <td><strong>required</strong></td>
-<td>Path to one batch's cell-level parquet.</td>
+<td>Directory for all output files; created if absent.</td>
 </tr>
 <tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
+<td><code>output_root</code></td>
+<td><code>null</code></td>
+<td>If set, output files are prefixed <code>{output_root}.{name}</code> instead of being placed directly under <code>output_dir</code>.</td>
 </tr>
 <tr>
-<td><code>stats_file</code></td>
-<td><strong>required</strong></td>
-<td>Path to the <code>stats_vb.parquet</code> written by the fit step.</td>
-</tr>
-<tr>
-<td><code>centroids_file</code></td>
-<td><strong>required</strong></td>
-<td>Path to the <code>centroids.parquet</code> written by the fit step.</td>
-</tr>
-<tr>
-<td><code>batch</code></td>
-<td><strong>required</strong></td>
-<td>Label identifying which batch <code>input_file</code> belongs to (passed explicitly, since batch files may share an identical name).</td>
-</tr>
-<tr>
-<td><code>wt_label</code></td>
-<td><code>"WT"</code></td>
-<td>Value of <code>label_column</code> identifying wildtype rows.</td>
+<td><code>log_level</code></td>
+<td><code>"info"</code></td>
+<td>Logging verbosity (<code>debug</code>, <code>info</code>, <code>warning</code>, <code>error</code>, <code>critical</code>).</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Output</strong>: <code>{output_dir}/{filename}</code> (same name as the input file), or
-<code>{output_root}.{stem}.{ext}</code> when <code>output_root</code> is set.</p>
-<pre><code class="language-bash">uv run fisseq-batch-correct-transform \
-    output_dir=./out \
-    input_file=data/batch1.parquet \
-    batch=batch1 \
-    stats_file=./fit/stats_vb.parquet \
-    centroids_file=./fit/centroids.parquet
-</code></pre>
-<p>See <a href="../../api/batchcorrect/">API Reference: batchcorrect</a> for full function
-documentation, including the <code>BatchCorrector</code> class.</p>
+<p>See <a href="../../api/input/">API Reference: input</a> for full function documentation.</p>
               
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../features/" class="btn btn-neutral float-left" title="Feature Selection"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../permanova/" class="btn btn-neutral float-right" title="PERMANOVA">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../../nextflow/" class="btn btn-neutral float-left" title="Nextflow Workflow"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../qcfilter/" class="btn btn-neutral float-right" title="QC Filter">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -269,10 +260,10 @@ documentation, including the <code>BatchCorrector</code> class.</p>
   <span class="rst-current-version" data-toggle="rst-current-version">
     
     
-      <span><a href="../features/" style="color: #fcfcfc">&laquo; Previous</a></span>
+      <span><a href="../../nextflow/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
-      <span><a href="../permanova/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../qcfilter/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>

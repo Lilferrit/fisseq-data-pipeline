@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>input - Fisseq Data Pipeline</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "input";
+        var mkdocs_page_input_path = "api/input.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Fisseq Data Pipeline
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../architecture/">Architecture</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../nextflow/">Nextflow Workflow</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">CLI Reference</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/input/">Input</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/qcfilter/">QC Filter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/normalize/">Normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/aggregate/">Aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/features/">Feature Selection</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchcorrect/">Batch Correction</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/permanova/">PERMANOVA</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwt/">One-vs-WT</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/ovwtcellscores/">OvWT Cell Scores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../cli/batchvsbatch/">Batch vs. Batch</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">API Reference</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="#">input</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#fisseq_data_pipeline.input">input</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.InputStageConfig">InputStageConfig</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.add_downsampled_pseudo_variants">add_downsampled_pseudo_variants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.classify_variants">classify_variants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.filter_variants">filter_variants</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.load_and_concat">load_and_concat</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.load_and_tag">load_and_tag</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.main">main</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.select_output_columns">select_output_columns</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#fisseq_data_pipeline.input.select_top_missense">select_top_missense</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../qcfilter/">qcfilter</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../normalize/">normalize</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../aggregate/">aggregate</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../features/">features</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchcorrect/">batchcorrect</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../permanova/">permanova</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwt/">ovwt</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../ovwtcellscores/">ovwtcellscores</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../batchvsbatch/">batchvsbatch</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../config/">config</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../utils/">utils</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../walkthrough/">Walkthrough</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Fisseq Data Pipeline</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">API Reference</li>
+      <li class="breadcrumb-item active">input</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="api-input">API: input</h1>
+<p>See <a href="../../cli/input/">CLI Reference: Input</a> for usage.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.input" class="doc doc-heading">
+            <code>fisseq_data_pipeline.input</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Variant selection and optional downsampled-pseudo-variant generation from a YAML spec.</p>
+<p>Hydra entry point <code>fisseq-input</code> / Nextflow process <code>INPUT</code> (optional upstream
+stage, gated by <code>params.config_dir</code>). Reads a hand-authored YAML config
+(<code>config_path</code>, parsed separately from the Hydra CLI config) describing one or
+more input cell-score files (CSV or Parquet), classifies each row's variant,
+restricts to a fixed set of variant classes plus the most common missense
+variants, and optionally augments the result with reproducibly-downsampled
+"pseudo variant" rows for QC/calibration purposes. Writes one <code>input/</code>-ready
+cell-level Parquet file.</p>
+
+
+<details class="pipeline" open>
+  <summary>Pipeline</summary>
+  <ol>
+<li>Load every file in <code>input_paths</code> (CSV or parquet, detected by
+   extension), tagging each row with which file it came from and its row
+   index within that file (<code>origin_file</code> / <code>origin_row_idx</code> — these end
+   up as <code>meta_origin_file</code> / <code>meta_origin_row_idx</code> in the output, via
+   the same auto-prefixing step that handles the rest of the metadata
+   columns). Concatenate everything into one lazy frame.</li>
+<li>Classify each row's variant (see :func:<code>classify_variants</code>). Classification
+   is based on the part of <code>aaChanges</code> before any <code>:</code> — a metadata tag
+   component — so already-tagged variants (including the pseudo variants
+   this script itself creates) classify the same as their untagged base.</li>
+<li>Find the <code>top_n_missense</code> (default 50) Single Missense variants by cell
+   count, then filter to keep only: Synonymous, WT, Frameshift, and those
+   selected missense variants.</li>
+<li>If <code>downsample_fraction</code> is set (disabled by default — see Config file
+   below), create reproducibly downsampled "pseudo variants" for the kept
+   Synonymous and Single Missense rows: for each variant, keep a
+   deterministic, seeded ~<code>downsample_fraction</code> of its rows, and tag the
+   copy's <code>aaChanges</code> with <code>:downsampled-half</code> (e.g. <code>V123A</code> -&gt;
+   <code>V123A:downsampled-half</code>). These are added alongside the originals, not
+   in place of them. When <code>downsample_fraction</code> is unset/null, this step
+   is skipped entirely — no pseudo-variant rows, no hashing/ranking work.</li>
+<li>Select/rename columns (feature columns vs. auto-prefixed <code>meta_*</code>
+   columns, same convention as before) and write the result to a single
+   output Parquet file.</li>
+</ol>
+</details>
+
+<details class="config-file" open>
+  <summary>Config file</summary>
+  <p><code>config_path</code> points to a YAML file with:</p>
+<pre><code>input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
+top_n_missense: 50                # optional, default 50
+downsample_fraction: null         # optional, default null (disabled)
+downsample_seed: 0                # optional, default 0
+</code></pre>
+<p>Set <code>downsample_fraction</code> to a value in (0, 1] (e.g. <code>0.5</code>) to enable
+downsampled pseudo-variant generation.</p>
+</details>
+
+<details class="usage" open>
+  <summary>Usage</summary>
+  <pre><code>uv run fisseq-input \
+    output_dir=./out \
+    config_path=/path/to/config.yaml
+</code></pre>
+</details>
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="fisseq_data_pipeline.input.InputStageConfig" class="doc doc-heading">
+            <code>InputStageConfig</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="AppConfig
+
+
+  
+      dataclass
+   (fisseq_data_pipeline.config.AppConfig)" href="../config/#fisseq_data_pipeline.config.app.AppConfig">AppConfig</a></code></p>
+
+
+
+        <p>Hydra structured configuration for the input-generation entry point.</p>
+
+
+<table class="field-list">
+  <colgroup>
+    <col class="field-name" />
+    <col class="field-body" />
+  </colgroup>
+  <tbody valign="top">
+    <tr class="field">
+      <th class="field-name">Attributes:</th>
+      <td class="field-body">
+        <ul class="first simple">
+            <li>
+              <b><code>config_path</code></b>
+                  (<code><span title="str">str</span></code>)
+              –
+              <div class="doc-md-description">
+                <p>Path to the YAML config describing the input files and (optional)
+downsampling behavior (see the module docstring's "Config file"
+section). Parsed separately via <code>yaml.safe_load</code> — intentionally
+not flattened into individual Hydra CLI fields, since
+<code>input_paths</code> is a list of arbitrary length. Required.</p>
+              </div>
+            </li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InputStageConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra structured configuration for the input-generation entry point.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    config_path : str</span>
+<span class="sd">        Path to the YAML config describing the input files and (optional)</span>
+<span class="sd">        downsampling behavior (see the module docstring&#39;s &quot;Config file&quot;</span>
+<span class="sd">        section). Parsed separately via ``yaml.safe_load`` — intentionally</span>
+<span class="sd">        not flattened into individual Hydra CLI fields, since</span>
+<span class="sd">        ``input_paths`` is a list of arbitrary length. Required.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.add_downsampled_pseudo_variants" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">add_downsampled_pseudo_variants</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">downsample_classes</span><span class="p">,</span> <span class="n">downsample_fraction</span><span class="p">,</span> <span class="n">seed</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>For rows whose <code>variant_class</code> is in <code>downsample_classes</code>, reproducibly
+keep ~<code>downsample_fraction</code> of each variant's rows and re-tag them as a
+"pseudo variant": <code>aaChanges</code> becomes <code>&lt;aaChanges&gt;:downsampled-half</code>.</p>
+<p>Selection is deterministic given <code>seed</code>: each row gets a seeded hash of
+its (origin_file, origin_row_idx) identity, rows are ranked by that hash
+within their variant group, and the lowest floor(fraction * group_size)
+ranks are kept. This avoids collecting the full eligible subset up front
+and reproduces exactly across runs for a fixed seed.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add_downsampled_pseudo_variants</span><span class="p">(</span>
+    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+    <span class="n">downsample_classes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">downsample_fraction</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    For rows whose `variant_class` is in `downsample_classes`, reproducibly</span>
+<span class="sd">    keep ~`downsample_fraction` of each variant&#39;s rows and re-tag them as a</span>
+<span class="sd">    &quot;pseudo variant&quot;: `aaChanges` becomes `&lt;aaChanges&gt;:downsampled-half`.</span>
+
+<span class="sd">    Selection is deterministic given `seed`: each row gets a seeded hash of</span>
+<span class="sd">    its (origin_file, origin_row_idx) identity, rows are ranked by that hash</span>
+<span class="sd">    within their variant group, and the lowest floor(fraction * group_size)</span>
+<span class="sd">    ranks are kept. This avoids collecting the full eligible subset up front</span>
+<span class="sd">    and reproduces exactly across runs for a fixed seed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Building downsampled pseudo variants for classes </span><span class="si">%s</span><span class="s2"> (fraction=</span><span class="si">%.3f</span><span class="s2">, seed=</span><span class="si">%d</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="n">downsample_classes</span><span class="p">,</span>
+        <span class="n">downsample_fraction</span><span class="p">,</span>
+        <span class="n">seed</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">eligible</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;variant_class&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_in</span><span class="p">(</span><span class="n">downsample_classes</span><span class="p">))</span>
+
+    <span class="n">ranked</span> <span class="o">=</span> <span class="n">eligible</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">struct</span><span class="p">([</span><span class="s2">&quot;origin_file&quot;</span><span class="p">,</span> <span class="s2">&quot;origin_row_idx&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">hash</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_rand&quot;</span><span class="p">),</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_rand&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;ordinal&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">over</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_rank&quot;</span><span class="p">),</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span><span class="o">.</span><span class="n">over</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_group_size&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">pseudo</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">ranked</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_rank&quot;</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_group_size&quot;</span><span class="p">)</span> <span class="o">*</span> <span class="n">downsample_fraction</span><span class="p">)</span><span class="o">.</span><span class="n">floor</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">drop</span><span class="p">([</span><span class="s2">&quot;_rand&quot;</span><span class="p">,</span> <span class="s2">&quot;_rank&quot;</span><span class="p">,</span> <span class="s2">&quot;_group_size&quot;</span><span class="p">])</span>
+        <span class="o">.</span><span class="n">with_columns</span><span class="p">((</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;aaChanges&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;:</span><span class="si">{</span><span class="n">DOWNSAMPLE_TAG</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;aaChanges&quot;</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">pseudo</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.classify_variants" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify_variants</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Add <code>variant_base</code> (aaChanges with any ":"-delimited tag stripped) and
+<code>variant_class</code> (from <code>classify_variant</code>) columns.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">classify_variants</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add `variant_base` (aaChanges with any &quot;:&quot;-delimited tag stripped) and</span>
+<span class="sd">    `variant_class` (from `classify_variant`) columns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Classifying variants&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;aaChanges&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">first</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">map_elements</span><span class="p">(</span><span class="n">classify_variant</span><span class="p">,</span> <span class="n">return_dtype</span><span class="o">=</span><span class="n">pl</span><span class="o">.</span><span class="n">String</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;variant_class&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.filter_variants" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">filter_variants</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">top_missense</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Keep Synonymous, WT, Frameshift, and the selected Single Missense variants.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">filter_variants</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">top_missense</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Keep Synonymous, WT, Frameshift, and the selected Single Missense variants.&quot;&quot;&quot;</span>
+    <span class="n">keep_classes</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Synonymous&quot;</span><span class="p">,</span> <span class="s2">&quot;WT&quot;</span><span class="p">,</span> <span class="s2">&quot;Frameshift&quot;</span><span class="p">]</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Filtering to classes </span><span class="si">%s</span><span class="s2"> plus </span><span class="si">%d</span><span class="s2"> selected Single Missense variant(s)&quot;</span><span class="p">,</span>
+        <span class="n">keep_classes</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">top_missense</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;variant_class&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_in</span><span class="p">(</span><span class="n">keep_classes</span><span class="p">)</span>
+        <span class="o">|</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_in</span><span class="p">(</span><span class="n">top_missense</span><span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.load_and_concat" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">load_and_concat</span><span class="p">(</span><span class="n">paths</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Load and tag every input file, then concatenate them into one lazy frame.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_and_concat</span><span class="p">(</span><span class="n">paths</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and tag every input file, then concatenate them into one lazy frame.&quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading and tagging </span><span class="si">%d</span><span class="s2"> input file(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  - </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span>
+    <span class="n">lfs</span> <span class="o">=</span> <span class="p">[</span><span class="n">load_and_tag</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">]</span>
+    <span class="c1"># &quot;vertical_relaxed&quot; tolerates minor dtype mismatches across CSV/parquet</span>
+    <span class="c1"># sources (e.g. int32 vs int64) by upcasting, rather than erroring.</span>
+    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">lfs</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;vertical_relaxed&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.load_and_tag" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">load_and_tag</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Scan a CSV or parquet file and tag each row with its file and row index.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_and_tag</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Scan a CSV or parquet file and tag each row with its file and row index.&quot;&quot;&quot;</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">suffix</span> <span class="o">==</span> <span class="s2">&quot;.csv&quot;</span><span class="p">:</span>
+        <span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_csv</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">suffix</span> <span class="o">==</span> <span class="s2">&quot;.parquet&quot;</span><span class="p">:</span>
+        <span class="n">lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">scan_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported input file extension &#39;</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&#39; for </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;origin_row_idx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">))</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;origin_file&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hydra entry point: variant selection + optional downsampled pseudo-variant generation.</p>
+
+
+<details class="steps" open>
+  <summary>Steps</summary>
+  <ol>
+<li>Read <code>config_path</code> (a separate, hand-authored YAML file — see the
+   module docstring's "Config file" section).</li>
+<li>Load and concatenate all <code>input_paths</code> via :func:<code>load_and_concat</code>.</li>
+<li>Classify variants and filter to the fixed classes plus the top
+   missense variants (:func:<code>classify_variants</code>, :func:<code>select_top_missense</code>,
+   :func:<code>filter_variants</code>).</li>
+<li>If <code>downsample_fraction</code> is set, add downsampled pseudo-variant rows
+   via :func:<code>add_downsampled_pseudo_variants</code>; otherwise skip this step
+   entirely.</li>
+<li>Select/rename output columns and write a single Parquet file.</li>
+</ol>
+</details>
+
+<details class="output-file" open>
+  <summary>Output file</summary>
+  <p><code>{prefix}output.parquet</code>, where <code>prefix</code> is <code>{output_root}.</code> when
+<code>output_root</code> is set, otherwise empty.</p>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;input_main&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hydra entry point: variant selection + optional downsampled pseudo-variant generation.</span>
+
+<span class="sd">    Steps</span>
+<span class="sd">    -----</span>
+<span class="sd">    1. Read ``config_path`` (a separate, hand-authored YAML file — see the</span>
+<span class="sd">       module docstring&#39;s &quot;Config file&quot; section).</span>
+<span class="sd">    2. Load and concatenate all ``input_paths`` via :func:`load_and_concat`.</span>
+<span class="sd">    3. Classify variants and filter to the fixed classes plus the top</span>
+<span class="sd">       missense variants (:func:`classify_variants`, :func:`select_top_missense`,</span>
+<span class="sd">       :func:`filter_variants`).</span>
+<span class="sd">    4. If ``downsample_fraction`` is set, add downsampled pseudo-variant rows</span>
+<span class="sd">       via :func:`add_downsampled_pseudo_variants`; otherwise skip this step</span>
+<span class="sd">       entirely.</span>
+<span class="sd">    5. Select/rename output columns and write a single Parquet file.</span>
+
+<span class="sd">    Output file</span>
+<span class="sd">    -----------</span>
+<span class="sd">    ``{prefix}output.parquet``, where ``prefix`` is ``{output_root}.`` when</span>
+<span class="sd">    ``output_root`` is set, otherwise empty.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">in_cfg</span><span class="p">:</span> <span class="n">InputStageConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">in_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">in_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">in_cfg</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reading config file </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">in_cfg</span><span class="o">.</span><span class="n">config_path</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">in_cfg</span><span class="o">.</span><span class="n">config_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+    <span class="n">input_paths</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;input_paths&quot;</span><span class="p">]</span>
+    <span class="n">top_n_missense</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;top_n_missense&quot;</span><span class="p">,</span> <span class="n">DEFAULT_TOP_N_MISSENSE</span><span class="p">)</span>
+    <span class="n">downsample_fraction</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;downsample_fraction&quot;</span><span class="p">,</span> <span class="n">DEFAULT_DOWNSAMPLE_FRACTION</span><span class="p">)</span>
+    <span class="n">downsample_seed</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;downsample_seed&quot;</span><span class="p">,</span> <span class="n">DEFAULT_DOWNSAMPLE_SEED</span><span class="p">)</span>
+
+    <span class="n">data_lf</span> <span class="o">=</span> <span class="n">load_and_concat</span><span class="p">(</span><span class="n">input_paths</span><span class="p">)</span>
+    <span class="n">data_lf</span> <span class="o">=</span> <span class="n">classify_variants</span><span class="p">(</span><span class="n">data_lf</span><span class="p">)</span>
+    <span class="n">top_missense</span> <span class="o">=</span> <span class="n">select_top_missense</span><span class="p">(</span><span class="n">data_lf</span><span class="p">,</span> <span class="n">top_n_missense</span><span class="p">)</span>
+    <span class="n">filtered_lf</span> <span class="o">=</span> <span class="n">filter_variants</span><span class="p">(</span><span class="n">data_lf</span><span class="p">,</span> <span class="n">top_missense</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">downsample_fraction</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">pseudo_lf</span> <span class="o">=</span> <span class="n">add_downsampled_pseudo_variants</span><span class="p">(</span>
+            <span class="n">filtered_lf</span><span class="p">,</span>
+            <span class="n">downsample_classes</span><span class="o">=</span><span class="n">DOWNSAMPLE_CLASSES</span><span class="p">,</span>
+            <span class="n">downsample_fraction</span><span class="o">=</span><span class="n">downsample_fraction</span><span class="p">,</span>
+            <span class="n">seed</span><span class="o">=</span><span class="n">downsample_seed</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Concatenating original and pseudo-variant rows&quot;</span><span class="p">)</span>
+        <span class="n">combined_lf</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">filtered_lf</span><span class="p">,</span> <span class="n">pseudo_lf</span><span class="p">],</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;vertical_relaxed&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;downsample_fraction not set; skipping pseudo-variant generation&quot;</span><span class="p">)</span>
+        <span class="n">combined_lf</span> <span class="o">=</span> <span class="n">filtered_lf</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Selecting output columns&quot;</span><span class="p">)</span>
+    <span class="n">combined_lf</span> <span class="o">=</span> <span class="n">select_output_columns</span><span class="p">(</span><span class="n">combined_lf</span><span class="p">)</span>
+
+    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">in_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">in_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">output_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">output.parquet&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing data to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+    <span class="n">combined_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.select_output_columns" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">select_output_columns</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Split columns into numeric feature columns vs. everything else. Barcode,
+edit distance, and aaChanges are kept unprefixed; every other non-feature
+column (including variant_base/variant_class/origin_file/origin_row_idx)
+is auto-prefixed with 'meta_'.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">select_output_columns</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Split columns into numeric feature columns vs. everything else. Barcode,</span>
+<span class="sd">    edit distance, and aaChanges are kept unprefixed; every other non-feature</span>
+<span class="sd">    column (including variant_base/variant_class/origin_file/origin_row_idx)</span>
+<span class="sd">    is auto-prefixed with &#39;meta_&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">FEATURE_SELECTOR</span> <span class="o">-</span> <span class="p">(</span><span class="n">barcode_col</span> <span class="o">|</span> <span class="n">edit_distance_col</span> <span class="o">|</span> <span class="n">aa_changes_col</span><span class="p">),</span>
+        <span class="n">barcode_col</span><span class="p">,</span>
+        <span class="n">edit_distance_col</span><span class="p">,</span>
+        <span class="n">aa_changes_col</span><span class="p">,</span>
+        <span class="n">cs</span><span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">prefix</span><span class="p">(</span><span class="s2">&quot;meta_&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.input.select_top_missense" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">select_top_missense</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">top_n_missense</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the <code>top_n_missense</code> Single Missense variants, ranked by cell count.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/input.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">select_top_missense</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">top_n_missense</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the `top_n_missense` Single Missense variants, ranked by cell count.&quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Counting cells per Single Missense variant&quot;</span><span class="p">)</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;variant_class&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;Single Missense&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;n_cells&quot;</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="c1"># sort on (n_cells desc, variant_base asc) so the top-N cutoff is</span>
+    <span class="c1"># deterministic even when counts tie</span>
+    <span class="n">top</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">counts</span><span class="o">.</span><span class="n">sort</span><span class="p">([</span><span class="s2">&quot;n_cells&quot;</span><span class="p">,</span> <span class="s2">&quot;variant_base&quot;</span><span class="p">],</span> <span class="n">descending</span><span class="o">=</span><span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">])</span>
+        <span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="n">top_n_missense</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="s2">&quot;variant_base&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Selected </span><span class="si">%d</span><span class="s2"> Single Missense variant(s) out of </span><span class="si">%d</span><span class="s2"> observed&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">top</span><span class="p">),</span>
+        <span class="n">counts</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">top</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../cli/batchvsbatch/" class="btn btn-neutral float-left" title="Batch vs. Batch"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../qcfilter/" class="btn btn-neutral float-right" title="qcfilter">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../../cli/batchvsbatch/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../qcfilter/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "../..";</script>
+    <script src="../../js/theme_extra.js"></script>
+    <script src="../../js/theme.js"></script>
+      <script src="../../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

@@ -68,6 +68,8 @@
               </ul>
               <p class="caption"><span class="caption-text">CLI Reference</span></p>
               <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/input/">Input</a>
+                  </li>
                   <li class="toctree-l1"><a class="reference internal" href="../cli/qcfilter/">QC Filter</a>
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../cli/normalize/">Normalize</a>
@@ -89,6 +91,8 @@
               </ul>
               <p class="caption"><span class="caption-text">API Reference</span></p>
               <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/input/">input</a>
+                  </li>
                   <li class="toctree-l1"><a class="reference internal" href="../api/qcfilter/">qcfilter</a>
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../api/normalize/">normalize</a>
@@ -145,7 +149,13 @@
 default <code>FisseqPipeline</code>; see <a href="../nextflow/">Nextflow Workflow</a> for the lighter
 <code>OvwtPipeline</code> alternative). Each Nextflow process shells out to a Python CLI tool
 documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
-<pre><code class="language-text">input/*.parquet  (one file per batch, CellProfiler morphological features + barcode annotations)
+<pre><code class="language-text">config/*.yaml  (optional, one file per batch — variant selection + downsampling spec)
+     │
+     ▼
+   INPUT       (per config, optional — gated by params.config_dir)
+     │
+     ▼
+input/*.parquet  (one file per batch, CellProfiler morphological features + barcode annotations)
      │
      ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
@@ -200,6 +210,12 @@ Nextflow channel outputs directly.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Input generation (optional)</td>
+<td><code>input.py</code></td>
+<td><code>INPUT</code></td>
+<td><code>input/&lt;name&gt;.parquet</code>, from a YAML variant-selection/downsampling spec</td>
+</tr>
 <tr>
 <td>QC filtering</td>
 <td><code>qcfilter.py</code></td>

@@ -61,6 +61,8 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#processes">Processes</a>
         <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#optional-input-stage">Optional INPUT stage</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="#feature-selection-channel-wiring">Feature-selection channel wiring</a>
     </li>
         </ul>
@@ -74,6 +76,8 @@
               </ul>
               <p class="caption"><span class="caption-text">CLI Reference</span></p>
               <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../cli/input/">Input</a>
+                  </li>
                   <li class="toctree-l1"><a class="reference internal" href="../cli/qcfilter/">QC Filter</a>
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../cli/normalize/">Normalize</a>
@@ -95,6 +99,8 @@
               </ul>
               <p class="caption"><span class="caption-text">API Reference</span></p>
               <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../api/input/">input</a>
+                  </li>
                   <li class="toctree-l1"><a class="reference internal" href="../api/qcfilter/">qcfilter</a>
                   </li>
                   <li class="toctree-l1"><a class="reference internal" href="../api/normalize/">normalize</a>
@@ -182,7 +188,10 @@
 </table>
 <p>Both workflows validate that <code>--input_dir</code> is set and that <code>&lt;input_dir&gt;/input/</code>
 exists and contains at least one <code>.parquet</code> file, then build a per-batch channel
-from <code>&lt;input_dir&gt;/input/*.parquet</code> (one tuple per file, keyed by filename stem).</p>
+from <code>&lt;input_dir&gt;/input/*.parquet</code> (one tuple per file, keyed by filename stem).
+If <code>--config_dir</code> is also set, that non-empty-check is relaxed (see
+<a href="#optional-input-stage">Optional INPUT stage</a> below) since <code>&lt;input_dir&gt;/input/</code>
+may not exist yet on a first config-driven run.</p>
 <h2 id="quickstart">Quickstart</h2>
 <p>Run directly from GitHub — no cloning required:</p>
 <pre><code class="language-bash">nextflow run Lilferrit/fisseq-data-pipeline \
@@ -210,6 +219,12 @@ task doesn't abort the whole run.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>INPUT</code></td>
+<td><code>input.nf</code></td>
+<td><code>fisseq-input</code></td>
+<td>per config file, optional (<code>params.config_dir</code>)</td>
+</tr>
 <tr>
 <td><code>QC_FILTER</code></td>
 <td><code>qc_filter.nf</code></td>
@@ -312,6 +327,30 @@ task doesn't abort the whole run.</p>
 <code>include { X as Y }</code> (Nextflow forbids calling one process twice under its own name
 in a single workflow) — see <a href="../architecture/">Architecture</a> for what each aliased
 invocation does differently (which cells glob, which <code>publishDir</code> subpath).</p>
+<h3 id="optional-input-stage">Optional <code>INPUT</code> stage</h3>
+<p>When <code>--config_dir</code> is set, <code>INPUT</code> runs once per <code>*.yaml</code> file found there
+(<code>fisseq-input</code>, see <a href="../cli/input/">CLI Reference: Input</a>) and publishes its output
+into <code>&lt;input_dir&gt;/input/</code>, the same directory pre-staged batch files live in. Both
+<code>workflows/fisseq.nf</code> and <code>workflows/ovwt.nf</code> merge this generated channel with the
+pre-existing <code>Channel.fromPath("&lt;input_dir&gt;/input/*.parquet")</code> glob channel via
+<code>.mix()</code>, so <code>QC_FILTER</code> sees one unified stream regardless of which code path
+produced a given batch.</p>
+<p>Two subtleties worth knowing:</p>
+<ul>
+<li><strong>Double-processing guard.</strong> <code>Channel.fromPath(glob)</code> is evaluated once, at
+  workflow-construction time — it does not wait for <code>INPUT</code> to finish. On a re-run
+  where <code>&lt;input_dir&gt;/input/</code> already contains a file <code>INPUT</code> previously published
+  there, the glob channel would match it independently of <code>INPUT</code>'s live output for
+  this run, feeding the same batch into <code>QC_FILTER</code> twice. Both workflows avoid this
+  by eagerly listing <code>config_dir</code>'s <code>*.yaml</code> basenames up front and filtering those
+  names out of the glob channel before <code>.mix()</code>-ing in <code>INPUT</code>'s real output.</li>
+<li><strong>Precedence.</strong> If a batch name exists both as a pre-staged file in <code>input/</code> and as
+  a <code>config_dir/*.yaml</code>, the config-derived version silently wins — the pre-staged
+  file is excluded from the glob channel by the same filter.</li>
+</ul>
+<p>Like every other process, <code>INPUT</code> uses <code>errorStrategy 'ignore'</code>: a failed conversion
+for one config file simply drops that batch from the run (it is excluded from both
+the glob and the generated channel), rather than aborting the whole pipeline.</p>
 <h3 id="feature-selection-channel-wiring">Feature-selection channel wiring</h3>
 <p>The feature-selection branch (<code>AGGREGATE_FEATURE_TYPE</code> → <code>GENERATE_SPLIT</code> →
 <code>AGGREGATE_HALF</code> → <code>CORRELATE_FEATURES</code> → <code>BLOCKLIST</code> → <code>COMBINE_BLOCKLISTS</code> →
@@ -349,6 +388,11 @@ invocation does differently (which cells glob, which <code>publishDir</code> sub
 <td><code>--input_dir</code></td>
 <td><code>null</code> (<strong>required</strong>)</td>
 <td>Root directory containing <code>input/*.parquet</code> batch files.</td>
+</tr>
+<tr>
+<td><code>--config_dir</code></td>
+<td><code>null</code></td>
+<td>Optional directory of YAML configs; each generates one <code>input/*.parquet</code> via <code>INPUT</code>, merged with any pre-staged files in <code>input/</code>. See <a href="#optional-input-stage">Optional INPUT stage</a>.</td>
 </tr>
 <tr>
 <td><code>--workflow</code></td>
@@ -421,7 +465,7 @@ for how to enable one via a user-supplied <code>-c your.config -profile &lt;name
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
         <a href="../installation/" class="btn btn-neutral float-left" title="Installation"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../cli/qcfilter/" class="btn btn-neutral float-right" title="QC Filter">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../cli/input/" class="btn btn-neutral float-right" title="Input">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -447,7 +491,7 @@ for how to enable one via a user-supplied <code>-c your.config -profile &lt;name
       <span><a href="../installation/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
-      <span><a href="../cli/qcfilter/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../cli/input/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>
