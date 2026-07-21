@@ -30,7 +30,36 @@ nav:
       - utils: api/utils.md
   - Walkthrough: walkthrough.md
 theme:
-  name: readthedocs
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+extra_css:
+  - stylesheets/extra.css
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
 plugins:
   - search
   - mkdocstrings:
@@ -39,8 +68,10 @@ plugins:
         python:
           options:
             docstring_style: numpy
+            docstring_section_style: table
             show_root_heading: true
             show_signature: true
-            separate_signature: false
+            separate_signature: true
+            show_signature_annotations: true
             show_source: true
             heading_level: 3
