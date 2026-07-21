@@ -176,14 +176,18 @@ purposes. Writes a single <code>input/</code>-ready cell-level Parquet file.</p>
 </table>
 <h3 id="config_path-yaml-schema"><code>config_path</code> YAML schema</h3>
 <pre><code class="language-yaml">input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
-top_n_missense: 50                # optional, default 50
+top_n_missense: null              # optional, default null (keep all Single Missense variants)
 downsample_fraction: null         # optional, default null (disabled)
 downsample_seed: 0                # optional, default 0
+feature_allowlist_file: null      # optional, default null (no allowlist)
+feature_blocklist_file: null      # optional, default null (no blocklist)
 </code></pre>
 <ul>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.</li>
-<li><code>top_n_missense</code> — number of Single Missense variants (by cell count) to keep,
-  alongside Synonymous, WT, and Frameshift variants.</li>
+<li><code>top_n_missense</code> — if set, the number of Single Missense variants (by cell
+  count) to keep, alongside Synonymous, WT, and Frameshift variants. Omit or
+  set to <code>null</code> (the default) to keep all Single Missense variants without
+  any top-N restriction.</li>
 <li><code>downsample_fraction</code> — if set to a value in <code>(0, 1]</code>, generates reproducibly
   downsampled "pseudo variant" rows for the kept Synonymous and Single Missense
   variants, tagged <code>&lt;aaChanges&gt;:downsampled-half</code> (e.g. <code>V123A</code> -&gt;
@@ -191,6 +195,13 @@ downsample_seed: 0                # optional, default 0
   pseudo-variant generation entirely.</li>
 <li><code>downsample_seed</code> — seed for the deterministic downsample selection; only used
   when <code>downsample_fraction</code> is set.</li>
+<li><code>feature_allowlist_file</code> / <code>feature_blocklist_file</code> — optional paths to plain
+  text files, one fnmatch-style glob pattern per line (e.g.
+  <code>Cells_AreaShape_*</code>), matched against feature column names. If an allowlist
+  is given, only feature columns matching at least one of its patterns are
+  kept; if a blocklist is also given, matching columns are then dropped from
+  what remains (allowlist is applied first). Identity columns (<code>upBarcode</code>,
+  <code>editDistance</code>, <code>aaChanges</code>) and metadata columns are unaffected.</li>
 </ul>
 <h2 id="output-files">Output files</h2>
 <p>Written to <code>output_dir</code>, prefixed <code>{output_root}.</code> when <code>output_root</code> is set:</p>
