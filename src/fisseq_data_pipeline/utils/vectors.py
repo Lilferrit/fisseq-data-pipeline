@@ -161,9 +161,11 @@ def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
     ----------
     lf : pl.LazyFrame
         Frame with feature columns and a boolean ``meta_is_control`` column.
-        Must contain at least one control row. Feature columns that contain any
-        null values are excluded from the cosine similarity calculation but are
-        kept in the returned frame.
+        Must contain at least one control row. Null, NaN, and infinite
+        feature values are excluded from the calculation on a per-row,
+        per-feature basis (via :func:`compute_cosine_distance`) rather than
+        dropping the whole column — a feature still contributes to a row's
+        score whenever it is present for that row.
 
     Returns
     -------
@@ -174,9 +176,6 @@ def compute_impact_score(lf: pl.LazyFrame) -> pl.LazyFrame:
     # Capture feature columns before any temp columns are added so that the norm
     # and dot product are computed over the original features only.
     feature_cols = lf.select(FEATURE_SELECTOR).collect_schema().names()
-    # Drop any feature columns with nulls from the calculation; they remain in output.
-    null_counts = lf.select(feature_cols).null_count().collect().row(0)
-    feature_cols = [c for c, n in zip(feature_cols, null_counts) if n == 0]
     control_median_lf = (
         lf.filter(pl.col(CONTROL_COLUMN_NAME)).select(feature_cols).median()
     )

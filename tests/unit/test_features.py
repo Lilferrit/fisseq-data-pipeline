@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import numpy as np
 import polars as pl
 import pytest
 import scipy.stats
@@ -392,26 +393,31 @@ def test_combine_blocklists_main_raises_on_empty_glob(tmp_path) -> None:
 def write_feat_input_parquet(tmp_path) -> None:
     """Raw cell-level parquet used only for the metadata join in main()."""
     n = 4
+    labels = (
+        ["WT"] * n + ["A1A"] * n + ["A2A"] * n + ["A3A"] * n + ["A1B"] * n + ["A1C"] * n
+    )
     pl.DataFrame(
         {
-            "meta_aa_changes": ["WT"] * n + ["A1A"] * n + ["A1B"] * n + ["A1C"] * n,
-            "meta_is_control": [True] * n + [False] * (3 * n),
-            META_BARCODE_COL: ["bc_0", "bc_1"] * (2 * n),
+            "meta_aa_changes": labels,
+            "meta_is_control": [label == "WT" for label in labels],
+            META_BARCODE_COL: ["bc_0", "bc_1"] * (len(labels) // 2),
         }
     ).write_parquet(tmp_path / "input.parquet")
 
 
 def write_feature_type_aggregate(tmp_path) -> None:
     """Per-feature-type aggregate fixture matching write_feat_input_parquet's
-    cell-level means exactly (mean aggregator over f1=[0]*4,[1]*4,[5]*4,[10]*4
-    and f2=[0]*4,[2]*4,[6]*4,[12]*4 for WT/A1A/A1B/A1C respectively)."""
+    cell-level means exactly. A1A, A2A, and A3A are all Synonymous
+    (classify_variant), so together they form the synonymous-baseline
+    normalization reference; their non-uniformly-spaced values keep the
+    control group's median (used by compute_impact_score) non-degenerate."""
     ft_dir = tmp_path / "ft"
     ft_dir.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
         {
-            "meta_aa_changes": ["A1A", "A1B", "A1C"],
-            "f1_mean": [1.0, 5.0, 10.0],
-            "f2_mean": [2.0, 6.0, 12.0],
+            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+            "f1_mean": [0.0, 1.0, 4.0, 5.0, 10.0],
+            "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
         }
     ).write_parquet(ft_dir / "mean.parquet")
 
@@ -592,8 +598,9 @@ def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
 
 
 def test_main_impact_score_values_are_finite(tmp_path) -> None:
-    # A1A is the only synonymous control; its aggregated feature vector is
-    # non-zero, so compute_impact_score produces finite scores for all rows.
+    # A1A/A2A/A3A are the synonymous control group; their normalized feature
+    # vectors are non-zero, so compute_impact_score produces finite scores
+    # for all rows.
     _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
@@ -604,9 +611,13 @@ def test_main_impact_score_values_are_finite(tmp_path) -> None:
     assert result[IMPACT_SCORE_COL].is_finite().all()
 
 
-def test_main_synonymous_control_has_zero_impact_score(tmp_path) -> None:
-    # After variant_classification the sole synonymous variant (A1A) becomes
-    # the control, so its own impact score should be 0.
+def test_main_synonymous_median_has_zero_impact_score(tmp_path) -> None:
+    # variant_classification marks A1A/A2A/A3A (all Synonymous) as the
+    # control group. compute_impact_score's reference vector is their
+    # *median*, not their mean — with three non-uniformly-spaced values
+    # (raw f1_mean = 0.0, 1.0, 4.0), A2A (raw f1_mean=1.0) is the actual
+    # middle value, so its normalized vector exactly equals the control
+    # median and its impact score should be 0.
     _write_default_fixtures(tmp_path)
     with patch("fisseq_data_pipeline.features.setup_logging"):
         with patch(
@@ -614,8 +625,33 @@ def test_main_synonymous_control_has_zero_impact_score(tmp_path) -> None:
         ):
             m.main.__wrapped__(make_feat_cfg(tmp_path))
     result = pl.read_parquet(tmp_path / "out" / "input.parquet")
-    ctrl_row = result.filter(pl.col("meta_aa_changes") == "A1A")
-    assert ctrl_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)
+    median_row = result.filter(pl.col("meta_aa_changes") == "A2A")
+    assert median_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_main_output_features_are_synonymous_normalized(tmp_path) -> None:
+    # Output feature values should be z-scored against the synonymous
+    # (A1A/A2A/A3A) control group's mean/std, not left as raw aggregate
+    # values. Verify against an independent numpy computation from the
+    # fixture's known raw values (write_feature_type_aggregate).
+    result = _run_main(tmp_path)
+
+    control_f1 = np.array([0.0, 1.0, 4.0])
+    control_f2 = np.array([0.0, 2.0, 8.0])
+    f1_mean, f1_std = control_f1.mean(), control_f1.std(ddof=1)
+    f2_mean, f2_std = control_f2.mean(), control_f2.std(ddof=1)
+
+    raw_values = {
+        "A1A": (0.0, 0.0),
+        "A2A": (1.0, 2.0),
+        "A3A": (4.0, 8.0),
+        "A1B": (5.0, 6.0),
+        "A1C": (10.0, 12.0),
+    }
+    for label, (raw_f1, raw_f2) in raw_values.items():
+        row = result.filter(pl.col("meta_aa_changes") == label)
+        assert row["f1_mean"][0] == pytest.approx((raw_f1 - f1_mean) / f1_std, abs=1e-9)
+        assert row["f2_mean"][0] == pytest.approx((raw_f2 - f2_mean) / f2_std, abs=1e-9)
 
 
 # ---------------------------------------------------------------------------

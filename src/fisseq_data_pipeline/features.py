@@ -24,6 +24,7 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .aggregate import variant_classification
 from .config import AppConfig, LabeledInputConfig
+from .normalize import Normalizer
 from .utils.batches import load_batches
 from .utils.constants import FEATURE_SELECTOR
 from .utils.log import setup_logging
@@ -404,7 +405,8 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
         ``feature_ok`` columns. Required.
     compute_impact_score : bool
         If ``True``, compute per-variant impact score (cosine distance vs
-        synonymous baseline) after feature selection. Defaults to ``True``.
+        synonymous baseline) after feature selection and normalization.
+        Defaults to ``True``.
     """
 
     feature_type_files: str = MISSING
@@ -429,10 +431,14 @@ def main(cfg: DictConfig) -> None:
     3. Load ``block_list_file`` and drop blocked feature columns.
     4. Run :func:`pyc_feature_select` (variance threshold, pycytominer
        blocklist, correlation threshold).
-    5. Optionally compute impact score (:func:`.aggregate.variant_classification`
-       + :func:`.utils.vectors.compute_impact_score`).
-    6. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.
-    7. Write output.
+    5. Mark synonymous variants as the normalization reference
+       (:func:`.aggregate.variant_classification`), fit a
+       :class:`.normalize.Normalizer` on those rows, and apply it — the
+       output features are z-score normalized to the synonymous baseline.
+    6. Optionally compute impact score on the normalized features
+       (:func:`.utils.vectors.compute_impact_score`).
+    7. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.
+    8. Write output.
 
     Output path
     -----------
@@ -483,14 +489,23 @@ def main(cfg: DictConfig) -> None:
     logging.info("Running pycytominer feature selection")
     selected_df = pyc_feature_select(agg_df)
 
+    logging.info(
+        "Classifying variants and marking synonymous as normalization reference"
+    )
+    selected_lf = variant_classification(selected_df.lazy(), feat_cfg.label_column)
+
+    logging.info("Fitting normalizer on synonymous rows")
+    normalizer = Normalizer.from_lazyframe(selected_lf, fit_only_on_control=True)
+    logging.info("Applying normalizer")
+    normalized_lf = normalizer.apply(selected_lf)
+
     if feat_cfg.compute_impact_score:
         logging.info("Computing impact scores")
-        selected_lf = variant_classification(selected_df.lazy(), feat_cfg.label_column)
-        selected_df = compute_impact_score(selected_lf).collect()
+        normalized_lf = compute_impact_score(normalized_lf)
 
     logging.info("Adding queries to retrieve metadata")
     meta_lf = get_aggregate_meta_data(lf, feat_cfg.label_column)
-    selected_lf = selected_df.lazy().join(meta_lf, on=feat_cfg.label_column)
+    selected_lf = normalized_lf.join(meta_lf, on=feat_cfg.label_column)
 
     if feat_cfg.output_root is not None:
         out_path = pathlib.Path(f"{feat_cfg.output_root}.{output_stem}.parquet")
