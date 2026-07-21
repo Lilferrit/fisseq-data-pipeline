@@ -281,8 +281,7 @@ a feature to pass. Defaults to <code>0.5</code>.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">252</span>
-<span class="normal">253</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">253</span>
 <span class="normal">254</span>
 <span class="normal">255</span>
 <span class="normal">256</span>
@@ -299,7 +298,8 @@ a feature to pass. Defaults to <code>0.5</code>.</p>
 <span class="normal">267</span>
 <span class="normal">268</span>
 <span class="normal">269</span>
-<span class="normal">270</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="normal">270</span>
+<span class="normal">271</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">BlocklistConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra structured configuration for the per-feature-type blocklist</span>
@@ -404,8 +404,7 @@ a feature to pass. Defaults to <code>0.5</code>.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">326</span>
-<span class="normal">327</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">327</span>
 <span class="normal">328</span>
 <span class="normal">329</span>
 <span class="normal">330</span>
@@ -416,7 +415,8 @@ a feature to pass. Defaults to <code>0.5</code>.</p>
 <span class="normal">335</span>
 <span class="normal">336</span>
 <span class="normal">337</span>
-<span class="normal">338</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="normal">338</span>
+<span class="normal">339</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">CombineBlocklistsConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra structured configuration for the blocklist-combination entry point.</span>
@@ -538,8 +538,7 @@ Required.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">188</span>
-<span class="normal">189</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">189</span>
 <span class="normal">190</span>
 <span class="normal">191</span>
 <span class="normal">192</span>
@@ -563,7 +562,8 @@ Required.</p>
 <span class="normal">210</span>
 <span class="normal">211</span>
 <span class="normal">212</span>
-<span class="normal">213</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="normal">213</span>
+<span class="normal">214</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">CorrelateFeaturesConfig</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra structured configuration for the pseudo-replicate correlation entry</span>
@@ -684,7 +684,8 @@ reconstruct the combined per-variant aggregate table. Required.</p>
               –
               <div class="doc-md-description">
                 <p>If <code>True</code>, compute per-variant impact score (cosine distance vs
-synonymous baseline) after feature selection. Defaults to <code>True</code>.</p>
+synonymous baseline) after feature selection and normalization.
+Defaults to <code>True</code>.</p>
               </div>
             </li>
         </ul>
@@ -700,8 +701,7 @@ synonymous baseline) after feature selection. Defaults to <code>True</code>.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">384</span>
-<span class="normal">385</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">385</span>
 <span class="normal">386</span>
 <span class="normal">387</span>
 <span class="normal">388</span>
@@ -728,7 +728,9 @@ synonymous baseline) after feature selection. Defaults to <code>True</code>.</p>
 <span class="normal">409</span>
 <span class="normal">410</span>
 <span class="normal">411</span>
-<span class="normal">412</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">FinalizeFeatureSelectConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra structured configuration for the final feature-selection entry</span>
@@ -751,7 +753,8 @@ synonymous baseline) after feature selection. Defaults to <code>True</code>.</p>
 <span class="sd">        ``feature_ok`` columns. Required.</span>
 <span class="sd">    compute_impact_score : bool</span>
 <span class="sd">        If ``True``, compute per-variant impact score (cosine distance vs</span>
-<span class="sd">        synonymous baseline) after feature selection. Defaults to ``True``.</span>
+<span class="sd">        synonymous baseline) after feature selection and normalization.</span>
+<span class="sd">        Defaults to ``True``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">feature_type_files</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">MISSING</span>
@@ -847,8 +850,7 @@ distinct, reproducible split. Required.</p>
 
               <details class="quote">
                 <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">110</span>
-<span class="normal">111</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">111</span>
 <span class="normal">112</span>
 <span class="normal">113</span>
 <span class="normal">114</span>
@@ -863,7 +865,8 @@ distinct, reproducible split. Required.</p>
 <span class="normal">123</span>
 <span class="normal">124</span>
 <span class="normal">125</span>
-<span class="normal">126</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="normal">126</span>
+<span class="normal">127</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">GenerateSplitConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra structured configuration for the pseudo-replicate split-generation</span>
@@ -959,8 +962,7 @@ replicates, and marks <code>feature_ok = median_r &gt;= minimum_correlation</cod
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">276</span>
-<span class="normal">277</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">277</span>
 <span class="normal">278</span>
 <span class="normal">279</span>
 <span class="normal">280</span>
@@ -1006,7 +1008,8 @@ replicates, and marks <code>feature_ok = median_r &gt;= minimum_correlation</cod
 <span class="normal">320</span>
 <span class="normal">321</span>
 <span class="normal">322</span>
-<span class="normal">323</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;blocklist_main&quot;</span><span class="p">)</span>
+<span class="normal">323</span>
+<span class="normal">324</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;blocklist_main&quot;</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">blocklist_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra entry point: compute a per-feature-type blocklist from N bootstrap</span>
@@ -1111,8 +1114,7 @@ collide across feature types), so a plain concat is correct.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">344</span>
-<span class="normal">345</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">345</span>
 <span class="normal">346</span>
 <span class="normal">347</span>
 <span class="normal">348</span>
@@ -1148,7 +1150,8 @@ collide across feature types), so a plain concat is correct.</p>
 <span class="normal">378</span>
 <span class="normal">379</span>
 <span class="normal">380</span>
-<span class="normal">381</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;combine_blocklists_main&quot;</span><span class="p">)</span>
+<span class="normal">381</span>
+<span class="normal">382</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;combine_blocklists_main&quot;</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">combine_blocklists_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra entry point: concatenate all per-feature-type blocklists into one</span>
@@ -1277,8 +1280,7 @@ replicate 2. Pearson <em>r</em> and <em>r²</em> are reported for each feature c
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">37</span>
-<span class="normal">38</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
 <span class="normal">39</span>
 <span class="normal">40</span>
 <span class="normal">41</span>
@@ -1315,7 +1317,8 @@ replicate 2. Pearson <em>r</em> and <em>r²</em> are reported for each feature c
 <span class="normal">72</span>
 <span class="normal">73</span>
 <span class="normal">74</span>
-<span class="normal">75</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_feature_correlations</span><span class="p">(</span>
+<span class="normal">75</span>
+<span class="normal">76</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_feature_correlations</span><span class="p">(</span>
     <span class="n">df1</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">df2</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">label_col</span><span class="p">:</span> <span class="nb">str</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1388,8 +1391,7 @@ feature type, one per split half) and calls
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">219</span>
-<span class="normal">220</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">220</span>
 <span class="normal">221</span>
 <span class="normal">222</span>
 <span class="normal">223</span>
@@ -1418,7 +1420,8 @@ feature type, one per split half) and calls
 <span class="normal">246</span>
 <span class="normal">247</span>
 <span class="normal">248</span>
-<span class="normal">249</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;correlate_features_main&quot;</span><span class="p">)</span>
+<span class="normal">249</span>
+<span class="normal">250</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;correlate_features_main&quot;</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">correlate_features_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra entry point: compute per-feature pseudo-replicate Pearson</span>
@@ -1496,8 +1499,7 @@ option.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">132</span>
-<span class="normal">133</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">133</span>
 <span class="normal">134</span>
 <span class="normal">135</span>
 <span class="normal">136</span>
@@ -1549,7 +1551,8 @@ option.</p>
 <span class="normal">182</span>
 <span class="normal">183</span>
 <span class="normal">184</span>
-<span class="normal">185</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;generate_split_main&quot;</span><span class="p">)</span>
+<span class="normal">185</span>
+<span class="normal">186</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;generate_split_main&quot;</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">generate_split_main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra entry point: generate one pseudo-replicate 50/50 split.</span>
@@ -1633,8 +1636,12 @@ option.</p>
 <li>Load <code>block_list_file</code> and drop blocked feature columns.</li>
 <li>Run :func:<code>pyc_feature_select</code> (variance threshold, pycytominer
    blocklist, correlation threshold).</li>
-<li>Optionally compute impact score (:func:<code>.aggregate.variant_classification</code></li>
-<li>:func:<code>.utils.vectors.compute_impact_score</code>).</li>
+<li>Mark synonymous variants as the normalization reference
+   (:func:<code>.aggregate.variant_classification</code>), fit a
+   :class:<code>.normalize.Normalizer</code> on those rows, and apply it — the
+   output features are z-score normalized to the synonymous baseline.</li>
+<li>Optionally compute impact score on the normalized features
+   (:func:<code>.utils.vectors.compute_impact_score</code>).</li>
 <li>Join per-variant metadata via :func:<code>.utils.metadata.get_aggregate_meta_data</code>.</li>
 <li>Write output.</li>
 </ol>
@@ -1662,9 +1669,7 @@ option.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">418</span>
-<span class="normal">419</span>
-<span class="normal">420</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">420</span>
 <span class="normal">421</span>
 <span class="normal">422</span>
 <span class="normal">423</span>
@@ -1747,7 +1752,22 @@ option.</p>
 <span class="normal">500</span>
 <span class="normal">501</span>
 <span class="normal">502</span>
-<span class="normal">503</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;feature_select_main&quot;</span><span class="p">)</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;feature_select_main&quot;</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Hydra entry point: final feature-selection stage.</span>
@@ -1761,10 +1781,14 @@ option.</p>
 <span class="sd">    3. Load ``block_list_file`` and drop blocked feature columns.</span>
 <span class="sd">    4. Run :func:`pyc_feature_select` (variance threshold, pycytominer</span>
 <span class="sd">       blocklist, correlation threshold).</span>
-<span class="sd">    5. Optionally compute impact score (:func:`.aggregate.variant_classification`</span>
-<span class="sd">       + :func:`.utils.vectors.compute_impact_score`).</span>
-<span class="sd">    6. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.</span>
-<span class="sd">    7. Write output.</span>
+<span class="sd">    5. Mark synonymous variants as the normalization reference</span>
+<span class="sd">       (:func:`.aggregate.variant_classification`), fit a</span>
+<span class="sd">       :class:`.normalize.Normalizer` on those rows, and apply it — the</span>
+<span class="sd">       output features are z-score normalized to the synonymous baseline.</span>
+<span class="sd">    6. Optionally compute impact score on the normalized features</span>
+<span class="sd">       (:func:`.utils.vectors.compute_impact_score`).</span>
+<span class="sd">    7. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.</span>
+<span class="sd">    8. Write output.</span>
 
 <span class="sd">    Output path</span>
 <span class="sd">    -----------</span>
@@ -1815,14 +1839,23 @@ option.</p>
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running pycytominer feature selection&quot;</span><span class="p">)</span>
     <span class="n">selected_df</span> <span class="o">=</span> <span class="n">pyc_feature_select</span><span class="p">(</span><span class="n">agg_df</span><span class="p">)</span>
 
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Classifying variants and marking synonymous as normalization reference&quot;</span>
+    <span class="p">)</span>
+    <span class="n">selected_lf</span> <span class="o">=</span> <span class="n">variant_classification</span><span class="p">(</span><span class="n">selected_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">(),</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting normalizer on synonymous rows&quot;</span><span class="p">)</span>
+    <span class="n">normalizer</span> <span class="o">=</span> <span class="n">Normalizer</span><span class="o">.</span><span class="n">from_lazyframe</span><span class="p">(</span><span class="n">selected_lf</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Applying normalizer&quot;</span><span class="p">)</span>
+    <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">normalizer</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">selected_lf</span><span class="p">)</span>
+
     <span class="k">if</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">compute_impact_score</span><span class="p">:</span>
         <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing impact scores&quot;</span><span class="p">)</span>
-        <span class="n">selected_lf</span> <span class="o">=</span> <span class="n">variant_classification</span><span class="p">(</span><span class="n">selected_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">(),</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
-        <span class="n">selected_df</span> <span class="o">=</span> <span class="n">compute_impact_score</span><span class="p">(</span><span class="n">selected_lf</span><span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">compute_impact_score</span><span class="p">(</span><span class="n">normalized_lf</span><span class="p">)</span>
 
     <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding queries to retrieve metadata&quot;</span><span class="p">)</span>
     <span class="n">meta_lf</span> <span class="o">=</span> <span class="n">get_aggregate_meta_data</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
-    <span class="n">selected_lf</span> <span class="o">=</span> <span class="n">selected_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">()</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+    <span class="n">selected_lf</span> <span class="o">=</span> <span class="n">normalized_lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">feat_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">out_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span><span class="p">)</span>
@@ -1908,8 +1941,7 @@ filters. Non-feature (<code>meta_</code>) columns are preserved unchanged.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/features.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 78</span>
-<span class="normal"> 79</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 79</span>
 <span class="normal"> 80</span>
 <span class="normal"> 81</span>
 <span class="normal"> 82</span>
@@ -1937,7 +1969,8 @@ filters. Non-feature (<code>meta_</code>) columns are preserved unchanged.</p>
 <span class="normal">104</span>
 <span class="normal">105</span>
 <span class="normal">106</span>
-<span class="normal">107</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">pyc_feature_select</span><span class="p">(</span><span class="n">agg_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="normal">107</span>
+<span class="normal">108</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">pyc_feature_select</span><span class="p">(</span><span class="n">agg_df</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Select informative features from a per-variant aggregate DataFrame using</span>
 <span class="sd">    pycytominer.</span>

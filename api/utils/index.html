@@ -1973,9 +1973,11 @@ and opposite direction → 1.</p>
               –
               <div class="doc-md-description">
                 <p>Frame with feature columns and a boolean <code>meta_is_control</code> column.
-Must contain at least one control row. Feature columns that contain any
-null values are excluded from the cosine similarity calculation but are
-kept in the returned frame.</p>
+Must contain at least one control row. Null, NaN, and infinite
+feature values are excluded from the calculation on a per-row,
+per-feature basis (via :func:<code>compute_cosine_distance</code>) rather than
+dropping the whole column — a feature still contributes to a row's
+score whenever it is present for that row.</p>
               </div>
             </li>
         </ul>
@@ -2052,8 +2054,7 @@ columns removed.</p>
 <span class="normal">187</span>
 <span class="normal">188</span>
 <span class="normal">189</span>
-<span class="normal">190</span>
-<span class="normal">191</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_impact_score</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<span class="normal">190</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compute_impact_score</span><span class="p">(</span><span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compute a cosine-distance-based impact score relative to the control median.</span>
 
@@ -2069,9 +2070,11 @@ columns removed.</p>
 <span class="sd">    ----------</span>
 <span class="sd">    lf : pl.LazyFrame</span>
 <span class="sd">        Frame with feature columns and a boolean ``meta_is_control`` column.</span>
-<span class="sd">        Must contain at least one control row. Feature columns that contain any</span>
-<span class="sd">        null values are excluded from the cosine similarity calculation but are</span>
-<span class="sd">        kept in the returned frame.</span>
+<span class="sd">        Must contain at least one control row. Null, NaN, and infinite</span>
+<span class="sd">        feature values are excluded from the calculation on a per-row,</span>
+<span class="sd">        per-feature basis (via :func:`compute_cosine_distance`) rather than</span>
+<span class="sd">        dropping the whole column — a feature still contributes to a row&#39;s</span>
+<span class="sd">        score whenever it is present for that row.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -2082,9 +2085,6 @@ columns removed.</p>
     <span class="c1"># Capture feature columns before any temp columns are added so that the norm</span>
     <span class="c1"># and dot product are computed over the original features only.</span>
     <span class="n">feature_cols</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span><span class="o">.</span><span class="n">names</span><span class="p">()</span>
-    <span class="c1"># Drop any feature columns with nulls from the calculation; they remain in output.</span>
-    <span class="n">null_counts</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">)</span><span class="o">.</span><span class="n">null_count</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">row</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-    <span class="n">feature_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">,</span> <span class="n">null_counts</span><span class="p">)</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span>
     <span class="n">control_median_lf</span> <span class="o">=</span> <span class="p">(</span>
         <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">CONTROL_COLUMN_NAME</span><span class="p">))</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">)</span><span class="o">.</span><span class="n">median</span><span class="p">()</span>
     <span class="p">)</span>
