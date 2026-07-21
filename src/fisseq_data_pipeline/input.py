@@ -21,9 +21,11 @@ Pipeline
    is based on the part of ``aaChanges`` before any ``:`` — a metadata tag
    component — so already-tagged variants (including the pseudo variants
    this script itself creates) classify the same as their untagged base.
-3. Find the ``top_n_missense`` (default 50) Single Missense variants by cell
-   count, then filter to keep only: Synonymous, WT, Frameshift, and those
-   selected missense variants.
+3. If ``top_n_missense`` is set, find the ``top_n_missense`` Single Missense
+   variants by cell count and filter to keep only: Synonymous, WT,
+   Frameshift, and those selected missense variants. When ``top_n_missense``
+   is unset/null (the default), this ranking/restriction is skipped
+   entirely and all Single Missense variants are kept.
 4. If ``downsample_fraction`` is set (disabled by default — see Config file
    below), create reproducibly downsampled "pseudo variants" for the kept
    Synonymous and Single Missense rows: for each variant, keep a
@@ -41,12 +43,21 @@ Config file
 ``config_path`` points to a YAML file with:
 
     input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
-    top_n_missense: 50                # optional, default 50
+    top_n_missense: null              # optional, default null (keep all Single Missense variants)
     downsample_fraction: null         # optional, default null (disabled)
     downsample_seed: 0                # optional, default 0
+    feature_allowlist_file: null      # optional, default null (no allowlist)
+    feature_blocklist_file: null      # optional, default null (no blocklist)
 
 Set ``downsample_fraction`` to a value in (0, 1] (e.g. ``0.5``) to enable
 downsampled pseudo-variant generation.
+
+``feature_allowlist_file`` / ``feature_blocklist_file`` each point to a plain
+text file with one fnmatch-style glob pattern per line (e.g.
+``Cells_AreaShape_*``), matched against feature column names. If an allowlist
+is given, only feature columns matching at least one of its patterns are
+kept; if a blocklist is also given, matching columns are then dropped from
+what remains (allowlist is applied first).
 
 Usage
 -----
@@ -56,6 +67,7 @@ Usage
 """
 
 import dataclasses
+import fnmatch
 import logging
 import pathlib
 
@@ -79,9 +91,11 @@ edit_distance_col = cs.by_name("editDistance")
 
 DOWNSAMPLE_TAG = "downsampled-half"
 DOWNSAMPLE_CLASSES = ("Synonymous", "Single Missense")
-DEFAULT_TOP_N_MISSENSE = 50
+DEFAULT_TOP_N_MISSENSE = None
 DEFAULT_DOWNSAMPLE_FRACTION = None
 DEFAULT_DOWNSAMPLE_SEED = 0
+
+IDENTITY_COLUMNS = {"upBarcode", "editDistance", "aaChanges"}
 
 
 @dataclasses.dataclass
@@ -172,9 +186,24 @@ def select_top_missense(lf: pl.LazyFrame, top_n_missense: int) -> list[str]:
     return top
 
 
-def filter_variants(lf: pl.LazyFrame, top_missense: list[str]) -> pl.LazyFrame:
-    """Keep Synonymous, WT, Frameshift, and the selected Single Missense variants."""
+def filter_variants(lf: pl.LazyFrame, top_missense: list[str] | None) -> pl.LazyFrame:
+    """
+    Keep Synonymous, WT, Frameshift, and Single Missense variants.
+
+    If `top_missense` is a list, only Single Missense variants in that list
+    are kept. If `top_missense` is `None`, all Single Missense variants are
+    kept (no top-N restriction).
+    """
     keep_classes = ["Synonymous", "WT", "Frameshift"]
+    if top_missense is None:
+        logger.info(
+            "top_n_missense not set; keeping classes %s plus all Single Missense variants",
+            keep_classes,
+        )
+        return lf.filter(
+            pl.col("variant_class").is_in(keep_classes + ["Single Missense"])
+        )
+
     logger.info(
         "Filtering to classes %s plus %d selected Single Missense variant(s)",
         keep_classes,
@@ -228,15 +257,46 @@ def add_downsampled_pseudo_variants(
     return pseudo
 
 
-def select_output_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
+def load_feature_patterns(path: str) -> list[str]:
+    """Read one glob-style feature-column-name pattern per line from a text file."""
+    with open(path) as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+def _matches_any(name: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatchcase(name, p) for p in patterns)
+
+
+def select_output_columns(
+    lf: pl.LazyFrame,
+    feature_allowlist: list[str] | None = None,
+    feature_blocklist: list[str] | None = None,
+) -> pl.LazyFrame:
     """
     Split columns into numeric feature columns vs. everything else. Barcode,
     edit distance, and aaChanges are kept unprefixed; every other non-feature
     column (including variant_base/variant_class/origin_file/origin_row_idx)
     is auto-prefixed with 'meta_'.
+
+    If `feature_allowlist` is given, only feature columns matching at least
+    one of its fnmatch glob patterns are kept. If `feature_blocklist` is also
+    given, feature columns matching any of its patterns are then dropped from
+    what remains (allowlist is applied first).
     """
+    feature_cols = [
+        c
+        for c in lf.collect_schema().names()
+        if c not in IDENTITY_COLUMNS and not c.startswith("meta_")
+    ]
+    if feature_allowlist is not None:
+        feature_cols = [c for c in feature_cols if _matches_any(c, feature_allowlist)]
+    if feature_blocklist is not None:
+        feature_cols = [
+            c for c in feature_cols if not _matches_any(c, feature_blocklist)
+        ]
+
     return lf.select(
-        FEATURE_SELECTOR - (barcode_col | edit_distance_col | aa_changes_col),
+        cs.by_name(*feature_cols),
         barcode_col,
         edit_distance_col,
         aa_changes_col,
@@ -283,9 +343,27 @@ def main(cfg: DictConfig) -> None:
     downsample_fraction = config.get("downsample_fraction", DEFAULT_DOWNSAMPLE_FRACTION)
     downsample_seed = config.get("downsample_seed", DEFAULT_DOWNSAMPLE_SEED)
 
+    feature_allowlist = None
+    if config.get("feature_allowlist_file"):
+        logger.info(
+            "Loading feature allowlist from %s", config["feature_allowlist_file"]
+        )
+        feature_allowlist = load_feature_patterns(config["feature_allowlist_file"])
+
+    feature_blocklist = None
+    if config.get("feature_blocklist_file"):
+        logger.info(
+            "Loading feature blocklist from %s", config["feature_blocklist_file"]
+        )
+        feature_blocklist = load_feature_patterns(config["feature_blocklist_file"])
+
     data_lf = load_and_concat(input_paths)
     data_lf = classify_variants(data_lf)
-    top_missense = select_top_missense(data_lf, top_n_missense)
+    if top_n_missense is not None:
+        top_missense = select_top_missense(data_lf, top_n_missense)
+    else:
+        logger.info("top_n_missense not set; skipping Single Missense variant ranking")
+        top_missense = None
     filtered_lf = filter_variants(data_lf, top_missense)
 
     if downsample_fraction is not None:
@@ -302,7 +380,9 @@ def main(cfg: DictConfig) -> None:
         combined_lf = filtered_lf
 
     logger.info("Selecting output columns")
-    combined_lf = select_output_columns(combined_lf)
+    combined_lf = select_output_columns(
+        combined_lf, feature_allowlist, feature_blocklist
+    )
 
     prefix = f"{in_cfg.output_root}." if in_cfg.output_root is not None else ""
     output_path = output_dir / f"{prefix}output.parquet"

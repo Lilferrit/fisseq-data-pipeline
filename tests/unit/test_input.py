@@ -15,6 +15,7 @@ from fisseq_data_pipeline.input import (
     filter_variants,
     load_and_concat,
     load_and_tag,
+    load_feature_patterns,
     select_output_columns,
     select_top_missense,
 )
@@ -171,6 +172,30 @@ class TestFilterVariants:
 
         assert result.shape[0] == 0
 
+    def test_none_top_missense_keeps_all_missense(self):
+        lf = pl.DataFrame(
+            {
+                "variant_base": ["WT", "A1A", "A1fs", "M1K", "M2L"],
+                "variant_class": [
+                    "WT",
+                    "Synonymous",
+                    "Frameshift",
+                    "Single Missense",
+                    "Single Missense",
+                ],
+            }
+        ).lazy()
+
+        result = filter_variants(lf, top_missense=None).collect()
+
+        assert set(result["variant_base"].to_list()) == {
+            "WT",
+            "A1A",
+            "A1fs",
+            "M1K",
+            "M2L",
+        }
+
 
 # ---------------------------------------------------------------------------
 # add_downsampled_pseudo_variants
@@ -271,6 +296,72 @@ def test_select_output_columns_keeps_identity_columns_unprefixed():
 
 
 # ---------------------------------------------------------------------------
+# load_feature_patterns
+# ---------------------------------------------------------------------------
+
+
+def test_load_feature_patterns_strips_and_skips_blank_lines(tmp_path):
+    p = tmp_path / "patterns.txt"
+    p.write_text("Cells_AreaShape_*\n\n  Nuclei_Texture_*  \n\n")
+
+    result = load_feature_patterns(str(p))
+
+    assert result == ["Cells_AreaShape_*", "Nuclei_Texture_*"]
+
+
+# ---------------------------------------------------------------------------
+# select_output_columns — allowlist/blocklist
+# ---------------------------------------------------------------------------
+
+
+def _feature_lf():
+    return pl.DataFrame(
+        {
+            "upBarcode": ["bc1"],
+            "aaChanges": ["M1K"],
+            "editDistance": [0],
+            "Cells_AreaShape_Area": [1.0],
+            "Cells_Intensity_Mean": [2.0],
+            "Nuclei_Texture_Contrast": [3.0],
+        }
+    ).lazy()
+
+
+def test_select_output_columns_allowlist_keeps_only_matches():
+    result = select_output_columns(
+        _feature_lf(), feature_allowlist=["Cells_AreaShape_*"]
+    ).collect()
+
+    assert "Cells_AreaShape_Area" in result.columns
+    assert "Cells_Intensity_Mean" not in result.columns
+    assert "Nuclei_Texture_Contrast" not in result.columns
+    for col in ("upBarcode", "aaChanges", "editDistance"):
+        assert col in result.columns
+
+
+def test_select_output_columns_blocklist_drops_matches():
+    result = select_output_columns(
+        _feature_lf(), feature_blocklist=["Nuclei_Texture_*"]
+    ).collect()
+
+    assert "Cells_AreaShape_Area" in result.columns
+    assert "Cells_Intensity_Mean" in result.columns
+    assert "Nuclei_Texture_Contrast" not in result.columns
+
+
+def test_select_output_columns_allowlist_then_blocklist():
+    result = select_output_columns(
+        _feature_lf(),
+        feature_allowlist=["Cells_*"],
+        feature_blocklist=["Cells_Intensity_*"],
+    ).collect()
+
+    assert "Cells_AreaShape_Area" in result.columns
+    assert "Cells_Intensity_Mean" not in result.columns
+    assert "Nuclei_Texture_Contrast" not in result.columns
+
+
+# ---------------------------------------------------------------------------
 # main() — Task 1: downsampling is opt-in
 # ---------------------------------------------------------------------------
 
@@ -309,8 +400,6 @@ def _make_cfg(tmp_path, config_path, output_root=None):
 
 
 def test_main_downsampling_disabled_by_default(tmp_path):
-    # 10 barcodes/cells of the same missense variant so it clears the default
-    # top_n_missense selection.
     source = tmp_path / "source.parquet"
     _write_source(source, ["M1K"] * 10)
     config_path = tmp_path / "config.yaml"
@@ -341,6 +430,20 @@ def test_main_downsampling_enabled_when_set(tmp_path):
     assert result.shape[0] == 15
 
 
+def test_main_top_n_missense_null_by_default_keeps_all_missense(tmp_path):
+    source = tmp_path / "source.parquet"
+    # Three distinct Single Missense variants, one cell each.
+    _write_source(source, ["M1K", "M2L", "M3Q"])
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, source)  # no top_n_missense key at all
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    result = pl.read_parquet(tmp_path / "out" / "output.parquet")
+    assert set(result["aaChanges"].to_list()) == {"M1K", "M2L", "M3Q"}
+
+
 def test_main_output_root_names_output_file(tmp_path):
     source = tmp_path / "source.parquet"
     _write_source(source, ["M1K"] * 10)
@@ -351,3 +454,41 @@ def test_main_output_root_names_output_file(tmp_path):
         m.main.__wrapped__(_make_cfg(tmp_path, config_path, output_root="batch1"))
 
     assert (tmp_path / "out" / "batch1.output.parquet").exists()
+
+
+# ---------------------------------------------------------------------------
+# main() — feature_blocklist_file
+# ---------------------------------------------------------------------------
+
+
+def test_main_blocked_feature_absent_from_output(tmp_path):
+    source = tmp_path / "source.parquet"
+    rows = [
+        {
+            "upBarcode": f"bc{i}",
+            "aaChanges": "M1K",
+            "editDistance": 0,
+            "Cells_AreaShape_Area": float(i),
+            "Nuclei_Texture_Contrast": float(i),
+        }
+        for i in range(10)
+    ]
+    pl.DataFrame(rows).write_parquet(source)
+
+    blocklist_file = tmp_path / "blocklist.txt"
+    blocklist_file.write_text("Nuclei_Texture_*\n")
+
+    config_path = tmp_path / "config.yaml"
+    config = {
+        "input_paths": [str(source)],
+        "feature_blocklist_file": str(blocklist_file),
+    }
+    with open(config_path, "w") as f:
+        yaml.safe_dump(config, f)
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    result = pl.read_parquet(tmp_path / "out" / "output.parquet")
+    assert "Cells_AreaShape_Area" in result.columns
+    assert "Nuclei_Texture_Contrast" not in result.columns
