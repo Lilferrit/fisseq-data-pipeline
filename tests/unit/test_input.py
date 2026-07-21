@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+import pathlib
 from unittest.mock import patch
 
 import polars as pl
 import pytest
 import yaml
 from omegaconf import OmegaConf
+from polars.testing import assert_frame_equal
 
 import fisseq_data_pipeline.input as m
 from fisseq_data_pipeline.input import (
@@ -377,13 +380,34 @@ def _write_source(path, variants):
                 "Cells_AreaShape_Area": float(i),
             }
         )
-    pl.DataFrame(rows).write_parquet(path)
+    df = pl.DataFrame(rows)
+    if pathlib.Path(path).suffix.lower() == ".csv":
+        df.write_csv(path)
+    else:
+        df.write_parquet(path)
 
 
-def _write_config(path, source_path, downsample_fraction=None):
-    config = {"input_paths": [str(source_path)]}
+def _write_config(
+    path,
+    source_path,
+    downsample_fraction=None,
+    downsample_seed=None,
+    top_n_missense=None,
+    convert_first=None,
+    temp_dir=None,
+):
+    sources = source_path if isinstance(source_path, list) else [source_path]
+    config = {"input_paths": [str(p) for p in sources]}
     if downsample_fraction is not None:
         config["downsample_fraction"] = downsample_fraction
+    if downsample_seed is not None:
+        config["downsample_seed"] = downsample_seed
+    if top_n_missense is not None:
+        config["top_n_missense"] = top_n_missense
+    if convert_first is not None:
+        config["convert_first"] = convert_first
+    if temp_dir is not None:
+        config["temp_dir"] = str(temp_dir)
     with open(path, "w") as f:
         yaml.safe_dump(config, f)
 
@@ -492,3 +516,207 @@ def test_main_blocked_feature_absent_from_output(tmp_path):
     result = pl.read_parquet(tmp_path / "out" / "output.parquet")
     assert "Cells_AreaShape_Area" in result.columns
     assert "Nuclei_Texture_Contrast" not in result.columns
+
+
+# ---------------------------------------------------------------------------
+# main() — convert_first / temp_dir
+# ---------------------------------------------------------------------------
+
+_STABLE_SORT_KEY = ["origin_file", "origin_row_idx", "aaChanges"]
+
+
+def _write_mixed_sources(tmp_path):
+    """One CSV and one Parquet source, with a mix of variant classes/counts."""
+    csv_path = tmp_path / "sources" / "a.csv"
+    parquet_path = tmp_path / "sources" / "b.parquet"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_source(csv_path, ["WT", "A1A", "A1A", "M1K", "M1K", "M1K", "M2L", "M2L"])
+    _write_source(
+        parquet_path, ["A1A", "A1A", "M1K", "M2L", "M2L", "M3Q", "M3Q", "M3Q"]
+    )
+    return [csv_path, parquet_path]
+
+
+def test_main_convert_first_matches_non_converted_output(tmp_path):
+    sources = _write_mixed_sources(tmp_path)
+
+    temp_dir = tmp_path / "convtmp"
+    temp_dir.mkdir()
+    config_converted = tmp_path / "config_converted.yaml"
+    _write_config(
+        config_converted,
+        sources,
+        downsample_fraction=0.5,
+        downsample_seed=42,
+        convert_first=True,
+        temp_dir=temp_dir,
+    )
+    config_plain = tmp_path / "config_plain.yaml"
+    _write_config(config_plain, sources, downsample_fraction=0.5, downsample_seed=42)
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        m.main.__wrapped__(_make_cfg(tmp_path / "run_a", config_converted))
+        m.main.__wrapped__(_make_cfg(tmp_path / "run_b", config_plain))
+
+    result_a = pl.read_parquet(tmp_path / "run_a" / "out" / "output.parquet")
+    result_b = pl.read_parquet(tmp_path / "run_b" / "out" / "output.parquet")
+
+    assert_frame_equal(result_a.sort(_STABLE_SORT_KEY), result_b.sort(_STABLE_SORT_KEY))
+
+
+def test_main_convert_first_skips_merge_when_no_extra_pass_needed(tmp_path):
+    source = tmp_path / "source.parquet"
+    _write_source(source, ["M1K", "M2L", "A1A", "WT"] * 3)
+
+    config_true = tmp_path / "config_true.yaml"
+    _write_config(config_true, source, convert_first=True)
+    config_false = tmp_path / "config_false.yaml"
+    _write_config(config_false, source)
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        with patch.object(m, "convert_and_merge_inputs") as mock_merge:
+            m.main.__wrapped__(_make_cfg(tmp_path / "run_a", config_true))
+        m.main.__wrapped__(_make_cfg(tmp_path / "run_b", config_false))
+
+    mock_merge.assert_not_called()
+
+    result_a = pl.read_parquet(tmp_path / "run_a" / "out" / "output.parquet")
+    result_b = pl.read_parquet(tmp_path / "run_b" / "out" / "output.parquet")
+    assert_frame_equal(result_a.sort(_STABLE_SORT_KEY), result_b.sort(_STABLE_SORT_KEY))
+
+
+def test_main_convert_first_triggered_by_top_n_missense_alone(tmp_path):
+    sources = _write_mixed_sources(tmp_path)
+
+    temp_dir = tmp_path / "convtmp"
+    temp_dir.mkdir()
+    config_converted = tmp_path / "config_converted.yaml"
+    _write_config(
+        config_converted,
+        sources,
+        top_n_missense=2,
+        convert_first=True,
+        temp_dir=temp_dir,
+    )
+    config_plain = tmp_path / "config_plain.yaml"
+    _write_config(config_plain, sources, top_n_missense=2)
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        with patch.object(
+            m, "convert_and_merge_inputs", wraps=m.convert_and_merge_inputs
+        ) as spy:
+            m.main.__wrapped__(_make_cfg(tmp_path / "run_a", config_converted))
+        m.main.__wrapped__(_make_cfg(tmp_path / "run_b", config_plain))
+
+    spy.assert_called_once()
+
+    result_a = pl.read_parquet(tmp_path / "run_a" / "out" / "output.parquet")
+    result_b = pl.read_parquet(tmp_path / "run_b" / "out" / "output.parquet")
+    assert_frame_equal(result_a.sort(_STABLE_SORT_KEY), result_b.sort(_STABLE_SORT_KEY))
+
+
+def test_main_convert_first_false_ignores_temp_dir_and_tmpdir(tmp_path):
+    source = tmp_path / "source.parquet"
+    _write_source(source, ["M1K", "M2L", "A1A", "WT"] * 3)
+
+    config_temp_dir = tmp_path / "config_temp_dir"
+    config_temp_dir.mkdir()
+    env_temp_dir = tmp_path / "env_temp_dir"
+    env_temp_dir.mkdir()
+
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        source,
+        downsample_fraction=0.5,
+        top_n_missense=2,
+        convert_first=False,
+        temp_dir=config_temp_dir,
+    )
+
+    with patch.dict(os.environ, {"TMPDIR": str(env_temp_dir)}):
+        with patch("fisseq_data_pipeline.input.setup_logging"):
+            with patch.object(m, "convert_and_merge_inputs") as mock_merge:
+                m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    mock_merge.assert_not_called()
+    assert list(config_temp_dir.iterdir()) == []
+    assert list(env_temp_dir.iterdir()) == []
+
+
+def test_main_convert_first_cleans_up_temp_file_after_success(tmp_path):
+    source = tmp_path / "source.parquet"
+    _write_source(source, ["M1K", "M2L", "A1A", "WT"] * 3)
+
+    temp_dir = tmp_path / "convtmp"
+    temp_dir.mkdir()
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        source,
+        downsample_fraction=0.5,
+        convert_first=True,
+        temp_dir=temp_dir,
+    )
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    assert not (temp_dir / m.CONVERTED_INPUT_FILENAME).exists()
+
+
+def test_main_convert_first_cleans_up_temp_file_on_failure(tmp_path):
+    source = tmp_path / "source.parquet"
+    _write_source(source, ["M1K", "M2L", "A1A", "WT"] * 3)
+
+    temp_dir = tmp_path / "convtmp"
+    temp_dir.mkdir()
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        source,
+        downsample_fraction=0.5,
+        convert_first=True,
+        temp_dir=temp_dir,
+    )
+
+    real_sink_parquet = pl.LazyFrame.sink_parquet
+    call_count = {"n": 0}
+
+    def fake_sink_parquet(self, path, *args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # let the merge step's sink_parquet call succeed normally
+            return real_sink_parquet(self, path, *args, **kwargs)
+        raise RuntimeError("boom")
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        with patch.object(pl.LazyFrame, "sink_parquet", fake_sink_parquet):
+            with pytest.raises(RuntimeError, match="boom"):
+                m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    assert not (temp_dir / m.CONVERTED_INPUT_FILENAME).exists()
+
+
+def test_main_convert_first_temp_dir_falls_back_to_gettempdir(tmp_path):
+    source = tmp_path / "source.parquet"
+    _write_source(source, ["M1K", "M2L", "A1A", "WT"] * 3)
+
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, source, downsample_fraction=0.5, convert_first=True)
+
+    fallback_dir = tmp_path / "fallback"
+    fallback_dir.mkdir()
+
+    env_without_tmpdir = dict(os.environ)
+    env_without_tmpdir.pop("TMPDIR", None)
+
+    with patch.dict(os.environ, env_without_tmpdir, clear=True):
+        with patch("fisseq_data_pipeline.input.setup_logging"):
+            with patch.object(m.tempfile, "gettempdir", return_value=str(fallback_dir)):
+                with patch.object(
+                    m, "convert_and_merge_inputs", wraps=m.convert_and_merge_inputs
+                ) as spy:
+                    m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    spy.assert_called_once_with([str(source)], str(fallback_dir))

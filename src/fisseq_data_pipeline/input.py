@@ -16,7 +16,13 @@ Pipeline
    index within that file (``origin_file`` / ``origin_row_idx`` — these end
    up as ``meta_origin_file`` / ``meta_origin_row_idx`` in the output, via
    the same auto-prefixing step that handles the rest of the metadata
-   columns). Concatenate everything into one lazy frame.
+   columns). Concatenate everything into one lazy frame. If ``convert_first``
+   is set and either ``top_n_missense`` or ``downsample_fraction`` is set
+   (i.e. an extra pass over the data is going to happen below), this
+   concatenation is instead performed once up front and streamed to a single
+   merged Parquet file in ``temp_dir`` (see :func:`convert_and_merge_inputs`),
+   which is then read back and used for every step from here on — a pure
+   IO/perf optimization that does not change the output.
 2. Classify each row's variant (see :func:`classify_variants`). Classification
    is based on the part of ``aaChanges`` before any ``:`` — a metadata tag
    component — so already-tagged variants (including the pseudo variants
@@ -48,9 +54,22 @@ Config file
     downsample_seed: 0                # optional, default 0
     feature_allowlist_file: null      # optional, default null (no allowlist)
     feature_blocklist_file: null      # optional, default null (no blocklist)
+    convert_first: false              # optional, default false (see below)
+    temp_dir: null                    # optional, default $TMPDIR or the system temp dir
 
 Set ``downsample_fraction`` to a value in (0, 1] (e.g. ``0.5``) to enable
 downsampled pseudo-variant generation.
+
+Set ``convert_first: true`` to merge all ``input_paths`` into a single
+Parquet file up front (written to ``temp_dir``, deleted once the run
+finishes) before variant classification, instead of re-scanning/re-
+concatenating the original files on every downstream pass. This only
+happens when ``top_n_missense`` or ``downsample_fraction`` is also set —
+those are what cause the extra passes it optimizes for; otherwise the
+pipeline is already single-pass and this step is skipped even if
+``convert_first`` is true. ``temp_dir`` defaults to ``$TMPDIR`` if set,
+otherwise the system temp directory (see :func:`tempfile.gettempdir`); it is
+never read/used when ``convert_first`` is false.
 
 ``feature_allowlist_file`` / ``feature_blocklist_file`` each point to a plain
 text file with one fnmatch-style glob pattern per line (e.g.
@@ -69,7 +88,9 @@ Usage
 import dataclasses
 import fnmatch
 import logging
+import os
 import pathlib
+import tempfile
 
 import hydra
 import polars as pl
@@ -94,6 +115,10 @@ DOWNSAMPLE_CLASSES = ("Synonymous", "Single Missense")
 DEFAULT_TOP_N_MISSENSE = None
 DEFAULT_DOWNSAMPLE_FRACTION = None
 DEFAULT_DOWNSAMPLE_SEED = 0
+DEFAULT_CONVERT_FIRST = False
+DEFAULT_TEMP_DIR = None
+
+CONVERTED_INPUT_FILENAME = "converted_input.parquet"
 
 IDENTITY_COLUMNS = {"upBarcode", "editDistance", "aaChanges"}
 
@@ -144,6 +169,19 @@ def load_and_concat(paths: list[str]) -> pl.LazyFrame:
     # "vertical_relaxed" tolerates minor dtype mismatches across CSV/parquet
     # sources (e.g. int32 vs int64) by upcasting, rather than erroring.
     return pl.concat(lfs, how="vertical_relaxed")
+
+
+def convert_and_merge_inputs(input_paths: list[str], temp_dir: str) -> pathlib.Path:
+    """Merge all `input_paths` into a single combined Parquet file in `temp_dir`."""
+    converted_path = pathlib.Path(temp_dir) / CONVERTED_INPUT_FILENAME
+    logger.info(
+        "Converting and merging %d input file(s) into %s",
+        len(input_paths),
+        converted_path,
+    )
+    load_and_concat(input_paths).sink_parquet(converted_path)
+    logger.info("Merge complete")
+    return converted_path
 
 
 def classify_variants(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -314,6 +352,11 @@ def main(cfg: DictConfig) -> None:
     1. Read ``config_path`` (a separate, hand-authored YAML file — see the
        module docstring's "Config file" section).
     2. Load and concatenate all ``input_paths`` via :func:`load_and_concat`.
+       If ``convert_first`` is set and ``top_n_missense`` or
+       ``downsample_fraction`` is also set, this is instead done once via
+       :func:`convert_and_merge_inputs`, and the merged file is used for
+       every step below (the merged temp file is removed once the run
+       finishes, even on failure).
     3. Classify variants and filter to the fixed classes plus the top
        missense variants (:func:`classify_variants`, :func:`select_top_missense`,
        :func:`filter_variants`).
@@ -342,6 +385,7 @@ def main(cfg: DictConfig) -> None:
     top_n_missense = config.get("top_n_missense", DEFAULT_TOP_N_MISSENSE)
     downsample_fraction = config.get("downsample_fraction", DEFAULT_DOWNSAMPLE_FRACTION)
     downsample_seed = config.get("downsample_seed", DEFAULT_DOWNSAMPLE_SEED)
+    convert_first = config.get("convert_first", DEFAULT_CONVERT_FIRST)
 
     feature_allowlist = None
     if config.get("feature_allowlist_file"):
@@ -357,37 +401,59 @@ def main(cfg: DictConfig) -> None:
         )
         feature_blocklist = load_feature_patterns(config["feature_blocklist_file"])
 
-    data_lf = load_and_concat(input_paths)
-    data_lf = classify_variants(data_lf)
-    if top_n_missense is not None:
-        top_missense = select_top_missense(data_lf, top_n_missense)
+    # Merging up front avoids re-scanning/re-concatenating input_paths on
+    # every extra pass that top_n_missense/downsample_fraction trigger
+    # (top-missense counts, downsample ranking). Skipped when neither is
+    # set, since the pipeline is then already a single pass over the data.
+    needs_extra_passes = downsample_fraction is not None or top_n_missense is not None
+    converted_path = None
+    if convert_first and needs_extra_passes:
+        temp_dir = config.get("temp_dir", DEFAULT_TEMP_DIR)
+        if temp_dir is None:
+            temp_dir = os.environ.get("TMPDIR") or tempfile.gettempdir()
+        converted_path = convert_and_merge_inputs(input_paths, temp_dir)
+        data_lf = pl.scan_parquet(converted_path)
     else:
-        logger.info("top_n_missense not set; skipping Single Missense variant ranking")
-        top_missense = None
-    filtered_lf = filter_variants(data_lf, top_missense)
+        data_lf = load_and_concat(input_paths)
 
-    if downsample_fraction is not None:
-        pseudo_lf = add_downsampled_pseudo_variants(
-            filtered_lf,
-            downsample_classes=DOWNSAMPLE_CLASSES,
-            downsample_fraction=downsample_fraction,
-            seed=downsample_seed,
+    try:
+        data_lf = classify_variants(data_lf)
+        if top_n_missense is not None:
+            top_missense = select_top_missense(data_lf, top_n_missense)
+        else:
+            logger.info(
+                "top_n_missense not set; skipping Single Missense variant ranking"
+            )
+            top_missense = None
+        filtered_lf = filter_variants(data_lf, top_missense)
+
+        if downsample_fraction is not None:
+            pseudo_lf = add_downsampled_pseudo_variants(
+                filtered_lf,
+                downsample_classes=DOWNSAMPLE_CLASSES,
+                downsample_fraction=downsample_fraction,
+                seed=downsample_seed,
+            )
+            logger.info("Concatenating original and pseudo-variant rows")
+            combined_lf = pl.concat([filtered_lf, pseudo_lf], how="vertical_relaxed")
+        else:
+            logger.info(
+                "downsample_fraction not set; skipping pseudo-variant generation"
+            )
+            combined_lf = filtered_lf
+
+        logger.info("Selecting output columns")
+        combined_lf = select_output_columns(
+            combined_lf, feature_allowlist, feature_blocklist
         )
-        logger.info("Concatenating original and pseudo-variant rows")
-        combined_lf = pl.concat([filtered_lf, pseudo_lf], how="vertical_relaxed")
-    else:
-        logger.info("downsample_fraction not set; skipping pseudo-variant generation")
-        combined_lf = filtered_lf
 
-    logger.info("Selecting output columns")
-    combined_lf = select_output_columns(
-        combined_lf, feature_allowlist, feature_blocklist
-    )
-
-    prefix = f"{in_cfg.output_root}." if in_cfg.output_root is not None else ""
-    output_path = output_dir / f"{prefix}output.parquet"
-    logger.info("Writing data to %s", output_path)
-    combined_lf.sink_parquet(output_path)
+        prefix = f"{in_cfg.output_root}." if in_cfg.output_root is not None else ""
+        output_path = output_dir / f"{prefix}output.parquet"
+        logger.info("Writing data to %s", output_path)
+        combined_lf.sink_parquet(output_path)
+    finally:
+        if converted_path is not None:
+            converted_path.unlink(missing_ok=True)
 
     logger.info("Done")
 
