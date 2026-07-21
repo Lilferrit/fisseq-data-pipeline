@@ -155,8 +155,10 @@ def test_compute_impact_score_output_columns() -> None:
 
 
 def test_compute_impact_score_null_columns_excluded_from_calc() -> None:
-    # f2 has a null so it is excluded; score is computed using f1 only.
-    # Control median (f1=1); non-control (f1=-1) → opposite direction → score = 1.
+    # f2 is null on the sole control row, so the control median for f2 is
+    # itself null -> f2 is excluded from this row's calc (per-row, via
+    # compute_cosine_distance), leaving f1 only. Control median (f1=1);
+    # non-control (f1=-1) -> opposite direction -> score = 1.
     lf = pl.LazyFrame(
         {
             CONTROL_COLUMN_NAME: [True, False],
@@ -167,6 +169,36 @@ def test_compute_impact_score_null_columns_excluded_from_calc() -> None:
     result = compute_impact_score(lf).collect()
     non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
     assert non_ctrl[IMPACT_SCORE_COL][0] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_compute_impact_score_null_in_one_row_does_not_affect_other_rows() -> None:
+    # f2 is fully populated on both control rows and on one non-control row,
+    # and only null on a *different* non-control row. A column-wide drop
+    # (the old, buggy behavior) would exclude f2 from every row's score;
+    # the fix must only exclude it for the row where it's actually null.
+    lf = pl.LazyFrame(
+        {
+            CONTROL_COLUMN_NAME: [True, True, False, False],
+            "f1": [0.0, 0.0, 0.0, 0.0],
+            "f2": [1.0, 3.0, 5.0, None],  # control median f2 = 2.0
+        }
+    )
+    result = compute_impact_score(lf).collect()
+    non_ctrl = result.filter(pl.col(CONTROL_COLUMN_NAME).not_())
+
+    # Row with f2=5.0: same direction as control median (f1=0, f2=2) -> f2>0
+    # both sides -> cosine_sim=1 -> score=0. This is only true if f2 was
+    # actually used; if f2 had been dropped table-wide, f1 alone (all
+    # zeros) would make the score 0.5 (zero-norm fallback) instead.
+    populated_row = non_ctrl.filter(pl.col("f2") == 5.0)
+    assert populated_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+    # Row with f2=None still gets a finite score: f2 is excluded for just
+    # this row, leaving f1 alone (zero on both sides -> zero-norm fallback
+    # -> distance 1 -> score 0.5), matching compute_cosine_distance's
+    # documented all-features-excluded behavior.
+    null_row = non_ctrl.filter(pl.col("f2").is_null())
+    assert null_row[IMPACT_SCORE_COL][0] == pytest.approx(0.5, abs=1e-9)
 
 
 def test_compute_impact_score_null_columns_kept_in_output() -> None:
