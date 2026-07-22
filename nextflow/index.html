@@ -1600,6 +1600,11 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td>Wildtype downsample target for OvWT classification.</td>
 </tr>
 <tr>
+<td><code>--aggregate_downsample_wt</code></td>
+<td><code>null</code></td>
+<td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#fisseq-aggregate-feature-type-config-fields">CLI Reference: aggregate</a>.</td>
+</tr>
+<tr>
 <td><code>--feature_types</code></td>
 <td><code>["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]</code></td>
 <td>Aggregators used in feature selection (all 7 of <code>aggregate.py</code>'s aggregators).</td>
