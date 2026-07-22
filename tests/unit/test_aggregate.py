@@ -1223,6 +1223,8 @@ def make_ft_cfg(
     output_root=None,
     aggregator="mean",
     index_file=None,
+    downsample_wt=None,
+    seed=0,
 ) -> OmegaConf:
     """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
     return OmegaConf.structured(
@@ -1232,6 +1234,8 @@ def make_ft_cfg(
             input_file=str(tmp_path / "input.parquet"),
             aggregator=aggregator,
             index_file=index_file,
+            downsample_wt=downsample_wt,
+            seed=seed,
         )
     )
 
@@ -1305,3 +1309,166 @@ def test_feature_type_main_output_root_naming(tmp_path) -> None:
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
         m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path, output_root=root))
     assert (tmp_path / "run1.input.parquet").exists()
+
+
+# ---------------------------------------------------------------------------
+# downsample_control
+# ---------------------------------------------------------------------------
+
+
+def _control_df(n_control: int, n_variant: int = 2) -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * n_control + ["A1B"] * n_variant,
+            "meta_is_control": [True] * n_control + [False] * n_variant,
+            "row_id": list(range(n_control + n_variant)),
+        }
+    )
+
+
+def test_downsample_control_int_target_keeps_exact_count() -> None:
+    df = _control_df(n_control=10)
+    result = m.downsample_control(df.lazy(), 4, seed=1).collect()
+    assert result[CONTROL_COLUMN_NAME].sum() == 4
+    assert len(result) == 4 + 2
+
+
+def test_downsample_control_float_target_keeps_fraction() -> None:
+    df = _control_df(n_control=10)
+    result = m.downsample_control(df.lazy(), 0.5, seed=1).collect()
+    assert result[CONTROL_COLUMN_NAME].sum() == 5
+
+
+def test_downsample_control_non_control_rows_untouched() -> None:
+    df = _control_df(n_control=10)
+    result = m.downsample_control(df.lazy(), 0.5, seed=1).collect()
+    kept_variant_ids = set(
+        result.filter(~pl.col(CONTROL_COLUMN_NAME))["row_id"].to_list()
+    )
+    assert kept_variant_ids == {10, 11}
+
+
+def test_downsample_control_int_target_above_count_is_noop() -> None:
+    df = _control_df(n_control=5)
+    result = m.downsample_control(df.lazy(), 100, seed=1).collect()
+    assert result[CONTROL_COLUMN_NAME].sum() == 5
+
+
+def test_downsample_control_seed_is_deterministic() -> None:
+    df = _control_df(n_control=20)
+    kept1 = set(
+        m.downsample_control(df.lazy(), 10, seed=7)
+        .collect()
+        .filter(pl.col(CONTROL_COLUMN_NAME))["row_id"]
+        .to_list()
+    )
+    kept2 = set(
+        m.downsample_control(df.lazy(), 10, seed=7)
+        .collect()
+        .filter(pl.col(CONTROL_COLUMN_NAME))["row_id"]
+        .to_list()
+    )
+    assert kept1 == kept2
+
+
+def test_downsample_control_different_seeds_draw_different_samples() -> None:
+    df = _control_df(n_control=20)
+    kept1 = set(
+        m.downsample_control(df.lazy(), 10, seed=1)
+        .collect()
+        .filter(pl.col(CONTROL_COLUMN_NAME))["row_id"]
+        .to_list()
+    )
+    kept2 = set(
+        m.downsample_control(df.lazy(), 10, seed=2)
+        .collect()
+        .filter(pl.col(CONTROL_COLUMN_NAME))["row_id"]
+        .to_list()
+    )
+    assert kept1 != kept2
+
+
+# ---------------------------------------------------------------------------
+# feature_type_main: downsample_wt
+# ---------------------------------------------------------------------------
+
+
+def _write_downsample_input(tmp_path) -> None:
+    """20 control rows with distinct f1 values, plus one variant group."""
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 20 + ["A1B"] * 3,
+            "meta_is_control": [True] * 20 + [False] * 3,
+            "f1": [float(i) for i in range(20)] + [5.0, 5.0, 5.0],
+        }
+    ).write_parquet(tmp_path / "input.parquet")
+
+
+def test_feature_type_main_downsample_wt_changes_output(tmp_path) -> None:
+    _write_downsample_input(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(
+            make_ft_cfg(tmp_path, aggregator="KS", output_root=str(tmp_path / "full"))
+        )
+        m.feature_type_main.__wrapped__(
+            make_ft_cfg(
+                tmp_path,
+                aggregator="KS",
+                output_root=str(tmp_path / "down"),
+                downsample_wt=0.25,
+                seed=1,
+            )
+        )
+    full_row = _get_row(pl.read_parquet(tmp_path / "full.input.parquet"), "A1B")
+    down_row = _get_row(pl.read_parquet(tmp_path / "down.input.parquet"), "A1B")
+    assert full_row["f1_KS"] != pytest.approx(down_row["f1_KS"])
+
+
+def test_feature_type_main_downsample_wt_none_leaves_output_unaffected(
+    tmp_path,
+) -> None:
+    _write_downsample_input(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path, aggregator="mean"))
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert set(result["meta_aa_changes"].to_list()) == {"A1B"}
+
+
+def test_feature_type_main_downsample_wt_different_seeds_differ(tmp_path) -> None:
+    _write_downsample_input(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.feature_type_main.__wrapped__(
+            make_ft_cfg(
+                tmp_path,
+                aggregator="KS",
+                output_root=str(tmp_path / "seed1"),
+                downsample_wt=0.25,
+                seed=1,
+            )
+        )
+        m.feature_type_main.__wrapped__(
+            make_ft_cfg(
+                tmp_path,
+                aggregator="KS",
+                output_root=str(tmp_path / "seed2"),
+                downsample_wt=0.25,
+                seed=2,
+            )
+        )
+    seed1_row = _get_row(pl.read_parquet(tmp_path / "seed1.input.parquet"), "A1B")
+    seed2_row = _get_row(pl.read_parquet(tmp_path / "seed2.input.parquet"), "A1B")
+    assert seed1_row["f1_KS"] != pytest.approx(seed2_row["f1_KS"])
+
+
+def test_feature_type_main_downsample_wt_float_out_of_range_raises(tmp_path) -> None:
+    _write_downsample_input(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        with pytest.raises(ValueError):
+            m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path, downsample_wt=1.5))
+
+
+def test_feature_type_main_downsample_wt_nonpositive_int_raises(tmp_path) -> None:
+    _write_downsample_input(tmp_path)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        with pytest.raises(ValueError):
+            m.feature_type_main.__wrapped__(make_ft_cfg(tmp_path, downsample_wt=-1))

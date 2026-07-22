@@ -5,14 +5,16 @@ KS, QQ, AUROC) and two Hydra entry points: ``fisseq-aggregate`` (standalone,
 normalizes to synonymous baseline and attaches metadata) and
 ``fisseq-aggregate-feature-type`` (Nextflow processes ``AGGREGATE_FEATURE_TYPE`` and
 ``AGGREGATE_HALF`` — lean per-feature-type aggregation used by the feature-selection
-branch).
+branch). ``fisseq-aggregate-feature-type`` also supports optionally downsampling
+control (wildtype) rows before aggregation via ``downsample_wt``/``seed`` — see
+:func:`downsample_control`.
 """
 
 import abc
 import dataclasses
 import logging
 import pathlib
-from typing import ClassVar, Optional
+from typing import ClassVar, Optional, Union
 
 import hydra
 import numpy as np
@@ -541,6 +543,54 @@ class AUROCAggregator(ReferenceBasedAggregator):
         return result.alias(alias)
 
 
+def downsample_control(
+    lf: pl.LazyFrame, downsample_wt: Union[float, int], seed: int
+) -> pl.LazyFrame:
+    """
+    Reproducibly downsample control (wildtype) rows to a target size.
+
+    Non-control rows are left untouched. Selection is deterministic given
+    ``seed``: each control row gets a seeded hash of a fresh row index, rows
+    are ranked by that hash, and the lowest ``target`` ranks are kept — the
+    same lazy hash-and-rank idiom used by
+    :func:`fisseq_data_pipeline.input.add_downsampled_pseudo_variants`, which
+    avoids collecting the full control pool up front and reproduces exactly
+    across runs for a fixed seed.
+
+    Parameters
+    ----------
+    lf : pl.LazyFrame
+        Cell-level LazyFrame containing a boolean ``CONTROL_COLUMN`` column.
+    downsample_wt : float or int
+        Target control-pool size. A float in ``(0, 1)`` is interpreted as
+        the fraction of control rows to keep; an int is interpreted as an
+        absolute target count (a no-op if the control pool is already at or
+        below the target).
+    seed : int
+        Random seed for the downsample draw.
+
+    Returns
+    -------
+    pl.LazyFrame
+        ``lf`` with control rows downsampled to the target size.
+    """
+    control = lf.filter(CONTROL_COLUMN).with_row_index("_tmp_row_idx")
+    non_control = lf.filter(~CONTROL_COLUMN)
+
+    ranked = control.with_columns(
+        pl.col("_tmp_row_idx").hash(seed=seed).rank(method="ordinal").alias("_rank"),
+    )
+    if isinstance(downsample_wt, float):
+        target = (pl.len() * downsample_wt).floor()
+    else:
+        target = pl.lit(downsample_wt)
+
+    downsampled_control = ranked.filter(pl.col("_rank") <= target).drop(
+        ["_tmp_row_idx", "_rank"]
+    )
+    return pl.concat([non_control, downsampled_control])
+
+
 _AGGREGATORS: dict[str, type[BaseAggregator]] = {
     "mean": MeanAggregator,
     "median": MedianAggregator,
@@ -712,10 +762,20 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         naming a subset of cell-level rows to aggregate over (e.g. one
         pseudo-replicate half). When ``None``, all rows are aggregated.
         Defaults to ``None``.
+    downsample_wt : float, int, or None
+        Optional downsampling of control (wildtype) rows before aggregation.
+        A float in ``(0, 1)`` keeps that fraction of control rows; an int
+        keeps that many. ``None`` disables downsampling. Defaults to
+        ``None``.
+    seed : int
+        Random seed for the ``downsample_wt`` draw. Ignored when
+        ``downsample_wt`` is ``None``. Defaults to ``0``.
     """
 
     aggregator: str = MISSING
     index_file: Optional[str] = None
+    downsample_wt: Optional[Union[float, int]] = None
+    seed: int = 0
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
@@ -755,7 +815,9 @@ def feature_type_main(cfg: DictConfig) -> None:
             output_dir=./out \\
             input_file=data/normalized.parquet \\
             aggregator=mean \\
-            index_file=./half1.parquet
+            index_file=./half1.parquet \\
+            downsample_wt=0.5 \\
+            seed=1
     """
     ft_cfg: FeatureTypeAggregateConfig = OmegaConf.to_object(cfg)
 
@@ -769,6 +831,24 @@ def feature_type_main(cfg: DictConfig) -> None:
 
     logging.info("Filtering by index_file=%s", ft_cfg.index_file)
     lf = filter_by_index_file(lf, ft_cfg.index_file)
+
+    if ft_cfg.downsample_wt is not None:
+        if isinstance(ft_cfg.downsample_wt, float) and not (
+            0 < ft_cfg.downsample_wt < 1
+        ):
+            raise ValueError(
+                f"downsample_wt float must satisfy 0 < x < 1, got {ft_cfg.downsample_wt}"
+            )
+        if isinstance(ft_cfg.downsample_wt, int) and ft_cfg.downsample_wt <= 0:
+            raise ValueError(
+                f"downsample_wt int must be positive, got {ft_cfg.downsample_wt}"
+            )
+        logging.info(
+            "Downsampling control rows: downsample_wt=%s, seed=%d",
+            ft_cfg.downsample_wt,
+            ft_cfg.seed,
+        )
+        lf = downsample_control(lf, ft_cfg.downsample_wt, ft_cfg.seed)
 
     logging.info("Running %s aggregator", ft_cfg.aggregator)
     agg_lf = aggregate(

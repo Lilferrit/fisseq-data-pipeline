@@ -147,6 +147,7 @@ Defaults live in `nextflow.config` at the repo root:
 | `--permanova_n_permutations` | `999` | Label permutations for the per-variant PERMANOVA p-value. |
 | `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
 | `--downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
+| `--aggregate_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#fisseq-aggregate-feature-type-config-fields). |
 | `--feature_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (all 7 of `aggregate.py`'s aggregators). |
 | `--bootstrap` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
 | `--global` | `true` | Whether to run `OVWT_GLOBAL` and the global feature-selection branch. |

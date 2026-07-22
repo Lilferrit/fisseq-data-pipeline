@@ -64,6 +64,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `aggregator` | **required** | One of the seven aggregators above. |
 | `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `fisseq-generate-split`) restricting aggregation to a pseudo-replicate half. |
+| `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
+| `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
@@ -73,8 +75,18 @@ uv run fisseq-aggregate-feature-type \
     output_dir=./out \
     input_file=data/normalized.parquet \
     aggregator=mean \
-    index_file=./half1.parquet
+    index_file=./half1.parquet \
+    downsample_wt=0.5 \
+    seed=1
 ```
+
+In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.aggregate_downsample_wt`
+(see [Parameters](../nextflow.md#parameters)) — `AGGREGATE_HALF` derives a distinct seed per
+`(bootstrap_idx, half_num)` so each pseudo-replicate half draws an independent wildtype
+subsample, which is what lets the bootstrap comparison test feature reproducibility against
+different WT samples rather than reusing one fixed sample everywhere. `AGGREGATE_FEATURE_TYPE`
+(the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
+identity to vary by.
 
 See [API Reference: aggregate](../api/aggregate.md) for full function
 documentation, including the `BaseAggregator` class hierarchy.
