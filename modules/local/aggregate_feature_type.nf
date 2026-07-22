@@ -4,6 +4,9 @@ nextflow.enable.dsl = 2
 // staging collision here; output_root takes priority over output_dir in
 // fisseq-aggregate-feature-type's own path resolution, so the output lands
 // directly in the task work dir regardless of output_dir.
+// This process runs once per (batch, feature_type) -- no repeated
+// per-instance identity to vary a downsample seed by -- so seed is fixed
+// when params.aggregate_downsample_wt is set.
 process AGGREGATE_FEATURE_TYPE {
     errorStrategy 'ignore'
     label 'process_medium'
@@ -22,7 +25,9 @@ process AGGREGATE_FEATURE_TYPE {
         output_dir=. \\
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\
-        aggregator=${feature_type}
+        aggregator=${feature_type} \\
+        downsample_wt=${params.aggregate_downsample_wt} \\
+        seed=0
     mv ${feature_type}.*.parquet ${feature_type}.parquet
     """
 }

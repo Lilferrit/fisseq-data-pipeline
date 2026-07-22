@@ -5,6 +5,11 @@ nextflow.enable.dsl = 2
 // index_file is staged into the task dir as half1.parquet/half2.parquet;
 // the mv destination below is deliberately named differently so it never
 // collides with (or relies on overwriting) that staged input.
+// When params.aggregate_downsample_wt is set, the seed is derived from
+// (bootstrap_idx, half_num) so every half of every bootstrap replicate draws
+// an independent wildtype subsample -- this is what makes the bootstrap
+// comparison actually test feature reproducibility against different WT
+// samples, rather than reusing one fixed sample everywhere.
 process AGGREGATE_HALF {
     errorStrategy 'ignore'
     label 'process_medium'
@@ -24,7 +29,9 @@ process AGGREGATE_HALF {
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\
         aggregator=${feature_type} \\
-        index_file=${index_file}
+        index_file=${index_file} \\
+        downsample_wt=${params.aggregate_downsample_wt} \\
+        seed=${(bootstrap_idx as int) * 2 + half_num}
     mv ${feature_type}.*.parquet half${half_num}_agg.parquet
     """
 }
