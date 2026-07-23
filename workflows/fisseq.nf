@@ -2,9 +2,10 @@ nextflow.enable.dsl = 2
 
 // FisseqPipeline: the default, full end-to-end DAG. Wires together QC_FILTER
 // -> NORMALIZE -> BATCHVSBATCH (pre/post) -> OVWT (batchwise/global) ->
-// bootstrap feature selection (batchwise/global, gated by params.global) ->
+// bootstrap feature selection (batchwise/global, gated by params.feature_selection) ->
 // BATCH_CORRECT_FIT/TRANSFORM -> PERMANOVA (normalized and batch-corrected).
-// BATCHVSBATCH and PERMANOVA are also gated by params.global (default true);
+// BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
+// gated by params.global (default true); PERMANOVA and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
@@ -109,9 +110,12 @@ workflow FisseqPipeline {
     // false) arrive as the String "false", which is truthy in Groovy — a
     // bare `if (params.global)` (or `as Boolean`) would run the "disabled"
     // branch anyway. `.toBoolean()` parses "true"/"false" text correctly.
-    // Gates BATCHVSBATCH, OVWT_GLOBAL, the *_GLOBAL feature-selection branch,
-    // and PERMANOVA below.
+    // Gates BATCHVSBATCH, OVWT_GLOBAL, and (when feature selection is
+    // enabled) the *_GLOBAL feature-selection branch.
     run_global = params.global.toString().toBoolean()
+    // Same parse for params.feature_selection: gates the entire
+    // feature-selection branch below (batchwise and global).
+    run_feature_selection = params.feature_selection.toString().toBoolean()
 
     // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
     // (optional, gated on params.global)
@@ -139,6 +143,9 @@ workflow FisseqPipeline {
     //   -> correlation -> per-feature-type blocklist (gathered over bootstraps).
     // Stage 3: combine per-feature-type blocklists.
     // Stage 4: join stage-1 aggregates, apply combined blocklist, pycytominer select.
+    // The entire branch (batchwise + global) is gated on params.feature_selection;
+    // the global sub-branch is additionally gated on params.global below.
+    if (run_feature_selection) {
     feature_types_ch = Channel.fromList(params.feature_types)
     // Explicit cast: Nextflow CLI overrides (e.g. --bootstrap 3) arrive as
     // Strings and silently produce a bogus/huge range if left uncoerced in
@@ -249,7 +256,7 @@ workflow FisseqPipeline {
         }
     FINALIZE_FEATURE_SELECT_BATCHWISE(finalize_input_ch)
 
-    // --- Global (optional, gated on params.global) ---
+    // --- Global (within feature selection, additionally gated on params.global) ---
     // Same shape as batchwise, minus the per-batch dimension: a constant
     // global_key stands in for batch_stem for tuple-shape/grouping purposes
     // only, and the "which cells" glob is derived from global_signal instead
@@ -328,12 +335,10 @@ workflow FisseqPipeline {
             }
         FINALIZE_FEATURE_SELECT_GLOBAL(finalize_global_input_ch)
     }
+    }
 
     // Step 9: PERMANOVA — batch-effect assessment (normalized cells)
-    // (optional, gated on params.global)
-    if (run_global) {
-        PERMANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "permanova"] })
-    }
+    PERMANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "permanova"] })
 
     // New branch: qc_filtering -> batch_correction -> permanova (independent of normalize)
     // Step 1: fit centroid batch correction across all batches (global, waits for all QC_FILTER)
@@ -353,8 +358,5 @@ workflow FisseqPipeline {
         .map { _stems -> input_dir_abs }
 
     // Step 3: PERMANOVA on batch-corrected cells
-    // (optional, gated on params.global)
-    if (run_global) {
-        PERMANOVA_BATCH_CORRECTED(bc_signal.map { d -> [d, "${d}/batch_correction/cells/*.parquet", "batch_correction/permanova"] })
-    }
+    PERMANOVA_BATCH_CORRECTED(bc_signal.map { d -> [d, "${d}/batch_correction/cells/*.parquet", "batch_correction/permanova"] })
 }

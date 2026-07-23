@@ -20,6 +20,7 @@ process PERMANOVA {
     fisseq-permanova \\
         output_dir=. \\
         "input_file=${cells_glob}" \\
-        n_permutations=${params.permanova_n_permutations}
+        n_permutations=${params.permanova_n_permutations} \\
+        feature_batch_size=${params.permanova_feature_batch_size}
     """
 }
