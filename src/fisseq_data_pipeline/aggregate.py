@@ -70,7 +70,13 @@ def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
     The added column is ``True`` for rows whose variant label (in ``label_col``)
     encodes a synonymous amino-acid substitution — i.e. the same amino acid
     appears before and after the position — as determined by
-    :func:`classify_variant`.
+    :func:`classify_variant`, AND whose label carries no ``:<tag>`` suffix.
+    A tagged label (e.g. ``"A1A:downsampled"``, produced by
+    :func:`fisseq_data_pipeline.qcfilter.add_downsampled_pseudo_variants`)
+    duplicates/resamples an already-represented population rather than being
+    an independent baseline sample, so it is never treated as control even
+    when its base label is Synonymous — otherwise it would double up in the
+    normalizer fit and impact-score reference vector.
 
     Parameters
     ----------
@@ -86,11 +92,12 @@ def variant_classification(lf: pl.LazyFrame, label_col: str) -> pl.LazyFrame:
         column.
     """
     return lf.with_columns(
-        pl.col(label_col)
-        .map_elements(
-            lambda v: classify_variant(v) == "Synonymous", return_dtype=pl.Boolean
-        )
-        .alias(CONTROL_COLUMN_NAME)
+        (
+            pl.col(label_col).map_elements(
+                lambda v: classify_variant(v) == "Synonymous", return_dtype=pl.Boolean
+            )
+            & ~pl.col(label_col).str.contains(":")
+        ).alias(CONTROL_COLUMN_NAME)
     )
 
 

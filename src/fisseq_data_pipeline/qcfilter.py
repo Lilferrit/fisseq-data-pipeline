@@ -37,7 +37,7 @@ from .utils.constants import (
 from .utils.log import setup_logging
 from .utils.variant import classify_variant
 
-DOWNSAMPLE_TAG = "downsampled-half"
+DOWNSAMPLE_TAG = "downsampled"
 DOWNSAMPLE_CLASSES = ("Synonymous", "Single Missense")
 
 
@@ -238,11 +238,12 @@ def add_downsampled_pseudo_variants(
     """
     For QC-surviving rows whose classified ``cfg.label_column`` value is in
     `downsample_classes`, reproducibly keep ~`downsample_fraction` of each
-    variant's rows and mark them as a "pseudo variant" by setting
-    `META_VARIANT_TAG_COL` directly to `DOWNSAMPLE_TAG`. The tag-split step in
-    :func:`filter_columns` has already run earlier in this pipeline, so these
-    rows never go through it — this is the terminal write of the tag, not a
-    re-parse.
+    variant's rows and mark them as a "pseudo variant" by appending
+    ``:{DOWNSAMPLE_TAG}`` directly onto ``cfg.label_column`` (e.g. ``"A326P"``
+    becomes ``"A326P:downsampled"``). This gives pseudo-variant rows their own
+    distinct label value, so downstream label-based grouping (e.g.
+    aggregation) treats them as a separate calibration group rather than
+    pooling them with the real variant's rows.
 
     Selection is deterministic given `seed`: each row gets a seeded hash of
     its (`meta_source_file`, `meta_source_file_idx`) identity — present on
@@ -277,7 +278,9 @@ def add_downsampled_pseudo_variants(
             pl.col("_rank") <= (pl.col("_group_size") * downsample_fraction).floor()
         )
         .drop(["_rand", "_rank", "_group_size"])
-        .with_columns(pl.lit(DOWNSAMPLE_TAG).alias(META_VARIANT_TAG_COL))
+        .with_columns(
+            (pl.col(cfg.label_column) + ":" + DOWNSAMPLE_TAG).alias(cfg.label_column)
+        )
     )
     return pseudo
 

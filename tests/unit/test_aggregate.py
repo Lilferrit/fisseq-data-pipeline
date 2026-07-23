@@ -102,6 +102,12 @@ def test_variant_classification_custom_label_col():
     assert result[CONTROL_COLUMN_NAME].to_list() == [True, False]
 
 
+def test_variant_classification_tagged_synonymous_is_false():
+    lf = pl.DataFrame({"meta_aa_changes": ["A1A:downsampled"]}).lazy()
+    result = m.variant_classification(lf, "meta_aa_changes").collect()
+    assert result[CONTROL_COLUMN_NAME][0] is False
+
+
 # ---------------------------------------------------------------------------
 # KSAggregator / AUROCAggregator / QQCorrelationAggregator — native vs.
 # scipy/sklearn ground truth
