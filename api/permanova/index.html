@@ -1003,9 +1003,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fisseq_data_pipeline.permanova.compute_variant_permanova" class="md-nav__link">
+  <a href="#fisseq_data_pipeline.permanova.compute_feature_permanova" class="md-nav__link">
     <span class="md-ellipsis">
-      compute_variant_permanova
+      compute_feature_permanova
     </span>
   </a>
   
@@ -1224,9 +1224,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fisseq_data_pipeline.permanova.compute_variant_permanova" class="md-nav__link">
+  <a href="#fisseq_data_pipeline.permanova.compute_feature_permanova" class="md-nav__link">
     <span class="md-ellipsis">
-      compute_variant_permanova
+      compute_feature_permanova
     </span>
   </a>
   
@@ -1278,11 +1278,13 @@
 
     <div class="doc doc-contents first">
 
-        <p>Per-variant PERMANOVA batch-effect assessment via pairwise cosine distance.</p>
+        <p>Per-feature PERMANOVA batch-effect assessment via pairwise absolute distance.</p>
 <p>Hydra entry point <code>fisseq-permanova</code>, backing the Nextflow process <code>PERMANOVA</code>
-(run once against normalized cells, once against batch-corrected cells). For each
-variant seen in more than one batch, computes a pseudo-F statistic from all
-pairwise cosine distances (Anderson 2001 sum-of-squares decomposition) and an
+(run once against normalized cells, once against batch-corrected cells). Restricts
+to cells classified as Synonymous (via :func:<code>.utils.variant.classify_variant</code>)
+whose label does not carry a <code>:downsampled</code> tag, then for each feature column,
+computes a pseudo-F statistic from all pairwise absolute distances between that
+feature's scalar values (Anderson 2001 sum-of-squares decomposition) and an
 optional permutation p-value.</p>
 
 
@@ -1332,7 +1334,7 @@ optional permutation p-value.</p>
 
         <p>Hydra structured configuration for the PERMANOVA entry point.</p>
 <p>Extends :class:<code>.config.LabeledInputConfig</code> with parameters controlling
-per-variant PERMANOVA batch-effect assessment.</p>
+per-feature PERMANOVA batch-effect assessment.</p>
 <p><code>input_file</code> is interpreted as a glob pattern. Each matching file is
 treated as a separate batch; the batch name is the filename stem.</p>
 
@@ -1355,7 +1357,7 @@ treated as a separate batch; the batch name is the filename stem.</p>
             <td>
               <div class="doc-md-description">
                 <p>Number of label permutations used to estimate the p-value for each
-variant. <code>0</code> skips the permutation test entirely (<code>p_value</code> is
+feature. <code>0</code> skips the permutation test entirely (<code>p_value</code> is
 <code>None</code>). Defaults to <code>999</code>.</p>
               </div>
             </td>
@@ -1367,8 +1369,27 @@ variant. <code>0</code> skips the permutation test entirely (<code>p_value</code
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Base random seed for label permutation; variant <code>i</code> (in sorted
+                <p>Base random seed for label permutation; feature <code>i</code> (in column
 order) uses <code>seed + i</code>. Defaults to <code>42</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="fisseq_data_pipeline.permanova.PermanovaConfig.feature_batch_size">feature_batch_size</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="int">int</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If set, feature columns are collected and processed in chunks of at
+most this many columns at a time, each chunk collected in its own
+query (alongside the batch column, so row order stays aligned
+within that chunk) instead of collecting every feature column into
+one large in-memory frame up front. Trades one large collect for
+several smaller ones to bound peak memory when there are many
+feature columns; does not change results. Must be a positive
+integer if set. Defaults to <code>None</code> (collect all feature columns
+in a single query).</p>
               </div>
             </td>
           </tr>
@@ -1384,9 +1405,7 @@ order) uses <code>seed + i</code>. Defaults to <code>42</code>.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/fisseq_data_pipeline/permanova.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-31">31</a></span>
-<span class="normal"><a href="#__codelineno-0-32">32</a></span>
-<span class="normal"><a href="#__codelineno-0-33">33</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-33">33</a></span>
 <span class="normal"><a href="#__codelineno-0-34">34</a></span>
 <span class="normal"><a href="#__codelineno-0-35">35</a></span>
 <span class="normal"><a href="#__codelineno-0-36">36</a></span>
@@ -1407,30 +1426,54 @@ order) uses <code>seed + i</code>. Defaults to <code>42</code>.</p>
 <span class="normal"><a href="#__codelineno-0-51">51</a></span>
 <span class="normal"><a href="#__codelineno-0-52">52</a></span>
 <span class="normal"><a href="#__codelineno-0-53">53</a></span>
-<span class="normal"><a href="#__codelineno-0-54">54</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-31" name="__codelineno-0-31"></a><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32"></a><span class="k">class</span><span class="w"> </span><span class="nc">PermanovaConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
-<a id="__codelineno-0-33" name="__codelineno-0-33"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34"></a><span class="sd">    Hydra structured configuration for the PERMANOVA entry point.</span>
-<a id="__codelineno-0-35" name="__codelineno-0-35"></a>
-<a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="sd">    Extends :class:`.config.LabeledInputConfig` with parameters controlling</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37"></a><span class="sd">    per-variant PERMANOVA batch-effect assessment.</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38"></a>
-<a id="__codelineno-0-39" name="__codelineno-0-39"></a><span class="sd">    ``input_file`` is interpreted as a glob pattern. Each matching file is</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40"></a><span class="sd">    treated as a separate batch; the batch name is the filename stem.</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41"></a>
-<a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="sd">    Attributes</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">    n_permutations : int</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45"></a><span class="sd">        Number of label permutations used to estimate the p-value for each</span>
-<a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="sd">        variant. ``0`` skips the permutation test entirely (``p_value`` is</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">        ``None``). Defaults to ``999``.</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    seed : int</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">        Base random seed for label permutation; variant ``i`` (in sorted</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="sd">        order) uses ``seed + i``. Defaults to ``42``.</span>
-<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-52" name="__codelineno-0-52"></a>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a>    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">999</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a>    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span>
+<span class="normal"><a href="#__codelineno-0-54">54</a></span>
+<span class="normal"><a href="#__codelineno-0-55">55</a></span>
+<span class="normal"><a href="#__codelineno-0-56">56</a></span>
+<span class="normal"><a href="#__codelineno-0-57">57</a></span>
+<span class="normal"><a href="#__codelineno-0-58">58</a></span>
+<span class="normal"><a href="#__codelineno-0-59">59</a></span>
+<span class="normal"><a href="#__codelineno-0-60">60</a></span>
+<span class="normal"><a href="#__codelineno-0-61">61</a></span>
+<span class="normal"><a href="#__codelineno-0-62">62</a></span>
+<span class="normal"><a href="#__codelineno-0-63">63</a></span>
+<span class="normal"><a href="#__codelineno-0-64">64</a></span>
+<span class="normal"><a href="#__codelineno-0-65">65</a></span>
+<span class="normal"><a href="#__codelineno-0-66">66</a></span>
+<span class="normal"><a href="#__codelineno-0-67">67</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-33" name="__codelineno-0-33"></a><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34"></a><span class="k">class</span><span class="w"> </span><span class="nc">PermanovaConfig</span><span class="p">(</span><span class="n">LabeledInputConfig</span><span class="p">):</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="sd">    Hydra structured configuration for the PERMANOVA entry point.</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37"></a>
+<a id="__codelineno-0-38" name="__codelineno-0-38"></a><span class="sd">    Extends :class:`.config.LabeledInputConfig` with parameters controlling</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39"></a><span class="sd">    per-feature PERMANOVA batch-effect assessment.</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40"></a>
+<a id="__codelineno-0-41" name="__codelineno-0-41"></a><span class="sd">    ``input_file`` is interpreted as a glob pattern. Each matching file is</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="sd">    treated as a separate batch; the batch name is the filename stem.</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43"></a>
+<a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="sd">    Attributes</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="sd">    n_permutations : int</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">        Number of label permutations used to estimate the p-value for each</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">        feature. ``0`` skips the permutation test entirely (``p_value`` is</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">        ``None``). Defaults to ``999``.</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="sd">    seed : int</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">        Base random seed for label permutation; feature ``i`` (in column</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">        order) uses ``seed + i``. Defaults to ``42``.</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">    feature_batch_size : Optional[int]</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">        If set, feature columns are collected and processed in chunks of at</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="sd">        most this many columns at a time, each chunk collected in its own</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">        query (alongside the batch column, so row order stays aligned</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">        within that chunk) instead of collecting every feature column into</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">        one large in-memory frame up front. Trades one large collect for</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">        several smaller ones to bound peak memory when there are many</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">        feature columns; does not change results. Must be a positive</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">        integer if set. Defaults to ``None`` (collect all feature columns</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        in a single query).</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a>    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">999</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a>    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a>    <span class="n">feature_batch_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -1459,14 +1502,14 @@ order) uses <code>seed + i</code>. Defaults to <code>42</code>.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="fisseq_data_pipeline.permanova.compute_variant_permanova" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">compute_variant_permanova</span>
+<h4 id="fisseq_data_pipeline.permanova.compute_feature_permanova" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">compute_feature_permanova</span>
 
 
-<a href="#fisseq_data_pipeline.permanova.compute_variant_permanova" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">compute_variant_permanova</span><span class="p">(</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">variant_lf</span><span class="p">:</span> <span class="n">LazyFrame</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">feature_cols</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<a href="#fisseq_data_pipeline.permanova.compute_feature_permanova" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">compute_feature_permanova</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">feature_lf</span><span class="p">:</span> <span class="n">LazyFrame</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">feature_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">batch_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -1475,13 +1518,12 @@ order) uses <code>seed + i</code>. Defaults to <code>42</code>.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one variant.</p>
-<p>Collects the variant's feature matrix and batch labels to NumPy and
-delegates to :func:<code>_compute_permanova_stats</code>, which computes all unique
-unordered sample pairs (including cross-batch pairs) via
-:func:<code>_pairwise_cosine_distance</code> and derives the F-statistic from the
-sum-of-squares decomposition. Null, <code>NaN</code>, and infinite feature values
-are excluded per pair rather than dropping whole rows/samples.</p>
+        <p>Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one feature.</p>
+<p>Collects the feature's values and batch labels to NumPy and delegates to
+:func:<code>_compute_permanova_stats</code>, which computes all unique unordered
+sample pairs (including cross-batch pairs) via
+:func:<code>_pairwise_abs_distance</code> and derives the F-statistic from the
+sum-of-squares decomposition.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1497,15 +1539,15 @@ are excluded per pair rather than dropping whole rows/samples.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                <code>variant_lf</code>
+                <code>feature_lf</code>
             </td>
             <td>
                   <code><span title="polars.LazyFrame">LazyFrame</span></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Cell-level lazy frame already filtered to a single variant, containing
-<code>feature_cols</code> and <code>batch_col</code>.</p>
+                <p>Cell-level lazy frame already filtered to the desired rows, containing
+<code>feature_col</code> and <code>batch_col</code>.</p>
               </div>
             </td>
             <td>
@@ -1514,14 +1556,14 @@ are excluded per pair rather than dropping whole rows/samples.</p>
           </tr>
           <tr class="doc-section-item">
             <td>
-                <code>feature_cols</code>
+                <code>feature_col</code>
             </td>
             <td>
-                  <code><span title="list">list</span>[<span title="str">str</span>]</code>
+                  <code><span title="str">str</span></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Names of the feature columns to use for cosine distance.</p>
+                <p>Name of the feature column to use for the distance matrix.</p>
               </div>
             </td>
             <td>
@@ -1607,7 +1649,29 @@ are present.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/permanova.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-236">236</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
 <span class="normal"><a href="#__codelineno-0-237">237</a></span>
 <span class="normal"><a href="#__codelineno-0-238">238</a></span>
 <span class="normal"><a href="#__codelineno-0-239">239</a></span>
@@ -1629,75 +1693,51 @@ are present.</p>
 <span class="normal"><a href="#__codelineno-0-255">255</a></span>
 <span class="normal"><a href="#__codelineno-0-256">256</a></span>
 <span class="normal"><a href="#__codelineno-0-257">257</a></span>
-<span class="normal"><a href="#__codelineno-0-258">258</a></span>
-<span class="normal"><a href="#__codelineno-0-259">259</a></span>
-<span class="normal"><a href="#__codelineno-0-260">260</a></span>
-<span class="normal"><a href="#__codelineno-0-261">261</a></span>
-<span class="normal"><a href="#__codelineno-0-262">262</a></span>
-<span class="normal"><a href="#__codelineno-0-263">263</a></span>
-<span class="normal"><a href="#__codelineno-0-264">264</a></span>
-<span class="normal"><a href="#__codelineno-0-265">265</a></span>
-<span class="normal"><a href="#__codelineno-0-266">266</a></span>
-<span class="normal"><a href="#__codelineno-0-267">267</a></span>
-<span class="normal"><a href="#__codelineno-0-268">268</a></span>
-<span class="normal"><a href="#__codelineno-0-269">269</a></span>
-<span class="normal"><a href="#__codelineno-0-270">270</a></span>
-<span class="normal"><a href="#__codelineno-0-271">271</a></span>
-<span class="normal"><a href="#__codelineno-0-272">272</a></span>
-<span class="normal"><a href="#__codelineno-0-273">273</a></span>
-<span class="normal"><a href="#__codelineno-0-274">274</a></span>
-<span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span>
-<span class="normal"><a href="#__codelineno-0-279">279</a></span>
-<span class="normal"><a href="#__codelineno-0-280">280</a></span>
-<span class="normal"><a href="#__codelineno-0-281">281</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_variant_permanova</span><span class="p">(</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">variant_lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">feature_cols</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">batch_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one variant.</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">    Collects the variant&#39;s feature matrix and batch labels to NumPy and</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">    delegates to :func:`_compute_permanova_stats`, which computes all unique</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">    unordered sample pairs (including cross-batch pairs) via</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">    :func:`_pairwise_cosine_distance` and derives the F-statistic from the</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">    sum-of-squares decomposition. Null, ``NaN``, and infinite feature values</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a><span class="sd">    are excluded per pair rather than dropping whole rows/samples.</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>
-<a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="sd">    variant_lf : pl.LazyFrame</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a><span class="sd">        Cell-level lazy frame already filtered to a single variant, containing</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a><span class="sd">        ``feature_cols`` and ``batch_col``.</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a><span class="sd">    feature_cols : list[str]</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a><span class="sd">        Names of the feature columns to use for cosine distance.</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a><span class="sd">    batch_col : str</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="sd">        Name of the batch grouping column.</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="sd">    n_permutations : int</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="sd">        Number of label permutations for the p-value. ``0`` skips the test.</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    seed : int</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">        Random seed for label permutation.</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    dict or None</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">        ``{&quot;f_statistic&quot;: float, &quot;p_value&quot;: float or None}``, or ``None`` (with</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">        a logged warning) if fewer than 2 samples or fewer than 2 batches</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">        are present.</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>    <span class="n">collected</span> <span class="o">=</span> <span class="n">variant_lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_cols</span><span class="p">]</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="o">+</span> <span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">)]</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>    <span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>    <span class="n">X</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="n">batch_labels</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a>    <span class="k">return</span> <span class="n">_compute_permanova_stats</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">batch_labels</span><span class="p">,</span> <span class="n">n_permutations</span><span class="p">,</span> <span class="n">seed</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="k">def</span><span class="w"> </span><span class="nf">compute_feature_permanova</span><span class="p">(</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>    <span class="n">feature_lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>    <span class="n">feature_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="n">batch_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>    <span class="n">n_permutations</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a>    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one feature.</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    Collects the feature&#39;s values and batch labels to NumPy and delegates to</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    :func:`_compute_permanova_stats`, which computes all unique unordered</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    sample pairs (including cross-batch pairs) via</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">    :func:`_pairwise_abs_distance` and derives the F-statistic from the</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">    sum-of-squares decomposition.</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    feature_lf : pl.LazyFrame</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="sd">        Cell-level lazy frame already filtered to the desired rows, containing</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a><span class="sd">        ``feature_col`` and ``batch_col``.</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    feature_col : str</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="sd">        Name of the feature column to use for the distance matrix.</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="sd">    batch_col : str</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a><span class="sd">        Name of the batch grouping column.</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a><span class="sd">    n_permutations : int</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="sd">        Number of label permutations for the p-value. ``0`` skips the test.</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="sd">    seed : int</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a><span class="sd">        Random seed for label permutation.</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="sd">    dict or None</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a><span class="sd">        ``{&quot;f_statistic&quot;: float, &quot;p_value&quot;: float or None}``, or ``None`` (with</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="sd">        a logged warning) if fewer than 2 samples or fewer than 2 batches</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="sd">        are present.</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="n">collected</span> <span class="o">=</span> <span class="n">feature_lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">feature_col</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">),</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">x</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">feature_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">batch_labels</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="k">return</span> <span class="n">_compute_permanova_stats</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">batch_labels</span><span class="p">,</span> <span class="n">n_permutations</span><span class="p">,</span> <span class="n">seed</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1717,7 +1757,7 @@ are present.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Hydra entry point: per-variant PERMANOVA batch-effect assessment.</p>
+        <p>Hydra entry point: per-feature PERMANOVA batch-effect assessment.</p>
 
 
 <details class="steps" open>
@@ -1725,22 +1765,26 @@ are present.</p>
   <ol>
 <li>Glob <code>input_file</code> to find batch files; each file's stem becomes its
    batch label (added as <code>meta_batch</code>).</li>
-<li>Restrict to variants seen in more than one batch, collect each such
-   variant's feature matrix and batch labels to NumPy in turn, and
-   compute the PERMANOVA pseudo-F statistic (and optional permutation
-   p-value) via :func:<code>_compute_permanova_stats</code>. Variants with fewer
-   than 2 samples/batches, or that raise an exception, are skipped with
-   a logged warning rather than aborting the whole run.</li>
-<li>Join per-variant metadata from :func:<code>.utils.metadata.get_aggregate_meta_data</code>
-   and write results to a Parquet file via <code>sink_parquet</code>.</li>
+<li>Restrict to cells classified as <code>"Synonymous"</code> (via
+   :func:<code>.utils.variant.classify_variant</code>) whose <code>label_column</code> value
+   does not end with <code>":downsampled"</code>. Feature columns are collected
+   from this restriction in chunks of <code>feature_batch_size</code> columns at
+   a time (or all at once if <code>feature_batch_size</code> is unset) via
+   :func:<code>_iter_feature_batches</code>.</li>
+<li>For each feature column, compute the PERMANOVA pseudo-F statistic
+   (and optional permutation p-value) via
+   :func:<code>_compute_permanova_stats</code>. Features with fewer than 2
+   samples/batches after filtering, or that raise an exception, are
+   skipped with a logged warning rather than aborting the whole run.</li>
+<li>Write one row per feature to a Parquet file via <code>sink_parquet</code>.</li>
 </ol>
 </details>
 
 <details class="output-files" open>
   <summary>Output files</summary>
   <ul>
-<li><code>{prefix}permanova.parquet</code> — one row per variant, with metadata
-  columns, <code>f_statistic</code>, and <code>p_value</code>.</li>
+<li><code>{prefix}permanova.parquet</code> — one row per feature, with columns
+  <code>feature</code>, <code>f_value</code>, and <code>p_value</code>.</li>
 </ul>
 <p>where <code>prefix</code> is <code>{output_root}.</code> when <code>output_root</code> is set,
 otherwise empty.</p>
@@ -1752,63 +1796,14 @@ otherwise empty.</p>
 <div class="highlight"><pre><span></span><code>python -m fisseq_data_pipeline.permanova \
     output_dir=./out \
     &#39;input_file=data/batches/*.parquet&#39; \
-    n_permutations=999
+    n_permutations=999 \
+    feature_batch_size=50
 </code></pre></div>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/permanova.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-284">284</a></span>
-<span class="normal"><a href="#__codelineno-0-285">285</a></span>
-<span class="normal"><a href="#__codelineno-0-286">286</a></span>
-<span class="normal"><a href="#__codelineno-0-287">287</a></span>
-<span class="normal"><a href="#__codelineno-0-288">288</a></span>
-<span class="normal"><a href="#__codelineno-0-289">289</a></span>
-<span class="normal"><a href="#__codelineno-0-290">290</a></span>
-<span class="normal"><a href="#__codelineno-0-291">291</a></span>
-<span class="normal"><a href="#__codelineno-0-292">292</a></span>
-<span class="normal"><a href="#__codelineno-0-293">293</a></span>
-<span class="normal"><a href="#__codelineno-0-294">294</a></span>
-<span class="normal"><a href="#__codelineno-0-295">295</a></span>
-<span class="normal"><a href="#__codelineno-0-296">296</a></span>
-<span class="normal"><a href="#__codelineno-0-297">297</a></span>
-<span class="normal"><a href="#__codelineno-0-298">298</a></span>
-<span class="normal"><a href="#__codelineno-0-299">299</a></span>
-<span class="normal"><a href="#__codelineno-0-300">300</a></span>
-<span class="normal"><a href="#__codelineno-0-301">301</a></span>
-<span class="normal"><a href="#__codelineno-0-302">302</a></span>
-<span class="normal"><a href="#__codelineno-0-303">303</a></span>
-<span class="normal"><a href="#__codelineno-0-304">304</a></span>
-<span class="normal"><a href="#__codelineno-0-305">305</a></span>
-<span class="normal"><a href="#__codelineno-0-306">306</a></span>
-<span class="normal"><a href="#__codelineno-0-307">307</a></span>
-<span class="normal"><a href="#__codelineno-0-308">308</a></span>
-<span class="normal"><a href="#__codelineno-0-309">309</a></span>
-<span class="normal"><a href="#__codelineno-0-310">310</a></span>
-<span class="normal"><a href="#__codelineno-0-311">311</a></span>
-<span class="normal"><a href="#__codelineno-0-312">312</a></span>
-<span class="normal"><a href="#__codelineno-0-313">313</a></span>
-<span class="normal"><a href="#__codelineno-0-314">314</a></span>
-<span class="normal"><a href="#__codelineno-0-315">315</a></span>
-<span class="normal"><a href="#__codelineno-0-316">316</a></span>
-<span class="normal"><a href="#__codelineno-0-317">317</a></span>
-<span class="normal"><a href="#__codelineno-0-318">318</a></span>
-<span class="normal"><a href="#__codelineno-0-319">319</a></span>
-<span class="normal"><a href="#__codelineno-0-320">320</a></span>
-<span class="normal"><a href="#__codelineno-0-321">321</a></span>
-<span class="normal"><a href="#__codelineno-0-322">322</a></span>
-<span class="normal"><a href="#__codelineno-0-323">323</a></span>
-<span class="normal"><a href="#__codelineno-0-324">324</a></span>
-<span class="normal"><a href="#__codelineno-0-325">325</a></span>
-<span class="normal"><a href="#__codelineno-0-326">326</a></span>
-<span class="normal"><a href="#__codelineno-0-327">327</a></span>
-<span class="normal"><a href="#__codelineno-0-328">328</a></span>
-<span class="normal"><a href="#__codelineno-0-329">329</a></span>
-<span class="normal"><a href="#__codelineno-0-330">330</a></span>
-<span class="normal"><a href="#__codelineno-0-331">331</a></span>
-<span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-334">334</a></span>
 <span class="normal"><a href="#__codelineno-0-335">335</a></span>
 <span class="normal"><a href="#__codelineno-0-336">336</a></span>
 <span class="normal"><a href="#__codelineno-0-337">337</a></span>
@@ -1881,130 +1876,164 @@ otherwise empty.</p>
 <span class="normal"><a href="#__codelineno-0-404">404</a></span>
 <span class="normal"><a href="#__codelineno-0-405">405</a></span>
 <span class="normal"><a href="#__codelineno-0-406">406</a></span>
-<span class="normal"><a href="#__codelineno-0-407">407</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;permanova_main&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    Hydra entry point: per-variant PERMANOVA batch-effect assessment.</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    Steps</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="sd">    1. Glob ``input_file`` to find batch files; each file&#39;s stem becomes its</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="sd">       batch label (added as ``meta_batch``).</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="sd">    2. Restrict to variants seen in more than one batch, collect each such</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">       variant&#39;s feature matrix and batch labels to NumPy in turn, and</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">       compute the PERMANOVA pseudo-F statistic (and optional permutation</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">       p-value) via :func:`_compute_permanova_stats`. Variants with fewer</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">       than 2 samples/batches, or that raise an exception, are skipped with</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a><span class="sd">       a logged warning rather than aborting the whole run.</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    3. Join per-variant metadata from :func:`.utils.metadata.get_aggregate_meta_data`</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">       and write results to a Parquet file via ``sink_parquet``.</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    Output files</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">    ------------</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    - ``{prefix}permanova.parquet`` — one row per variant, with metadata</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">      columns, ``f_statistic``, and ``p_value``.</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    otherwise empty.</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    Configuration</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    -------------</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    Override any field on the command line, e.g.::</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">        python -m fisseq_data_pipeline.permanova \\</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">            output_dir=./out \\</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">            &#39;input_file=data/batches/*.parquet&#39; \\</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">            n_permutations=999</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">perm_cfg</span><span class="p">:</span> <span class="n">PermanovaConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="n">setup_logging</span><span class="p">(</span><span class="n">perm_cfg</span><span class="p">,</span> <span class="s2">&quot;permanova&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="n">label_col</span> <span class="o">=</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">label_column</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="n">batch_col</span> <span class="o">=</span> <span class="n">META_BATCH_COL</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="n">lf</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">feature_cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span><span class="o">.</span><span class="n">names</span><span class="p">())</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using </span><span class="si">%d</span><span class="s2"> feature column(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">))</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="c1"># Per-variant sample/batch counts; used to filter to variants seen in</span>
-<a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="c1"># more than one batch (mirrors _compute_permanova_stats&#39;s own bail-out).</span>
-<a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="n">variant_stats_lf</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-337" name="__codelineno-0-337"></a>        <span class="n">lf</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span>
-<a id="__codelineno-0-338" name="__codelineno-0-338"></a>        <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">_N_COL</span><span class="p">),</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">n_unique</span><span class="p">()</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">_A_COL</span><span class="p">))</span>
-<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span><span class="o">.</span><span class="n">is_not_null</span><span class="p">())</span>
-<a id="__codelineno-0-340" name="__codelineno-0-340"></a>    <span class="p">)</span>
-<a id="__codelineno-0-341" name="__codelineno-0-341"></a>    <span class="n">qualifying_lf</span> <span class="o">=</span> <span class="n">variant_stats_lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">_A_COL</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span>
-<a id="__codelineno-0-342" name="__codelineno-0-342"></a>
-<a id="__codelineno-0-343" name="__codelineno-0-343"></a>    <span class="c1"># Collect once, restricted to qualifying variants and pruned to the</span>
-<a id="__codelineno-0-344" name="__codelineno-0-344"></a>    <span class="c1"># columns needed, so each variant&#39;s feature matrix can be sliced out in</span>
-<a id="__codelineno-0-345" name="__codelineno-0-345"></a>    <span class="c1"># the loop below without re-scanning the (possibly multi-file) input.</span>
-<a id="__codelineno-0-346" name="__codelineno-0-346"></a>    <span class="n">restricted_df</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-347" name="__codelineno-0-347"></a>        <span class="n">lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">qualifying_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;semi&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-348" name="__codelineno-0-348"></a>        <span class="o">.</span><span class="n">select</span><span class="p">(</span>
-<a id="__codelineno-0-349" name="__codelineno-0-349"></a>            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">),</span>
-<a id="__codelineno-0-350" name="__codelineno-0-350"></a>            <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">),</span>
-<a id="__codelineno-0-351" name="__codelineno-0-351"></a>            <span class="o">*</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">feature_cols</span><span class="p">],</span>
-<a id="__codelineno-0-352" name="__codelineno-0-352"></a>        <span class="p">)</span>
-<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span>
-<a id="__codelineno-0-354" name="__codelineno-0-354"></a>        <span class="o">.</span><span class="n">collect</span><span class="p">()</span>
-<a id="__codelineno-0-355" name="__codelineno-0-355"></a>    <span class="p">)</span>
-<a id="__codelineno-0-356" name="__codelineno-0-356"></a>
-<a id="__codelineno-0-357" name="__codelineno-0-357"></a>    <span class="c1"># Serial per-variant loop: each variant&#39;s pairwise distance computation</span>
-<a id="__codelineno-0-358" name="__codelineno-0-358"></a>    <span class="c1"># is now O(n^2) in memory (not O(n^2 * p) fused across all variants), so</span>
-<a id="__codelineno-0-359" name="__codelineno-0-359"></a>    <span class="c1"># no batching/parallelism is needed here.</span>
-<a id="__codelineno-0-360" name="__codelineno-0-360"></a>    <span class="n">records</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-361" name="__codelineno-0-361"></a>    <span class="k">for</span> <span class="n">variant_idx</span><span class="p">,</span> <span class="n">variant_df</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a>        <span class="n">restricted_df</span><span class="o">.</span><span class="n">partition_by</span><span class="p">(</span><span class="n">label_col</span><span class="p">,</span> <span class="n">maintain_order</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a>    <span class="p">):</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>        <span class="n">label</span> <span class="o">=</span> <span class="n">variant_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">label_col</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a>            <span class="n">X</span> <span class="o">=</span> <span class="n">variant_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>            <span class="n">batch_labels</span> <span class="o">=</span> <span class="n">variant_df</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">_compute_permanova_stats</span><span class="p">(</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a>                <span class="n">X</span><span class="p">,</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>                <span class="n">batch_labels</span><span class="p">,</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a>                <span class="n">perm_cfg</span><span class="o">.</span><span class="n">n_permutations</span><span class="p">,</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>                <span class="n">perm_cfg</span><span class="o">.</span><span class="n">seed</span> <span class="o">+</span> <span class="n">variant_idx</span><span class="p">,</span>
-<a id="__codelineno-0-373" name="__codelineno-0-373"></a>            <span class="p">)</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-375" name="__codelineno-0-375"></a>            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-376" name="__codelineno-0-376"></a>                <span class="s2">&quot;Failed to compute PERMANOVA for variant </span><span class="si">%r</span><span class="s2">, skipping:</span><span class="se">\n</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-377" name="__codelineno-0-377"></a>                <span class="n">label</span><span class="p">,</span>
-<a id="__codelineno-0-378" name="__codelineno-0-378"></a>                <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">(),</span>
-<a id="__codelineno-0-379" name="__codelineno-0-379"></a>            <span class="p">)</span>
-<a id="__codelineno-0-380" name="__codelineno-0-380"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a>        <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a>        <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a>            <span class="p">{</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a>                <span class="n">label_col</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a>                <span class="s2">&quot;f_statistic&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;f_statistic&quot;</span><span class="p">],</span>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a>                <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;p_value&quot;</span><span class="p">],</span>
-<a id="__codelineno-0-388" name="__codelineno-0-388"></a>            <span class="p">}</span>
-<a id="__codelineno-0-389" name="__codelineno-0-389"></a>        <span class="p">)</span>
-<a id="__codelineno-0-390" name="__codelineno-0-390"></a>
-<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="n">stats_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
-<a id="__codelineno-0-392" name="__codelineno-0-392"></a>        <span class="n">records</span><span class="p">,</span>
-<a id="__codelineno-0-393" name="__codelineno-0-393"></a>        <span class="n">schema</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-394" name="__codelineno-0-394"></a>            <span class="n">label_col</span><span class="p">:</span> <span class="n">restricted_df</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="n">label_col</span><span class="p">],</span>
-<a id="__codelineno-0-395" name="__codelineno-0-395"></a>            <span class="s2">&quot;f_statistic&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
-<a id="__codelineno-0-396" name="__codelineno-0-396"></a>            <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
-<a id="__codelineno-0-397" name="__codelineno-0-397"></a>        <span class="p">},</span>
-<a id="__codelineno-0-398" name="__codelineno-0-398"></a>    <span class="p">)</span>
-<a id="__codelineno-0-399" name="__codelineno-0-399"></a>
-<a id="__codelineno-0-400" name="__codelineno-0-400"></a>    <span class="n">meta_lf</span> <span class="o">=</span> <span class="n">get_aggregate_meta_data</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">label_col</span><span class="p">)</span>
-<a id="__codelineno-0-401" name="__codelineno-0-401"></a>    <span class="n">output_lf</span> <span class="o">=</span> <span class="n">stats_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">()</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;inner&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-402" name="__codelineno-0-402"></a>
-<a id="__codelineno-0-403" name="__codelineno-0-403"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a>    <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">permanova.parquet&quot;</span>
-<a id="__codelineno-0-405" name="__codelineno-0-405"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing results to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a>    <span class="n">output_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-407">407</a></span>
+<span class="normal"><a href="#__codelineno-0-408">408</a></span>
+<span class="normal"><a href="#__codelineno-0-409">409</a></span>
+<span class="normal"><a href="#__codelineno-0-410">410</a></span>
+<span class="normal"><a href="#__codelineno-0-411">411</a></span>
+<span class="normal"><a href="#__codelineno-0-412">412</a></span>
+<span class="normal"><a href="#__codelineno-0-413">413</a></span>
+<span class="normal"><a href="#__codelineno-0-414">414</a></span>
+<span class="normal"><a href="#__codelineno-0-415">415</a></span>
+<span class="normal"><a href="#__codelineno-0-416">416</a></span>
+<span class="normal"><a href="#__codelineno-0-417">417</a></span>
+<span class="normal"><a href="#__codelineno-0-418">418</a></span>
+<span class="normal"><a href="#__codelineno-0-419">419</a></span>
+<span class="normal"><a href="#__codelineno-0-420">420</a></span>
+<span class="normal"><a href="#__codelineno-0-421">421</a></span>
+<span class="normal"><a href="#__codelineno-0-422">422</a></span>
+<span class="normal"><a href="#__codelineno-0-423">423</a></span>
+<span class="normal"><a href="#__codelineno-0-424">424</a></span>
+<span class="normal"><a href="#__codelineno-0-425">425</a></span>
+<span class="normal"><a href="#__codelineno-0-426">426</a></span>
+<span class="normal"><a href="#__codelineno-0-427">427</a></span>
+<span class="normal"><a href="#__codelineno-0-428">428</a></span>
+<span class="normal"><a href="#__codelineno-0-429">429</a></span>
+<span class="normal"><a href="#__codelineno-0-430">430</a></span>
+<span class="normal"><a href="#__codelineno-0-431">431</a></span>
+<span class="normal"><a href="#__codelineno-0-432">432</a></span>
+<span class="normal"><a href="#__codelineno-0-433">433</a></span>
+<span class="normal"><a href="#__codelineno-0-434">434</a></span>
+<span class="normal"><a href="#__codelineno-0-435">435</a></span>
+<span class="normal"><a href="#__codelineno-0-436">436</a></span>
+<span class="normal"><a href="#__codelineno-0-437">437</a></span>
+<span class="normal"><a href="#__codelineno-0-438">438</a></span>
+<span class="normal"><a href="#__codelineno-0-439">439</a></span>
+<span class="normal"><a href="#__codelineno-0-440">440</a></span>
+<span class="normal"><a href="#__codelineno-0-441">441</a></span>
+<span class="normal"><a href="#__codelineno-0-442">442</a></span>
+<span class="normal"><a href="#__codelineno-0-443">443</a></span>
+<span class="normal"><a href="#__codelineno-0-444">444</a></span>
+<span class="normal"><a href="#__codelineno-0-445">445</a></span>
+<span class="normal"><a href="#__codelineno-0-446">446</a></span>
+<span class="normal"><a href="#__codelineno-0-447">447</a></span>
+<span class="normal"><a href="#__codelineno-0-448">448</a></span>
+<span class="normal"><a href="#__codelineno-0-449">449</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;permanova_main&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a><span class="sd">    Hydra entry point: per-feature PERMANOVA batch-effect assessment.</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a><span class="sd">    Steps</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a><span class="sd">    1. Glob ``input_file`` to find batch files; each file&#39;s stem becomes its</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a><span class="sd">       batch label (added as ``meta_batch``).</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a><span class="sd">    2. Restrict to cells classified as ``&quot;Synonymous&quot;`` (via</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="sd">       :func:`.utils.variant.classify_variant`) whose ``label_column`` value</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="sd">       does not end with ``&quot;:downsampled&quot;``. Feature columns are collected</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a><span class="sd">       from this restriction in chunks of ``feature_batch_size`` columns at</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">       a time (or all at once if ``feature_batch_size`` is unset) via</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">       :func:`_iter_feature_batches`.</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">    3. For each feature column, compute the PERMANOVA pseudo-F statistic</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a><span class="sd">       (and optional permutation p-value) via</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a><span class="sd">       :func:`_compute_permanova_stats`. Features with fewer than 2</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a><span class="sd">       samples/batches after filtering, or that raise an exception, are</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a><span class="sd">       skipped with a logged warning rather than aborting the whole run.</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a><span class="sd">    4. Write one row per feature to a Parquet file via ``sink_parquet``.</span>
+<a id="__codelineno-0-355" name="__codelineno-0-355"></a>
+<a id="__codelineno-0-356" name="__codelineno-0-356"></a><span class="sd">    Output files</span>
+<a id="__codelineno-0-357" name="__codelineno-0-357"></a><span class="sd">    ------------</span>
+<a id="__codelineno-0-358" name="__codelineno-0-358"></a><span class="sd">    - ``{prefix}permanova.parquet`` — one row per feature, with columns</span>
+<a id="__codelineno-0-359" name="__codelineno-0-359"></a><span class="sd">      ``feature``, ``f_value``, and ``p_value``.</span>
+<a id="__codelineno-0-360" name="__codelineno-0-360"></a>
+<a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="sd">    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="sd">    otherwise empty.</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="sd">    Configuration</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">    -------------</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    Override any field on the command line, e.g.::</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">        python -m fisseq_data_pipeline.permanova \\</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">            output_dir=./out \\</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">            &#39;input_file=data/batches/*.parquet&#39; \\</span>
+<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">            n_permutations=999 \\</span>
+<a id="__codelineno-0-372" name="__codelineno-0-372"></a><span class="sd">            feature_batch_size=50</span>
+<a id="__codelineno-0-373" name="__codelineno-0-373"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="n">perm_cfg</span><span class="p">:</span> <span class="n">PermanovaConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+<a id="__codelineno-0-375" name="__codelineno-0-375"></a>
+<a id="__codelineno-0-376" name="__codelineno-0-376"></a>    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+<a id="__codelineno-0-377" name="__codelineno-0-377"></a>    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-378" name="__codelineno-0-378"></a>    <span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+<a id="__codelineno-0-379" name="__codelineno-0-379"></a>    <span class="n">setup_logging</span><span class="p">(</span><span class="n">perm_cfg</span><span class="p">,</span> <span class="s2">&quot;permanova&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-380" name="__codelineno-0-380"></a>
+<a id="__codelineno-0-381" name="__codelineno-0-381"></a>    <span class="n">label_col</span> <span class="o">=</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">label_column</span>
+<a id="__codelineno-0-382" name="__codelineno-0-382"></a>    <span class="n">batch_col</span> <span class="o">=</span> <span class="n">META_BATCH_COL</span>
+<a id="__codelineno-0-383" name="__codelineno-0-383"></a>
+<a id="__codelineno-0-384" name="__codelineno-0-384"></a>    <span class="n">lf</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+<a id="__codelineno-0-385" name="__codelineno-0-385"></a>
+<a id="__codelineno-0-386" name="__codelineno-0-386"></a>    <span class="n">feature_cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">lf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">FEATURE_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span><span class="o">.</span><span class="n">names</span><span class="p">())</span>
+<a id="__codelineno-0-387" name="__codelineno-0-387"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using </span><span class="si">%d</span><span class="s2"> feature column(s)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">feature_cols</span><span class="p">))</span>
+<a id="__codelineno-0-388" name="__codelineno-0-388"></a>
+<a id="__codelineno-0-389" name="__codelineno-0-389"></a>    <span class="c1"># Restrict, lazily, to cells classified as Synonymous and not tagged</span>
+<a id="__codelineno-0-390" name="__codelineno-0-390"></a>    <span class="c1"># with a &quot;:downsampled&quot; suffix. Not collected here: _iter_feature_batches</span>
+<a id="__codelineno-0-391" name="__codelineno-0-391"></a>    <span class="c1"># below collects batch_col alongside each feature chunk in the same</span>
+<a id="__codelineno-0-392" name="__codelineno-0-392"></a>    <span class="c1"># query, since Polars does not guarantee row order matches across</span>
+<a id="__codelineno-0-393" name="__codelineno-0-393"></a>    <span class="c1"># separate .collect() calls on the same lazy plan. No separate &quot;seen in</span>
+<a id="__codelineno-0-394" name="__codelineno-0-394"></a>    <span class="c1"># &gt;1 batch&quot; prequalification is needed (unlike the old per-variant</span>
+<a id="__codelineno-0-395" name="__codelineno-0-395"></a>    <span class="c1"># code): that check is inherent to _compute_permanova_stats&#39;s own</span>
+<a id="__codelineno-0-396" name="__codelineno-0-396"></a>    <span class="c1"># n&lt;2 / a&lt;2 bail-out, now applied per feature.</span>
+<a id="__codelineno-0-397" name="__codelineno-0-397"></a>    <span class="n">filtered_lf</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+<a id="__codelineno-0-398" name="__codelineno-0-398"></a>        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span><span class="o">.</span><span class="n">map_elements</span><span class="p">(</span>
+<a id="__codelineno-0-399" name="__codelineno-0-399"></a>            <span class="k">lambda</span> <span class="n">v</span><span class="p">:</span> <span class="n">classify_variant</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;Synonymous&quot;</span><span class="p">,</span> <span class="n">return_dtype</span><span class="o">=</span><span class="n">pl</span><span class="o">.</span><span class="n">Boolean</span>
+<a id="__codelineno-0-400" name="__codelineno-0-400"></a>        <span class="p">)</span>
+<a id="__codelineno-0-401" name="__codelineno-0-401"></a>        <span class="o">&amp;</span> <span class="o">~</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">label_col</span><span class="p">)</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">ends_with</span><span class="p">(</span><span class="s2">&quot;:downsampled&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-402" name="__codelineno-0-402"></a>    <span class="p">)</span>
+<a id="__codelineno-0-403" name="__codelineno-0-403"></a>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a>    <span class="c1"># Per-feature loop, processed in chunks of feature_batch_size columns</span>
+<a id="__codelineno-0-405" name="__codelineno-0-405"></a>    <span class="c1"># (or all columns at once if unset). feature_idx increments exactly</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a>    <span class="c1"># once per feature, in original feature_cols order, regardless of</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a>    <span class="c1"># chunking, so feature_batch_size is purely a memory/compute trade-off</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a>    <span class="c1"># and never changes results (including permutation p-values).</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a>    <span class="n">records</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-410" name="__codelineno-0-410"></a>    <span class="n">feature_idx</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-0-411" name="__codelineno-0-411"></a>    <span class="k">for</span> <span class="n">collected</span><span class="p">,</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">_iter_feature_batches</span><span class="p">(</span>
+<a id="__codelineno-0-412" name="__codelineno-0-412"></a>        <span class="n">filtered_lf</span><span class="p">,</span> <span class="n">feature_cols</span><span class="p">,</span> <span class="n">batch_col</span><span class="p">,</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">feature_batch_size</span>
+<a id="__codelineno-0-413" name="__codelineno-0-413"></a>    <span class="p">):</span>
+<a id="__codelineno-0-414" name="__codelineno-0-414"></a>        <span class="n">batch_labels</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">batch_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-0-415" name="__codelineno-0-415"></a>        <span class="k">for</span> <span class="n">feature_col</span> <span class="ow">in</span> <span class="n">chunk</span><span class="p">:</span>
+<a id="__codelineno-0-416" name="__codelineno-0-416"></a>            <span class="n">seed</span> <span class="o">=</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">seed</span> <span class="o">+</span> <span class="n">feature_idx</span>
+<a id="__codelineno-0-417" name="__codelineno-0-417"></a>            <span class="n">feature_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+<a id="__codelineno-0-418" name="__codelineno-0-418"></a>            <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-419" name="__codelineno-0-419"></a>                <span class="n">x</span> <span class="o">=</span> <span class="n">collected</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">feature_col</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-0-420" name="__codelineno-0-420"></a>                <span class="n">result</span> <span class="o">=</span> <span class="n">_compute_permanova_stats</span><span class="p">(</span>
+<a id="__codelineno-0-421" name="__codelineno-0-421"></a>                    <span class="n">x</span><span class="p">,</span> <span class="n">batch_labels</span><span class="p">,</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">n_permutations</span><span class="p">,</span> <span class="n">seed</span>
+<a id="__codelineno-0-422" name="__codelineno-0-422"></a>                <span class="p">)</span>
+<a id="__codelineno-0-423" name="__codelineno-0-423"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-424" name="__codelineno-0-424"></a>                <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-425" name="__codelineno-0-425"></a>                    <span class="s2">&quot;Failed to compute PERMANOVA for feature </span><span class="si">%r</span><span class="s2">, skipping:</span><span class="se">\n</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-426" name="__codelineno-0-426"></a>                    <span class="n">feature_col</span><span class="p">,</span>
+<a id="__codelineno-0-427" name="__codelineno-0-427"></a>                    <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">(),</span>
+<a id="__codelineno-0-428" name="__codelineno-0-428"></a>                <span class="p">)</span>
+<a id="__codelineno-0-429" name="__codelineno-0-429"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-430" name="__codelineno-0-430"></a>            <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-431" name="__codelineno-0-431"></a>                <span class="k">continue</span>
+<a id="__codelineno-0-432" name="__codelineno-0-432"></a>            <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-433" name="__codelineno-0-433"></a>                <span class="p">{</span>
+<a id="__codelineno-0-434" name="__codelineno-0-434"></a>                    <span class="s2">&quot;feature&quot;</span><span class="p">:</span> <span class="n">feature_col</span><span class="p">,</span>
+<a id="__codelineno-0-435" name="__codelineno-0-435"></a>                    <span class="s2">&quot;f_value&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;f_statistic&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-436" name="__codelineno-0-436"></a>                    <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;p_value&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-437" name="__codelineno-0-437"></a>                <span class="p">}</span>
+<a id="__codelineno-0-438" name="__codelineno-0-438"></a>            <span class="p">)</span>
+<a id="__codelineno-0-439" name="__codelineno-0-439"></a>
+<a id="__codelineno-0-440" name="__codelineno-0-440"></a>    <span class="n">stats_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+<a id="__codelineno-0-441" name="__codelineno-0-441"></a>        <span class="n">records</span><span class="p">,</span>
+<a id="__codelineno-0-442" name="__codelineno-0-442"></a>        <span class="n">schema</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;feature&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Utf8</span><span class="p">,</span> <span class="s2">&quot;f_value&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span> <span class="s2">&quot;p_value&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">},</span>
+<a id="__codelineno-0-443" name="__codelineno-0-443"></a>    <span class="p">)</span>
+<a id="__codelineno-0-444" name="__codelineno-0-444"></a>
+<a id="__codelineno-0-445" name="__codelineno-0-445"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">perm_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-446" name="__codelineno-0-446"></a>    <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">permanova.parquet&quot;</span>
+<a id="__codelineno-0-447" name="__codelineno-0-447"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing results to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+<a id="__codelineno-0-448" name="__codelineno-0-448"></a>    <span class="n">stats_df</span><span class="o">.</span><span class="n">lazy</span><span class="p">()</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+<a id="__codelineno-0-449" name="__codelineno-0-449"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
