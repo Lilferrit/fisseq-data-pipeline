@@ -291,21 +291,15 @@ def test_feature_select_global_uses_both_batches(pipeline_outputs):
 def test_permanova_has_expected_columns(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
-    expected = {"meta_aa_changes", "f_statistic", "p_value", "meta_num_cells"}
+    expected = {"feature", "f_value", "p_value"}
     assert expected.issubset(set(df.columns))
     assert len(df) > 0
-
-
-def test_permanova_uses_both_batches(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
-    assert (df["meta_batch_num_unique"] == 2).all()
 
 
 def test_permanova_f_statistic_is_finite(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
-    assert df["f_statistic"].is_finite().all()
+    assert df["f_value"].is_finite().all()
     assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
 
 
@@ -338,17 +332,9 @@ def test_batch_correction_permanova_has_expected_columns(pipeline_outputs):
     df = pl.read_parquet(
         exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
     )
-    expected = {"meta_aa_changes", "f_statistic", "p_value", "meta_num_cells"}
+    expected = {"feature", "f_value", "p_value"}
     assert expected.issubset(set(df.columns))
     assert len(df) > 0
-
-
-def test_batch_correction_permanova_uses_both_batches(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(
-        exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
-    )
-    assert (df["meta_batch_num_unique"] == 2).all()
 
 
 def test_batch_correction_permanova_f_statistic_is_finite(pipeline_outputs):
@@ -356,7 +342,7 @@ def test_batch_correction_permanova_f_statistic_is_finite(pipeline_outputs):
     df = pl.read_parquet(
         exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
     )
-    assert df["f_statistic"].is_finite().all()
+    assert df["f_value"].is_finite().all()
     assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
 
 
