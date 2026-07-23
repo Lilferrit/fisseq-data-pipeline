@@ -3736,7 +3736,7 @@ to <code>None</code>.</p>
 <code>seed</code>: each control row gets a seeded hash of a fresh row index, rows
 are ranked by that hash, and the lowest <code>target</code> ranks are kept — the
 same lazy hash-and-rank idiom used by
-:func:<code>fisseq_data_pipeline.input.add_downsampled_pseudo_variants</code>, which
+:func:<code>fisseq_data_pipeline.qcfilter.add_downsampled_pseudo_variants</code>, which
 avoids collecting the full control pool up front and reproduces exactly
 across runs for a fixed seed.</p>
 
@@ -3887,7 +3887,7 @@ below the target).</p>
 <a id="__codelineno-0-553" name="__codelineno-0-553"></a><span class="sd">    ``seed``: each control row gets a seeded hash of a fresh row index, rows</span>
 <a id="__codelineno-0-554" name="__codelineno-0-554"></a><span class="sd">    are ranked by that hash, and the lowest ``target`` ranks are kept — the</span>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a><span class="sd">    same lazy hash-and-rank idiom used by</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">    :func:`fisseq_data_pipeline.input.add_downsampled_pseudo_variants`, which</span>
+<a id="__codelineno-0-556" name="__codelineno-0-556"></a><span class="sd">    :func:`fisseq_data_pipeline.qcfilter.add_downsampled_pseudo_variants`, which</span>
 <a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">    avoids collecting the full control pool up front and reproduces exactly</span>
 <a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    across runs for a fixed seed.</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a>

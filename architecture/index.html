@@ -1251,7 +1251,7 @@
 default <code>FisseqPipeline</code>; see <a href="../nextflow/">Nextflow Workflow</a> for the lighter
 <code>OvwtPipeline</code> alternative). Each Nextflow process shells out to a Python CLI tool
 documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>config/*.yaml  (optional, one file per batch — variant selection + downsampling spec)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>config/*.yaml  (optional, one file per batch — variant selection spec)
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>     │
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>     ▼
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>   INPUT       (per config, optional — gated by params.config_dir)
@@ -1262,11 +1262,11 @@ documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>     ▼
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>     │
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>     ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>     ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER; skipped if params.global = false)
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>     ▼
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>NORMALIZE        (per batch)   ← z-score fit on WT control cells
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>     │
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>     ├──► BATCHVSBATCH (post)      (global — waits for all batches)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>     ├──► BATCHVSBATCH (post)      (global — waits for all batches; skipped if params.global = false)
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>     ├──► OVWT_BATCHWISE           (per batch)
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>     ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>     └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
@@ -1284,9 +1284,9 @@ documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
 <a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>             BATCH_CORRECT_TRANSFORM (per batch)
 <a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>                    │
 <a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>                    ▼
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>             PERMANOVA (batch-corrected)
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>             PERMANOVA (batch-corrected)  (skipped if params.global = false)
 <a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>NORMALIZE (all batches) ──► PERMANOVA (normalized)
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>NORMALIZE (all batches) ──► PERMANOVA (normalized)  (skipped if params.global = false)
 </code></pre></div>
 <p><code>PERMANOVA</code> and <code>BATCHVSBATCH</code> are each a single parameterized Nextflow process
 invoked twice via <code>include { X as Y }</code> aliasing (a process cannot be called twice
@@ -1300,7 +1300,9 @@ under its own name in one workflow):</p>
 <p>Global processes (<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, the <code>*_GLOBAL</code> feature-selection
 branch, <code>PERMANOVA</code>, <code>BATCH_CORRECT_FIT</code>) read published output files from disk via
 glob patterns after all upstream per-batch processes finish, rather than consuming
-Nextflow channel outputs directly.</p>
+Nextflow channel outputs directly. <code>params.global</code> (default <code>true</code>) gates
+<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, the <code>*_GLOBAL</code> feature-selection branch, and
+<code>PERMANOVA</code> — <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code> always run.</p>
 <h2 id="stages">Stages<a class="headerlink" href="#stages" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1316,13 +1318,13 @@ Nextflow channel outputs directly.</p>
 <td>Input generation (optional)</td>
 <td><code>input.py</code></td>
 <td><code>INPUT</code></td>
-<td><code>input/&lt;name&gt;.parquet</code>, from a YAML variant-selection/downsampling spec</td>
+<td><code>input/&lt;name&gt;.parquet</code>, from a YAML variant-selection spec</td>
 </tr>
 <tr>
 <td>QC filtering</td>
 <td><code>qcfilter.py</code></td>
 <td><code>QC_FILTER</code></td>
-<td><code>filtered_cells.parquet</code>, <code>barcode_counts.parquet</code>, <code>variants_per_barcode.parquet</code></td>
+<td><code>filtered_cells.parquet</code> (optionally augmented with downsampled pseudo-variant rows for QC/calibration, drawn from QC-surviving cells), <code>barcode_counts.parquet</code>, <code>variants_per_barcode.parquet</code></td>
 </tr>
 <tr>
 <td>Batch-effect check (pre)</td>

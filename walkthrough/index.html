@@ -1287,19 +1287,23 @@ in its own Parquet file under <code>&lt;input_dir&gt;/input/</code>:</p>
 <ol>
 <li><code>QC_FILTER</code> — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).</li>
-<li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (global).</li>
+<li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (global, if
+   <code>params.global</code>).</li>
 <li><code>NORMALIZE</code> — z-score normalization fit on WT control cells (per batch).</li>
-<li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global).</li>
+<li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global, if
+   <code>params.global</code>).</li>
 <li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification.</li>
 <li>Bootstrap feature selection (batchwise and, if <code>params.global</code>, global) —
    see <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
    six-stage breakdown.</li>
-<li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction.</li>
+<li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction
+   (always runs, regardless of <code>params.global</code>).</li>
 <li><code>PERMANOVA</code> — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells.</li>
+   on batch-corrected cells (if <code>params.global</code>).</li>
 </ol>
 <p>Override any <a href="../nextflow/#parameters">parameter</a> on the command line, e.g. to
-adjust QC thresholds or skip the global feature-selection branch:</p>
+adjust QC thresholds or skip the global-only processes (<code>OVWT_GLOBAL</code>, the global
+feature-selection branch, <code>BATCHVSBATCH</code>, and <code>PERMANOVA</code>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--bc_threshold<span class="w"> </span><span class="m">15</span><span class="w"> </span><span class="se">\</span>
@@ -1321,7 +1325,8 @@ The two results most analyses care about:</p>
   per-variant, feature-selected profiles.</li>
 <li><code>&lt;input_dir&gt;/permanova/permanova.parquet</code> and
   <code>&lt;input_dir&gt;/batch_correction/permanova/permanova.parquet</code> — per-variant
-  batch-effect PERMANOVA results, before and after batch correction.</li>
+  batch-effect PERMANOVA results, before and after batch correction (present
+  only if <code>params.global</code>).</li>
 </ul>
 <h2 id="5-running-individual-steps">5. Running individual steps<a class="headerlink" href="#5-running-individual-steps" title="Permanent link">&para;</a></h2>
 <p>Every Nextflow process wraps a standalone <code>fisseq-*</code> CLI tool. To debug or rerun

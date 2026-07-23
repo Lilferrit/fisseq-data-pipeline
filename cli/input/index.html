@@ -1283,10 +1283,9 @@
 <h1 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h1>
 <p><code>fisseq-input</code> (Nextflow process <code>INPUT</code>, optional — gated by <code>params.config_dir</code>)
 reads a hand-authored YAML config describing one or more raw cell-score files
-(CSV or Parquet), classifies each row's variant, restricts to a fixed set of
-variant classes plus the most common missense variants, and optionally augments
-the result with reproducibly-downsampled "pseudo variant" rows for QC/calibration
-purposes. Writes a single <code>input/</code>-ready cell-level Parquet file.</p>
+(CSV or Parquet), classifies each row's variant, and restricts to a fixed set of
+variant classes plus the most common missense variants. Writes a single
+<code>input/</code>-ready cell-level Parquet file.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends the common <code>output_dir</code> / <code>output_root</code> / <code>log_level</code> fields (see
 <a href="#common-config-fields">Common config fields</a> below).</p>
@@ -1302,17 +1301,15 @@ purposes. Writes a single <code>input/</code>-ready cell-level Parquet file.</p>
 <tr>
 <td><code>config_path</code></td>
 <td><strong>required</strong></td>
-<td>Path to a separate YAML file (see below) describing the input files and downsampling behavior. Parsed independently of the Hydra CLI config.</td>
+<td>Path to a separate YAML file (see below) describing the input files and variant selection behavior. Parsed independently of the Hydra CLI config.</td>
 </tr>
 </tbody>
 </table>
 <h3 id="config_path-yaml-schema"><code>config_path</code> YAML schema<a class="headerlink" href="#config_path-yaml-schema" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/path/to/file1.parquet</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">/path/to/file2.csv</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">top_n_missense</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">              </span><span class="c1"># optional, default null (keep all Single Missense variants)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">downsample_fraction</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">         </span><span class="c1"># optional, default null (disabled)</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">downsample_seed</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">                </span><span class="c1"># optional, default 0</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
 </code></pre></div>
 <ul>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.</li>
@@ -1320,13 +1317,6 @@ purposes. Writes a single <code>input/</code>-ready cell-level Parquet file.</p>
   count) to keep, alongside Synonymous, WT, and Frameshift variants. Omit or
   set to <code>null</code> (the default) to keep all Single Missense variants without
   any top-N restriction.</li>
-<li><code>downsample_fraction</code> — if set to a value in <code>(0, 1]</code>, generates reproducibly
-  downsampled "pseudo variant" rows for the kept Synonymous and Single Missense
-  variants, tagged <code>&lt;aaChanges&gt;:downsampled-half</code> (e.g. <code>V123A</code> -&gt;
-  <code>V123A:downsampled-half</code>). Disabled by default — omit or set to <code>null</code> to skip
-  pseudo-variant generation entirely.</li>
-<li><code>downsample_seed</code> — seed for the deterministic downsample selection; only used
-  when <code>downsample_fraction</code> is set.</li>
 <li><code>feature_allowlist_file</code> / <code>feature_blocklist_file</code> — optional paths to plain
   text files, one fnmatch-style glob pattern per line (e.g.
   <code>Cells_AreaShape_*</code>), matched against feature column names. If an allowlist
@@ -1338,8 +1328,8 @@ purposes. Writes a single <code>input/</code>-ready cell-level Parquet file.</p>
 <h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <p>Written to <code>output_dir</code>, prefixed <code>{output_root}.</code> when <code>output_root</code> is set:</p>
 <ul>
-<li><code>output.parquet</code> — the selected/filtered (and optionally downsampled) cells,
-  ready to be placed in <code>&lt;input_dir&gt;/input/</code></li>
+<li><code>output.parquet</code> — the selected/filtered cells, ready to be placed in
+  <code>&lt;input_dir&gt;/input/</code></li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-input<span class="w"> </span><span class="se">\</span>

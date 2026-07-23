@@ -1262,6 +1262,15 @@ sequential filters:</p>
 <li><strong>Variant barcode count</strong> — drops variants supported by fewer than
    <code>variant_bc_threshold</code> distinct barcodes.</li>
 </ol>
+<p>If <code>downsample_fraction</code> is set, <code>filtered_cells.parquet</code> is additionally
+augmented with reproducibly-downsampled "pseudo variant" rows for
+QC/calibration purposes, built from the Synonymous and Single Missense cells
+that already survived the three filters above — not the raw pre-QC
+population, so the pseudo-variants are a valid calibration of the analysis
+population that actually proceeds downstream. <code>barcode_counts.parquet</code> and
+<code>variants_per_barcode.parquet</code> are computed before this step runs, so they
+never include pseudo-variant rows, whether or not <code>downsample_fraction</code> is
+set.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends the common <code>output_dir</code> / <code>output_root</code> / <code>log_level</code> fields (see
 <a href="#common-config-fields">Common config fields</a> below).</p>
@@ -1313,6 +1322,16 @@ sequential filters:</p>
 <td><code>label_column</code></td>
 <td><code>"meta_aa_changes"</code></td>
 <td>Output column name for the variant label.</td>
+</tr>
+<tr>
+<td><code>downsample_fraction</code></td>
+<td><code>null</code></td>
+<td>Optional: if set to a value in <code>(0, 1]</code>, generates reproducibly downsampled "pseudo variant" rows (tagged via <code>meta_variant_tag = "downsampled-half"</code>) from the Synonymous and Single Missense cells that already survived QC filtering. <code>null</code> (default) disables this.</td>
+</tr>
+<tr>
+<td><code>downsample_seed</code></td>
+<td><code>0</code></td>
+<td>Seed for the deterministic downsample selection; only used when <code>downsample_fraction</code> is set.</td>
 </tr>
 </tbody>
 </table>

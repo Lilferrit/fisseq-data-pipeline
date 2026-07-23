@@ -1401,7 +1401,7 @@ task doesn't abort the whole run.</p>
 <td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
 <td><code>batchvsbatch.nf</code></td>
 <td><code>fisseq-batch-vs-batch</code></td>
-<td>global, twice</td>
+<td>global, twice, optional (<code>params.global</code>)</td>
 </tr>
 <tr>
 <td><code>OVWT_BATCHWISE</code></td>
@@ -1479,7 +1479,7 @@ task doesn't abort the whole run.</p>
 <td><code>PERMANOVA</code> (aliased <code>_NORMALIZED</code> / <code>_BATCH_CORRECTED</code>)</td>
 <td><code>permanova.nf</code></td>
 <td><code>fisseq-permanova</code></td>
-<td>global, twice</td>
+<td>global, twice, optional (<code>params.global</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -1573,6 +1573,16 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--edit_distance_threshold</code></td>
 <td><code>1</code></td>
 <td>Maximum allowed edit distance (QC filter).</td>
+</tr>
+<tr>
+<td><code>--downsample_fraction</code></td>
+<td><code>null</code></td>
+<td>Optional QC-filter pseudo-variant downsampling fraction <code>(0, 1]</code>; drawn from cells that already passed QC. <code>null</code> disables it.</td>
+</tr>
+<tr>
+<td><code>--downsample_seed</code></td>
+<td><code>0</code></td>
+<td>Seed for the deterministic downsample selection.</td>
 </tr>
 <tr>
 <td><code>--bvb_min_cells</code></td>
