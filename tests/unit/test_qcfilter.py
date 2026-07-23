@@ -383,9 +383,9 @@ class TestAddDownsampledPseudoVariants:
         ).collect()
 
         assert result.shape[0] == 10
-        assert (result["meta_variant_tag"] == DOWNSAMPLE_TAG).all()
-        # meta_aa_changes itself is unchanged — the tag column carries the mark
-        assert (result["meta_aa_changes"] == "A1A").all()
+        # The tag is baked directly into the label, giving pseudo-variant
+        # rows their own distinct group rather than pooling with "A1A".
+        assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}").all()
 
     def test_zero_fraction_keeps_none(self, cfg):
         df = _make_downsample_df(["A1A"] * 10, cfg)
@@ -530,7 +530,7 @@ def test_main_downsample_pseudo_rows_only_from_qc_survivors(tmp_path):
     assert "bc_fail" not in result["meta_barcode"].to_list()
     # 10 QC survivors, downsampled at fraction=1.0 -> 10 originals + 10 pseudo
     assert result.shape[0] == 20
-    assert (result["meta_variant_tag"] == DOWNSAMPLE_TAG).sum() == 10
+    assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}").sum() == 10
 
 
 def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
@@ -563,7 +563,7 @@ def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
     result_a = pl.read_parquet(tmp_path / "run_a" / "out" / "filtered_cells.parquet")
     result_b = pl.read_parquet(tmp_path / "run_b" / "out" / "filtered_cells.parquet")
 
-    sort_key = ["meta_source_file", "meta_source_file_idx", "meta_variant_tag"]
+    sort_key = ["meta_source_file", "meta_source_file_idx", "meta_aa_changes"]
     assert_frame_equal(result_a.sort(sort_key), result_b.sort(sort_key))
 
 
