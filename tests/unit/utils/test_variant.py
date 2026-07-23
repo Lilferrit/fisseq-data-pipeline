@@ -1,6 +1,6 @@
 import pytest
 
-from fisseq_data_pipeline.utils.variant import classify_variant, strip_variant_tag
+from fisseq_data_pipeline.utils.variant import classify_variant
 
 # ---------------------------------------------------------------------------
 # classify_variant
@@ -21,23 +21,10 @@ class TestClassifyVariant:
             ("A5-|A9-", "Other"),
             ("A5-", "3nt Deletion"),
             ("garbage", "Other"),
+            ("M1K:downsampled-half", "Single Missense"),
+            ("A1A:sometag", "Synonymous"),
+            ("M1K:tag:extra", "Single Missense"),
         ],
     )
     def test_classify(self, v, expected):
         assert classify_variant(v) == expected
-
-
-# ---------------------------------------------------------------------------
-# strip_variant_tag
-# ---------------------------------------------------------------------------
-
-
-class TestStripVariantTag:
-    def test_strips_tag(self):
-        assert strip_variant_tag("M1K:downsampled-half") == "M1K"
-
-    def test_untagged_unchanged(self):
-        assert strip_variant_tag("M1K") == "M1K"
-
-    def test_strips_only_first_colon(self):
-        assert strip_variant_tag("M1K:tag:extra") == "M1K"

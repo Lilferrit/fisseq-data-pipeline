@@ -30,17 +30,17 @@ input/*.parquet  (one file per batch)
      ▼
 QC_FILTER   (per batch)
      │
-     ├──► BATCHVSBATCH (pre)        (global — waits for all QC_FILTER)
+     ├──► BATCHVSBATCH (pre)        (global, optional — params.global)
      ▼
 NORMALIZE   (per batch)
      │
-     ├──► BATCHVSBATCH (post)       (global — waits for all batches)
+     ├──► BATCHVSBATCH (post)       (global, optional — params.global)
      ├──► OVWT_BATCHWISE             (per batch)
      ├──► OVWT_GLOBAL                (global, optional — params.global)
      ├──► Feature selection          (batchwise always; global optional)
-     └──► PERMANOVA (normalized)     (global — waits for all batches)
+     └──► PERMANOVA (normalized)     (global, optional — params.global)
 
-QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► PERMANOVA (batch-corrected)
+QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► PERMANOVA (batch-corrected)  (optional — params.global)
 ```
 
 See [Architecture](architecture.md) for the full diagram and stage-by-stage detail.

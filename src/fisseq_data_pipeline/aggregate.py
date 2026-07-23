@@ -553,7 +553,7 @@ def downsample_control(
     ``seed``: each control row gets a seeded hash of a fresh row index, rows
     are ranked by that hash, and the lowest ``target`` ranks are kept — the
     same lazy hash-and-rank idiom used by
-    :func:`fisseq_data_pipeline.input.add_downsampled_pseudo_variants`, which
+    :func:`fisseq_data_pipeline.qcfilter.add_downsampled_pseudo_variants`, which
     avoids collecting the full control pool up front and reproduces exactly
     across runs for a fixed seed.
 

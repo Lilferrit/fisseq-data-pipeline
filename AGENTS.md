@@ -12,7 +12,7 @@ The **FISSEQ Data Pipeline** is a Nextflow + Python workflow for processing sing
 **End-to-end data flow:**
 
 ```
-config/*.yaml  (optional, one file per batch — variant selection + downsampling spec)
+config/*.yaml  (optional, one file per batch — variant selection spec)
       │
       ▼
     INPUT      (per config, optional — gated by params.config_dir)
@@ -23,11 +23,11 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
       ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
       │
-      ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER)
+      ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER; skipped if params.global = false)
       ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │
-      ├──► BATCHVSBATCH (post)      (global — waits for all batches)
+      ├──► BATCHVSBATCH (post)      (global — waits for all batches; skipped if params.global = false)
       ├──► OVWT_BATCHWISE           (per batch)
       ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
       └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
@@ -231,8 +231,8 @@ fisseq-data-pipeline/
 │   │   ├── variant.py             # classify_variant
 │   │   ├── metadata.py            # get_column, get_aggregate_meta_data
 │   │   └── vectors.py             # compute_norm, compute_query_dot, compute_cosine_distance, compute_impact_score
-│   ├── input.py                   # Optional input-file generation entry point (variant selection + downsampling)
-│   ├── qcfilter.py                # QC filtering entry point
+│   ├── input.py                   # Optional input-file generation entry point (variant selection)
+│   ├── qcfilter.py                # QC filtering entry point (optional pseudo-variant downsampling)
 │   ├── normalize.py               # Normalizer class + normalize entry point
 │   ├── aggregate.py               # 8 aggregation strategies + full-aggregation and per-feature-type entry points
 │   ├── features.py                # Bootstrap split/correlate/blocklist stages + final pycytominer selection
@@ -291,14 +291,14 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH, OVWT_GLOBAL, the feature-selection processes, PERMANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH` and `PERMANOVA` are each a single parameterized process (`modules/local/batchvsbatch.nf`, `modules/local/permanova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow) — `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet` with `use_parent_name=true`; `BATCHVSBATCH_POST` waits on `global_signal` (all NORMALIZE done) and globs `normalization/cells/*.parquet`. Likewise `PERMANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `PERMANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet`. All varying bits (glob path, `use_parent_name`, `publishDir` subpath) are passed in as process input values, not hardcoded per-call.
 
-**Feature-selection pipeline** (`workflows/fisseq.nf`) follows the same aliasing pattern, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each invoked once as `*_BATCHWISE` and once as `*_GLOBAL`. Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_types`) and `bootstrap_ch` (`1..params.bootstrap`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_key, feature_type])` — gathering all `params.bootstrap` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.global` (default `true`) gates `OVWT_GLOBAL` and the entire `*_GLOBAL` feature-selection branch — set it to `false` to skip both and only run the batchwise processes (e.g. for datasets where the global bootstrap × feature-type cross product across all batches combined is prohibitively expensive). The batchwise branch, `BATCHVSBATCH`, `PERMANOVA`, and the batch-correction branch are unaffected by this flag.
+**Feature-selection pipeline** (`workflows/fisseq.nf`) follows the same aliasing pattern, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each invoked once as `*_BATCHWISE` and once as `*_GLOBAL`. Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_types`) and `bootstrap_ch` (`1..params.bootstrap`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_key, feature_type])` — gathering all `params.bootstrap` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.global` (default `true`) gates `OVWT_GLOBAL`, the entire `*_GLOBAL` feature-selection branch, and both aliased pairs `BATCHVSBATCH` (`_PRE`/`_POST`) and `PERMANOVA` (`_NORMALIZED`/`_BATCH_CORRECTED`) — set it to `false` to skip all of these and only run the batchwise processes (e.g. for datasets where the global bootstrap × feature-type cross product across all batches combined is prohibitively expensive). The batchwise feature-selection branch and the batch-correction branch (`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`) are unaffected by this flag — batch-corrected cells remain available as a standalone output even when `PERMANOVA_BATCH_CORRECTED` is skipped.
 
 ### CLI entry points (registered in `pyproject.toml`)
 
 | Command | Module | Purpose |
 |---------|--------|---------|
-| `fisseq-input` | `input:main` | Optional upstream stage: variant selection + downsampling from a YAML spec, producing one `input/*.parquet` file |
-| `fisseq-qc-filter` | `qcfilter:main` | Edit distance + barcode QC |
+| `fisseq-input` | `input:main` | Optional upstream stage: variant selection from a YAML spec, producing one `input/*.parquet` file |
+| `fisseq-qc-filter` | `qcfilter:main` | Edit distance + barcode QC (optional pseudo-variant downsampling) |
 | `fisseq-normalize` | `normalize:main` | Z-score normalization |
 | `fisseq-aggregate` | `aggregate:main` | Standalone per-variant aggregation + normalizer + metadata (not wired into Nextflow) |
 | `fisseq-aggregate-feature-type` | `aggregate:feature_type_main` | Lean per-feature-type aggregation, optionally filtered to an index-file row subset |
@@ -430,7 +430,7 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 10. **Synonymous variants are used as the control baseline for aggregation**, not WT cells. In `aggregate.py:variant_classification`, synonymous mutations (first and last amino acid identical in `meta_aa_changes`) are flagged as `meta_is_control = True`. In `normalize.py`, the control is WT cells (the SQL `control_sample_query`). These are different steps with different baselines. `aggregate.feature_type_main` relies on the upstream `meta_is_control` (WT-based) column already present on its input and does not call `variant_classification` itself — that only happens later, in `features.main`'s impact-score step, on the aggregated (not cell-level) data.
 
-11. **`aaChanges` may carry a `:<tag>` metadata suffix** (e.g. `V123A:downsampled-half`, produced by `input.py`'s optional pseudo-variant step). The tag is stripped exactly once, in `qcfilter.py:filter_columns` — `meta_aa_changes` is always the tag-stripped base and `meta_variant_tag` holds the tag (`null` when absent). Every stage after `QC_FILTER` therefore already sees clean, pooled variant labels; do not re-strip or re-parse tags downstream — if you need to segment on the tag, use `meta_variant_tag` directly. `utils/variant.py:classify_variant` assumes its input is already tag-stripped.
+11. **`aaChanges`/`meta_aa_changes` may carry a `:<tag>` metadata suffix** (e.g. `V123A:downsampled-half`). Two independent things can put a tag there: (a) upstream raw data may already arrive pre-tagged (any raw file fed into `QC_FILTER`, pre-staged or otherwise); (b) `qcfilter.py`'s own optional pseudo-variant downsampling step (`downsample_fraction`), which runs *after* `filter_columns` inside `qcfilter.py:main` and sets `meta_variant_tag` directly on the pseudo rows it generates — those rows never pass through the tag-split step at all, since it already ran earlier in the same call. For any row that arrives with a raw, still-suffixed label, the tag is stripped exactly once, in `qcfilter.py:filter_columns` — `meta_aa_changes` is always the tag-stripped base and `meta_variant_tag` holds the tag (`null` when absent). Every stage after `QC_FILTER` therefore sees clean, pooled variant labels either way; do not re-strip or re-parse tags downstream — if you need to segment on the tag, use `meta_variant_tag` directly. `utils/variant.py:classify_variant` assumes its input is already tag-stripped. Note: `barcode_counts.parquet`/`variants_per_barcode.parquet` are computed by `add_qc_queries` *before* the pseudo-variant downsampling step runs, so they never include pseudo rows, even when `downsample_fraction` is set.
 
 12. **`params.config_dir`** (optional) generates `input/*.parquet` files via the `INPUT` process instead of requiring them pre-staged. If a batch name exists both as a pre-staged file and as a `config_dir/*.yaml`, the config-derived version silently wins (the pre-staged file is filtered out of the glob channel in `workflows/fisseq.nf`/`workflows/ovwt.nf`). Like every other process, `INPUT` uses `errorStrategy 'ignore'` — a failed config conversion just drops that batch from the run rather than aborting, so a "missing" batch in the output may mean its `INPUT` task failed, not that it was never requested.
 

@@ -4,6 +4,8 @@ nextflow.enable.dsl = 2
 // -> NORMALIZE -> BATCHVSBATCH (pre/post) -> OVWT (batchwise/global) ->
 // bootstrap feature selection (batchwise/global, gated by params.global) ->
 // BATCH_CORRECT_FIT/TRANSFORM -> PERMANOVA (normalized and batch-corrected).
+// BATCHVSBATCH and PERMANOVA are also gated by params.global (default true);
+// BATCH_CORRECT_FIT/TRANSFORM always run regardless.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
@@ -103,20 +105,28 @@ workflow FisseqPipeline {
     global_signal = norm_ch.map { stem, p -> stem }.collect()
         .map { _stems -> input_dir_abs }
 
-    // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
-    BATCHVSBATCH_PRE(qc_signal.map { d -> [d, "${d}/qc_filter/*/filtered_cells.parquet", true, "pre"] })
-
-    // Step 4: Batch-vs-batch — post batch correction (normalized cells)
-    BATCHVSBATCH_POST(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", false, "post"] })
-
-    // Step 5: OvWT — batchwise
-    OVWT_BATCHWISE(norm_ch)
-
     // Explicit String->Boolean parse: Nextflow CLI overrides (e.g. --global
     // false) arrive as the String "false", which is truthy in Groovy — a
     // bare `if (params.global)` (or `as Boolean`) would run the "disabled"
     // branch anyway. `.toBoolean()` parses "true"/"false" text correctly.
+    // Gates BATCHVSBATCH, OVWT_GLOBAL, the *_GLOBAL feature-selection branch,
+    // and PERMANOVA below.
     run_global = params.global.toString().toBoolean()
+
+    // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
+    // (optional, gated on params.global)
+    if (run_global) {
+        BATCHVSBATCH_PRE(qc_signal.map { d -> [d, "${d}/qc_filter/*/filtered_cells.parquet", true, "pre"] })
+    }
+
+    // Step 4: Batch-vs-batch — post batch correction (normalized cells)
+    // (optional, gated on params.global)
+    if (run_global) {
+        BATCHVSBATCH_POST(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", false, "post"] })
+    }
+
+    // Step 5: OvWT — batchwise
+    OVWT_BATCHWISE(norm_ch)
 
     // Step 6: OvWT — global (optional, gated on params.global)
     if (run_global) {
@@ -320,7 +330,10 @@ workflow FisseqPipeline {
     }
 
     // Step 9: PERMANOVA — batch-effect assessment (normalized cells)
-    PERMANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "permanova"] })
+    // (optional, gated on params.global)
+    if (run_global) {
+        PERMANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "permanova"] })
+    }
 
     // New branch: qc_filtering -> batch_correction -> permanova (independent of normalize)
     // Step 1: fit centroid batch correction across all batches (global, waits for all QC_FILTER)
@@ -340,5 +353,8 @@ workflow FisseqPipeline {
         .map { _stems -> input_dir_abs }
 
     // Step 3: PERMANOVA on batch-corrected cells
-    PERMANOVA_BATCH_CORRECTED(bc_signal.map { d -> [d, "${d}/batch_correction/cells/*.parquet", "batch_correction/permanova"] })
+    // (optional, gated on params.global)
+    if (run_global) {
+        PERMANOVA_BATCH_CORRECTED(bc_signal.map { d -> [d, "${d}/batch_correction/cells/*.parquet", "batch_correction/permanova"] })
+    }
 }

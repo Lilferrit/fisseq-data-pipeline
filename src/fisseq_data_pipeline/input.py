@@ -1,13 +1,11 @@
-"""Variant selection and optional downsampled-pseudo-variant generation from a YAML spec.
+"""Variant selection from a YAML spec.
 
 Hydra entry point ``fisseq-input`` / Nextflow process ``INPUT`` (optional upstream
 stage, gated by ``params.config_dir``). Reads a hand-authored YAML config
 (``config_path``, parsed separately from the Hydra CLI config) describing one or
 more input cell-score files (CSV or Parquet), classifies each row's variant,
-restricts to a fixed set of variant classes plus the most common missense
-variants, and optionally augments the result with reproducibly-downsampled
-"pseudo variant" rows for QC/calibration purposes. Writes one ``input/``-ready
-cell-level Parquet file.
+and restricts to a fixed set of variant classes plus the most common missense
+variants. Writes one ``input/``-ready cell-level Parquet file.
 
 Pipeline
 --------
@@ -17,30 +15,22 @@ Pipeline
    up as ``meta_origin_file`` / ``meta_origin_row_idx`` in the output, via
    the same auto-prefixing step that handles the rest of the metadata
    columns). Concatenate everything into one lazy frame. If ``convert_first``
-   is set and either ``top_n_missense`` or ``downsample_fraction`` is set
-   (i.e. an extra pass over the data is going to happen below), this
-   concatenation is instead performed once up front and streamed to a single
-   merged Parquet file in ``temp_dir`` (see :func:`convert_and_merge_inputs`),
-   which is then read back and used for every step from here on — a pure
-   IO/perf optimization that does not change the output.
+   is set and ``top_n_missense`` is set (i.e. an extra pass over the data is
+   going to happen below), this concatenation is instead performed once up
+   front and streamed to a single merged Parquet file in ``temp_dir`` (see
+   :func:`convert_and_merge_inputs`), which is then read back and used for
+   every step from here on — a pure IO/perf optimization that does not
+   change the output.
 2. Classify each row's variant (see :func:`classify_variants`). Classification
    is based on the part of ``aaChanges`` before any ``:`` — a metadata tag
-   component — so already-tagged variants (including the pseudo variants
-   this script itself creates) classify the same as their untagged base.
+   component — so already-tagged variants classify the same as their
+   untagged base.
 3. If ``top_n_missense`` is set, find the ``top_n_missense`` Single Missense
    variants by cell count and filter to keep only: Synonymous, WT,
    Frameshift, and those selected missense variants. When ``top_n_missense``
    is unset/null (the default), this ranking/restriction is skipped
    entirely and all Single Missense variants are kept.
-4. If ``downsample_fraction`` is set (disabled by default — see Config file
-   below), create reproducibly downsampled "pseudo variants" for the kept
-   Synonymous and Single Missense rows: for each variant, keep a
-   deterministic, seeded ~``downsample_fraction`` of its rows, and tag the
-   copy's ``aaChanges`` with ``:downsampled-half`` (e.g. ``V123A`` ->
-   ``V123A:downsampled-half``). These are added alongside the originals, not
-   in place of them. When ``downsample_fraction`` is unset/null, this step
-   is skipped entirely — no pseudo-variant rows, no hashing/ranking work.
-5. Select/rename columns (feature columns vs. auto-prefixed ``meta_*``
+4. Select/rename columns (feature columns vs. auto-prefixed ``meta_*``
    columns, same convention as before) and write the result to a single
    output Parquet file.
 
@@ -50,26 +40,21 @@ Config file
 
     input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
     top_n_missense: null              # optional, default null (keep all Single Missense variants)
-    downsample_fraction: null         # optional, default null (disabled)
-    downsample_seed: 0                # optional, default 0
     feature_allowlist_file: null      # optional, default null (no allowlist)
     feature_blocklist_file: null      # optional, default null (no blocklist)
     convert_first: false              # optional, default false (see below)
     temp_dir: null                    # optional, default $TMPDIR or the system temp dir
 
-Set ``downsample_fraction`` to a value in (0, 1] (e.g. ``0.5``) to enable
-downsampled pseudo-variant generation.
-
 Set ``convert_first: true`` to merge all ``input_paths`` into a single
 Parquet file up front (written to ``temp_dir``, deleted once the run
 finishes) before variant classification, instead of re-scanning/re-
 concatenating the original files on every downstream pass. This only
-happens when ``top_n_missense`` or ``downsample_fraction`` is also set —
-those are what cause the extra passes it optimizes for; otherwise the
-pipeline is already single-pass and this step is skipped even if
-``convert_first`` is true. ``temp_dir`` defaults to ``$TMPDIR`` if set,
-otherwise the system temp directory (see :func:`tempfile.gettempdir`); it is
-never read/used when ``convert_first`` is false.
+happens when ``top_n_missense`` is also set — that's what causes the extra
+pass it optimizes for; otherwise the pipeline is already single-pass and
+this step is skipped even if ``convert_first`` is true. ``temp_dir``
+defaults to ``$TMPDIR`` if set, otherwise the system temp directory (see
+:func:`tempfile.gettempdir`); it is never read/used when ``convert_first``
+is false.
 
 ``feature_allowlist_file`` / ``feature_blocklist_file`` each point to a plain
 text file with one fnmatch-style glob pattern per line (e.g.
@@ -100,7 +85,6 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
 from .config import AppConfig
-from .utils.constants import FEATURE_SELECTOR
 from .utils.log import setup_logging
 from .utils.variant import classify_variant
 
@@ -110,17 +94,19 @@ barcode_col = cs.by_name("upBarcode")
 aa_changes_col = cs.by_name("aaChanges")
 edit_distance_col = cs.by_name("editDistance")
 
-DOWNSAMPLE_TAG = "downsampled-half"
-DOWNSAMPLE_CLASSES = ("Synonymous", "Single Missense")
 DEFAULT_TOP_N_MISSENSE = None
-DEFAULT_DOWNSAMPLE_FRACTION = None
-DEFAULT_DOWNSAMPLE_SEED = 0
 DEFAULT_CONVERT_FIRST = False
 DEFAULT_TEMP_DIR = None
 
 CONVERTED_INPUT_FILENAME = "converted_input.parquet"
 
 IDENTITY_COLUMNS = {"upBarcode", "editDistance", "aaChanges"}
+KNOWN_METADATA_COLUMNS = {
+    "origin_file",
+    "origin_row_idx",
+    "variant_base",
+    "variant_class",
+}
 
 
 @dataclasses.dataclass
@@ -131,8 +117,8 @@ class InputStageConfig(AppConfig):
     Attributes
     ----------
     config_path : str
-        Path to the YAML config describing the input files and (optional)
-        downsampling behavior (see the module docstring's "Config file"
+        Path to the YAML config describing the input files and variant
+        selection behavior (see the module docstring's "Config file"
         section). Parsed separately via ``yaml.safe_load`` — intentionally
         not flattened into individual Hydra CLI fields, since
         ``input_paths`` is a list of arbitrary length. Required.
@@ -253,48 +239,6 @@ def filter_variants(lf: pl.LazyFrame, top_missense: list[str] | None) -> pl.Lazy
     )
 
 
-def add_downsampled_pseudo_variants(
-    lf: pl.LazyFrame,
-    downsample_classes: tuple[str, ...],
-    downsample_fraction: float,
-    seed: int,
-) -> pl.LazyFrame:
-    """
-    For rows whose `variant_class` is in `downsample_classes`, reproducibly
-    keep ~`downsample_fraction` of each variant's rows and re-tag them as a
-    "pseudo variant": `aaChanges` becomes `<aaChanges>:downsampled-half`.
-
-    Selection is deterministic given `seed`: each row gets a seeded hash of
-    its (origin_file, origin_row_idx) identity, rows are ranked by that hash
-    within their variant group, and the lowest floor(fraction * group_size)
-    ranks are kept. This avoids collecting the full eligible subset up front
-    and reproduces exactly across runs for a fixed seed.
-    """
-    logger.info(
-        "Building downsampled pseudo variants for classes %s (fraction=%.3f, seed=%d)",
-        downsample_classes,
-        downsample_fraction,
-        seed,
-    )
-    eligible = lf.filter(pl.col("variant_class").is_in(downsample_classes))
-
-    ranked = eligible.with_columns(
-        pl.struct(["origin_file", "origin_row_idx"]).hash(seed=seed).alias("_rand"),
-    ).with_columns(
-        pl.col("_rand").rank(method="ordinal").over("variant_base").alias("_rank"),
-        pl.len().over("variant_base").alias("_group_size"),
-    )
-
-    pseudo = (
-        ranked.filter(
-            pl.col("_rank") <= (pl.col("_group_size") * downsample_fraction).floor()
-        )
-        .drop(["_rand", "_rank", "_group_size"])
-        .with_columns((pl.col("aaChanges") + f":{DOWNSAMPLE_TAG}").alias("aaChanges"))
-    )
-    return pseudo
-
-
 def load_feature_patterns(path: str) -> list[str]:
     """Read one glob-style feature-column-name pattern per line from a text file."""
     with open(path) as f:
@@ -321,10 +265,14 @@ def select_output_columns(
     given, feature columns matching any of its patterns are then dropped from
     what remains (allowlist is applied first).
     """
+    schema_names = lf.collect_schema().names()
+
     feature_cols = [
         c
-        for c in lf.collect_schema().names()
-        if c not in IDENTITY_COLUMNS and not c.startswith("meta_")
+        for c in schema_names
+        if c not in IDENTITY_COLUMNS
+        and c not in KNOWN_METADATA_COLUMNS
+        and not c.startswith("meta_")
     ]
     if feature_allowlist is not None:
         feature_cols = [c for c in feature_cols if _matches_any(c, feature_allowlist)]
@@ -333,37 +281,35 @@ def select_output_columns(
             c for c in feature_cols if not _matches_any(c, feature_blocklist)
         ]
 
+    metadata_cols = [c for c in schema_names if c in KNOWN_METADATA_COLUMNS]
+
     return lf.select(
         cs.by_name(*feature_cols),
         barcode_col,
         edit_distance_col,
         aa_changes_col,
-        cs.exclude(FEATURE_SELECTOR).name.prefix("meta_"),
+        cs.by_name(*metadata_cols).name.prefix("meta_"),
     )
 
 
 @hydra.main(version_base=None, config_path=None, config_name="input_main")
 def main(cfg: DictConfig) -> None:
     """
-    Hydra entry point: variant selection + optional downsampled pseudo-variant generation.
+    Hydra entry point: variant selection from a YAML spec.
 
     Steps
     -----
     1. Read ``config_path`` (a separate, hand-authored YAML file — see the
        module docstring's "Config file" section).
     2. Load and concatenate all ``input_paths`` via :func:`load_and_concat`.
-       If ``convert_first`` is set and ``top_n_missense`` or
-       ``downsample_fraction`` is also set, this is instead done once via
-       :func:`convert_and_merge_inputs`, and the merged file is used for
-       every step below (the merged temp file is removed once the run
-       finishes, even on failure).
+       If ``convert_first`` is set and ``top_n_missense`` is also set, this
+       is instead done once via :func:`convert_and_merge_inputs`, and the
+       merged file is used for every step below (the merged temp file is
+       removed once the run finishes, even on failure).
     3. Classify variants and filter to the fixed classes plus the top
        missense variants (:func:`classify_variants`, :func:`select_top_missense`,
        :func:`filter_variants`).
-    4. If ``downsample_fraction`` is set, add downsampled pseudo-variant rows
-       via :func:`add_downsampled_pseudo_variants`; otherwise skip this step
-       entirely.
-    5. Select/rename output columns and write a single Parquet file.
+    4. Select/rename output columns and write a single Parquet file.
 
     Output file
     -----------
@@ -383,8 +329,6 @@ def main(cfg: DictConfig) -> None:
 
     input_paths = config["input_paths"]
     top_n_missense = config.get("top_n_missense", DEFAULT_TOP_N_MISSENSE)
-    downsample_fraction = config.get("downsample_fraction", DEFAULT_DOWNSAMPLE_FRACTION)
-    downsample_seed = config.get("downsample_seed", DEFAULT_DOWNSAMPLE_SEED)
     convert_first = config.get("convert_first", DEFAULT_CONVERT_FIRST)
 
     feature_allowlist = None
@@ -401,11 +345,11 @@ def main(cfg: DictConfig) -> None:
         )
         feature_blocklist = load_feature_patterns(config["feature_blocklist_file"])
 
-    # Merging up front avoids re-scanning/re-concatenating input_paths on
-    # every extra pass that top_n_missense/downsample_fraction trigger
-    # (top-missense counts, downsample ranking). Skipped when neither is
-    # set, since the pipeline is then already a single pass over the data.
-    needs_extra_passes = downsample_fraction is not None or top_n_missense is not None
+    # Merging up front avoids re-scanning/re-concatenating input_paths on the
+    # extra pass that top_n_missense triggers (top-missense counts). Skipped
+    # when it's not set, since the pipeline is then already a single pass
+    # over the data.
+    needs_extra_passes = top_n_missense is not None
     converted_path = None
     if convert_first and needs_extra_passes:
         temp_dir = config.get("temp_dir", DEFAULT_TEMP_DIR)
@@ -427,24 +371,9 @@ def main(cfg: DictConfig) -> None:
             top_missense = None
         filtered_lf = filter_variants(data_lf, top_missense)
 
-        if downsample_fraction is not None:
-            pseudo_lf = add_downsampled_pseudo_variants(
-                filtered_lf,
-                downsample_classes=DOWNSAMPLE_CLASSES,
-                downsample_fraction=downsample_fraction,
-                seed=downsample_seed,
-            )
-            logger.info("Concatenating original and pseudo-variant rows")
-            combined_lf = pl.concat([filtered_lf, pseudo_lf], how="vertical_relaxed")
-        else:
-            logger.info(
-                "downsample_fraction not set; skipping pseudo-variant generation"
-            )
-            combined_lf = filtered_lf
-
         logger.info("Selecting output columns")
         combined_lf = select_output_columns(
-            combined_lf, feature_allowlist, feature_blocklist
+            filtered_lf, feature_allowlist, feature_blocklist
         )
 
         prefix = f"{in_cfg.output_root}." if in_cfg.output_root is not None else ""

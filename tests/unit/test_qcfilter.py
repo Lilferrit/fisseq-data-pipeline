@@ -1,10 +1,16 @@
 import pathlib
+from unittest.mock import patch
 
 import polars as pl
 import pytest
 from omegaconf import OmegaConf
+from polars.testing import assert_frame_equal
 
+import fisseq_data_pipeline.qcfilter as m
 from fisseq_data_pipeline.qcfilter import (
+    DOWNSAMPLE_TAG,
+    QcFilterConfig,
+    add_downsampled_pseudo_variants,
     add_qc_queries,
     combine_cell_files,
     filter_columns,
@@ -346,3 +352,254 @@ class TestCombineCellFiles:
         sources = set(result["meta_source_file"].to_list())
 
         assert sources == {str(f1), str(f2)}
+
+
+# ---------------------------------------------------------------------------
+# add_downsampled_pseudo_variants
+# ---------------------------------------------------------------------------
+
+
+def _make_downsample_df(aa_changes: list[str], cfg) -> pl.DataFrame:
+    """Build a post-filter_columns-shaped DataFrame with meta_source_file/
+    meta_source_file_idx identity columns, as add_qc_queries's output would
+    have (via read_file), for testing add_downsampled_pseudo_variants."""
+    n = len(aa_changes)
+    df = _make_filtered_df([f"bc{i}" for i in range(n)], aa_changes, cfg=cfg)
+    return df.with_columns(
+        pl.lit("f1").alias("meta_source_file"),
+        pl.Series("meta_source_file_idx", list(range(n))),
+    )
+
+
+class TestAddDownsampledPseudoVariants:
+    def test_full_fraction_keeps_all_and_tags(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        result = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=1.0,
+            seed=0,
+        ).collect()
+
+        assert result.shape[0] == 10
+        assert (result["meta_variant_tag"] == DOWNSAMPLE_TAG).all()
+        # meta_aa_changes itself is unchanged — the tag column carries the mark
+        assert (result["meta_aa_changes"] == "A1A").all()
+
+    def test_zero_fraction_keeps_none(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        result = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=0.0,
+            seed=0,
+        ).collect()
+
+        assert result.shape[0] == 0
+
+    def test_partial_fraction_is_deterministic_across_calls(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        result1 = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=0.5,
+            seed=7,
+        ).collect()
+        result2 = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=0.5,
+            seed=7,
+        ).collect()
+
+        assert (
+            result1["meta_source_file_idx"].to_list()
+            == result2["meta_source_file_idx"].to_list()
+        )
+        assert result1.shape[0] == 5
+
+    def test_different_seed_can_change_selection(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        result_a = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=0.5,
+            seed=0,
+        ).collect()
+        result_b = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=0.5,
+            seed=1,
+        ).collect()
+
+        # Same count either way, but not guaranteed to be the identical subset.
+        assert result_a.shape[0] == result_b.shape[0] == 5
+
+    def test_ineligible_class_excluded(self, cfg):
+        df = _make_downsample_df(["WT"] * 10, cfg)
+        result = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_fraction=1.0,
+            seed=0,
+        ).collect()
+
+        assert result.shape[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# main() — downsample_fraction
+# ---------------------------------------------------------------------------
+
+
+def _write_cells(path, barcodes, aa_changes, edit_distances=None):
+    n = len(barcodes)
+    pl.DataFrame(
+        {
+            "upBarcode": barcodes,
+            "aaChanges": aa_changes,
+            "editDistance": edit_distances if edit_distances is not None else [0] * n,
+            "Cells_AreaShape_Area": list(range(n)),
+        }
+    ).write_parquet(path)
+
+
+def _make_qc_cfg(tmp_path, cell_files, output_root=None, **overrides):
+    files = cell_files if isinstance(cell_files, list) else [cell_files]
+    return OmegaConf.structured(
+        QcFilterConfig(
+            output_dir=str(tmp_path / "out"),
+            output_root=output_root,
+            cell_files=[str(p) for p in files],
+            **overrides,
+        )
+    )
+
+
+def test_main_downsample_fraction_none_matches_no_downsampling(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert result.shape[0] == 10
+    assert result["meta_variant_tag"].is_null().all()
+
+
+def test_main_downsample_pseudo_rows_only_from_qc_survivors(tmp_path):
+    source = tmp_path / "cells.parquet"
+    barcodes = [f"bc{i}" for i in range(10)] + ["bc_fail"]
+    aa_changes = ["A1A"] * 11
+    # bc_fail has editDistance=5, above threshold=1, so it must be dropped by
+    # add_qc_queries *before* any downsampling runs on it.
+    edit_distances = [0] * 10 + [5]
+    _write_cells(source, barcodes, aa_changes, edit_distances)
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_fraction=1.0,
+        downsample_seed=0,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert "bc_fail" not in result["meta_barcode"].to_list()
+    # 10 QC survivors, downsampled at fraction=1.0 -> 10 originals + 10 pseudo
+    assert result.shape[0] == 20
+    assert (result["meta_variant_tag"] == DOWNSAMPLE_TAG).sum() == 10
+
+
+def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
+
+    qc_cfg_a = _make_qc_cfg(
+        tmp_path / "run_a",
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_fraction=0.5,
+        downsample_seed=7,
+    )
+    qc_cfg_b = _make_qc_cfg(
+        tmp_path / "run_b",
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_fraction=0.5,
+        downsample_seed=7,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg_a)
+        m.main.__wrapped__(qc_cfg_b)
+
+    result_a = pl.read_parquet(tmp_path / "run_a" / "out" / "filtered_cells.parquet")
+    result_b = pl.read_parquet(tmp_path / "run_b" / "out" / "filtered_cells.parquet")
+
+    sort_key = ["meta_source_file", "meta_source_file_idx", "meta_variant_tag"]
+    assert_frame_equal(result_a.sort(sort_key), result_b.sort(sort_key))
+
+
+def test_main_downsample_barcode_counts_and_variants_per_barcode_exclude_pseudo_rows(
+    tmp_path,
+):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
+
+    qc_cfg_with = _make_qc_cfg(
+        tmp_path / "run_with",
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_fraction=1.0,
+        downsample_seed=0,
+    )
+    qc_cfg_without = _make_qc_cfg(
+        tmp_path / "run_without",
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg_with)
+        m.main.__wrapped__(qc_cfg_without)
+
+    for name in ("barcode_counts", "variants_per_barcode"):
+        result_with = pl.read_parquet(tmp_path / "run_with" / "out" / f"{name}.parquet")
+        result_without = pl.read_parquet(
+            tmp_path / "run_without" / "out" / f"{name}.parquet"
+        )
+        assert_frame_equal(
+            result_with.sort(result_with.columns),
+            result_without.sort(result_without.columns),
+        )

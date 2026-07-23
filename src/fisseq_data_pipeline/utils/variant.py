@@ -2,9 +2,9 @@
 
 Defines :func:`classify_variant`, which parses a variant label (e.g. ``"A123G"``)
 into one of ``Frameshift``, ``3nt Deletion``, ``Nonsense``, ``WT``, ``Synonymous``,
-``Single Missense``, or ``Other``, and :func:`strip_variant_tag`, which removes an
-optional ``:<tag>`` metadata suffix (e.g. the ``:downsampled-half`` pseudo-variant
-tag produced by ``input.py``) from a variant label.
+``Single Missense``, or ``Other``. An optional ``:<tag>`` metadata suffix (e.g.
+the ``:downsampled-half`` pseudo-variant tag produced by ``input.py``) is
+stripped before classification.
 """
 
 import re
@@ -14,10 +14,8 @@ def classify_variant(v: str) -> str:
     """
     Classify a variant label string into a biological category.
 
-    Assumes ``v`` has already been tag-stripped (see :func:`strip_variant_tag`)
-    — a raw tagged label such as ``"M1K:downsampled-half"`` is not itself
-    parsed by this function's category rules and would not reliably classify
-    the same as its untagged base.
+    Any trailing ``:<tag>`` metadata suffix (e.g. ``"M1K:downsampled-half"``)
+    is stripped before classification.
 
     Parameters
     ----------
@@ -30,6 +28,7 @@ def classify_variant(v: str) -> str:
         One of: ``"Frameshift"``, ``"3nt Deletion"``, ``"Nonsense"``,
         ``"WT"``, ``"Synonymous"``, ``"Single Missense"``, or ``"Other"``.
     """
+    v = v.split(":", 1)[0]
     if "fs" in v:
         return "Frameshift"
     if v.endswith("-"):
@@ -48,22 +47,3 @@ def classify_variant(v: str) -> str:
     if m is None:
         return "Other"
     return "Synonymous" if m.group(1) == m.group(3) else "Single Missense"
-
-
-def strip_variant_tag(v: str) -> str:
-    """
-    Strip a trailing ``:<tag>`` suffix from a variant label, if present.
-
-    Parameters
-    ----------
-    v : str
-        Variant label, optionally suffixed with ``:<tag>`` (e.g.
-        ``"M1K:downsampled-half"``).
-
-    Returns
-    -------
-    str
-        The label with any ``:<tag>`` suffix removed. Returns ``v`` unchanged
-        if no ``:`` is present.
-    """
-    return v.split(":", 1)[0]

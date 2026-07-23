@@ -2,10 +2,9 @@ nextflow.enable.dsl = 2
 
 // INPUT: wraps fisseq-input. Runs once per YAML config file in
 // params.config_dir (optional upstream stage), producing one input/-ready
-// cell-level Parquet file from a variant-selection / downsampling spec
-// instead of a pre-staged raw batch file. Publishes into the same input/
-// directory pre-staged batches live in, so QC_FILTER treats both origins
-// identically.
+// cell-level Parquet file from a variant-selection spec instead of a
+// pre-staged raw batch file. Publishes into the same input/ directory
+// pre-staged batches live in, so QC_FILTER treats both origins identically.
 process INPUT {
     errorStrategy 'ignore'
     label 'process_low'

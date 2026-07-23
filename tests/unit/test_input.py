@@ -13,7 +13,6 @@ from polars.testing import assert_frame_equal
 import fisseq_data_pipeline.input as m
 from fisseq_data_pipeline.input import (
     InputStageConfig,
-    add_downsampled_pseudo_variants,
     classify_variants,
     filter_variants,
     load_and_concat,
@@ -201,79 +200,6 @@ class TestFilterVariants:
 
 
 # ---------------------------------------------------------------------------
-# add_downsampled_pseudo_variants
-# ---------------------------------------------------------------------------
-
-
-class TestAddDownsampledPseudoVariants:
-    def _base_df(self) -> pl.DataFrame:
-        return pl.DataFrame(
-            {
-                "aaChanges": ["A1A"] * 10,
-                "variant_base": ["A1A"] * 10,
-                "variant_class": ["Synonymous"] * 10,
-                "origin_file": ["f1"] * 10,
-                "origin_row_idx": list(range(10)),
-            }
-        )
-
-    def test_full_fraction_keeps_all_and_tags(self):
-        lf = self._base_df().lazy()
-        result = add_downsampled_pseudo_variants(
-            lf, downsample_classes=("Synonymous",), downsample_fraction=1.0, seed=0
-        ).collect()
-
-        assert result.shape[0] == 10
-        assert (result["aaChanges"] == "A1A:downsampled-half").all()
-
-    def test_zero_fraction_keeps_none(self):
-        lf = self._base_df().lazy()
-        result = add_downsampled_pseudo_variants(
-            lf, downsample_classes=("Synonymous",), downsample_fraction=0.0, seed=0
-        ).collect()
-
-        assert result.shape[0] == 0
-
-    def test_partial_fraction_is_deterministic_across_calls(self):
-        lf = self._base_df().lazy()
-        result1 = add_downsampled_pseudo_variants(
-            lf, downsample_classes=("Synonymous",), downsample_fraction=0.5, seed=7
-        ).collect()
-        result2 = add_downsampled_pseudo_variants(
-            lf, downsample_classes=("Synonymous",), downsample_fraction=0.5, seed=7
-        ).collect()
-
-        assert (
-            result1["origin_row_idx"].to_list() == result2["origin_row_idx"].to_list()
-        )
-        assert result1.shape[0] == 5
-
-    def test_different_seed_can_change_selection(self):
-        lf = self._base_df().lazy()
-        result_a = add_downsampled_pseudo_variants(
-            lf, downsample_classes=("Synonymous",), downsample_fraction=0.5, seed=0
-        ).collect()
-        result_b = add_downsampled_pseudo_variants(
-            lf, downsample_classes=("Synonymous",), downsample_fraction=0.5, seed=1
-        ).collect()
-
-        # Same count either way, but not guaranteed to be the identical subset.
-        assert result_a.shape[0] == result_b.shape[0] == 5
-
-    def test_ineligible_class_excluded(self):
-        df = self._base_df()
-        df = df.with_columns(pl.lit("WT").alias("variant_class"))
-        result = add_downsampled_pseudo_variants(
-            df.lazy(),
-            downsample_classes=("Synonymous",),
-            downsample_fraction=1.0,
-            seed=0,
-        ).collect()
-
-        assert result.shape[0] == 0
-
-
-# ---------------------------------------------------------------------------
 # select_output_columns
 # ---------------------------------------------------------------------------
 
@@ -296,6 +222,69 @@ def test_select_output_columns_keeps_identity_columns_unprefixed():
 
     for col in ("upBarcode", "aaChanges", "editDistance"):
         assert col in result.columns
+
+
+def _classified_lf():
+    return pl.DataFrame(
+        {
+            "upBarcode": ["bc1"],
+            "aaChanges": ["M1K"],
+            "editDistance": [0],
+            "variant_base": ["M1K"],
+            "variant_class": ["Single Missense"],
+            "origin_file": ["f1"],
+            "origin_row_idx": [0],
+            "Cells_AreaShape_Area": [1.0],
+            "Nuclei_Texture_Contrast": [2.0],
+        }
+    ).lazy()
+
+
+def test_select_output_columns_no_duplicate_or_lost_columns():
+    result = select_output_columns(_classified_lf()).collect()
+
+    assert len(result.columns) == len(set(result.columns))
+    assert set(result.columns) == {
+        "upBarcode",
+        "aaChanges",
+        "editDistance",
+        "meta_variant_base",
+        "meta_variant_class",
+        "meta_origin_file",
+        "meta_origin_row_idx",
+        "Cells_AreaShape_Area",
+        "Nuclei_Texture_Contrast",
+    }
+    for unprefixed in (
+        "variant_base",
+        "variant_class",
+        "origin_file",
+        "origin_row_idx",
+    ):
+        assert unprefixed not in result.columns
+
+
+def test_select_output_columns_allowlist_blocklist_ignore_metadata_columns():
+    result = select_output_columns(
+        _classified_lf(), feature_allowlist=["Cells_*"]
+    ).collect()
+
+    assert "Cells_AreaShape_Area" in result.columns
+    assert "Nuclei_Texture_Contrast" not in result.columns
+    # metadata columns still present, correctly prefixed, unaffected by allowlist
+    assert "meta_variant_base" in result.columns
+    assert "meta_variant_class" in result.columns
+    assert "meta_origin_file" in result.columns
+    assert "meta_origin_row_idx" in result.columns
+
+
+def test_select_output_columns_blocked_feature_not_recovered_via_meta_catchall():
+    result = select_output_columns(
+        _classified_lf(), feature_blocklist=["Nuclei_Texture_*"]
+    ).collect()
+
+    assert "Nuclei_Texture_Contrast" not in result.columns
+    assert "meta_Nuclei_Texture_Contrast" not in result.columns
 
 
 # ---------------------------------------------------------------------------
@@ -390,18 +379,12 @@ def _write_source(path, variants):
 def _write_config(
     path,
     source_path,
-    downsample_fraction=None,
-    downsample_seed=None,
     top_n_missense=None,
     convert_first=None,
     temp_dir=None,
 ):
     sources = source_path if isinstance(source_path, list) else [source_path]
     config = {"input_paths": [str(p) for p in sources]}
-    if downsample_fraction is not None:
-        config["downsample_fraction"] = downsample_fraction
-    if downsample_seed is not None:
-        config["downsample_seed"] = downsample_seed
     if top_n_missense is not None:
         config["top_n_missense"] = top_n_missense
     if convert_first is not None:
@@ -421,37 +404,6 @@ def _make_cfg(tmp_path, config_path, output_root=None):
             config_path=str(config_path),
         )
     )
-
-
-def test_main_downsampling_disabled_by_default(tmp_path):
-    source = tmp_path / "source.parquet"
-    _write_source(source, ["M1K"] * 10)
-    config_path = tmp_path / "config.yaml"
-    _write_config(config_path, source)  # no downsample_fraction key at all
-
-    with patch("fisseq_data_pipeline.input.setup_logging"):
-        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
-
-    result = pl.read_parquet(tmp_path / "out" / "output.parquet")
-    assert "downsampled-half" not in ":".join(result["aaChanges"].to_list())
-    assert result.shape[0] == 10
-
-
-def test_main_downsampling_enabled_when_set(tmp_path):
-    source = tmp_path / "source.parquet"
-    _write_source(source, ["M1K"] * 10)
-    config_path = tmp_path / "config.yaml"
-    _write_config(config_path, source, downsample_fraction=0.5)
-
-    with patch("fisseq_data_pipeline.input.setup_logging"):
-        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
-
-    result = pl.read_parquet(tmp_path / "out" / "output.parquet")
-    tagged = [
-        v for v in result["aaChanges"].to_list() if v.endswith(":downsampled-half")
-    ]
-    assert len(tagged) == 5
-    assert result.shape[0] == 15
 
 
 def test_main_top_n_missense_null_by_default_keeps_all_missense(tmp_path):
@@ -522,7 +474,7 @@ def test_main_blocked_feature_absent_from_output(tmp_path):
 # main() — convert_first / temp_dir
 # ---------------------------------------------------------------------------
 
-_STABLE_SORT_KEY = ["origin_file", "origin_row_idx", "aaChanges"]
+_STABLE_SORT_KEY = ["meta_origin_file", "meta_origin_row_idx", "aaChanges"]
 
 
 def _write_mixed_sources(tmp_path):
@@ -546,13 +498,12 @@ def test_main_convert_first_matches_non_converted_output(tmp_path):
     _write_config(
         config_converted,
         sources,
-        downsample_fraction=0.5,
-        downsample_seed=42,
+        top_n_missense=2,
         convert_first=True,
         temp_dir=temp_dir,
     )
     config_plain = tmp_path / "config_plain.yaml"
-    _write_config(config_plain, sources, downsample_fraction=0.5, downsample_seed=42)
+    _write_config(config_plain, sources, top_n_missense=2)
 
     with patch("fisseq_data_pipeline.input.setup_logging"):
         m.main.__wrapped__(_make_cfg(tmp_path / "run_a", config_converted))
@@ -628,7 +579,6 @@ def test_main_convert_first_false_ignores_temp_dir_and_tmpdir(tmp_path):
     _write_config(
         config_path,
         source,
-        downsample_fraction=0.5,
         top_n_missense=2,
         convert_first=False,
         temp_dir=config_temp_dir,
@@ -654,7 +604,7 @@ def test_main_convert_first_cleans_up_temp_file_after_success(tmp_path):
     _write_config(
         config_path,
         source,
-        downsample_fraction=0.5,
+        top_n_missense=2,
         convert_first=True,
         temp_dir=temp_dir,
     )
@@ -675,7 +625,7 @@ def test_main_convert_first_cleans_up_temp_file_on_failure(tmp_path):
     _write_config(
         config_path,
         source,
-        downsample_fraction=0.5,
+        top_n_missense=2,
         convert_first=True,
         temp_dir=temp_dir,
     )
@@ -703,7 +653,7 @@ def test_main_convert_first_temp_dir_falls_back_to_gettempdir(tmp_path):
     _write_source(source, ["M1K", "M2L", "A1A", "WT"] * 3)
 
     config_path = tmp_path / "config.yaml"
-    _write_config(config_path, source, downsample_fraction=0.5, convert_first=True)
+    _write_config(config_path, source, top_n_missense=2, convert_first=True)
 
     fallback_dir = tmp_path / "fallback"
     fallback_dir.mkdir()

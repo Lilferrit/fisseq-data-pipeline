@@ -2,10 +2,9 @@
 
 `fisseq-input` (Nextflow process `INPUT`, optional — gated by `params.config_dir`)
 reads a hand-authored YAML config describing one or more raw cell-score files
-(CSV or Parquet), classifies each row's variant, restricts to a fixed set of
-variant classes plus the most common missense variants, and optionally augments
-the result with reproducibly-downsampled "pseudo variant" rows for QC/calibration
-purposes. Writes a single `input/`-ready cell-level Parquet file.
+(CSV or Parquet), classifies each row's variant, and restricts to a fixed set of
+variant classes plus the most common missense variants. Writes a single
+`input/`-ready cell-level Parquet file.
 
 ## Config fields
 
@@ -14,15 +13,13 @@ Extends the common `output_dir` / `output_root` / `log_level` fields (see
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
-| `config_path` | **required** | Path to a separate YAML file (see below) describing the input files and downsampling behavior. Parsed independently of the Hydra CLI config. |
+| `config_path` | **required** | Path to a separate YAML file (see below) describing the input files and variant selection behavior. Parsed independently of the Hydra CLI config. |
 
 ### `config_path` YAML schema
 
 ```yaml
 input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
 top_n_missense: null              # optional, default null (keep all Single Missense variants)
-downsample_fraction: null         # optional, default null (disabled)
-downsample_seed: 0                # optional, default 0
 feature_allowlist_file: null      # optional, default null (no allowlist)
 feature_blocklist_file: null      # optional, default null (no blocklist)
 ```
@@ -32,13 +29,6 @@ feature_blocklist_file: null      # optional, default null (no blocklist)
   count) to keep, alongside Synonymous, WT, and Frameshift variants. Omit or
   set to `null` (the default) to keep all Single Missense variants without
   any top-N restriction.
-- `downsample_fraction` — if set to a value in `(0, 1]`, generates reproducibly
-  downsampled "pseudo variant" rows for the kept Synonymous and Single Missense
-  variants, tagged `<aaChanges>:downsampled-half` (e.g. `V123A` ->
-  `V123A:downsampled-half`). Disabled by default — omit or set to `null` to skip
-  pseudo-variant generation entirely.
-- `downsample_seed` — seed for the deterministic downsample selection; only used
-  when `downsample_fraction` is set.
 - `feature_allowlist_file` / `feature_blocklist_file` — optional paths to plain
   text files, one fnmatch-style glob pattern per line (e.g.
   `Cells_AreaShape_*`), matched against feature column names. If an allowlist
@@ -51,8 +41,8 @@ feature_blocklist_file: null      # optional, default null (no blocklist)
 
 Written to `output_dir`, prefixed `{output_root}.` when `output_root` is set:
 
-- `output.parquet` — the selected/filtered (and optionally downsampled) cells,
-  ready to be placed in `<input_dir>/input/`
+- `output.parquet` — the selected/filtered cells, ready to be placed in
+  `<input_dir>/input/`
 
 ## Example
 

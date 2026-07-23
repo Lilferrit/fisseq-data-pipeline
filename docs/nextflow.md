@@ -60,7 +60,7 @@ task doesn't abort the whole run.
 | `INPUT` | `input.nf` | `fisseq-input` | per config file, optional (`params.config_dir`) |
 | `QC_FILTER` | `qc_filter.nf` | `fisseq-qc-filter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `fisseq-normalize` | per batch |
-| `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice |
+| `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice, optional (`params.global`) |
 | `OVWT_BATCHWISE` | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch |
 | `OVWT_GLOBAL` | `ovwt_global.nf` | `fisseq-ovwt` | global, optional (`params.global`) |
 | `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `fisseq-ovwt-cell-scores` | per batch |
@@ -73,7 +73,7 @@ task doesn't abort the whole run.
 | `FINALIZE_FEATURE_SELECT` (aliased) | `finalize_feature_select.nf` | `fisseq-feature-select` | per (batch or global) |
 | `BATCH_CORRECT_FIT` | `batch_correct_fit.nf` | `fisseq-batch-correct-fit` | global, waits for all `QC_FILTER` |
 | `BATCH_CORRECT_TRANSFORM` | `batch_correct_transform.nf` | `fisseq-batch-correct-transform` | per batch |
-| `PERMANOVA` (aliased `_NORMALIZED` / `_BATCH_CORRECTED`) | `permanova.nf` | `fisseq-permanova` | global, twice |
+| `PERMANOVA` (aliased `_NORMALIZED` / `_BATCH_CORRECTED`) | `permanova.nf` | `fisseq-permanova` | global, twice, optional (`params.global`) |
 
 "Aliased" processes are declared once and invoked twice in `workflows/fisseq.nf` via
 `include { X as Y }` (Nextflow forbids calling one process twice under its own name
@@ -142,6 +142,8 @@ Defaults live in `nextflow.config` at the repo root:
 | `--bc_threshold` | `10` | Minimum cells per barcode (QC filter). |
 | `--variant_bc_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
 | `--edit_distance_threshold` | `1` | Maximum allowed edit distance (QC filter). |
+| `--downsample_fraction` | `null` | Optional QC-filter pseudo-variant downsampling fraction `(0, 1]`; drawn from cells that already passed QC. `null` disables it. |
+| `--downsample_seed` | `0` | Seed for the deterministic downsample selection. |
 | `--bvb_min_cells` | `50` | Minimum total cells for a variant to be profiled in batch-vs-batch. |
 | `--bvb_min_batches` | `2` | Minimum unique batches a variant must appear in for batch-vs-batch. |
 | `--permanova_n_permutations` | `999` | Label permutations for the per-variant PERMANOVA p-value. |
