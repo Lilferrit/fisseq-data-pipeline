@@ -37,19 +37,23 @@ This runs the default `FisseqPipeline`, which chains every stage described in
 
 1. `QC_FILTER` — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).
-2. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (global).
+2. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (global, if
+   `params.global`).
 3. `NORMALIZE` — z-score normalization fit on WT control cells (per batch).
-4. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (global).
+4. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (global, if
+   `params.global`).
 5. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification.
 6. Bootstrap feature selection (batchwise and, if `params.global`, global) —
    see [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
    six-stage breakdown.
-7. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction.
+7. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
+   (always runs, regardless of `params.global`).
 8. `PERMANOVA` — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells.
+   on batch-corrected cells (if `params.global`).
 
 Override any [parameter](nextflow.md#parameters) on the command line, e.g. to
-adjust QC thresholds or skip the global feature-selection branch:
+adjust QC thresholds or skip the global-only processes (`OVWT_GLOBAL`, the global
+feature-selection branch, `BATCHVSBATCH`, and `PERMANOVA`):
 
 ```bash
 nextflow run . \
@@ -81,7 +85,8 @@ The two results most analyses care about:
   per-variant, feature-selected profiles.
 - `<input_dir>/permanova/permanova.parquet` and
   `<input_dir>/batch_correction/permanova/permanova.parquet` — per-variant
-  batch-effect PERMANOVA results, before and after batch correction.
+  batch-effect PERMANOVA results, before and after batch correction (present
+  only if `params.global`).
 
 ## 5. Running individual steps
 

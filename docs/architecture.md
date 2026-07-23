@@ -8,7 +8,7 @@ default `FisseqPipeline`; see [Nextflow Workflow](nextflow.md) for the lighter
 documented in the [CLI Reference](cli/qcfilter.md).
 
 ```text
-config/*.yaml  (optional, one file per batch — variant selection + downsampling spec)
+config/*.yaml  (optional, one file per batch — variant selection spec)
      │
      ▼
    INPUT       (per config, optional — gated by params.config_dir)
@@ -19,11 +19,11 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
      ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
      │
-     ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER)
+     ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER; skipped if params.global = false)
      ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │
-     ├──► BATCHVSBATCH (post)      (global — waits for all batches)
+     ├──► BATCHVSBATCH (post)      (global — waits for all batches; skipped if params.global = false)
      ├──► OVWT_BATCHWISE           (per batch)
      ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
      └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
@@ -41,9 +41,9 @@ QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
              BATCH_CORRECT_TRANSFORM (per batch)
                     │
                     ▼
-             PERMANOVA (batch-corrected)
+             PERMANOVA (batch-corrected)  (skipped if params.global = false)
 
-NORMALIZE (all batches) ──► PERMANOVA (normalized)
+NORMALIZE (all batches) ──► PERMANOVA (normalized)  (skipped if params.global = false)
 ```
 
 `PERMANOVA` and `BATCHVSBATCH` are each a single parameterized Nextflow process
@@ -58,14 +58,16 @@ under its own name in one workflow):
 Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection
 branch, `PERMANOVA`, `BATCH_CORRECT_FIT`) read published output files from disk via
 glob patterns after all upstream per-batch processes finish, rather than consuming
-Nextflow channel outputs directly.
+Nextflow channel outputs directly. `params.global` (default `true`) gates
+`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection branch, and
+`PERMANOVA` — `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` always run.
 
 ## Stages
 
 | Stage | Python module | Nextflow process(es) | Produces |
 | ----- | -------------- | --------------------- | -------- |
-| Input generation (optional) | `input.py` | `INPUT` | `input/<name>.parquet`, from a YAML variant-selection/downsampling spec |
-| QC filtering | `qcfilter.py` | `QC_FILTER` | `filtered_cells.parquet`, `barcode_counts.parquet`, `variants_per_barcode.parquet` |
+| Input generation (optional) | `input.py` | `INPUT` | `input/<name>.parquet`, from a YAML variant-selection spec |
+| QC filtering | `qcfilter.py` | `QC_FILTER` | `filtered_cells.parquet` (optionally augmented with downsampled pseudo-variant rows for QC/calibration, drawn from QC-surviving cells), `barcode_counts.parquet`, `variants_per_barcode.parquet` |
 | Batch-effect check (pre) | `batchvsbatch.py` | `BATCHVSBATCH` (pre) | `results.parquet` |
 | Normalization | `normalize.py` | `NORMALIZE` | normalized cells + `normalizer.parquet` |
 | Batch-effect check (post) | `batchvsbatch.py` | `BATCHVSBATCH` (post) | `results.parquet` |

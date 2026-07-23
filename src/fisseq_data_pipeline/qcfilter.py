@@ -5,13 +5,23 @@ pipeline stage). Reads one or more raw CSV/Parquet cell files, renames columns t
 canonical ``meta_*`` names, and applies sequential edit-distance, barcode-count,
 and variant-barcode-count filters. Writes ``filtered_cells.parquet``,
 ``barcode_counts.parquet``, and ``variants_per_barcode.parquet``.
+
+If ``downsample_fraction`` is set, ``filtered_cells.parquet`` is additionally
+augmented with reproducibly-downsampled "pseudo variant" rows for
+QC/calibration purposes, built from the Synonymous and Single Missense cells
+that already survived the three QC filters above (not the raw pre-QC
+population — this is what makes the pseudo-variants a valid calibration of
+the post-QC analysis population). ``barcode_counts.parquet`` and
+``variants_per_barcode.parquet`` are computed before this step runs, so they
+never include pseudo-variant rows. Disabled by default; see
+:func:`add_downsampled_pseudo_variants`.
 """
 
 import dataclasses
 import logging
 import pathlib
 from os import PathLike
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import hydra
 import polars as pl
@@ -25,6 +35,10 @@ from .utils.constants import (
     META_VARIANT_TAG_COL,
 )
 from .utils.log import setup_logging
+from .utils.variant import classify_variant
+
+DOWNSAMPLE_TAG = "downsampled-half"
+DOWNSAMPLE_CLASSES = ("Synonymous", "Single Missense")
 
 
 @dataclasses.dataclass
@@ -56,6 +70,14 @@ class QcFilterConfig(AppConfig):
     label_column : str
         Name of the output label column after renaming. Defaults to
         ``"meta_aa_changes"``.
+    downsample_fraction : Optional[float]
+        If set to a value in ``(0, 1]``, generates reproducibly downsampled
+        "pseudo variant" rows (see :func:`add_downsampled_pseudo_variants`)
+        from the Synonymous and Single Missense cells that survived QC
+        filtering. Defaults to ``None`` (disabled).
+    downsample_seed : int
+        Seed for the deterministic downsample selection; only used when
+        ``downsample_fraction`` is set. Defaults to ``0``.
     """
 
     cell_files: Any = MISSING
@@ -66,6 +88,8 @@ class QcFilterConfig(AppConfig):
     aa_changes_col_name: str = "aaChanges"
     edit_distance_col_name: str = "editDistance"
     label_column: str = "meta_aa_changes"
+    downsample_fraction: Optional[float] = None
+    downsample_seed: int = 0
 
 
 _cs = ConfigStore.instance()
@@ -204,6 +228,60 @@ def add_qc_queries(
     return lf, barcode_count_lf, variants_per_barcode_lf
 
 
+def add_downsampled_pseudo_variants(
+    lf: pl.LazyFrame,
+    cfg: DictConfig,
+    downsample_classes: tuple[str, ...],
+    downsample_fraction: float,
+    seed: int,
+) -> pl.LazyFrame:
+    """
+    For QC-surviving rows whose classified ``cfg.label_column`` value is in
+    `downsample_classes`, reproducibly keep ~`downsample_fraction` of each
+    variant's rows and mark them as a "pseudo variant" by setting
+    `META_VARIANT_TAG_COL` directly to `DOWNSAMPLE_TAG`. The tag-split step in
+    :func:`filter_columns` has already run earlier in this pipeline, so these
+    rows never go through it — this is the terminal write of the tag, not a
+    re-parse.
+
+    Selection is deterministic given `seed`: each row gets a seeded hash of
+    its (`meta_source_file`, `meta_source_file_idx`) identity — present on
+    every row regardless of whether it arrived via the optional INPUT stage
+    or as a raw pre-staged file — rows are ranked by that hash within their
+    `cfg.label_column` group, and the lowest floor(fraction * group_size)
+    ranks are kept.
+    """
+    logging.info(
+        "Building downsampled pseudo variants for classes %s (fraction=%.3f, seed=%d)",
+        downsample_classes,
+        downsample_fraction,
+        seed,
+    )
+    eligible = lf.filter(
+        pl.col(cfg.label_column)
+        .map_elements(classify_variant, return_dtype=pl.String)
+        .is_in(downsample_classes)
+    )
+
+    ranked = eligible.with_columns(
+        pl.struct(["meta_source_file", "meta_source_file_idx"])
+        .hash(seed=seed)
+        .alias("_rand"),
+    ).with_columns(
+        pl.col("_rand").rank(method="ordinal").over(cfg.label_column).alias("_rank"),
+        pl.len().over(cfg.label_column).alias("_group_size"),
+    )
+
+    pseudo = (
+        ranked.filter(
+            pl.col("_rank") <= (pl.col("_group_size") * downsample_fraction).floor()
+        )
+        .drop(["_rand", "_rank", "_group_size"])
+        .with_columns(pl.lit(DOWNSAMPLE_TAG).alias(META_VARIANT_TAG_COL))
+    )
+    return pseudo
+
+
 def read_file(cell_file_path: pathlib.Path) -> pl.LazyFrame:
     """
     Read a single cell file into a lazy frame.
@@ -314,7 +392,12 @@ def main(cfg: DictConfig) -> None:
     2. Retain only QC-relevant columns via :func:`filter_columns`.
     3. Apply edit-distance, barcode-count, and variant-count filters via
        :func:`add_qc_queries`.
-    4. Write three output Parquet files to ``output_dir``.
+    4. If ``downsample_fraction`` is set, add downsampled pseudo-variant rows
+       (built only from the QC survivors of step 3) via
+       :func:`add_downsampled_pseudo_variants`; otherwise skip this step
+       entirely. ``barcode_counts``/``variants_per_barcode`` reflect step 3's
+       output and never include these pseudo rows.
+    5. Write three output Parquet files to ``output_dir``.
 
     Output files
     ------------
@@ -354,6 +437,19 @@ def main(cfg: DictConfig) -> None:
     combined_lf, barcode_count_lf, variants_per_barcode_lf = add_qc_queries(
         combined_lf, cfg
     )
+
+    if qc_cfg.downsample_fraction is not None:
+        logging.info("Adding downsampled pseudo-variant rows")
+        pseudo_lf = add_downsampled_pseudo_variants(
+            combined_lf,
+            cfg,
+            downsample_classes=DOWNSAMPLE_CLASSES,
+            downsample_fraction=qc_cfg.downsample_fraction,
+            seed=qc_cfg.downsample_seed,
+        )
+        combined_lf = pl.concat([combined_lf, pseudo_lf], how="vertical_relaxed")
+    else:
+        logging.info("downsample_fraction not set; skipping pseudo-variant generation")
 
     logging.info("Writing output files to %s", output_dir)
     for name, lf in [
