@@ -677,6 +677,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../anovablocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ANOVA Block-list
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ovwt/" class="md-nav__link">
         
   
@@ -1026,6 +1049,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../api/anovablocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    anovablocklist
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../api/ovwt/" class="md-nav__link">
         
   
@@ -1234,11 +1280,13 @@
 
 <h1 id="batch-vs-batch">Batch vs. Batch<a class="headerlink" href="#batch-vs-batch" title="Permanent link">&para;</a></h1>
 <p><code>fisseq-batch-vs-batch</code> (Nextflow process <code>BATCHVSBATCH</code>, run once pre- and once
-post-normalization) detects per-variant batch effects using a multiclass XGBoost
-classifier. For each variant, a single model is trained to predict the batch label
-from cell morphology features. From its predicted probabilities, a one-vs-rest ROC
-AUC and Mann-Whitney U p-value are extracted for every (variant, batch) pair,
-quantifying how distinguishable each batch is from the others within that variant.</p>
+post-normalization — <code>_PRE</code> unfiltered, <code>_POST</code> filtered against the
+<a href="../anovablocklist/">ANOVA block-list</a>) detects per-variant batch effects using a
+multiclass XGBoost classifier. For each variant, a single model is trained to
+predict the batch label from cell morphology features. From its predicted
+probabilities, a one-vs-rest ROC AUC and Mann-Whitney U p-value are extracted
+for every (variant, batch) pair, quantifying how distinguishable each batch is
+from the others within that variant.</p>
 <p>The global 80/10/10 train/test/val split is stratified on a composite (variant,
 batch) key so every variant's rows in each split span all of its batches. One
 model is trained per variant (not per (variant, batch) pair).</p>
@@ -1292,6 +1340,11 @@ model is trained per variant (not per (variant, batch) pair).</p>
 <td><code>use_parent_name</code></td>
 <td><code>false</code></td>
 <td>If <code>true</code>, derive the batch label from each input file's parent directory name rather than its stem — set this when input files share a filename but live in different subdirectories (e.g. <code>qc_filter/*/filtered_cells.parquet</code>).</td>
+</tr>
+<tr>
+<td><code>block_list_file</code></td>
+<td><code>null</code></td>
+<td>Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>fisseq-anova-blocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded before splitting/training.</td>
 </tr>
 <tr>
 <td><code>xgboost.num_boost_round</code></td>

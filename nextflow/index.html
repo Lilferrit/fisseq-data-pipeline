@@ -783,6 +783,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/anovablocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ANOVA Block-list
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli/ovwt/" class="md-nav__link">
         
   
@@ -1046,6 +1069,29 @@
   
   <span class="md-ellipsis">
     anova
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/anovablocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    anovablocklist
     
   </span>
   
@@ -1401,19 +1447,19 @@ task doesn't abort the whole run.</p>
 <td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
 <td><code>batchvsbatch.nf</code></td>
 <td><code>fisseq-batch-vs-batch</code></td>
-<td>global, twice, optional (<code>params.global</code>)</td>
+<td>global, twice, optional (<code>params.global</code>); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
-<td><code>OVWT_BATCHWISE</code></td>
+<td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FILTERED</code>)</td>
 <td><code>ovwt_batchwise.nf</code></td>
 <td><code>fisseq-ovwt</code></td>
-<td>per batch</td>
+<td>per batch, twice; <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>, <code>_FILTERED</code> does</td>
 </tr>
 <tr>
 <td><code>OVWT_GLOBAL</code></td>
 <td><code>ovwt_global.nf</code></td>
 <td><code>fisseq-ovwt</code></td>
-<td>global, optional (<code>params.global</code>)</td>
+<td>global, optional (<code>params.global</code>); always filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
@@ -1480,6 +1526,12 @@ task doesn't abort the whole run.</p>
 <td><code>anova.nf</code></td>
 <td><code>fisseq-anova</code></td>
 <td>global, twice, always runs</td>
+</tr>
+<tr>
+<td><code>ANOVA_BLOCKLIST</code></td>
+<td><code>anova_blocklist.nf</code></td>
+<td><code>fisseq-anova-blocklist</code></td>
+<td>global, always runs; consumes <code>ANOVA_NORMALIZED</code>'s output</td>
 </tr>
 </tbody>
 </table>
@@ -1623,6 +1675,11 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--global</code></td>
 <td><code>true</code></td>
 <td>Whether to run <code>OVWT_GLOBAL</code> and the global feature-selection branch.</td>
+</tr>
+<tr>
+<td><code>--anova_pvalue_threshold</code></td>
+<td><code>0.05</code></td>
+<td><code>ANOVA_BLOCKLIST</code>: a feature is blocked (<code>feature_ok = false</code>) when its <code>ANOVA_NORMALIZED</code> p-value is strictly less than this threshold (a statistically significant batch effect was detected).</td>
 </tr>
 </tbody>
 </table>

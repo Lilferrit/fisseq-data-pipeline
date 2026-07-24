@@ -9,7 +9,7 @@
       
       
       
-        <link rel="prev" href="../anova/">
+        <link rel="prev" href="../anovablocklist/">
       
       
         <link rel="next" href="../ovwtcellscores/">
@@ -674,6 +674,29 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../anovablocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ANOVA Block-list
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1026,6 +1049,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../api/anovablocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    anovablocklist
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../api/ovwt/" class="md-nav__link">
         
   
@@ -1233,12 +1279,15 @@
 
 
 <h1 id="one-vs-wt">One-vs-WT<a class="headerlink" href="#one-vs-wt" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-ovwt</code> (Nextflow processes <code>OVWT_BATCHWISE</code> and <code>OVWT_GLOBAL</code>) trains a
+<p><code>fisseq-ovwt</code> (Nextflow processes <code>OVWT_BATCHWISE</code>, aliased into an unfiltered
+and a filtered invocation, and <code>OVWT_GLOBAL</code>, always filtered) trains a
 separate XGBoost binary classifier for each non-wildtype variant, treating the
 task as "this variant vs. wildtype." An 80/10/10 train/test/val split (stratified
 by label) is shared across all variants. Wildtype cells can be downsampled to
 reduce class imbalance. Results (per-variant AUROC and accuracy on train/val/test
-splits) and all trained models are serialized to disk.</p>
+splits) and all trained models are serialized to disk. <code>block_list_file</code> (see
+<a href="../anovablocklist/">ANOVA Block-list</a>) optionally excludes features with a
+significant batch effect before splitting/training.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
@@ -1289,6 +1338,11 @@ splits) and all trained models are serialized to disk.</p>
 <td><code>save_splits</code></td>
 <td><code>true</code></td>
 <td>Write lightweight train/test/val index files (row position + source file) to <code>output_dir</code>.</td>
+</tr>
+<tr>
+<td><code>block_list_file</code></td>
+<td><code>null</code></td>
+<td>Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>fisseq-anova-blocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded before splitting/training.</td>
 </tr>
 <tr>
 <td><code>xgboost.num_boost_round</code></td>
