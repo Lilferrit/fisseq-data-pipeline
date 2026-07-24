@@ -12,6 +12,7 @@ nav:
       - Feature Selection: cli/features.md
       - Batch Correction: cli/batchcorrect.md
       - ANOVA: cli/anova.md
+      - ANOVA Block-list: cli/anovablocklist.md
       - One-vs-WT: cli/ovwt.md
       - OvWT Cell Scores: cli/ovwtcellscores.md
       - Batch vs. Batch: cli/batchvsbatch.md
@@ -23,6 +24,7 @@ nav:
       - features: api/features.md
       - batchcorrect: api/batchcorrect.md
       - anova: api/anova.md
+      - anovablocklist: api/anovablocklist.md
       - ovwt: api/ovwt.md
       - ovwtcellscores: api/ovwtcellscores.md
       - batchvsbatch: api/batchvsbatch.md

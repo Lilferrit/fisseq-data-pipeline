@@ -49,8 +49,12 @@ workflow OvwtPipeline {
     // Step 1: QC filter (per batch)
     qc_ch = QC_FILTER(input_ch).qc_outputs
 
-    // Step 2: Batchwise OvWT — trains models and saves split index files
-    ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb -> [stem, fc] }
+    // Step 2: Batchwise OvWT — trains models and saves split index files.
+    // OVWT_BATCHWISE is shared with FisseqPipeline, which parameterizes it
+    // over block_list_file/publish_subdir (see modules/local/ovwt_batchwise.nf);
+    // OvwtPipeline doesn't run ANOVA at all, so it always passes block_list_file=null
+    // (unfiltered) and preserves the original ovwt_batchwise/ output path.
+    ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb -> tuple(stem, fc, null, "ovwt_batchwise") }
     OVWT_BATCHWISE(ovwt_input_ch)
 
     // Step 3: Score test-set cells via the saved index (auto-detected by load_input)

@@ -60,9 +60,9 @@ task doesn't abort the whole run.
 | `INPUT` | `input.nf` | `fisseq-input` | per config file, optional (`params.config_dir`) |
 | `QC_FILTER` | `qc_filter.nf` | `fisseq-qc-filter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `fisseq-normalize` | per batch |
-| `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice, optional (`params.global`) |
-| `OVWT_BATCHWISE` | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch |
-| `OVWT_GLOBAL` | `ovwt_global.nf` | `fisseq-ovwt` | global, optional (`params.global`) |
+| `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice, optional (`params.global`); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
+| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FILTERED`) | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch, twice; `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`, `_FILTERED` does |
+| `OVWT_GLOBAL` | `ovwt_global.nf` | `fisseq-ovwt` | global, optional (`params.global`); always filtered against `ANOVA_BLOCKLIST` |
 | `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `fisseq-ovwt-cell-scores` | per batch |
 | `AGGREGATE_FEATURE_TYPE` (aliased `_BATCHWISE` / `_GLOBAL`) | `aggregate_feature_type.nf` | `fisseq-aggregate-feature-type` | per (batch or global) × feature type |
 | `GENERATE_SPLIT` (aliased) | `generate_split.nf` | `fisseq-generate-split` | per (batch or global) × bootstrap replicate |
@@ -74,6 +74,7 @@ task doesn't abort the whole run.
 | `BATCH_CORRECT_FIT` | `batch_correct_fit.nf` | `fisseq-batch-correct-fit` | global, waits for all `QC_FILTER` |
 | `BATCH_CORRECT_TRANSFORM` | `batch_correct_transform.nf` | `fisseq-batch-correct-transform` | per batch |
 | `ANOVA` (aliased `_NORMALIZED` / `_BATCH_CORRECTED`) | `anova.nf` | `fisseq-anova` | global, twice, always runs |
+| `ANOVA_BLOCKLIST` | `anova_blocklist.nf` | `fisseq-anova-blocklist` | global, always runs; consumes `ANOVA_NORMALIZED`'s output |
 
 "Aliased" processes are declared once and invoked twice in `workflows/fisseq.nf` via
 `include { X as Y }` (Nextflow forbids calling one process twice under its own name
@@ -152,6 +153,7 @@ Defaults live in `nextflow.config` at the repo root:
 | `--feature_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (all 7 of `aggregate.py`'s aggregators). |
 | `--bootstrap` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
 | `--global` | `true` | Whether to run `OVWT_GLOBAL` and the global feature-selection branch. |
+| `--anova_pvalue_threshold` | `0.05` | `ANOVA_BLOCKLIST`: a feature is blocked (`feature_ok = false`) when its `ANOVA_NORMALIZED` p-value is strictly less than this threshold (a statistically significant batch effect was detected). |
 
 ## Profiles
 

@@ -1,11 +1,14 @@
 # One-vs-WT
 
-`fisseq-ovwt` (Nextflow processes `OVWT_BATCHWISE` and `OVWT_GLOBAL`) trains a
+`fisseq-ovwt` (Nextflow processes `OVWT_BATCHWISE`, aliased into an unfiltered
+and a filtered invocation, and `OVWT_GLOBAL`, always filtered) trains a
 separate XGBoost binary classifier for each non-wildtype variant, treating the
 task as "this variant vs. wildtype." An 80/10/10 train/test/val split (stratified
 by label) is shared across all variants. Wildtype cells can be downsampled to
 reduce class imbalance. Results (per-variant AUROC and accuracy on train/val/test
-splits) and all trained models are serialized to disk.
+splits) and all trained models are serialized to disk. `block_list_file` (see
+[ANOVA Block-list](anovablocklist.md)) optionally excludes features with a
+significant batch effect before splitting/training.
 
 ## Config fields
 
@@ -21,6 +24,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Nextflow Workflow](../nextflow.md#parameters). |
 | `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
 | `save_splits` | `true` | Write lightweight train/test/val index files (row position + source file) to `output_dir`. |
+| `block_list_file` | `null` | Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `fisseq-anova-blocklist`'s output). Features where `feature_ok` is `false` are excluded before splitting/training. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
 | `xgboost.weigh_samples` | `true` | Use balanced sample weights to handle class imbalance. |

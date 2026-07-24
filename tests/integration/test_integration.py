@@ -35,6 +35,12 @@ _FEATURE_COLS = [
 ]
 
 # Low thresholds so the small synthetic dataset passes every pipeline step.
+# anova_pvalue_threshold is raised well above the default 0.05: with this
+# synthetic dataset's fixed seeds, the 5 feature columns have no real batch
+# effect (ANOVA p-values ~0.16-0.98), so the default threshold blocks none of
+# them -- making the filtered and unfiltered OvWT/batch-vs-batch runs
+# indistinguishable for test purposes. 0.5 blocks 4 of the 5 features,
+# exercising a non-trivial (some blocked, some not) split.
 _NF_PARAMS = [
     "--bc_threshold",
     "3",
@@ -50,6 +56,8 @@ _NF_PARAMS = [
     "2",
     "--bootstrap",
     "3",
+    "--anova_pvalue_threshold",
+    "0.5",
 ]
 
 _PROJECT_ROOT = Path(__file__).parents[2]
@@ -202,6 +210,15 @@ def test_pipeline_ovwt_batchwise_outputs(pipeline_outputs, batch_stem):
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_ovwt_batchwise_filtered_outputs(pipeline_outputs, batch_stem):
+    exp_dir, _ = pipeline_outputs
+    batch_dir = exp_dir / "ovwt_batchwise_filtered" / batch_stem
+    assert (batch_dir / "results.parquet").exists()
+    assert (batch_dir / "models.pkl").exists()
+    assert (batch_dir / "test_index.parquet").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
 def test_pipeline_ovwt_batchwise_test_index_columns(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(exp_dir / "ovwt_batchwise" / batch_stem / "test_index.parquet")
@@ -233,6 +250,19 @@ def test_pipeline_anova_outputs(pipeline_outputs):
     assert (exp_dir / "anova" / "anova.parquet").exists()
 
 
+def test_pipeline_anova_blocklist_outputs(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    assert (exp_dir / "anova_blocklist" / "anova_blocklist.parquet").exists()
+
+
+def test_anova_blocklist_has_expected_columns(pipeline_outputs):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "anova_blocklist" / "anova_blocklist.parquet")
+    expected = {"feature", "p_value", "feature_ok"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
 # ---------------------------------------------------------------------------
 # Pipeline output content tests
 # ---------------------------------------------------------------------------
@@ -245,9 +275,9 @@ def test_normalized_cells_wt_mean_near_zero(pipeline_outputs, batch_stem):
     wt = df.filter(pl.col("meta_aa_changes") == "WT")
     feature_cols = [c for c in df.columns if not c.startswith("meta_")]
     for col in feature_cols:
-        assert abs(wt[col].drop_nulls().mean()) < 0.5, (
-            f"WT mean for {col} not near zero after normalization"
-        )
+        assert (
+            abs(wt[col].drop_nulls().mean()) < 0.5
+        ), f"WT mean for {col} not near zero after normalization"
 
 
 @pytest.mark.parametrize("stage", ["pre", "post"])
@@ -352,9 +382,9 @@ def test_batch_correction_wt_means_converge_across_batches(pipeline_outputs):
     for col in feature_cols:
         mean1 = wt1[col].drop_nulls().mean()
         mean2 = wt2[col].drop_nulls().mean()
-        assert abs(mean1 - mean2) < 0.5, (
-            f"WT mean for {col} did not converge across batches after batch correction"
-        )
+        assert (
+            abs(mean1 - mean2) < 0.5
+        ), f"WT mean for {col} did not converge across batches after batch correction"
 
 
 # ---------------------------------------------------------------------------
