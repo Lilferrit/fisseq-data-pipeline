@@ -707,12 +707,12 @@
   
   
     <li class="md-nav__item">
-      <a href="cli/permanova/" class="md-nav__link">
+      <a href="cli/anova/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    PERMANOVA
+    ANOVA
     
   </span>
   
@@ -987,12 +987,12 @@
   
   
     <li class="md-nav__item">
-      <a href="api/permanova/" class="md-nav__link">
+      <a href="api/anova/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    permanova
+    anova
     
   </span>
   
@@ -1222,7 +1222,7 @@ population differs from wildtype (WT) controls using morphological features.</p>
 <li><strong><a href="nextflow/">Nextflow Workflow</a></strong> — the Nextflow processes, how they're wired
   together, and how to run the pipeline (params, profiles).</li>
 <li><strong>CLI Reference</strong> — one page per Python entry point (QC filter, normalize,
-  aggregate, feature selection, batch correction, PERMANOVA, OvWT, OvWT cell
+  aggregate, feature selection, batch correction, ANOVA, OvWT, OvWT cell
   scores, batch-vs-batch), each with its config fields and a runnable example.</li>
 <li><strong>API Reference</strong> — full function/class-level documentation for every module,
   generated from source docstrings.</li>
@@ -1243,9 +1243,9 @@ population differs from wildtype (WT) controls using morphological features.</p>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>     ├──► OVWT_BATCHWISE             (per batch)
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>     ├──► OVWT_GLOBAL                (global, optional — params.global)
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>     ├──► Feature selection          (batchwise always; global optional)
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>     └──► PERMANOVA (normalized)     (global, optional — params.global)
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>     └──► ANOVA (normalized)         (global — always runs)
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► PERMANOVA (batch-corrected)  (optional — params.global)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► ANOVA (batch-corrected)  (always runs)
 </code></pre></div>
 <p>See <a href="architecture/">Architecture</a> for the full diagram and stage-by-stage detail.</p>
 <p>For a repo overview and quick start, see the

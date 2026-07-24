@@ -760,12 +760,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/permanova/" class="md-nav__link">
+      <a href="../cli/anova/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    PERMANOVA
+    ANOVA
     
   </span>
   
@@ -1040,12 +1040,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/permanova/" class="md-nav__link">
+      <a href="../api/anova/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    permanova
+    anova
     
   </span>
   
@@ -1336,7 +1336,7 @@
 <td><code>fisseq</code> (default)</td>
 <td><code>FisseqPipeline</code></td>
 <td><code>workflows/fisseq.nf</code></td>
-<td>Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → PERMANOVA)</td>
+<td>Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → ANOVA)</td>
 </tr>
 <tr>
 <td><code>ovwt</code></td>
@@ -1476,10 +1476,10 @@ task doesn't abort the whole run.</p>
 <td>per batch</td>
 </tr>
 <tr>
-<td><code>PERMANOVA</code> (aliased <code>_NORMALIZED</code> / <code>_BATCH_CORRECTED</code>)</td>
-<td><code>permanova.nf</code></td>
-<td><code>fisseq-permanova</code></td>
-<td>global, twice, optional (<code>params.global</code>)</td>
+<td><code>ANOVA</code> (aliased <code>_NORMALIZED</code> / <code>_BATCH_CORRECTED</code>)</td>
+<td><code>anova.nf</code></td>
+<td><code>fisseq-anova</code></td>
+<td>global, twice, always runs</td>
 </tr>
 </tbody>
 </table>
@@ -1593,11 +1593,6 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--bvb_min_batches</code></td>
 <td><code>2</code></td>
 <td>Minimum unique batches a variant must appear in for batch-vs-batch.</td>
-</tr>
-<tr>
-<td><code>--permanova_n_permutations</code></td>
-<td><code>999</code></td>
-<td>Label permutations for the per-variant PERMANOVA p-value.</td>
 </tr>
 <tr>
 <td><code>--ovwt_min_cells</code></td>

@@ -727,12 +727,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/permanova/" class="md-nav__link">
+      <a href="../cli/anova/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    PERMANOVA
+    ANOVA
     
   </span>
   
@@ -1007,12 +1007,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/permanova/" class="md-nav__link">
+      <a href="../api/anova/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    permanova
+    anova
     
   </span>
   
@@ -1284,25 +1284,25 @@ documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
 <a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>             BATCH_CORRECT_TRANSFORM (per batch)
 <a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>                    │
 <a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>                    ▼
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>             PERMANOVA (batch-corrected)  (skipped if params.global = false)
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>             ANOVA (batch-corrected)  (always runs)
 <a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>NORMALIZE (all batches) ──► PERMANOVA (normalized)  (skipped if params.global = false)
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>NORMALIZE (all batches) ──► ANOVA (normalized)  (always runs)
 </code></pre></div>
-<p><code>PERMANOVA</code> and <code>BATCHVSBATCH</code> are each a single parameterized Nextflow process
+<p><code>ANOVA</code> and <code>BATCHVSBATCH</code> are each a single parameterized Nextflow process
 invoked twice via <code>include { X as Y }</code> aliasing (a process cannot be called twice
 under its own name in one workflow):</p>
 <ul>
 <li><code>BATCHVSBATCH_PRE</code> runs on QC-filtered cells (<code>qc_filter/*/filtered_cells.parquet</code>),
   <code>BATCHVSBATCH_POST</code> on normalized cells (<code>normalization/cells/*.parquet</code>).</li>
-<li><code>PERMANOVA_NORMALIZED</code> runs on normalized cells, <code>PERMANOVA_BATCH_CORRECTED</code> on
+<li><code>ANOVA_NORMALIZED</code> runs on normalized cells, <code>ANOVA_BATCH_CORRECTED</code> on
   batch-corrected cells (<code>batch_correction/cells/*.parquet</code>).</li>
 </ul>
 <p>Global processes (<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, the <code>*_GLOBAL</code> feature-selection
-branch, <code>PERMANOVA</code>, <code>BATCH_CORRECT_FIT</code>) read published output files from disk via
+branch, <code>ANOVA</code>, <code>BATCH_CORRECT_FIT</code>) read published output files from disk via
 glob patterns after all upstream per-batch processes finish, rather than consuming
 Nextflow channel outputs directly. <code>params.global</code> (default <code>true</code>) gates
-<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, the <code>*_GLOBAL</code> feature-selection branch, and
-<code>PERMANOVA</code> — <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code> always run.</p>
+<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, and the <code>*_GLOBAL</code> feature-selection branch —
+<code>ANOVA</code>, <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code> always run.</p>
 <h2 id="stages">Stages<a class="headerlink" href="#stages" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1370,9 +1370,9 @@ Nextflow channel outputs directly. <code>params.global</code> (default <code>tru
 </tr>
 <tr>
 <td>Batch-effect assessment</td>
-<td><code>permanova.py</code></td>
-<td><code>PERMANOVA</code> (normalized and batch-corrected)</td>
-<td><code>permanova.parquet</code></td>
+<td><code>anova.py</code></td>
+<td><code>ANOVA</code> (normalized and batch-corrected)</td>
+<td><code>anova.parquet</code></td>
 </tr>
 </tbody>
 </table>
@@ -1444,9 +1444,9 @@ Used by nearly every entry point whose <code>input_file</code> accepts a glob.</
 <a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>    fit/stats_vb.parquet
 <a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>    fit/centroids.parquet
 <a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>    cells/&lt;batch&gt;.parquet
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    permanova/permanova.parquet
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>  permanova/
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>    permanova.parquet           # from normalized cells
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    anova/anova.parquet
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>  anova/
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>    anova.parquet                # from normalized cells
 </code></pre></div>
 
 
