@@ -19,7 +19,6 @@ process ANOVA {
     echo "Starting ANOVA for ${publish_subdir}"
     fisseq-anova \\
         output_dir=. \\
-        "input_file=${cells_glob}" \\
-        feature_batch_size=${params.anova_feature_batch_size}
+        "input_file=${cells_glob}"
     """
 }

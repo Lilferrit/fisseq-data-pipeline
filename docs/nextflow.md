@@ -146,7 +146,6 @@ Defaults live in `nextflow.config` at the repo root:
 | `--downsample_seed` | `0` | Seed for the deterministic downsample selection. |
 | `--bvb_min_cells` | `50` | Minimum total cells for a variant to be profiled in batch-vs-batch. |
 | `--bvb_min_batches` | `2` | Minimum unique batches a variant must appear in for batch-vs-batch. |
-| `--anova_feature_batch_size` | `null` | Optional int: ANOVA per-feature-chunk collect size, bounds peak memory when there are many features; `null` collects all features in one query. |
 | `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
 | `--downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
 | `--aggregate_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#fisseq-aggregate-feature-type-config-fields). |

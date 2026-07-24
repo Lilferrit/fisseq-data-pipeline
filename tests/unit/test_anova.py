@@ -75,9 +75,9 @@ def test_f_statistic_hand_computed() -> None:
     sum_g = np.array([4.0, 36.0])
     sumsq_g = np.array([10.0, 440.0])
     n_g = np.array([2, 3])
-    n, a = 5, 2
+    n, a = n_g.sum(), n_g.shape[0]
 
-    f = m._f_statistic(sum_g, sumsq_g, n_g, n, a)
+    f = m._f_statistic(sum_g, sumsq_g, n_g)
 
     ss_within = (sumsq_g - sum_g**2 / n_g).sum()
     ss_total = sumsq_g.sum() - sum_g.sum() ** 2 / n
@@ -132,7 +132,9 @@ def test_f_statistic_matches_old_pairwise_distance_computation(seed: int) -> Non
     f_old = (ss_between_old / (a - 1)) / (ss_within_old / (n - a))
 
     # --- NEW algorithm: per-group sufficient statistics ---
-    result = m._compute_anova_stats(x, batch_labels)
+    sum_g = np.bincount(group_of_sample, weights=x, minlength=a)
+    sumsq_g = np.bincount(group_of_sample, weights=x**2, minlength=a)
+    result = m._compute_anova_stats(group_sizes_arr, sum_g, sumsq_g)
 
     assert result["f_statistic"] == pytest.approx(f_old, rel=1e-9)
 
@@ -150,10 +152,13 @@ def test_compute_anova_stats_p_value_closed_form() -> None:
     x = np.array([0.0, 1.0, -1.0, 0.0, 5.0, 6.0, 4.0, 5.0, 10.0, 11.0, 9.0, 10.0])
     batch_labels = np.array(["a"] * 4 + ["b"] * 4 + ["c"] * 4)
     n, a = 12, 3
-
-    result = m._compute_anova_stats(x, batch_labels)
-
     groups = [x[batch_labels == g] for g in ("a", "b", "c")]
+    n_g = np.array([len(g) for g in groups])
+    sum_g = np.array([g.sum() for g in groups])
+    sumsq_g = np.array([(g**2).sum() for g in groups])
+
+    result = m._compute_anova_stats(n_g, sum_g, sumsq_g)
+
     grand_mean = x.mean()
     ss_between = sum(len(g) * (g.mean() - grand_mean) ** 2 for g in groups)
     ss_within = sum(((g - g.mean()) ** 2).sum() for g in groups)
@@ -231,67 +236,70 @@ def test_compute_feature_anova_between_group_variation_detected() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _iter_feature_batches
+# Null handling
 # ---------------------------------------------------------------------------
 
 
-def _make_batches_lf(
-    n_features: int = 5, n_rows: int = 3
-) -> tuple[pl.LazyFrame, list[str]]:
-    """Each row i's value for feature f{k} is i*10+k, and its batch label is
-    "batch_{i}" -- both uniquely decodable from a row's data, so alignment
-    between batch_col and a feature column can be verified per-row."""
-    feature_names = [f"f{k}" for k in range(n_features)]
-    data = {META_BATCH_COL: [f"batch_{i}" for i in range(n_rows)]}
-    for k, name in enumerate(feature_names):
-        data[name] = [float(i * 10 + k) for i in range(n_rows)]
-    return pl.DataFrame(data).lazy(), feature_names
+def test_compute_anova_stats_excludes_zero_count_group() -> None:
+    """A group with n_g == 0 (e.g. all-null for this feature) must be
+    excluded before deriving `a` and `n`, not treated as a zero-variance
+    group with a real sample."""
+    n_g = np.array([5, 0, 6])
+    sum_g = np.array([10.0, 0.0, 30.0])
+    sumsq_g = np.array([25.0, 0.0, 155.0])
+
+    result = m._compute_anova_stats(n_g, sum_g, sumsq_g)
+
+    kept = n_g > 0
+    expected = m._compute_anova_stats(n_g[kept], sum_g[kept], sumsq_g[kept])
+    assert result["f_statistic"] == pytest.approx(expected["f_statistic"])
+    assert result["p_value"] == pytest.approx(expected["p_value"])
 
 
-def test_iter_feature_batches_none_yields_single_chunk_all_features() -> None:
-    lf, feature_names = _make_batches_lf(n_features=3)
-    chunks = list(m._iter_feature_batches(lf, feature_names, META_BATCH_COL, None))
-    assert len(chunks) == 1
-    collected, chunk = chunks[0]
-    assert chunk == feature_names
-    assert len(collected) == 3
-    assert set(collected.columns) == {META_BATCH_COL, *feature_names}
+def test_compute_anova_stats_too_few_nonzero_groups_returns_none() -> None:
+    # Only one group has any non-null data -- degenerate after exclusion.
+    n_g = np.array([5, 0])
+    sum_g = np.array([10.0, 0.0])
+    sumsq_g = np.array([25.0, 0.0])
+    assert m._compute_anova_stats(n_g, sum_g, sumsq_g) is None
 
 
-def test_iter_feature_batches_splits_into_chunks_in_order() -> None:
-    lf, feature_names = _make_batches_lf(n_features=5)
-    chunks = list(m._iter_feature_batches(lf, feature_names, META_BATCH_COL, 2))
-    assert [len(chunk) for _, chunk in chunks] == [2, 2, 1]
-    assert [f for _, chunk in chunks for f in chunk] == feature_names
+def test_compute_feature_anova_nulls_excluded_matches_f_oneway() -> None:
+    """Nulls scattered across both groups for one feature must be excluded
+    from that feature's group sums/counts -- the resulting F-statistic and
+    p-value must match scipy.stats.f_oneway computed on just the non-null
+    values per group."""
+    rng = np.random.default_rng(2)
+    n_per_batch = 30
+    batch_a = rng.normal(loc=0.0, scale=1.0, size=n_per_batch)
+    batch_b = rng.normal(loc=2.0, scale=1.0, size=n_per_batch)
+    values = np.concatenate([batch_a, batch_b])
 
+    # Scatter nulls into both groups.
+    null_idx = {0, 5, 10, n_per_batch + 2, n_per_batch + 7}
+    values_with_null = [
+        None if i in null_idx else float(v) for i, v in enumerate(values)
+    ]
+    batches = ["batch_a"] * n_per_batch + ["batch_b"] * n_per_batch
 
-def test_iter_feature_batches_batch_col_aligned_with_chunk_features() -> None:
-    lf, feature_names = _make_batches_lf(n_features=3, n_rows=4)
-    for collected, chunk in m._iter_feature_batches(
-        lf, feature_names, META_BATCH_COL, 1
-    ):
-        feature_col = chunk[0]
-        k = int(feature_col[1:])
-        for row in collected.iter_rows(named=True):
-            expected_i = (int(row[feature_col]) - k) // 10
-            assert row[META_BATCH_COL] == f"batch_{expected_i}"
+    df = pl.DataFrame({META_BATCH_COL: batches, "Intensity_mean": values_with_null})
+    result = m.compute_feature_anova(df.lazy(), "Intensity_mean", META_BATCH_COL)
 
-
-@pytest.mark.parametrize("bad_size", [0, -1, -5])
-def test_iter_feature_batches_non_positive_size_raises(bad_size: int) -> None:
-    lf, feature_names = _make_batches_lf(n_features=3)
-    with pytest.raises(ValueError):
-        list(m._iter_feature_batches(lf, feature_names, META_BATCH_COL, bad_size))
-
-
-@pytest.mark.parametrize("feature_batch_size", [None, 2])
-def test_iter_feature_batches_empty_feature_cols_yields_nothing(
-    feature_batch_size,
-) -> None:
-    lf, _ = _make_batches_lf(n_features=0)
-    assert (
-        list(m._iter_feature_batches(lf, [], META_BATCH_COL, feature_batch_size)) == []
+    non_null = df.filter(pl.col("Intensity_mean").is_not_null())
+    group_a = (
+        non_null.filter(pl.col(META_BATCH_COL) == "batch_a")
+        .get_column("Intensity_mean")
+        .to_numpy()
     )
+    group_b = (
+        non_null.filter(pl.col(META_BATCH_COL) == "batch_b")
+        .get_column("Intensity_mean")
+        .to_numpy()
+    )
+    f_expected, p_expected = scipy.stats.f_oneway(group_a, group_b)
+
+    assert result["f_statistic"] == pytest.approx(f_expected)
+    assert result["p_value"] == pytest.approx(p_expected)
 
 
 # ---------------------------------------------------------------------------
@@ -382,74 +390,40 @@ def test_main_output_root_naming(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# main() -- feature_batch_size
+# main() -- null handling
 # ---------------------------------------------------------------------------
 
 
-def _write_anova_batch_parquets_wide(tmp_path: Path, n_features: int = 5) -> list[str]:
-    """Like _write_anova_batch_parquets but with n_features feature
-    columns (feat_0..feat_{n-1}), for exercising feature_batch_size chunking
-    that does not evenly divide the feature count."""
-    rng = np.random.default_rng(0)
-    feature_names = [f"feat_{i}" for i in range(n_features)]
-    for name, loc in [("batch_a", 0.0), ("batch_b", 5.0)]:
-        n = 20
-        labels = ["A1A"] * n + ["A1B"] * n + ["A1A:downsampled"] * n
-        total = len(labels)
-        data = {"meta_aa_changes": labels}
-        for feat in feature_names:
-            data[feat] = rng.normal(loc, 0.1, total).tolist()
-        pl.DataFrame(data).write_parquet(tmp_path / f"{name}.parquet")
-    return feature_names
-
-
-def test_main_feature_batch_size_matches_unbatched_output(tmp_path: Path) -> None:
-    _write_anova_batch_parquets_wide(tmp_path, n_features=5)
-    input_glob = str(tmp_path / "*.parquet")
-
-    baseline_dir = tmp_path / "baseline"
-    baseline_dir.mkdir()
-    cfg = make_anova_cfg(baseline_dir, input_glob)
-    with patch("fisseq_data_pipeline.anova.setup_logging"):
-        m.main.__wrapped__(cfg)
-    baseline = pl.read_parquet(baseline_dir / "anova.parquet").sort("feature")
-
-    for size in [1, 2, 3, 5, 100]:
-        out_dir = tmp_path / f"batched_{size}"
-        out_dir.mkdir()
-        cfg = make_anova_cfg(out_dir, input_glob, feature_batch_size=size)
-        with patch("fisseq_data_pipeline.anova.setup_logging"):
-            m.main.__wrapped__(cfg)
-        batched = pl.read_parquet(out_dir / "anova.parquet").sort("feature")
-        assert batched["feature"].to_list() == baseline["feature"].to_list()
-        np.testing.assert_allclose(
-            batched["f_value"].to_numpy(), baseline["f_value"].to_numpy()
-        )
-        np.testing.assert_allclose(
-            batched["p_value"].to_numpy(), baseline["p_value"].to_numpy()
-        )
-
-
-def test_main_feature_batch_size_smaller_than_feature_count_no_features_dropped(
+def test_main_degenerate_feature_after_null_exclusion_is_skipped(
     tmp_path: Path,
 ) -> None:
-    feature_names = _write_anova_batch_parquets_wide(tmp_path, n_features=5)
-    cfg = make_anova_cfg(tmp_path, str(tmp_path / "*.parquet"), feature_batch_size=2)
+    """A feature that becomes degenerate (< 2 groups with non-null data)
+    after excluding nulls must be skipped -- not produce a bad row -- while
+    other, non-degenerate features in the same run are still emitted."""
+    rng = np.random.default_rng(0)
+    n = 20
+    labels = ["A1A"] * n + ["A1B"] * n + ["A1A:downsampled"] * n
+    total = len(labels)
+    # "Intensity_mean": normal feature, no nulls.
+    # "Texture_std": all null in batch_b, so after null exclusion only
+    # batch_a has non-null data for this feature -- degenerate (a < 2).
+    pl.DataFrame(
+        {
+            "meta_aa_changes": labels,
+            "Intensity_mean": rng.normal(0.0, 0.1, total).tolist(),
+            "Texture_std": rng.normal(0.0, 0.1, total).tolist(),
+        }
+    ).write_parquet(tmp_path / "batch_a.parquet")
+    pl.DataFrame(
+        {
+            "meta_aa_changes": labels,
+            "Intensity_mean": rng.normal(5.0, 0.1, total).tolist(),
+            "Texture_std": pl.Series([None] * total, dtype=pl.Float64),
+        }
+    ).write_parquet(tmp_path / "batch_b.parquet")
+
+    cfg = make_anova_cfg(tmp_path, str(tmp_path / "*.parquet"))
     with patch("fisseq_data_pipeline.anova.setup_logging"):
         m.main.__wrapped__(cfg)
     result = pl.read_parquet(tmp_path / "anova.parquet")
-    assert len(result) == 5
-    assert set(result["feature"]) == set(feature_names)
-
-
-@pytest.mark.parametrize("bad_size", [0, -1])
-def test_main_feature_batch_size_non_positive_raises(
-    tmp_path: Path, bad_size: int
-) -> None:
-    _write_anova_batch_parquets(tmp_path)
-    cfg = make_anova_cfg(
-        tmp_path, str(tmp_path / "*.parquet"), feature_batch_size=bad_size
-    )
-    with patch("fisseq_data_pipeline.anova.setup_logging"):
-        with pytest.raises(ValueError):
-            m.main.__wrapped__(cfg)
+    assert result["feature"].to_list() == ["Intensity_mean"]
