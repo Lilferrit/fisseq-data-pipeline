@@ -17,7 +17,7 @@ workflow {
 | `--workflow` | Workflow | Definition | Use when |
 | ------------- | -------- | ---------- | -------- |
 | `fisseq` (default) | `FisseqPipeline` | `workflows/fisseq.nf` | Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → ANOVA) |
-| `ovwt` | `OvwtPipeline` | `workflows/ovwt.nf` | OvWT classification only: `QC_FILTER` → `OVWT_BATCHWISE` → `OVWT_CELLSCORES_BATCHWISE`, no normalization, batch correction, or feature selection |
+| `ovwt` | `OvwtPipeline` | `workflows/ovwt.nf` | OvWT classification only: `QC_FILTER` → `OVWT_BATCHWISE` → `OVWT_CELLSCORES_BATCHWISE` → `CHECK_BARCODES` (optional, `params.run_check_barcodes`), no normalization, batch correction, or feature selection |
 
 Both workflows validate that `--input_dir` is set and that `<input_dir>/input/`
 exists and contains at least one `.parquet` file, then build a per-batch channel
@@ -61,9 +61,10 @@ task doesn't abort the whole run.
 | `QC_FILTER` | `qc_filter.nf` | `fisseq-qc-filter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `fisseq-normalize` | per batch |
 | `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice, optional (`params.global`); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
-| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FILTERED`) | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch, twice; `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`, `_FILTERED` does |
+| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FILTERED`) | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch, twice; `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`, `_FILTERED` does and is optional (`params.run_filtered_ovwt`) |
 | `OVWT_GLOBAL` | `ovwt_global.nf` | `fisseq-ovwt` | global, optional (`params.global`); always filtered against `ANOVA_BLOCKLIST` |
-| `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `fisseq-ovwt-cell-scores` | per batch |
+| `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `fisseq-ovwt-cell-scores` | per batch; optional in `FisseqPipeline` (`params.single_cell_scores`), always runs in `OvwtPipeline` |
+| `CHECK_BARCODES` | `check_barcodes.nf` | `fisseq-check-barcodes` | per batch, optional (`params.run_check_barcodes`, which also forces `single_cell_scores` on) |
 | `AGGREGATE_FEATURE_TYPE` (aliased `_BATCHWISE` / `_GLOBAL`) | `aggregate_feature_type.nf` | `fisseq-aggregate-feature-type` | per (batch or global) × feature type |
 | `GENERATE_SPLIT` (aliased) | `generate_split.nf` | `fisseq-generate-split` | per (batch or global) × bootstrap replicate |
 | `AGGREGATE_HALF` (aliased) | `aggregate_half.nf` | `fisseq-aggregate-feature-type` (with `index_file`) | per (batch or global) × bootstrap × feature type × half |
@@ -154,6 +155,12 @@ Defaults live in `nextflow.config` at the repo root:
 | `--bootstrap` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
 | `--global` | `true` | Whether to run `OVWT_GLOBAL` and the global feature-selection branch. |
 | `--anova_pvalue_threshold` | `0.05` | `ANOVA_BLOCKLIST`: a feature is blocked (`feature_ok = false`) when its `ANOVA_NORMALIZED` p-value is strictly less than this threshold (a statistically significant batch effect was detected). |
+| `--single_cell_scores` | `false` | `FisseqPipeline` only: run `OVWT_CELLSCORES_BATCHWISE` per batch after `OVWT_BATCHWISE_UNFILTERED`. Always on in `OvwtPipeline`. Forced on if `--run_check_barcodes true`. |
+| `--single_cell_scores_source` | `"test"` | Which `OVWT_BATCHWISE` split to score: `"test"` or `"train"`. Any other value fails fast with a clear error. |
+| `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--single_cell_scores true`. |
+| `--barcode_check_min_cells` | `10` | `CHECK_BARCODES`: minimum cells required per barcode (within a variant) to include it in the comparison. |
+| `--barcode_check_alpha` | `0.05` | `CHECK_BARCODES`: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this. |
+| `--run_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_FILTERED` (per-batch OvWT filtered against `anova_blocklist/anova_blocklist.parquet`). Set `false` to skip it and keep only the unfiltered pass. |
 
 ## Profiles
 
