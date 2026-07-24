@@ -40,6 +40,7 @@ fisseq-ovwt-cell-scores = "fisseq_data_pipeline.ovwtcellscores:main"
 fisseq-batch-vs-batch = "fisseq_data_pipeline.batchvsbatch:main"
 fisseq-batch-correct-fit = "fisseq_data_pipeline.batchcorrect:fit_main"
 fisseq-batch-correct-transform = "fisseq_data_pipeline.batchcorrect:transform_main"
+fisseq-check-barcodes = "fisseq_data_pipeline.checkbarcodes:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]

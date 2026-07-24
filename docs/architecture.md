@@ -29,10 +29,13 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │      ANOVA_BLOCKLIST  (global; always runs — marks feature_ok from ANOVA p-values)
      │           │
      │           ├──► BATCHVSBATCH (post, filtered)   (global; skipped if params.global = false)
-     │           ├──► OVWT_BATCHWISE (filtered)        (per batch; always runs)
+     │           ├──► OVWT_BATCHWISE (filtered)        (per batch; skipped if params.run_filtered_ovwt = false)
      │           └──► OVWT_GLOBAL (filtered)            (global; skipped if params.global = false)
      │
      ├──► OVWT_BATCHWISE (unfiltered)     (per batch — no dependency on ANOVA_BLOCKLIST)
+     │           └──► OVWT_CELLSCORES_BATCHWISE  (per batch; optional, params.single_cell_scores)
+     │                     └──► CHECK_BARCODES  (per batch; optional, params.run_check_barcodes,
+     │                               which also forces single_cell_scores on)
      └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
             GENERATE_SPLIT              (per bootstrap replicate)    │
@@ -66,8 +69,17 @@ an unfiltered and a filtered invocation:
   no-wait-for-all-batches behavior; `OVWT_BATCHWISE_FILTERED` (published under
   `ovwt_batchwise_filtered/`) additionally depends on `ANOVA_BLOCKLIST`, so it
   runs once all batches have normalized and `ANOVA_NORMALIZED`/`ANOVA_BLOCKLIST`
-  have completed. `OVWT_GLOBAL` has no unfiltered counterpart — it is always
-  filtered.
+  have completed. It's optional, gated by `params.run_filtered_ovwt` (default
+  `true`, preserving the pipeline's original always-on behavior). `OVWT_GLOBAL`
+  has no unfiltered counterpart — it is always filtered.
+
+`OVWT_CELLSCORES_BATCHWISE` scores `OVWT_BATCHWISE_UNFILTERED`'s models
+against the `params.single_cell_scores_source` (`"test"` or `"train"`,
+default `"test"`) split — gated by `params.single_cell_scores` (default
+`false`) in `FisseqPipeline`, but always on in `OvwtPipeline`. Downstream,
+`CHECK_BARCODES` runs a per-variant pairwise Tukey HSD across barcodes (see
+[Check Barcodes](cli/checkbarcodes.md)), gated by `params.run_check_barcodes`
+(default `false`), which also forces `single_cell_scores` on.
 
 `ANOVA_BLOCKLIST` derives a feature block-list from `ANOVA_NORMALIZED`'s
 p-values (not `ANOVA_BATCH_CORRECTED` — OvWT and batch-vs-batch score
@@ -76,7 +88,8 @@ normalized cells, never batch-corrected ones). A feature is blocked
 `params.anova_pvalue_threshold` (default `0.05`), i.e. when a statistically
 significant batch effect was detected. It always runs, unconditionally — not
 gated by `params.global`/`params.feature_selection` — since
-`OVWT_BATCHWISE_FILTERED` (batchwise) needs it regardless of those flags.
+`OVWT_BATCHWISE_FILTERED` (when enabled), `BATCHVSBATCH_POST`, and
+`OVWT_GLOBAL` all need it.
 
 Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection
 branch, `ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`) read published output
@@ -98,6 +111,7 @@ than consuming Nextflow channel outputs directly in the general case.
 | Batch-effect check (post) | `batchvsbatch.py` | `BATCHVSBATCH` (post) | `results.parquet` |
 | One-vs-WT classification | `ovwt.py` | `OVWT_BATCHWISE` (unfiltered + filtered), `OVWT_GLOBAL` (filtered) | `results.parquet`, `models.pkl` |
 | OvWT cell scoring | `ovwtcellscores.py` | `OVWT_CELLSCORES_BATCHWISE` | `cell_scores.parquet` |
+| Barcode-outlier check | `checkbarcodes.py` | `CHECK_BARCODES` | `results.parquet` (per-variant pairwise Tukey HSD across barcodes) |
 | Feature selection | `aggregate.py`, `features.py` | `AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-variant aggregate) |
 | Batch correction | `batchcorrect.py` | `BATCH_CORRECT_FIT`, `BATCH_CORRECT_TRANSFORM` | `stats_vb.parquet`, `centroids.parquet`, corrected cells |
 | Batch-effect assessment | `anova.py` | `ANOVA` (normalized and batch-corrected) | `anova.parquet` |
@@ -166,14 +180,21 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
   ovwt_batchwise/<batch>/     # unfiltered — full feature set
     results.parquet
     models.pkl
+    test_index.parquet        # columns: row_idx, origin_file
+    train_index.parquet       # columns: row_idx, origin_file
   ovwt_batchwise_filtered/<batch>/   # filtered against anova_blocklist/anova_blocklist.parquet
     results.parquet
     models.pkl
+    test_index.parquet
+    train_index.parquet
   ovwt_global/                # always filtered against anova_blocklist/anova_blocklist.parquet
     results.parquet
     models.pkl
-  ovwt_cellscores_batchwise/<batch>/
+  ovwt_cellscores_batchwise/<batch>/   # optional: params.single_cell_scores (always on in OvwtPipeline)
     cell_scores.parquet
+  check_barcodes/<batch>/     # optional: params.run_check_barcodes (implies single_cell_scores)
+    results.parquet           # columns: variant, barcode, group_mean, comparison_barcode,
+                               # comparison_group_mean, mean_diff, p_adj, reject
   feature_select_batchwise/<batch>/
     aggregates/<feature_type>.parquet                                     # stage 1
     splits/bootstrap_<n>/half{1,2}.parquet                                # stage 2a

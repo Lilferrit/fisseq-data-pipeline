@@ -9,6 +9,13 @@ nextflow.enable.dsl = 2
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
 // gated by params.global (default true); ANOVA, ANOVA_BLOCKLIST, and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
+// OVWT_BATCHWISE_UNFILTERED additionally optionally feeds
+// OVWT_CELLSCORES_BATCHWISE (per batch, gated by params.single_cell_scores,
+// scoring params.single_cell_scores_source's "test" or "train" split), which
+// in turn optionally feeds CHECK_BARCODES (per batch, gated by
+// params.run_check_barcodes -- a per-variant Tukey HSD across barcodes using
+// each cell's own-model score as the response variable). run_check_barcodes
+// implies single_cell_scores, so setting it alone is enough.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
@@ -18,6 +25,8 @@ include { BATCHVSBATCH as BATCHVSBATCH_POST } from '../modules/local/batchvsbatc
 include { OVWT_BATCHWISE as OVWT_BATCHWISE_UNFILTERED } from '../modules/local/ovwt_batchwise'
 include { OVWT_BATCHWISE as OVWT_BATCHWISE_FILTERED   } from '../modules/local/ovwt_batchwise'
 include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
+include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'
+include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_BATCHWISE } from '../modules/local/aggregate_feature_type'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_GLOBAL    } from '../modules/local/aggregate_feature_type'
@@ -117,7 +126,8 @@ workflow FisseqPipeline {
 
     // ANOVA_BLOCKLIST — derives a feature block-list from ANOVA_NORMALIZED's
     // p-values. Always runs, not gated by params.global/params.feature_selection,
-    // since OVWT_BATCHWISE_FILTERED (batchwise) needs it unconditionally.
+    // since OVWT_BATCHWISE_FILTERED (when enabled), BATCHVSBATCH_POST, and
+    // OVWT_GLOBAL all need it.
     ANOVA_BLOCKLIST(ANOVA_NORMALIZED.out)
     anova_blocklist_ch = ANOVA_BLOCKLIST.out  // single-element path channel
 
@@ -131,6 +141,9 @@ workflow FisseqPipeline {
     // Same parse for params.feature_selection: gates the entire
     // feature-selection branch below (batchwise and global).
     run_feature_selection = params.feature_selection.toString().toBoolean()
+    // Same parse for params.run_filtered_ovwt: gates OVWT_BATCHWISE_FILTERED
+    // alone (OVWT_BATCHWISE_UNFILTERED is unaffected).
+    run_filtered_ovwt = params.run_filtered_ovwt.toString().toBoolean()
 
     // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
     // (optional, gated on params.global). Unfiltered: runs immediately after
@@ -154,10 +167,43 @@ workflow FisseqPipeline {
     OVWT_BATCHWISE_UNFILTERED(norm_ch.map { stem, p -> tuple(stem, p, null, "ovwt_batchwise") })
     // Filtered: broadcasts the single ANOVA_BLOCKLIST output onto every
     // per-batch tuple, same .combine() idiom as BATCH_CORRECT_TRANSFORM below.
-    OVWT_BATCHWISE_FILTERED(
-        norm_ch.combine(anova_blocklist_ch)
-            .map { stem, p, bl -> tuple(stem, p, bl, "ovwt_batchwise_filtered") }
-    )
+    // Optional, gated on params.run_filtered_ovwt.
+    if (run_filtered_ovwt) {
+        OVWT_BATCHWISE_FILTERED(
+            norm_ch.combine(anova_blocklist_ch)
+                .map { stem, p, bl -> tuple(stem, p, bl, "ovwt_batchwise_filtered") }
+        )
+    }
+
+    // Step 5b: single-cell scores (optional, gated on params.single_cell_scores)
+    // -> per-batch barcode-outlier check (optional, gated on
+    // params.run_check_barcodes). run_check_barcodes implies
+    // single_cell_scores -- see nextflow.config's comment for this param.
+    run_single_cell_scores = params.single_cell_scores.toString().toBoolean()
+    run_check_barcodes = params.run_check_barcodes.toString().toBoolean()
+    if (run_check_barcodes) {
+        run_single_cell_scores = true
+    }
+
+    score_source = params.single_cell_scores_source
+    if (!(score_source in ["test", "train"])) {
+        error "ERROR: --single_cell_scores_source must be 'test' or 'train', got '${score_source}'"
+    }
+
+    if (run_single_cell_scores) {
+        // Scores off the unfiltered OVWT_BATCHWISE models (full feature set),
+        // matching what OvwtPipeline already does -- avoids standing up a
+        // second scoring branch off the filtered models.
+        cellscores_input_ch = OVWT_BATCHWISE_UNFILTERED.out
+            .map { stem, _res, mdl, test_idx, train_idx ->
+                tuple(stem, (score_source == "test") ? test_idx : train_idx, mdl)
+            }
+        OVWT_CELLSCORES_BATCHWISE(cellscores_input_ch)
+
+        if (run_check_barcodes) {
+            CHECK_BARCODES(OVWT_CELLSCORES_BATCHWISE.out)
+        }
+    }
 
     // Step 6: OvWT — global (optional, gated on params.global). Always
     // filtered against ANOVA_BLOCKLIST -- there is no unfiltered global run.

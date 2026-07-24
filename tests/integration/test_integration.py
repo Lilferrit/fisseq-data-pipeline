@@ -93,6 +93,20 @@ _OVWT_NF_PARAMS = [
     "50",
 ]
 
+# single_cell_scores / run_check_barcodes: barcode_check_min_cells is dropped
+# to 2 (default 10) since this synthetic dataset only has 6 cells per
+# barcode, and single_cell_scores_source=train (rather than the default
+# test) is used to keep more cells per barcode after the 80/10/10 split so
+# CHECK_BARCODES has enough per-barcode samples to compare.
+_CHECK_BARCODES_NF_PARAMS = _NF_PARAMS + [
+    "--run_check_barcodes",
+    "true",
+    "--single_cell_scores_source",
+    "train",
+    "--barcode_check_min_cells",
+    "2",
+]
+
 
 def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -103,6 +117,23 @@ def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
             "--input_dir",
             str(exp_dir),
             *_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+
+def _run_check_barcodes_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--input_dir",
+            str(exp_dir),
+            *_CHECK_BARCODES_NF_PARAMS,
         ],
         cwd=exp_dir,
         capture_output=True,
@@ -263,6 +294,15 @@ def test_anova_blocklist_has_expected_columns(pipeline_outputs):
     assert len(df) > 0
 
 
+def test_single_cell_scores_and_check_barcodes_disabled_by_default(pipeline_outputs):
+    """params.single_cell_scores and params.run_check_barcodes both default to
+    false -- FisseqPipeline's output set must be unchanged from before these
+    flags existed."""
+    exp_dir, _ = pipeline_outputs
+    assert not (exp_dir / "ovwt_cellscores_batchwise").exists()
+    assert not (exp_dir / "check_barcodes").exists()
+
+
 # ---------------------------------------------------------------------------
 # Pipeline output content tests
 # ---------------------------------------------------------------------------
@@ -388,6 +428,164 @@ def test_batch_correction_wt_means_converge_across_batches(pipeline_outputs):
 
 
 # ---------------------------------------------------------------------------
+# single_cell_scores / run_check_barcodes — session fixture and tests
+# (FisseqPipeline, params.run_check_barcodes=true implying single_cell_scores)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def check_barcodes_pipeline_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_check_barcodes_experiment")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+
+    result = _run_check_barcodes_pipeline(exp_dir)
+    return exp_dir, result
+
+
+def test_check_barcodes_pipeline_exits_cleanly(check_barcodes_pipeline_outputs):
+    _, result = check_barcodes_pipeline_outputs
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_check_barcodes_pipeline_cell_scores_outputs(
+    check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    assert (
+        exp_dir / "ovwt_cellscores_batchwise" / batch_stem / "cell_scores.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_check_barcodes_pipeline_results_outputs(
+    check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    assert (exp_dir / "check_barcodes" / batch_stem / "results.parquet").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_check_barcodes_results_have_expected_columns(
+    check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    df = pl.read_parquet(exp_dir / "check_barcodes" / batch_stem / "results.parquet")
+    expected = {
+        "variant",
+        "barcode",
+        "group_mean",
+        "comparison_barcode",
+        "comparison_group_mean",
+        "mean_diff",
+        "p_adj",
+        "reject",
+    }
+    assert expected.issubset(set(df.columns))
+    # M1K pools 10 barcodes (5 untagged + 5 ":downsampled-half" tagged) and
+    # A1A has 5 -- both should yield at least one comparison at
+    # barcode_check_min_cells=2.
+    assert len(df) > 0
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_check_barcodes_p_adj_in_unit_interval(
+    check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    df = pl.read_parquet(exp_dir / "check_barcodes" / batch_stem / "results.parquet")
+    assert df["p_adj"].is_between(0.0, 1.0, closed="both").all()
+
+
+def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_invalid_source_experiment")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--input_dir",
+            str(exp_dir),
+            "--single_cell_scores",
+            "true",
+            "--single_cell_scores_source",
+            "bogus",
+            *_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode != 0
+    assert "single_cell_scores_source" in (result.stdout + result.stderr)
+
+
+@pytest.fixture(scope="session")
+def run_filtered_ovwt_disabled_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_run_filtered_ovwt_disabled_experiment")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--input_dir",
+            str(exp_dir),
+            "--run_filtered_ovwt",
+            "false",
+            *_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    return exp_dir, result
+
+
+def test_run_filtered_ovwt_disabled_pipeline_exits_cleanly(
+    run_filtered_ovwt_disabled_outputs,
+):
+    _, result = run_filtered_ovwt_disabled_outputs
+    assert result.returncode == 0, result.stderr
+
+
+def test_run_filtered_ovwt_disabled_skips_filtered_output(
+    run_filtered_ovwt_disabled_outputs,
+):
+    """params.run_filtered_ovwt defaults to true (see
+    test_pipeline_ovwt_batchwise_filtered_outputs for the default-enabled
+    case); false must skip OVWT_BATCHWISE_FILTERED entirely."""
+    exp_dir, _ = run_filtered_ovwt_disabled_outputs
+    assert not (exp_dir / "ovwt_batchwise_filtered").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_run_filtered_ovwt_disabled_unfiltered_output_unaffected(
+    run_filtered_ovwt_disabled_outputs, batch_stem
+):
+    exp_dir, _ = run_filtered_ovwt_disabled_outputs
+    batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
+    assert (batch_dir / "results.parquet").exists()
+    assert (batch_dir / "models.pkl").exists()
+
+
+# ---------------------------------------------------------------------------
 # OvwtPipeline (ovwt.nf) — session fixture and tests
 # ---------------------------------------------------------------------------
 
@@ -443,6 +641,60 @@ def test_ovwt_pipeline_cell_scores_row_count_matches_test_index(
         exp_dir / "ovwt_cellscores_batchwise" / batch_stem / "cell_scores.parquet"
     )
     assert len(scores_df) == len(index_df)
+
+
+def test_ovwt_pipeline_check_barcodes_disabled_by_default(ovwt_pipeline_outputs):
+    exp_dir, _ = ovwt_pipeline_outputs
+    assert not (exp_dir / "check_barcodes").exists()
+
+
+@pytest.fixture(scope="session")
+def ovwt_check_barcodes_pipeline_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_ovwt_check_barcodes_experiment")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--workflow",
+            "ovwt",
+            "--input_dir",
+            str(exp_dir),
+            "--run_check_barcodes",
+            "true",
+            "--single_cell_scores_source",
+            "train",
+            "--barcode_check_min_cells",
+            "2",
+            *_OVWT_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    return exp_dir, result
+
+
+def test_ovwt_check_barcodes_pipeline_exits_cleanly(
+    ovwt_check_barcodes_pipeline_outputs,
+):
+    _, result = ovwt_check_barcodes_pipeline_outputs
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_ovwt_check_barcodes_results_outputs(
+    ovwt_check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = ovwt_check_barcodes_pipeline_outputs
+    assert (exp_dir / "check_barcodes" / batch_stem / "results.parquet").exists()
 
 
 # ---------------------------------------------------------------------------

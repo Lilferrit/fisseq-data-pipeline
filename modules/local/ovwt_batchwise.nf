@@ -11,8 +11,9 @@ nextflow.enable.dsl = 2
 // passed through directly -- fisseq-ovwt's block_list_file=null CLI arg
 // parses as Python None via Hydra/OmegaConf, the same trick used for
 // downsample_fraction in qc_filter.nf.
-// Publishes results.parquet, models.pkl, and test_index.parquet (consumed by
-// OVWT_CELLSCORES_BATCHWISE) under <publish_subdir>/<batch_stem>/.
+// Publishes results.parquet, models.pkl, test_index.parquet, and
+// train_index.parquet (consumed by OVWT_CELLSCORES_BATCHWISE, selected via
+// params.single_cell_scores_source) under <publish_subdir>/<batch_stem>/.
 process OVWT_BATCHWISE {
     errorStrategy 'ignore'
     publishDir { "${params.input_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
@@ -21,7 +22,7 @@ process OVWT_BATCHWISE {
     tuple val(batch_stem), path(normalized_parquet), val(block_list_file), val(publish_subdir)
 
     output:
-    tuple val(batch_stem), path("results.parquet"), path("models.pkl"), path("test_index.parquet")
+    tuple val(batch_stem), path("results.parquet"), path("models.pkl"), path("test_index.parquet"), path("train_index.parquet")
 
     script:
     // TODO: add per-batch OvWT visualization

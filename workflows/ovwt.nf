@@ -2,12 +2,15 @@ nextflow.enable.dsl = 2
 
 // OvwtPipeline: lighter alternative to FisseqPipeline, selected via
 // `--workflow ovwt`. Wires QC_FILTER -> OVWT_BATCHWISE ->
-// OVWT_CELLSCORES_BATCHWISE only — no normalization, batch correction, or
-// feature selection.
+// OVWT_CELLSCORES_BATCHWISE (scoring the params.single_cell_scores_source
+// split; always runs here, unlike FisseqPipeline where it's optional) ->
+// CHECK_BARCODES (optional, gated by params.run_check_barcodes) — no
+// normalization, batch correction, or feature selection.
 include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
 include { OVWT_BATCHWISE            } from '../modules/local/ovwt_batchwise'
 include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'
+include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 
 workflow OvwtPipeline {
     if (params.input_dir == null) {
@@ -57,8 +60,22 @@ workflow OvwtPipeline {
     ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb -> tuple(stem, fc, null, "ovwt_batchwise") }
     OVWT_BATCHWISE(ovwt_input_ch)
 
-    // Step 3: Score test-set cells via the saved index (auto-detected by load_input)
+    // Step 3: Score the params.single_cell_scores_source split's cells via
+    // the saved index (auto-detected by load_input).
+    score_source = params.single_cell_scores_source
+    if (!(score_source in ["test", "train"])) {
+        error "ERROR: --single_cell_scores_source must be 'test' or 'train', got '${score_source}'"
+    }
     cellscores_input_ch = OVWT_BATCHWISE.out
-        .map { stem, _res, mdl, test_idx -> [stem, test_idx, mdl] }
+        .map { stem, _res, mdl, test_idx, train_idx ->
+            [stem, (score_source == "test") ? test_idx : train_idx, mdl]
+        }
     OVWT_CELLSCORES_BATCHWISE(cellscores_input_ch)
+
+    // Step 4: per-batch barcode-outlier check (optional, gated on
+    // params.run_check_barcodes).
+    run_check_barcodes = params.run_check_barcodes.toString().toBoolean()
+    if (run_check_barcodes) {
+        CHECK_BARCODES(OVWT_CELLSCORES_BATCHWISE.out)
+    }
 }
