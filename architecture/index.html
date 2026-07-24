@@ -819,6 +819,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/checkbarcodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Check Barcodes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli/batchvsbatch/" class="md-nav__link">
         
   
@@ -1122,6 +1145,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/checkbarcodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    checkbarcodes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/batchvsbatch/" class="md-nav__link">
         
   
@@ -1318,26 +1364,29 @@ documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>     │      ANOVA_BLOCKLIST  (global; always runs — marks feature_ok from ANOVA p-values)
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>     │           │
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>     │           ├──► BATCHVSBATCH (post, filtered)   (global; skipped if params.global = false)
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>     │           ├──► OVWT_BATCHWISE (filtered)        (per batch; always runs)
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>     │           ├──► OVWT_BATCHWISE (filtered)        (per batch; skipped if params.run_filtered_ovwt = false)
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>     │           └──► OVWT_GLOBAL (filtered)            (global; skipped if params.global = false)
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>     │
 <a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>     ├──► OVWT_BATCHWISE (unfiltered)     (per batch — no dependency on ANOVA_BLOCKLIST)
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>     └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>            AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>            GENERATE_SPLIT              (per bootstrap replicate)    │
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>              └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>                    └─► CORRELATE_FEATURES (per bootstrap × feature type)
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>                          └─► BLOCKLIST  (gathers all bootstrap replicates per feature type — the one sync point)
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>                                └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>                                      └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>
-<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>                    │
-<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>                    ▼
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>             BATCH_CORRECT_TRANSFORM (per batch)
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>     │           └──► OVWT_CELLSCORES_BATCHWISE  (per batch; optional, params.single_cell_scores)
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>     │                     └──► CHECK_BARCODES  (per batch; optional, params.run_check_barcodes,
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>     │                               which also forces single_cell_scores on)
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>     └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>            AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>            GENERATE_SPLIT              (per bootstrap replicate)    │
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>              └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>                    └─► CORRELATE_FEATURES (per bootstrap × feature type)
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>                          └─► BLOCKLIST  (gathers all bootstrap replicates per feature type — the one sync point)
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>                                └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>                                      └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
 <a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>                    │
 <a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>                    ▼
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>             ANOVA (batch-corrected)  (always runs)
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>             BATCH_CORRECT_TRANSFORM (per batch)
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>                    │
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>                    ▼
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>             ANOVA (batch-corrected)  (always runs)
 </code></pre></div>
 <p><code>ANOVA</code> and <code>BATCHVSBATCH</code> are each a single parameterized Nextflow process
 invoked twice via <code>include { X as Y }</code> aliasing (a process cannot be called twice
@@ -1354,9 +1403,17 @@ an unfiltered and a filtered invocation:</p>
   no-wait-for-all-batches behavior; <code>OVWT_BATCHWISE_FILTERED</code> (published under
   <code>ovwt_batchwise_filtered/</code>) additionally depends on <code>ANOVA_BLOCKLIST</code>, so it
   runs once all batches have normalized and <code>ANOVA_NORMALIZED</code>/<code>ANOVA_BLOCKLIST</code>
-  have completed. <code>OVWT_GLOBAL</code> has no unfiltered counterpart — it is always
-  filtered.</li>
+  have completed. It's optional, gated by <code>params.run_filtered_ovwt</code> (default
+  <code>true</code>, preserving the pipeline's original always-on behavior). <code>OVWT_GLOBAL</code>
+  has no unfiltered counterpart — it is always filtered.</li>
 </ul>
+<p><code>OVWT_CELLSCORES_BATCHWISE</code> scores <code>OVWT_BATCHWISE_UNFILTERED</code>'s models
+against the <code>params.single_cell_scores_source</code> (<code>"test"</code> or <code>"train"</code>,
+default <code>"test"</code>) split — gated by <code>params.single_cell_scores</code> (default
+<code>false</code>) in <code>FisseqPipeline</code>, but always on in <code>OvwtPipeline</code>. Downstream,
+<code>CHECK_BARCODES</code> runs a per-variant pairwise Tukey HSD across barcodes (see
+<a href="../cli/checkbarcodes/">Check Barcodes</a>), gated by <code>params.run_check_barcodes</code>
+(default <code>false</code>), which also forces <code>single_cell_scores</code> on.</p>
 <p><code>ANOVA_BLOCKLIST</code> derives a feature block-list from <code>ANOVA_NORMALIZED</code>'s
 p-values (not <code>ANOVA_BATCH_CORRECTED</code> — OvWT and batch-vs-batch score
 normalized cells, never batch-corrected ones). A feature is blocked
@@ -1364,7 +1421,8 @@ normalized cells, never batch-corrected ones). A feature is blocked
 <code>params.anova_pvalue_threshold</code> (default <code>0.05</code>), i.e. when a statistically
 significant batch effect was detected. It always runs, unconditionally — not
 gated by <code>params.global</code>/<code>params.feature_selection</code> — since
-<code>OVWT_BATCHWISE_FILTERED</code> (batchwise) needs it regardless of those flags.</p>
+<code>OVWT_BATCHWISE_FILTERED</code> (when enabled), <code>BATCHVSBATCH_POST</code>, and
+<code>OVWT_GLOBAL</code> all need it.</p>
 <p>Global processes (<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, the <code>*_GLOBAL</code> feature-selection
 branch, <code>ANOVA</code>, <code>ANOVA_BLOCKLIST</code>, <code>BATCH_CORRECT_FIT</code>) read published output
 files from disk via glob patterns (or, for <code>ANOVA_BLOCKLIST</code>, consume a real
@@ -1425,6 +1483,12 @@ than consuming Nextflow channel outputs directly in the general case.
 <td><code>ovwtcellscores.py</code></td>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
 <td><code>cell_scores.parquet</code></td>
+</tr>
+<tr>
+<td>Barcode-outlier check</td>
+<td><code>checkbarcodes.py</code></td>
+<td><code>CHECK_BARCODES</code></td>
+<td><code>results.parquet</code> (per-variant pairwise Tukey HSD across barcodes)</td>
 </tr>
 <tr>
 <td>Feature selection</td>
@@ -1501,33 +1565,40 @@ Used by nearly every entry point whose <code>input_file</code> accepts a glob.</
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  ovwt_batchwise/&lt;batch&gt;/     # unfiltered — full feature set
 <a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    results.parquet
 <a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    models.pkl
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>  ovwt_batchwise_filtered/&lt;batch&gt;/   # filtered against anova_blocklist/anova_blocklist.parquet
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    results.parquet
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    models.pkl
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  ovwt_global/                # always filtered against anova_blocklist/anova_blocklist.parquet
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    results.parquet
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    models.pkl
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>  ovwt_cellscores_batchwise/&lt;batch&gt;/
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    cell_scores.parquet
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>  feature_select_batchwise/&lt;batch&gt;/
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    aggregates/&lt;feature_type&gt;.parquet                                     # stage 1
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    splits/bootstrap_&lt;n&gt;/half{1,2}.parquet                                # stage 2a
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    half_aggregates/bootstrap_&lt;n&gt;/&lt;feature_type&gt;/half{1,2}.parquet        # stage 2b
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>    correlations/&lt;feature_type&gt;/bootstrap_&lt;n&gt;.parquet                     # stage 2c
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    blocklists/&lt;feature_type&gt;.parquet                                     # stage 2d
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>    blocklist.parquet                                                    # stage 3 (combined)
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>    output.parquet                                                       # stage 4 (final)
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>  feature_select_global/
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>    (same layout, no &lt;batch&gt; nesting — only present if params.global = true)
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>  batch_correction/
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    fit/stats_vb.parquet
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    fit/centroids.parquet
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>    cells/&lt;batch&gt;.parquet
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>    anova/anova.parquet
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>  anova/
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>    anova.parquet                # from normalized cells
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>  anova_blocklist/
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>    anova_blocklist.parquet      # derived from anova/anova.parquet
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    test_index.parquet        # columns: row_idx, origin_file
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    train_index.parquet       # columns: row_idx, origin_file
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  ovwt_batchwise_filtered/&lt;batch&gt;/   # filtered against anova_blocklist/anova_blocklist.parquet
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    results.parquet
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    models.pkl
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    test_index.parquet
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    train_index.parquet
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>  ovwt_global/                # always filtered against anova_blocklist/anova_blocklist.parquet
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    results.parquet
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    models.pkl
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>  ovwt_cellscores_batchwise/&lt;batch&gt;/   # optional: params.single_cell_scores (always on in OvwtPipeline)
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    cell_scores.parquet
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>  check_barcodes/&lt;batch&gt;/     # optional: params.run_check_barcodes (implies single_cell_scores)
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    results.parquet           # columns: variant, barcode, group_mean, comparison_barcode,
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>                               # comparison_group_mean, mean_diff, p_adj, reject
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>  feature_select_batchwise/&lt;batch&gt;/
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>    aggregates/&lt;feature_type&gt;.parquet                                     # stage 1
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>    splits/bootstrap_&lt;n&gt;/half{1,2}.parquet                                # stage 2a
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>    half_aggregates/bootstrap_&lt;n&gt;/&lt;feature_type&gt;/half{1,2}.parquet        # stage 2b
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    correlations/&lt;feature_type&gt;/bootstrap_&lt;n&gt;.parquet                     # stage 2c
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    blocklists/&lt;feature_type&gt;.parquet                                     # stage 2d
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>    blocklist.parquet                                                    # stage 3 (combined)
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>    output.parquet                                                       # stage 4 (final)
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>  feature_select_global/
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>    (same layout, no &lt;batch&gt; nesting — only present if params.global = true)
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>  batch_correction/
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>    fit/stats_vb.parquet
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>    fit/centroids.parquet
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>    cells/&lt;batch&gt;.parquet
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>    anova/anova.parquet
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>  anova/
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a>    anova.parquet                # from normalized cells
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a>  anova_blocklist/
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a>    anova_blocklist.parquet      # derived from anova/anova.parquet
 </code></pre></div>
 
 

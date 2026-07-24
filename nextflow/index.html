@@ -852,6 +852,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/checkbarcodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Check Barcodes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli/batchvsbatch/" class="md-nav__link">
         
   
@@ -1155,6 +1178,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/checkbarcodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    checkbarcodes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/batchvsbatch/" class="md-nav__link">
         
   
@@ -1388,7 +1434,7 @@
 <td><code>ovwt</code></td>
 <td><code>OvwtPipeline</code></td>
 <td><code>workflows/ovwt.nf</code></td>
-<td>OvWT classification only: <code>QC_FILTER</code> → <code>OVWT_BATCHWISE</code> → <code>OVWT_CELLSCORES_BATCHWISE</code>, no normalization, batch correction, or feature selection</td>
+<td>OvWT classification only: <code>QC_FILTER</code> → <code>OVWT_BATCHWISE</code> → <code>OVWT_CELLSCORES_BATCHWISE</code> → <code>CHECK_BARCODES</code> (optional, <code>params.run_check_barcodes</code>), no normalization, batch correction, or feature selection</td>
 </tr>
 </tbody>
 </table>
@@ -1453,7 +1499,7 @@ task doesn't abort the whole run.</p>
 <td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FILTERED</code>)</td>
 <td><code>ovwt_batchwise.nf</code></td>
 <td><code>fisseq-ovwt</code></td>
-<td>per batch, twice; <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>, <code>_FILTERED</code> does</td>
+<td>per batch, twice; <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>, <code>_FILTERED</code> does and is optional (<code>params.run_filtered_ovwt</code>)</td>
 </tr>
 <tr>
 <td><code>OVWT_GLOBAL</code></td>
@@ -1465,7 +1511,13 @@ task doesn't abort the whole run.</p>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
 <td><code>ovwt_cellscores_batchwise.nf</code></td>
 <td><code>fisseq-ovwt-cell-scores</code></td>
-<td>per batch</td>
+<td>per batch; optional in <code>FisseqPipeline</code> (<code>params.single_cell_scores</code>), always runs in <code>OvwtPipeline</code></td>
+</tr>
+<tr>
+<td><code>CHECK_BARCODES</code></td>
+<td><code>check_barcodes.nf</code></td>
+<td><code>fisseq-check-barcodes</code></td>
+<td>per batch, optional (<code>params.run_check_barcodes</code>, which also forces <code>single_cell_scores</code> on)</td>
 </tr>
 <tr>
 <td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
@@ -1680,6 +1732,36 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--anova_pvalue_threshold</code></td>
 <td><code>0.05</code></td>
 <td><code>ANOVA_BLOCKLIST</code>: a feature is blocked (<code>feature_ok = false</code>) when its <code>ANOVA_NORMALIZED</code> p-value is strictly less than this threshold (a statistically significant batch effect was detected).</td>
+</tr>
+<tr>
+<td><code>--single_cell_scores</code></td>
+<td><code>false</code></td>
+<td><code>FisseqPipeline</code> only: run <code>OVWT_CELLSCORES_BATCHWISE</code> per batch after <code>OVWT_BATCHWISE_UNFILTERED</code>. Always on in <code>OvwtPipeline</code>. Forced on if <code>--run_check_barcodes true</code>.</td>
+</tr>
+<tr>
+<td><code>--single_cell_scores_source</code></td>
+<td><code>"test"</code></td>
+<td>Which <code>OVWT_BATCHWISE</code> split to score: <code>"test"</code> or <code>"train"</code>. Any other value fails fast with a clear error.</td>
+</tr>
+<tr>
+<td><code>--run_check_barcodes</code></td>
+<td><code>false</code></td>
+<td>Run <code>CHECK_BARCODES</code> (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies <code>--single_cell_scores true</code>.</td>
+</tr>
+<tr>
+<td><code>--barcode_check_min_cells</code></td>
+<td><code>10</code></td>
+<td><code>CHECK_BARCODES</code>: minimum cells required per barcode (within a variant) to include it in the comparison.</td>
+</tr>
+<tr>
+<td><code>--barcode_check_alpha</code></td>
+<td><code>0.05</code></td>
+<td><code>CHECK_BARCODES</code>: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this.</td>
+</tr>
+<tr>
+<td><code>--run_filtered_ovwt</code></td>
+<td><code>true</code></td>
+<td>Run <code>OVWT_BATCHWISE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass.</td>
 </tr>
 </tbody>
 </table>

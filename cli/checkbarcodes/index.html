@@ -9,23 +9,25 @@
       
       
       
-        <link rel="prev" href="../api/utils/">
+        <link rel="prev" href="../ovwtcellscores/">
       
       
+        <link rel="next" href="../batchvsbatch/">
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
     
     
       
-        <title>Walkthrough - Fisseq Data Pipeline</title>
+        <title>Check Barcodes - Fisseq Data Pipeline</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
       
       
 
@@ -44,11 +46,11 @@
       
     
     
-      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -74,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#walkthrough-running-the-pipeline-end-to-end" class="md-skip">
+        <a href="#check-barcodes" class="md-skip">
           Skip to content
         </a>
       
@@ -88,7 +90,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="Fisseq Data Pipeline" class="md-header__button md-logo" aria-label="Fisseq Data Pipeline" data-md-component="logo">
+    <a href="../.." title="Fisseq Data Pipeline" class="md-header__button md-logo" aria-label="Fisseq Data Pipeline" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -108,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Walkthrough
+              Check Barcodes
             
           </span>
         </div>
@@ -207,7 +209,7 @@
   
   
     <li class="md-tabs__item">
-      <a href=".." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -226,7 +228,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../architecture/" class="md-tabs__link">
+      <a href="../../architecture/" class="md-tabs__link">
         
   
   
@@ -245,7 +247,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../installation/" class="md-tabs__link">
+      <a href="../../installation/" class="md-tabs__link">
         
   
   
@@ -264,7 +266,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../nextflow/" class="md-tabs__link">
+      <a href="../../nextflow/" class="md-tabs__link">
         
   
   
@@ -281,11 +283,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../cli/input/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../input/" class="md-tabs__link">
           
   
   
@@ -305,7 +309,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../api/input/" class="md-tabs__link">
+        <a href="../../api/input/" class="md-tabs__link">
           
   
   
@@ -321,11 +325,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../../walkthrough/" class="md-tabs__link">
         
   
   
@@ -360,7 +362,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="Fisseq Data Pipeline" class="md-nav__button md-logo" aria-label="Fisseq Data Pipeline" data-md-component="logo">
+    <a href="../.." title="Fisseq Data Pipeline" class="md-nav__button md-logo" aria-label="Fisseq Data Pipeline" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -378,7 +380,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -400,7 +402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/" class="md-nav__link">
+      <a href="../../architecture/" class="md-nav__link">
         
   
   
@@ -422,7 +424,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installation/" class="md-nav__link">
+      <a href="../../installation/" class="md-nav__link">
         
   
   
@@ -444,7 +446,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../nextflow/" class="md-nav__link">
+      <a href="../../nextflow/" class="md-nav__link">
         
   
   
@@ -463,26 +465,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -495,7 +502,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
@@ -509,7 +516,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/input/" class="md-nav__link">
+      <a href="../input/" class="md-nav__link">
         
   
   
@@ -532,7 +539,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/qcfilter/" class="md-nav__link">
+      <a href="../qcfilter/" class="md-nav__link">
         
   
   
@@ -555,7 +562,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/normalize/" class="md-nav__link">
+      <a href="../normalize/" class="md-nav__link">
         
   
   
@@ -578,7 +585,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/aggregate/" class="md-nav__link">
+      <a href="../aggregate/" class="md-nav__link">
         
   
   
@@ -601,7 +608,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/features/" class="md-nav__link">
+      <a href="../features/" class="md-nav__link">
         
   
   
@@ -624,7 +631,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/batchcorrect/" class="md-nav__link">
+      <a href="../batchcorrect/" class="md-nav__link">
         
   
   
@@ -647,7 +654,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/anova/" class="md-nav__link">
+      <a href="../anova/" class="md-nav__link">
         
   
   
@@ -670,7 +677,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/anovablocklist/" class="md-nav__link">
+      <a href="../anovablocklist/" class="md-nav__link">
         
   
   
@@ -693,7 +700,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/ovwt/" class="md-nav__link">
+      <a href="../ovwt/" class="md-nav__link">
         
   
   
@@ -716,7 +723,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/ovwtcellscores/" class="md-nav__link">
+      <a href="../ovwtcellscores/" class="md-nav__link">
         
   
   
@@ -736,10 +743,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../cli/checkbarcodes/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Check Barcodes
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -750,6 +779,53 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#config-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Config fields
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output files
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -762,7 +838,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/batchvsbatch/" class="md-nav__link">
+      <a href="../batchvsbatch/" class="md-nav__link">
         
   
   
@@ -835,7 +911,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/input/" class="md-nav__link">
+      <a href="../../api/input/" class="md-nav__link">
         
   
   
@@ -858,7 +934,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/qcfilter/" class="md-nav__link">
+      <a href="../../api/qcfilter/" class="md-nav__link">
         
   
   
@@ -881,7 +957,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/normalize/" class="md-nav__link">
+      <a href="../../api/normalize/" class="md-nav__link">
         
   
   
@@ -904,7 +980,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/aggregate/" class="md-nav__link">
+      <a href="../../api/aggregate/" class="md-nav__link">
         
   
   
@@ -927,7 +1003,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/features/" class="md-nav__link">
+      <a href="../../api/features/" class="md-nav__link">
         
   
   
@@ -950,7 +1026,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/batchcorrect/" class="md-nav__link">
+      <a href="../../api/batchcorrect/" class="md-nav__link">
         
   
   
@@ -973,7 +1049,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/anova/" class="md-nav__link">
+      <a href="../../api/anova/" class="md-nav__link">
         
   
   
@@ -996,7 +1072,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/anovablocklist/" class="md-nav__link">
+      <a href="../../api/anovablocklist/" class="md-nav__link">
         
   
   
@@ -1019,7 +1095,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/ovwt/" class="md-nav__link">
+      <a href="../../api/ovwt/" class="md-nav__link">
         
   
   
@@ -1042,7 +1118,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/ovwtcellscores/" class="md-nav__link">
+      <a href="../../api/ovwtcellscores/" class="md-nav__link">
         
   
   
@@ -1065,7 +1141,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/checkbarcodes/" class="md-nav__link">
+      <a href="../../api/checkbarcodes/" class="md-nav__link">
         
   
   
@@ -1088,7 +1164,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/batchvsbatch/" class="md-nav__link">
+      <a href="../../api/batchvsbatch/" class="md-nav__link">
         
   
   
@@ -1111,7 +1187,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/config/" class="md-nav__link">
+      <a href="../../api/config/" class="md-nav__link">
         
   
   
@@ -1134,7 +1210,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/utils/" class="md-nav__link">
+      <a href="../../api/utils/" class="md-nav__link">
         
   
   
@@ -1161,32 +1237,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Walkthrough
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../walkthrough/" class="md-nav__link">
         
   
   
@@ -1197,71 +1251,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-install" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Install
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-lay-out-your-input-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Lay out your input data
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-run-the-pipeline" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Run the pipeline
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-inspect-the-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. Inspect the results
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-running-individual-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Running individual steps
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1293,45 +1282,27 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-install" class="md-nav__link">
+  <a href="#config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      1. Install
+      Config fields
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-lay-out-your-input-data" class="md-nav__link">
+  <a href="#output-files" class="md-nav__link">
     <span class="md-ellipsis">
-      2. Lay out your input data
+      Output files
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-run-the-pipeline" class="md-nav__link">
+  <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
-      3. Run the pipeline
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-inspect-the-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. Inspect the results
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-running-individual-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Running individual steps
+      Example
     </span>
   </a>
   
@@ -1353,85 +1324,76 @@
 
 
 
-<h1 id="walkthrough-running-the-pipeline-end-to-end">Walkthrough: running the pipeline end to end<a class="headerlink" href="#walkthrough-running-the-pipeline-end-to-end" title="Permanent link">&para;</a></h1>
-<p>This walks through a full run of the default <code>fisseq</code> workflow, from raw
-CellProfiler output to final feature-selected results.</p>
-<h2 id="1-install">1. Install<a class="headerlink" href="#1-install" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Lilferrit/fisseq-data-pipeline.git
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>fisseq-data-pipeline
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>uv<span class="w"> </span>sync<span class="w"> </span>--group<span class="w"> </span>dev
-</code></pre></div>
-<p>See <a href="../installation/">Installation</a> for details, including cluster/HPC setup.</p>
-<h2 id="2-lay-out-your-input-data">2. Lay out your input data<a class="headerlink" href="#2-lay-out-your-input-data" title="Permanent link">&para;</a></h2>
-<p>Each batch's CellProfiler feature matrix (with barcode/variant annotations) goes
-in its own Parquet file under <code>&lt;input_dir&gt;/input/</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;input_dir&gt;/
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  input/
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    batch1.parquet
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    batch2.parquet
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    ...
-</code></pre></div>
-<h2 id="3-run-the-pipeline">3. Run the pipeline<a class="headerlink" href="#3-run-the-pipeline" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
-</code></pre></div>
-<p>This runs the default <code>FisseqPipeline</code>, which chains every stage described in
-<a href="../architecture/">Architecture</a>:</p>
-<ol>
-<li><code>QC_FILTER</code> — edit-distance, barcode-count, and variant-barcode-count filtering
-   (per batch).</li>
-<li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (global, if
-   <code>params.global</code>).</li>
-<li><code>NORMALIZE</code> — z-score normalization fit on WT control cells (per batch).</li>
-<li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global, if
-   <code>params.global</code>).</li>
-<li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification.</li>
-<li>Bootstrap feature selection (batchwise and, if <code>params.global</code>, global) —
-   see <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
-   six-stage breakdown.</li>
-<li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction
-   (always runs, regardless of <code>params.global</code>).</li>
-<li><code>ANOVA</code> — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells (always runs).</li>
-</ol>
-<p>Override any <a href="../nextflow/#parameters">parameter</a> on the command line, e.g. to
-adjust QC thresholds or skip the global-only processes (<code>OVWT_GLOBAL</code>, the global
-feature-selection branch, and <code>BATCHVSBATCH</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--bc_threshold<span class="w"> </span><span class="m">15</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--global<span class="w"> </span><span class="nb">false</span>
-</code></pre></div>
-<p>To run on a cluster, supply your own config:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
-</code></pre></div>
-<p>If a run is interrupted, resume from the last completed task:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
-</code></pre></div>
-<h2 id="4-inspect-the-results">4. Inspect the results<a class="headerlink" href="#4-inspect-the-results" title="Permanent link">&para;</a></h2>
-<p>All outputs land under <code>&lt;input_dir&gt;</code>, alongside <code>input/</code> — see
-<a href="../architecture/#output-layout">Architecture: Output layout</a> for the full tree.
-The two results most analyses care about:</p>
+<h1 id="check-barcodes">Check Barcodes<a class="headerlink" href="#check-barcodes" title="Permanent link">&para;</a></h1>
+<p><code>fisseq-check-barcodes</code> (Nextflow process <code>CHECK_BARCODES</code>, run once per batch,
+gated by <code>params.run_check_barcodes</code>) detects barcodes whose cells score
+differently from the rest of the cells carrying the same variant's other
+barcodes. <code>input_file</code> is a <code>cell_scores.parquet</code> produced by
+<a href="../ovwtcellscores/">OvWT Cell Scores</a> (one column per trained variant model,
+plus <code>meta_*</code> columns). Each cell's own-model score (the value of the column
+named by its own <code>label_column</code> value) is used as the response variable,
+grouped by variant and barcode; for each variant with more than one distinct
+barcode remaining after the <code>min_cells</code> filter, a pairwise Tukey HSD is run
+across its barcodes.</p>
+<p>The comparison is fully vectorized: per-(variant, barcode) sufficient
+statistics (non-null count, sum, sum of squares) are computed in a single
+<code>group_by(...).agg(...)</code> query (the same pattern <a href="../anova/">ANOVA</a> uses), a
+pooled within-variant MSE and degrees of freedom are derived from those
+statistics, all barcode pairs within a variant are enumerated via one
+vectorized self-join, and the studentized-range p-value is computed via
+<code>scipy.stats.studentized_range.sf</code> — the same closed-form distribution
+<code>statsmodels.stats.multicomp.pairwise_tukeyhsd</code> uses internally (verified to
+match bit-for-bit), applied across every pairwise comparison in every variant
+at once, rather than looping <code>pairwise_tukeyhsd</code> per variant.</p>
+<h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
+<p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_file</code></td>
+<td><strong>required</strong></td>
+<td>Path to a <code>cell_scores.parquet</code> (wide-format single-cell scores).</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td><code>"meta_aa_changes"</code></td>
+<td>Column identifying each cell's variant label.</td>
+</tr>
+<tr>
+<td><code>min_cells</code></td>
+<td><code>10</code></td>
+<td>Minimum cells required per barcode (within a variant) to include it in the comparison.</td>
+</tr>
+<tr>
+<td><code>alpha</code></td>
+<td><code>0.05</code></td>
+<td>Family-wise significance level; a barcode pair is flagged (<code>reject = True</code>) when its adjusted p-value is below this.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>&lt;input_dir&gt;/feature_select_batchwise/&lt;batch&gt;/output.parquet</code> (and
-  <code>feature_select_global/output.parquet</code>, if <code>params.global</code>) — final
-  per-variant, feature-selected profiles.</li>
-<li><code>&lt;input_dir&gt;/anova/anova.parquet</code> and
-  <code>&lt;input_dir&gt;/batch_correction/anova/anova.parquet</code> — per-feature
-  batch-effect ANOVA results, before and after batch correction.</li>
+<li><code>results.parquet</code> — one row per compared barcode pair, with columns
+  <code>variant</code>, <code>barcode</code>, <code>group_mean</code>, <code>comparison_barcode</code>,
+  <code>comparison_group_mean</code>, <code>mean_diff</code>, <code>p_adj</code>, <code>reject</code>. Variants with only
+  one qualifying barcode are skipped (nothing to compare).</li>
 </ul>
-<h2 id="5-running-individual-steps">5. Running individual steps<a class="headerlink" href="#5-running-individual-steps" title="Permanent link">&para;</a></h2>
-<p>Every Nextflow process wraps a standalone <code>fisseq-*</code> CLI tool. To debug or rerun
-one stage manually, invoke it directly — see the <a href="../cli/qcfilter/">CLI Reference</a>
-for each tool's config fields:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-qc-filter<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="s1">&#39;cell_files=[data/plate1.parquet]&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nv">bc_threshold</span><span class="o">=</span><span class="m">10</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-normalize<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/filtered_cells.parquet
+<h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-check-barcodes<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/cell_scores.parquet<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">min_cells</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nv">alpha</span><span class="o">=</span><span class="m">0</span>.05
 </code></pre></div>
+<p>See <a href="../../api/checkbarcodes/">API Reference: checkbarcodes</a> for full function
+documentation.</p>
 
 
 
@@ -1486,10 +1448,10 @@ for each tool's config fields:</p>
     
     
       
-      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "content.code.copy"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "content.code.copy"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
       
     
   </body>
