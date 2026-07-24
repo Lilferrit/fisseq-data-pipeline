@@ -15,7 +15,7 @@ population differs from wildtype (WT) controls using morphological features.
 - **[Nextflow Workflow](nextflow.md)** — the Nextflow processes, how they're wired
   together, and how to run the pipeline (params, profiles).
 - **CLI Reference** — one page per Python entry point (QC filter, normalize,
-  aggregate, feature selection, batch correction, PERMANOVA, OvWT, OvWT cell
+  aggregate, feature selection, batch correction, ANOVA, OvWT, OvWT cell
   scores, batch-vs-batch), each with its config fields and a runnable example.
 - **API Reference** — full function/class-level documentation for every module,
   generated from source docstrings.
@@ -38,9 +38,9 @@ NORMALIZE   (per batch)
      ├──► OVWT_BATCHWISE             (per batch)
      ├──► OVWT_GLOBAL                (global, optional — params.global)
      ├──► Feature selection          (batchwise always; global optional)
-     └──► PERMANOVA (normalized)     (global, optional — params.global)
+     └──► ANOVA (normalized)         (global — always runs)
 
-QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► PERMANOVA (batch-corrected)  (optional — params.global)
+QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► ANOVA (batch-corrected)  (always runs)
 ```
 
 See [Architecture](architecture.md) for the full diagram and stage-by-stage detail.

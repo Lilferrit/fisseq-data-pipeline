@@ -16,7 +16,7 @@ workflow {
 
 | `--workflow` | Workflow | Definition | Use when |
 | ------------- | -------- | ---------- | -------- |
-| `fisseq` (default) | `FisseqPipeline` | `workflows/fisseq.nf` | Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → PERMANOVA) |
+| `fisseq` (default) | `FisseqPipeline` | `workflows/fisseq.nf` | Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → ANOVA) |
 | `ovwt` | `OvwtPipeline` | `workflows/ovwt.nf` | OvWT classification only: `QC_FILTER` → `OVWT_BATCHWISE` → `OVWT_CELLSCORES_BATCHWISE`, no normalization, batch correction, or feature selection |
 
 Both workflows validate that `--input_dir` is set and that `<input_dir>/input/`
@@ -73,7 +73,7 @@ task doesn't abort the whole run.
 | `FINALIZE_FEATURE_SELECT` (aliased) | `finalize_feature_select.nf` | `fisseq-feature-select` | per (batch or global) |
 | `BATCH_CORRECT_FIT` | `batch_correct_fit.nf` | `fisseq-batch-correct-fit` | global, waits for all `QC_FILTER` |
 | `BATCH_CORRECT_TRANSFORM` | `batch_correct_transform.nf` | `fisseq-batch-correct-transform` | per batch |
-| `PERMANOVA` (aliased `_NORMALIZED` / `_BATCH_CORRECTED`) | `permanova.nf` | `fisseq-permanova` | global, twice, optional (`params.global`) |
+| `ANOVA` (aliased `_NORMALIZED` / `_BATCH_CORRECTED`) | `anova.nf` | `fisseq-anova` | global, twice, always runs |
 
 "Aliased" processes are declared once and invoked twice in `workflows/fisseq.nf` via
 `include { X as Y }` (Nextflow forbids calling one process twice under its own name
@@ -146,7 +146,6 @@ Defaults live in `nextflow.config` at the repo root:
 | `--downsample_seed` | `0` | Seed for the deterministic downsample selection. |
 | `--bvb_min_cells` | `50` | Minimum total cells for a variant to be profiled in batch-vs-batch. |
 | `--bvb_min_batches` | `2` | Minimum unique batches a variant must appear in for batch-vs-batch. |
-| `--permanova_n_permutations` | `999` | Label permutations for the per-variant PERMANOVA p-value. |
 | `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
 | `--downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
 | `--aggregate_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#fisseq-aggregate-feature-type-config-fields). |

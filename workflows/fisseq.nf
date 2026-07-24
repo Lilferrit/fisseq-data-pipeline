@@ -3,9 +3,9 @@ nextflow.enable.dsl = 2
 // FisseqPipeline: the default, full end-to-end DAG. Wires together QC_FILTER
 // -> NORMALIZE -> BATCHVSBATCH (pre/post) -> OVWT (batchwise/global) ->
 // bootstrap feature selection (batchwise/global, gated by params.feature_selection) ->
-// BATCH_CORRECT_FIT/TRANSFORM -> PERMANOVA (normalized and batch-corrected).
+// BATCH_CORRECT_FIT/TRANSFORM -> ANOVA (normalized and batch-corrected).
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
-// gated by params.global (default true); PERMANOVA and
+// gated by params.global (default true); ANOVA and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
@@ -29,8 +29,8 @@ include { COMBINE_BLOCKLISTS     as COMBINE_BLOCKLISTS_BATCHWISE     } from '../
 include { COMBINE_BLOCKLISTS     as COMBINE_BLOCKLISTS_GLOBAL        } from '../modules/local/combine_blocklists'
 include { FINALIZE_FEATURE_SELECT as FINALIZE_FEATURE_SELECT_BATCHWISE } from '../modules/local/finalize_feature_select'
 include { FINALIZE_FEATURE_SELECT as FINALIZE_FEATURE_SELECT_GLOBAL    } from '../modules/local/finalize_feature_select'
-include { PERMANOVA as PERMANOVA_NORMALIZED     } from '../modules/local/permanova'
-include { PERMANOVA as PERMANOVA_BATCH_CORRECTED } from '../modules/local/permanova'
+include { ANOVA as ANOVA_NORMALIZED     } from '../modules/local/anova'
+include { ANOVA as ANOVA_BATCH_CORRECTED } from '../modules/local/anova'
 include { BATCH_CORRECT_FIT         } from '../modules/local/batch_correct_fit'
 include { BATCH_CORRECT_TRANSFORM   } from '../modules/local/batch_correct_transform'
 
@@ -337,10 +337,10 @@ workflow FisseqPipeline {
     }
     }
 
-    // Step 9: PERMANOVA — batch-effect assessment (normalized cells)
-    PERMANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "permanova"] })
+    // Step 9: ANOVA — batch-effect assessment (normalized cells)
+    ANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "anova"] })
 
-    // New branch: qc_filtering -> batch_correction -> permanova (independent of normalize)
+    // New branch: qc_filtering -> batch_correction -> anova (independent of normalize)
     // Step 1: fit centroid batch correction across all batches (global, waits for all QC_FILTER)
     fit_out = BATCH_CORRECT_FIT(qc_signal).fit_outputs  // tuple(stats_vb, centroids), single emission
 
@@ -357,6 +357,6 @@ workflow FisseqPipeline {
     bc_signal = bc_ch.map { stem, p -> stem }.collect()
         .map { _stems -> input_dir_abs }
 
-    // Step 3: PERMANOVA on batch-corrected cells
-    PERMANOVA_BATCH_CORRECTED(bc_signal.map { d -> [d, "${d}/batch_correction/cells/*.parquet", "batch_correction/permanova"] })
+    // Step 3: ANOVA on batch-corrected cells
+    ANOVA_BATCH_CORRECTED(bc_signal.map { d -> [d, "${d}/batch_correction/cells/*.parquet", "batch_correction/anova"] })
 }

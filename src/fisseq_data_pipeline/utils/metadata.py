@@ -1,7 +1,7 @@
 """Per-variant metadata aggregation helpers.
 
 Defines :func:`get_aggregate_meta_data`, used by the aggregation, feature-selection,
-OvWT, and PERMANOVA entry points to attach per-variant cell counts and
+OvWT, and ANOVA entry points to attach per-variant cell counts and
 barcode/batch frequency summaries to their outputs.
 """
 
