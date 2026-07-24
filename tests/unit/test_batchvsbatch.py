@@ -10,7 +10,7 @@ import xgboost as xgb
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.batchvsbatch as m
-from fisseq_data_pipeline.batchvsbatch import BvbConfig
+from fisseq_data_pipeline.batchvsbatch import BvbConfig, _exclude_blocked_features
 from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig, XGBoostParams
 
 _LABEL_COL = "label"
@@ -60,6 +60,7 @@ def _make_cfg(**overrides) -> OmegaConf:
         feature_cols=None,
         min_cells=10,
         min_batches=2,
+        block_list_file=None,
         xgboost=dict(
             num_boost_round=5,
             early_stopping_rounds=3,
@@ -122,9 +123,58 @@ def test_train_test_val_split_all_batches_in_train():
     for variant in df[_LABEL_COL].unique().to_list():
         variant_train = train.filter(pl.col(_LABEL_COL) == variant)
         batches_in_train = set(variant_train[_BATCH_COL].unique().to_list())
-        assert len(batches_in_train) == 3, (
-            f"Variant {variant} should have all 3 batches in train, got {batches_in_train}"
-        )
+        assert (
+            len(batches_in_train) == 3
+        ), f"Variant {variant} should have all 3 batches in train, got {batches_in_train}"
+
+
+# ---------------------------------------------------------------------------
+# _exclude_blocked_features
+# ---------------------------------------------------------------------------
+
+
+def _write_block_list(tmp_path, feature_ok: dict[str, bool]):
+    path = tmp_path / "block_list.parquet"
+    pl.DataFrame(
+        {
+            "feature": list(feature_ok.keys()),
+            "feature_ok": list(feature_ok.values()),
+        }
+    ).write_parquet(path)
+    return path
+
+
+def test_exclude_blocked_features_none_is_no_op():
+    assert _exclude_blocked_features(_FEATURE_COLS, None) == _FEATURE_COLS
+
+
+def test_exclude_blocked_features_drops_blocked(tmp_path):
+    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": False})
+    result = _exclude_blocked_features(_FEATURE_COLS, str(path))
+    assert result == ["Intensity_Mean"]
+
+
+# ---------------------------------------------------------------------------
+# train_test_val_split -- block_list_file integration
+# ---------------------------------------------------------------------------
+
+
+def test_train_test_val_split_block_list_file_excludes_feature(tmp_path):
+    df = _make_batch_df(n_batches=3, n_cells_per_batch=40, n_variants=2)
+    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": False})
+    cfg = _make_cfg(block_list_file=str(path))
+    train, test, val = m.train_test_val_split(df, cfg)
+    for split in (train, test, val):
+        assert "Texture_Var" not in split.columns
+        assert "Intensity_Mean" in split.columns
+
+
+def test_train_test_val_split_block_list_file_none_keeps_all_features():
+    df = _make_batch_df(n_batches=3, n_cells_per_batch=40, n_variants=2)
+    cfg = _make_cfg()
+    train, _, _ = m.train_test_val_split(df, cfg)
+    assert "Intensity_Mean" in train.columns
+    assert "Texture_Var" in train.columns
 
 
 # ---------------------------------------------------------------------------
@@ -198,9 +248,9 @@ def test_extract_ovr_stats_separable_batch_high_auroc(model_and_test):
     model, test, classes, _ = model_and_test
     stats = m.extract_ovr_stats(model, test, _FEATURE_COLS, _BATCH_COL, classes)
     batch0_row = next(r for r in stats if r["batch"] == "batch_0")
-    assert batch0_row["auroc"] > 0.8, (
-        f"Expected high AUROC for separable batch_0, got {batch0_row['auroc']}"
-    )
+    assert (
+        batch0_row["auroc"] > 0.8
+    ), f"Expected high AUROC for separable batch_0, got {batch0_row['auroc']}"
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +355,34 @@ def test_main_creates_output_file(tmp_path):
     with patch("fisseq_data_pipeline.batchvsbatch.setup_logging"):
         m.main.__wrapped__(cfg)
     assert (tmp_path / "results.parquet").exists()
+
+
+def test_main_block_list_file_excludes_feature_from_profiling(tmp_path):
+    df = _make_batch_df(n_batches=3, n_cells_per_batch=40, n_variants=2)
+    input_path = tmp_path / "input.parquet"
+    df.write_parquet(input_path)
+    block_list_path = _write_block_list(
+        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
+    )
+    cfg = _make_structured_cfg(tmp_path, input_path)
+    cfg.block_list_file = str(block_list_path)
+
+    captured = {}
+    original_profile_variant = m.profile_variant
+
+    def spy(variant, train_all, test_all, val_all, feature_cols, cfg):
+        captured["feature_cols"] = feature_cols
+        return original_profile_variant(
+            variant, train_all, test_all, val_all, feature_cols, cfg
+        )
+
+    with patch("fisseq_data_pipeline.batchvsbatch.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.batchvsbatch.profile_variant", side_effect=spy
+        ):
+            m.main.__wrapped__(cfg)
+
+    assert captured["feature_cols"] == ["Intensity_Mean"]
 
 
 def test_main_output_schema(tmp_path):

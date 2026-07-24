@@ -19,13 +19,20 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
      ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
      │
-     ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER; skipped if params.global = false)
+     ├──► BATCHVSBATCH (pre, unfiltered)  (global — waits for all QC_FILTER; skipped if params.global = false)
      ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │
-     ├──► BATCHVSBATCH (post)      (global — waits for all batches; skipped if params.global = false)
-     ├──► OVWT_BATCHWISE           (per batch)
-     ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
+     ├──► ANOVA (normalized)  (global — waits for all batches; always runs)
+     │           │
+     │           ▼
+     │      ANOVA_BLOCKLIST  (global; always runs — marks feature_ok from ANOVA p-values)
+     │           │
+     │           ├──► BATCHVSBATCH (post, filtered)   (global; skipped if params.global = false)
+     │           ├──► OVWT_BATCHWISE (filtered)        (per batch; always runs)
+     │           └──► OVWT_GLOBAL (filtered)            (global; skipped if params.global = false)
+     │
+     ├──► OVWT_BATCHWISE (unfiltered)     (per batch — no dependency on ANOVA_BLOCKLIST)
      └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.global = false):
             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
             GENERATE_SPLIT              (per bootstrap replicate)    │
@@ -42,25 +49,43 @@ QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
                     │
                     ▼
              ANOVA (batch-corrected)  (always runs)
-
-NORMALIZE (all batches) ──► ANOVA (normalized)  (always runs)
 ```
 
 `ANOVA` and `BATCHVSBATCH` are each a single parameterized Nextflow process
 invoked twice via `include { X as Y }` aliasing (a process cannot be called twice
-under its own name in one workflow):
+under its own name in one workflow); `OVWT_BATCHWISE` is likewise aliased into
+an unfiltered and a filtered invocation:
 
 - `BATCHVSBATCH_PRE` runs on QC-filtered cells (`qc_filter/*/filtered_cells.parquet`),
-  `BATCHVSBATCH_POST` on normalized cells (`normalization/cells/*.parquet`).
+  unfiltered; `BATCHVSBATCH_POST` on normalized cells (`normalization/cells/*.parquet`),
+  filtered against `ANOVA_BLOCKLIST`.
 - `ANOVA_NORMALIZED` runs on normalized cells, `ANOVA_BATCH_CORRECTED` on
   batch-corrected cells (`batch_correction/cells/*.parquet`).
+- `OVWT_BATCHWISE_UNFILTERED` (published under `ovwt_batchwise/`) has no
+  dependency on `ANOVA_BLOCKLIST` and keeps the pipeline's original per-batch,
+  no-wait-for-all-batches behavior; `OVWT_BATCHWISE_FILTERED` (published under
+  `ovwt_batchwise_filtered/`) additionally depends on `ANOVA_BLOCKLIST`, so it
+  runs once all batches have normalized and `ANOVA_NORMALIZED`/`ANOVA_BLOCKLIST`
+  have completed. `OVWT_GLOBAL` has no unfiltered counterpart — it is always
+  filtered.
+
+`ANOVA_BLOCKLIST` derives a feature block-list from `ANOVA_NORMALIZED`'s
+p-values (not `ANOVA_BATCH_CORRECTED` — OvWT and batch-vs-batch score
+normalized cells, never batch-corrected ones). A feature is blocked
+(`feature_ok = false`) when its ANOVA `p_value` is strictly less than
+`params.anova_pvalue_threshold` (default `0.05`), i.e. when a statistically
+significant batch effect was detected. It always runs, unconditionally — not
+gated by `params.global`/`params.feature_selection` — since
+`OVWT_BATCHWISE_FILTERED` (batchwise) needs it regardless of those flags.
 
 Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection
-branch, `ANOVA`, `BATCH_CORRECT_FIT`) read published output files from disk via
-glob patterns after all upstream per-batch processes finish, rather than consuming
-Nextflow channel outputs directly. `params.global` (default `true`) gates
-`BATCHVSBATCH`, `OVWT_GLOBAL`, and the `*_GLOBAL` feature-selection branch —
-`ANOVA`, `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` always run.
+branch, `ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`) read published output
+files from disk via glob patterns (or, for `ANOVA_BLOCKLIST`, consume a real
+Nextflow channel output) after all upstream per-batch processes finish, rather
+than consuming Nextflow channel outputs directly in the general case.
+`params.global` (default `true`) gates `BATCHVSBATCH`, `OVWT_GLOBAL`, and the
+`*_GLOBAL` feature-selection branch — `ANOVA`, `ANOVA_BLOCKLIST`,
+`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` always run.
 
 ## Stages
 
@@ -71,11 +96,12 @@ Nextflow channel outputs directly. `params.global` (default `true`) gates
 | Batch-effect check (pre) | `batchvsbatch.py` | `BATCHVSBATCH` (pre) | `results.parquet` |
 | Normalization | `normalize.py` | `NORMALIZE` | normalized cells + `normalizer.parquet` |
 | Batch-effect check (post) | `batchvsbatch.py` | `BATCHVSBATCH` (post) | `results.parquet` |
-| One-vs-WT classification | `ovwt.py` | `OVWT_BATCHWISE`, `OVWT_GLOBAL` | `results.parquet`, `models.pkl` |
+| One-vs-WT classification | `ovwt.py` | `OVWT_BATCHWISE` (unfiltered + filtered), `OVWT_GLOBAL` (filtered) | `results.parquet`, `models.pkl` |
 | OvWT cell scoring | `ovwtcellscores.py` | `OVWT_CELLSCORES_BATCHWISE` | `cell_scores.parquet` |
 | Feature selection | `aggregate.py`, `features.py` | `AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-variant aggregate) |
 | Batch correction | `batchcorrect.py` | `BATCH_CORRECT_FIT`, `BATCH_CORRECT_TRANSFORM` | `stats_vb.parquet`, `centroids.parquet`, corrected cells |
 | Batch-effect assessment | `anova.py` | `ANOVA` (normalized and batch-corrected) | `anova.parquet` |
+| ANOVA feature block-list | `anovablocklist.py` | `ANOVA_BLOCKLIST` | `anova_blocklist.parquet` |
 
 See the [CLI Reference](cli/qcfilter.md) pages for each module's config fields and
 the [API Reference](api/qcfilter.md) pages for full function documentation.
@@ -135,12 +161,15 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
     cells/<batch>.parquet
     normalizers/<batch>.normalizer.parquet
   batchvsbatch/
-    pre/results.parquet         # pre batch correction (QC-filtered cells)
-    post/results.parquet        # post batch correction (normalized cells)
-  ovwt_batchwise/<batch>/
+    pre/results.parquet         # pre batch correction (QC-filtered cells), unfiltered
+    post/results.parquet        # post batch correction (normalized cells), filtered against anova_blocklist
+  ovwt_batchwise/<batch>/     # unfiltered — full feature set
     results.parquet
     models.pkl
-  ovwt_global/
+  ovwt_batchwise_filtered/<batch>/   # filtered against anova_blocklist/anova_blocklist.parquet
+    results.parquet
+    models.pkl
+  ovwt_global/                # always filtered against anova_blocklist/anova_blocklist.parquet
     results.parquet
     models.pkl
   ovwt_cellscores_batchwise/<batch>/
@@ -162,4 +191,6 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
     anova/anova.parquet
   anova/
     anova.parquet                # from normalized cells
+  anova_blocklist/
+    anova_blocklist.parquet      # derived from anova/anova.parquet
 ```

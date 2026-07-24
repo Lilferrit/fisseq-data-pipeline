@@ -2,13 +2,15 @@ nextflow.enable.dsl = 2
 
 // OVWT_GLOBAL: wraps fisseq-ovwt. Runs once across all batches' normalized
 // cells (globs normalization/cells/*.parquet), gated by params.global.
-// Publishes results.parquet and models.pkl under ovwt_global/.
+// Always filtered against the ANOVA_BLOCKLIST output -- there is no
+// unfiltered global OvWT run. Publishes results.parquet and models.pkl
+// under ovwt_global/.
 process OVWT_GLOBAL {
     errorStrategy 'ignore'
     publishDir "${params.input_dir}/ovwt_global", mode: 'copy'
 
     input:
-    val(input_dir)
+    tuple val(input_dir), val(block_list_file)
 
     output:
     path("results.parquet")
@@ -22,6 +24,7 @@ process OVWT_GLOBAL {
         output_dir=. \\
         "input_file=${input_dir}/normalization/cells/*.parquet" \\
         min_cells=${params.ovwt_min_cells} \\
-        downsample_wt=${params.downsample_wt}
+        downsample_wt=${params.downsample_wt} \\
+        block_list_file=${block_list_file}
     """
 }

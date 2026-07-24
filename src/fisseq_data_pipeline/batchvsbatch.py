@@ -64,6 +64,11 @@ class BvbConfig(LabeledInputConfig):
         directory name rather than its stem. Set this when all input files share
         the same filename but live in different subdirectories (e.g. the pre-QC
         glob ``qc_filter/*/filtered_cells.parquet``). Defaults to ``False``.
+    block_list_file : str or None
+        Optional path to a parquet file with at least ``feature`` (str) and
+        ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
+        ``False`` are excluded before splitting/training. Defaults to
+        ``None`` (no features blocked).
     xgboost : XGBoostConfig
         XGBoost training configuration. Defaults to :class:`.xgbparams.XGBoostConfig`.
     """
@@ -74,11 +79,39 @@ class BvbConfig(LabeledInputConfig):
     min_cells: int = 50
     min_batches: int = 2
     use_parent_name: bool = False
+    block_list_file: Optional[str] = None
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
 
 _cs = ConfigStore.instance()
 _cs.store(name="bvb_main", node=BvbConfig)
+
+
+def _exclude_blocked_features(
+    feature_cols: list[str], block_list_file: Optional[str]
+) -> list[str]:
+    """
+    Drop blocked feature names from a feature column list.
+
+    Parameters
+    ----------
+    feature_cols : list[str]
+        Candidate feature column names.
+    block_list_file : str or None
+        Path to a parquet file with ``feature`` (str) and ``feature_ok``
+        (bool) columns, or ``None`` to skip filtering entirely.
+
+    Returns
+    -------
+    list[str]
+        ``feature_cols`` with any feature whose ``feature_ok`` is ``False``
+        removed. Unchanged if ``block_list_file`` is ``None``.
+    """
+    if block_list_file is None:
+        return feature_cols
+    bl_df = pl.read_parquet(block_list_file)
+    blocked = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
+    return [f for f in feature_cols if f not in blocked]
 
 
 def train_test_val_split(
@@ -97,7 +130,7 @@ def train_test_val_split(
         Full feature DataFrame.
     cfg : DictConfig
         Config supplying ``label_column``, ``batch_column``, ``feature_cols``,
-        and ``random_state``.
+        ``random_state``, and ``block_list_file``.
 
     Returns
     -------
@@ -113,6 +146,7 @@ def train_test_val_split(
         if cfg.feature_cols is not None
         else get_feature_cols(data_df)
     )
+    feature_cols = _exclude_blocked_features(feature_cols, cfg.block_list_file)
     select_cols = feature_cols + [label_col, batch_col]
 
     data_df = data_df.select(select_cols)
@@ -391,6 +425,7 @@ def main(cfg: DictConfig) -> None:
         if cfg.feature_cols is not None
         else get_feature_cols(feature_df)
     )
+    feature_cols = _exclude_blocked_features(feature_cols, bvb_cfg.block_list_file)
     logging.info("Using %d feature column(s)", len(feature_cols))
 
     train_all, test_all, val_all = train_test_val_split(feature_df, cfg)

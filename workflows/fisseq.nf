@@ -1,11 +1,13 @@
 nextflow.enable.dsl = 2
 
 // FisseqPipeline: the default, full end-to-end DAG. Wires together QC_FILTER
-// -> NORMALIZE -> BATCHVSBATCH (pre/post) -> OVWT (batchwise/global) ->
-// bootstrap feature selection (batchwise/global, gated by params.feature_selection) ->
-// BATCH_CORRECT_FIT/TRANSFORM -> ANOVA (normalized and batch-corrected).
+// -> NORMALIZE -> ANOVA (normalized) -> ANOVA_BLOCKLIST -> BATCHVSBATCH
+// (pre unfiltered / post filtered) -> OVWT (batchwise unfiltered + filtered,
+// global filtered only) -> bootstrap feature selection (batchwise/global,
+// gated by params.feature_selection) -> BATCH_CORRECT_FIT/TRANSFORM ->
+// ANOVA (batch-corrected).
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
-// gated by params.global (default true); ANOVA and
+// gated by params.global (default true); ANOVA, ANOVA_BLOCKLIST, and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
@@ -13,8 +15,10 @@ include { QC_FILTER                 } from '../modules/local/qc_filter'
 include { NORMALIZE                 } from '../modules/local/normalize'
 include { BATCHVSBATCH as BATCHVSBATCH_PRE  } from '../modules/local/batchvsbatch'
 include { BATCHVSBATCH as BATCHVSBATCH_POST } from '../modules/local/batchvsbatch'
-include { OVWT_BATCHWISE            } from '../modules/local/ovwt_batchwise'
+include { OVWT_BATCHWISE as OVWT_BATCHWISE_UNFILTERED } from '../modules/local/ovwt_batchwise'
+include { OVWT_BATCHWISE as OVWT_BATCHWISE_FILTERED   } from '../modules/local/ovwt_batchwise'
 include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
+include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_BATCHWISE } from '../modules/local/aggregate_feature_type'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_GLOBAL    } from '../modules/local/aggregate_feature_type'
 include { GENERATE_SPLIT        as GENERATE_SPLIT_BATCHWISE          } from '../modules/local/generate_split'
@@ -106,6 +110,17 @@ workflow FisseqPipeline {
     global_signal = norm_ch.map { stem, p -> stem }.collect()
         .map { _stems -> input_dir_abs }
 
+    // ANOVA (normalized) — moved up from its previous "Step 9" position so
+    // its output channel can feed ANOVA_BLOCKLIST here. Always runs,
+    // unconditionally (see below for ANOVA_BLOCKLIST).
+    ANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "anova"] })
+
+    // ANOVA_BLOCKLIST — derives a feature block-list from ANOVA_NORMALIZED's
+    // p-values. Always runs, not gated by params.global/params.feature_selection,
+    // since OVWT_BATCHWISE_FILTERED (batchwise) needs it unconditionally.
+    ANOVA_BLOCKLIST(ANOVA_NORMALIZED.out)
+    anova_blocklist_ch = ANOVA_BLOCKLIST.out  // single-element path channel
+
     // Explicit String->Boolean parse: Nextflow CLI overrides (e.g. --global
     // false) arrive as the String "false", which is truthy in Groovy — a
     // bare `if (params.global)` (or `as Boolean`) would run the "disabled"
@@ -118,23 +133,36 @@ workflow FisseqPipeline {
     run_feature_selection = params.feature_selection.toString().toBoolean()
 
     // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
-    // (optional, gated on params.global)
+    // (optional, gated on params.global). Unfiltered: runs immediately after
+    // QC_FILTER, no dependency on ANOVA_BLOCKLIST, to preserve its current
+    // early/parallel scheduling.
     if (run_global) {
-        BATCHVSBATCH_PRE(qc_signal.map { d -> [d, "${d}/qc_filter/*/filtered_cells.parquet", true, "pre"] })
+        BATCHVSBATCH_PRE(qc_signal.map { d -> [d, "${d}/qc_filter/*/filtered_cells.parquet", true, "pre", null] })
     }
 
     // Step 4: Batch-vs-batch — post batch correction (normalized cells)
-    // (optional, gated on params.global)
+    // (optional, gated on params.global). Filtered against ANOVA_BLOCKLIST.
     if (run_global) {
-        BATCHVSBATCH_POST(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", false, "post"] })
+        BATCHVSBATCH_POST(
+            global_signal.combine(anova_blocklist_ch)
+                .map { d, bl -> [d, "${d}/normalization/cells/*.parquet", false, "post", bl] }
+        )
     }
 
-    // Step 5: OvWT — batchwise
-    OVWT_BATCHWISE(norm_ch)
+    // Step 5: OvWT — batchwise, both variants.
+    // Unfiltered: unchanged, no dependency on ANOVA_BLOCKLIST.
+    OVWT_BATCHWISE_UNFILTERED(norm_ch.map { stem, p -> tuple(stem, p, null, "ovwt_batchwise") })
+    // Filtered: broadcasts the single ANOVA_BLOCKLIST output onto every
+    // per-batch tuple, same .combine() idiom as BATCH_CORRECT_TRANSFORM below.
+    OVWT_BATCHWISE_FILTERED(
+        norm_ch.combine(anova_blocklist_ch)
+            .map { stem, p, bl -> tuple(stem, p, bl, "ovwt_batchwise_filtered") }
+    )
 
-    // Step 6: OvWT — global (optional, gated on params.global)
+    // Step 6: OvWT — global (optional, gated on params.global). Always
+    // filtered against ANOVA_BLOCKLIST -- there is no unfiltered global run.
     if (run_global) {
-        OVWT_GLOBAL(global_signal)
+        OVWT_GLOBAL(global_signal.combine(anova_blocklist_ch).map { d, bl -> tuple(d, bl) })
     }
 
     // Step 7: Feature selection — decomposed bootstrap + per-feature-type pipeline.
@@ -337,8 +365,8 @@ workflow FisseqPipeline {
     }
     }
 
-    // Step 9: ANOVA — batch-effect assessment (normalized cells)
-    ANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "anova"] })
+    // ANOVA (normalized) now runs earlier, right after global_signal is
+    // computed — see above, feeding ANOVA_BLOCKLIST.
 
     // New branch: qc_filtering -> batch_correction -> anova (independent of normalize)
     // Step 1: fit centroid batch correction across all batches (global, waits for all QC_FILTER)

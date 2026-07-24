@@ -69,6 +69,11 @@ class OvwtConfig(LabeledInputConfig):
         ``output_dir``. Each file records the original row position and source
         file path for each cell in the split rather than duplicating the full
         feature matrix. Defaults to ``True``.
+    block_list_file : str or None
+        Optional path to a parquet file with at least ``feature`` (str) and
+        ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
+        ``False`` are excluded before splitting/training. Defaults to
+        ``None`` (no features blocked).
     xgboost : XGBoostConfig
         XGBoost training configuration. Defaults to :class:`XGBoostConfig`.
     """
@@ -79,6 +84,7 @@ class OvwtConfig(LabeledInputConfig):
     min_cells: Optional[int] = 250
     downsample_wt: Union[bool, int] = True
     save_splits: bool = True
+    block_list_file: Optional[str] = None
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
 
@@ -349,6 +355,33 @@ def filter_min_cells(
     )
 
 
+def _exclude_blocked_features(
+    feature_cols: list[str], block_list_file: Optional[str]
+) -> list[str]:
+    """
+    Drop blocked feature names from a feature column list.
+
+    Parameters
+    ----------
+    feature_cols : list[str]
+        Candidate feature column names.
+    block_list_file : str or None
+        Path to a parquet file with ``feature`` (str) and ``feature_ok``
+        (bool) columns, or ``None`` to skip filtering entirely.
+
+    Returns
+    -------
+    list[str]
+        ``feature_cols`` with any feature whose ``feature_ok`` is ``False``
+        removed. Unchanged if ``block_list_file`` is ``None``.
+    """
+    if block_list_file is None:
+        return feature_cols
+    bl_df = pl.read_parquet(block_list_file)
+    blocked = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
+    return [f for f in feature_cols if f not in blocked]
+
+
 def train_test_val_split(
     data_df: pl.DataFrame,
     cfg: DictConfig,
@@ -366,7 +399,8 @@ def train_test_val_split(
         Full feature DataFrame containing feature columns and ``cfg.label_column``.
     cfg : DictConfig
         Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
-        ``min_cells``, ``downsample_wt``, and ``random_state``.
+        ``min_cells``, ``downsample_wt``, ``random_state``, and
+        ``block_list_file``.
 
     Returns
     -------
@@ -383,6 +417,7 @@ def train_test_val_split(
         feature_cols = list(cfg.feature_cols)
     else:
         feature_cols = get_feature_cols(data_df)
+    feature_cols = _exclude_blocked_features(feature_cols, cfg.block_list_file)
 
     data_df = data_df.with_row_index("__row_idx__")
     select_cols = feature_cols + [label_col]

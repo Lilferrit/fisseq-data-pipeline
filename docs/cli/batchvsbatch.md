@@ -1,11 +1,13 @@
 # Batch vs. Batch
 
 `fisseq-batch-vs-batch` (Nextflow process `BATCHVSBATCH`, run once pre- and once
-post-normalization) detects per-variant batch effects using a multiclass XGBoost
-classifier. For each variant, a single model is trained to predict the batch label
-from cell morphology features. From its predicted probabilities, a one-vs-rest ROC
-AUC and Mann-Whitney U p-value are extracted for every (variant, batch) pair,
-quantifying how distinguishable each batch is from the others within that variant.
+post-normalization — `_PRE` unfiltered, `_POST` filtered against the
+[ANOVA block-list](anovablocklist.md)) detects per-variant batch effects using a
+multiclass XGBoost classifier. For each variant, a single model is trained to
+predict the batch label from cell morphology features. From its predicted
+probabilities, a one-vs-rest ROC AUC and Mann-Whitney U p-value are extracted
+for every (variant, batch) pair, quantifying how distinguishable each batch is
+from the others within that variant.
 
 The global 80/10/10 train/test/val split is stratified on a composite (variant,
 batch) key so every variant's rows in each split span all of its batches. One
@@ -25,6 +27,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `min_cells` | `50` | Skip variants with fewer than this many cells total. |
 | `min_batches` | `2` | Skip variants appearing in fewer than this many unique batches. |
 | `use_parent_name` | `false` | If `true`, derive the batch label from each input file's parent directory name rather than its stem — set this when input files share a filename but live in different subdirectories (e.g. `qc_filter/*/filtered_cells.parquet`). |
+| `block_list_file` | `null` | Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `fisseq-anova-blocklist`'s output). Features where `feature_ok` is `false` are excluded before splitting/training. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
 | `xgboost.weigh_samples` | `true` | Use balanced sample weights. |

@@ -4,6 +4,7 @@ import pytest
 from omegaconf import OmegaConf
 
 from fisseq_data_pipeline.ovwt import (
+    _exclude_blocked_features,
     downsample_wildtype,
     filter_min_cells,
     get_dmatrix,
@@ -41,6 +42,7 @@ def _split_cfg(label_column: str = "label") -> OmegaConf:
             "feature_cols": None,
             "min_cells": None,
             "downsample_wt": False,
+            "block_list_file": None,
         }
     )
 
@@ -365,6 +367,7 @@ def test_train_test_val_split_row_idx_excludes_filtered_rows():
             "feature_cols": None,
             "min_cells": 10,
             "downsample_wt": False,
+            "block_list_file": None,
         }
     )
     train, test, val = train_test_val_split(df, cfg)
@@ -390,6 +393,66 @@ def test_train_test_val_split_preserves_class_ratio():
         n_wt = counts.filter(pl.col("label") == "WT")["count"][0]
         n_v1 = counts.filter(pl.col("label") == "V1")["count"][0]
         assert n_wt == n_v1
+
+
+# ---------------------------------------------------------------------------
+# _exclude_blocked_features
+# ---------------------------------------------------------------------------
+
+
+def _write_block_list(tmp_path, feature_ok: dict[str, bool]):
+    path = tmp_path / "block_list.parquet"
+    pl.DataFrame(
+        {
+            "feature": list(feature_ok.keys()),
+            "feature_ok": list(feature_ok.values()),
+        }
+    ).write_parquet(path)
+    return path
+
+
+def test_exclude_blocked_features_none_is_no_op():
+    assert _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], None) == [
+        "Intensity_Mean",
+        "Texture_Var",
+    ]
+
+
+def test_exclude_blocked_features_drops_blocked(tmp_path):
+    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": False})
+    result = _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], str(path))
+    assert result == ["Intensity_Mean"]
+
+
+def test_exclude_blocked_features_all_ok_returns_unchanged(tmp_path):
+    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": True})
+    result = _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], str(path))
+    assert result == ["Intensity_Mean", "Texture_Var"]
+
+
+# ---------------------------------------------------------------------------
+# train_test_val_split -- block_list_file integration
+# ---------------------------------------------------------------------------
+
+
+def test_train_test_val_split_block_list_file_excludes_feature(tmp_path):
+    df = _make_df(n=20)
+    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": False})
+    cfg = _split_cfg()
+    cfg.block_list_file = str(path)
+    train, test, val = train_test_val_split(df, cfg)
+    for split in (train, test, val):
+        assert "Texture_Var" not in split.columns
+        assert "Intensity_Mean" in split.columns
+
+
+def test_train_test_val_split_block_list_file_none_keeps_all_features(tmp_path):
+    df = _make_df(n=20)
+    cfg = _split_cfg()
+    assert cfg.block_list_file is None
+    train, _, _ = train_test_val_split(df, cfg)
+    assert "Intensity_Mean" in train.columns
+    assert "Texture_Var" in train.columns
 
 
 # ---------------------------------------------------------------------------

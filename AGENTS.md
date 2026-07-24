@@ -23,14 +23,20 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
       ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
       │
-      ├──► BATCHVSBATCH (pre)       (global — waits for all QC_FILTER; skipped if params.global = false)
+      ├──► BATCHVSBATCH (pre, unfiltered)   (global — waits for all QC_FILTER; skipped if params.global = false)
       ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │
-      ├──► BATCHVSBATCH (post)      (global — waits for all batches; skipped if params.global = false)
-      ├──► OVWT_BATCHWISE           (per batch)
-      ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
       ├──► ANOVA (normalized)   (global — waits for all batches; always runs)
+      │           │
+      │           ▼
+      │      ANOVA_BLOCKLIST   (global; always runs — feature_ok from ANOVA p_value < params.anova_pvalue_threshold)
+      │           │
+      │           ├──► BATCHVSBATCH (post, filtered)   (global; skipped if params.global = false)
+      │           ├──► OVWT_BATCHWISE (filtered)         (per batch)
+      │           └──► OVWT_GLOBAL (filtered)             (global; skipped if params.global = false)
+      │
+      ├──► OVWT_BATCHWISE (unfiltered)      (per batch — no dependency on ANOVA_BLOCKLIST)
       └──► Feature selection (skipped entirely if params.feature_selection = false;
                                batchwise always runs otherwise, global additionally
                                waits for all batches and is skipped if params.global = false):
@@ -42,6 +48,17 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
                                  └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
                                        └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
 ```
+
+`OVWT_BATCHWISE` is a single parameterized process invoked twice via
+`include { OVWT_BATCHWISE as X }` aliasing (like `ANOVA`/`BATCHVSBATCH`): the
+unfiltered call (`ovwt_batchwise/`) keeps the pipeline's original behavior and
+scheduling (no dependency on `ANOVA_BLOCKLIST`); the filtered call
+(`ovwt_batchwise_filtered/`) additionally depends on `ANOVA_BLOCKLIST`.
+`OVWT_GLOBAL` has no unfiltered counterpart — it is always filtered.
+`ANOVA_BLOCKLIST` (note: distinct from the correlation-based `BLOCKLIST`
+process in the feature-selection branch above) derives its block-list from
+`ANOVA_NORMALIZED` specifically, not `ANOVA_BATCH_CORRECTED` — OvWT and
+batch-vs-batch score normalized cells, never batch-corrected ones.
 
 **Main components:**
 - `src/fisseq_data_pipeline/` — Python package with one module per pipeline step
@@ -241,12 +258,14 @@ fisseq-data-pipeline/
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
 │   ├── ovwtcellscores.py          # Cell scoring via trained models
 │   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value
-│   └── anova.py                   # Per-feature one-way ANOVA entry point
+│   ├── anova.py                   # Per-feature one-way ANOVA entry point
+│   └── anovablocklist.py          # ANOVA-derived feature block-list entry point
 ├── modules/local/
 │   ├── input.nf
 │   ├── qc_filter.nf
 │   ├── normalize.nf
 │   ├── anova.nf
+│   ├── anova_blocklist.nf
 │   ├── batchvsbatch.nf
 │   ├── ovwt_batchwise.nf
 │   ├── ovwt_global.nf
@@ -291,7 +310,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`load_batches`** (`utils/batches.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
-**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH, OVWT_GLOBAL, the feature-selection processes, ANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH` and `ANOVA` are each a single parameterized process (`modules/local/batchvsbatch.nf`, `modules/local/anova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow) — `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet` with `use_parent_name=true`; `BATCHVSBATCH_POST` waits on `global_signal` (all NORMALIZE done) and globs `normalization/cells/*.parquet`. Likewise `ANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `ANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet` — both ANOVA calls always run, unconditionally. All varying bits (glob path, `use_parent_name`, `publishDir` subpath) are passed in as process input values, not hardcoded per-call.
+**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH, OVWT_GLOBAL, the feature-selection processes, ANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH` and `ANOVA` are each a single parameterized process (`modules/local/batchvsbatch.nf`, `modules/local/anova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow) — `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet` with `use_parent_name=true`, unfiltered; `BATCHVSBATCH_POST` waits on `global_signal` combined with `anova_blocklist_ch` (`ANOVA_BLOCKLIST`'s output) and globs `normalization/cells/*.parquet`, filtered. Likewise `ANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `ANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet` — both ANOVA calls always run, unconditionally. `ANOVA_NORMALIZED`'s call sits earlier in `workflows/fisseq.nf` than `ANOVA_BATCH_CORRECTED`'s (right after `global_signal` is computed, not at the bottom) so its output channel can feed `ANOVA_BLOCKLIST`, which in turn is broadcast via `.combine()` onto `OVWT_BATCHWISE_FILTERED`, `OVWT_GLOBAL`, and `BATCHVSBATCH_POST` — the same broadcast-a-single-global-output idiom `BATCH_CORRECT_TRANSFORM` uses for `BATCH_CORRECT_FIT`'s output. `OVWT_BATCHWISE` is likewise a single parameterized process (`modules/local/ovwt_batchwise.nf`) aliased into `OVWT_BATCHWISE_UNFILTERED` (no dependency on `ANOVA_BLOCKLIST`, unchanged scheduling) and `OVWT_BATCHWISE_FILTERED` (depends on `ANOVA_BLOCKLIST`); the varying `block_list_file` value is passed as a `val` (not a Nextflow-staged `path`) so a Groovy `null` can flow straight through to `fisseq-ovwt`'s `block_list_file=null` CLI arg for the unfiltered call, the same `null`-passthrough trick `qc_filter.nf` uses for `downsample_fraction`. All varying bits (glob path, `use_parent_name`, `block_list_file`, `publishDir` subpath) are passed in as process input values, not hardcoded per-call.
 
 **Feature-selection pipeline** (`workflows/fisseq.nf`) follows the same aliasing pattern, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each invoked once as `*_BATCHWISE` and once as `*_GLOBAL`. Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_types`) and `bootstrap_ch` (`1..params.bootstrap`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_key, feature_type])` — gathering all `params.bootstrap` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.feature_selection` (default `true`) gates the entire feature-selection branch, `*_BATCHWISE` and `*_GLOBAL` alike — set it to `false` to skip feature selection entirely. Within that, `params.global` (default `true`) additionally gates the `*_GLOBAL` sub-branch alone (batchwise still runs), and separately gates `OVWT_GLOBAL` and both aliased `BATCHVSBATCH` calls (`_PRE`/`_POST`) — set it to `false` to skip all of those (e.g. for datasets where the global bootstrap × feature-type cross product across all batches combined is prohibitively expensive). `ANOVA` (`_NORMALIZED`/`_BATCH_CORRECTED`) and the batch-correction branch (`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`) always run regardless of either flag.
 
@@ -312,6 +331,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 | `fisseq-ovwt` | `ovwt:main` | One-vs-WT XGBoost training |
 | `fisseq-ovwt-cell-scores` | `ovwtcellscores:main` | Score cells against trained OvWT models |
 | `fisseq-anova` | `anova:main` | Per-feature one-way ANOVA |
+| `fisseq-anova-blocklist` | `anovablocklist:main` | Feature block-list derived from ANOVA p-values |
 | `fisseq-batch-vs-batch` | `batchvsbatch:main` | Per-variant multiclass batch classifier (OvR AUC + Mann-Whitney p per batch) |
 
 All share base Hydra fields: `output_dir` (required), `output_root` (optional prefix), `log_level` (default `"info"`).
@@ -330,12 +350,15 @@ All outputs land under `<input_dir>` alongside the `input/` folder:
     cells/<batch>.parquet
     normalizers/<batch>.normalizer.parquet
   batchvsbatch/
-    pre/results.parquet         # pre batch correction (QC-filtered cells); columns: variant, batch, auroc, mw_pvalue, n_batch_cells, n_cells
-    post/results.parquet        # post batch correction (normalized cells)
-  ovwt_batchwise/<batch>/
+    pre/results.parquet         # pre batch correction (QC-filtered cells), unfiltered; columns: variant, batch, auroc, mw_pvalue, n_batch_cells, n_cells
+    post/results.parquet        # post batch correction (normalized cells), filtered against anova_blocklist/anova_blocklist.parquet
+  ovwt_batchwise/<batch>/       # unfiltered — full feature set
     results.parquet
     models.pkl
-  ovwt_global/
+  ovwt_batchwise_filtered/<batch>/  # filtered against anova_blocklist/anova_blocklist.parquet
+    results.parquet
+    models.pkl
+  ovwt_global/                  # always filtered against anova_blocklist/anova_blocklist.parquet
     results.parquet
     models.pkl
   feature_select_batchwise/<batch>/
@@ -348,6 +371,15 @@ All outputs land under `<input_dir>` alongside the `input/` folder:
     output.parquet                                                       # stage 4 (final)
   feature_select_global/
     (same layout, no <batch> nesting)
+  batch_correction/
+    fit/stats_vb.parquet
+    fit/centroids.parquet
+    cells/<batch>.parquet
+    anova/anova.parquet          # from batch-corrected cells
+  anova/
+    anova.parquet                # from normalized cells
+  anova_blocklist/
+    anova_blocklist.parquet      # derived from anova/anova.parquet
 ```
 
 ---

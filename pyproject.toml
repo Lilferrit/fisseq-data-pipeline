@@ -35,6 +35,7 @@ fisseq-combine-blocklists = "fisseq_data_pipeline.features:combine_blocklists_ma
 fisseq-ovwt = "fisseq_data_pipeline.ovwt:main"
 fisseq-qc-filter = "fisseq_data_pipeline.qcfilter:main"
 fisseq-anova = "fisseq_data_pipeline.anova:main"
+fisseq-anova-blocklist = "fisseq_data_pipeline.anovablocklist:main"
 fisseq-ovwt-cell-scores = "fisseq_data_pipeline.ovwtcellscores:main"
 fisseq-batch-vs-batch = "fisseq_data_pipeline.batchvsbatch:main"
 fisseq-batch-correct-fit = "fisseq_data_pipeline.batchcorrect:fit_main"
