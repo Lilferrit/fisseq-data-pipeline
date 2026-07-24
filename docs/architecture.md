@@ -41,26 +41,26 @@ QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
              BATCH_CORRECT_TRANSFORM (per batch)
                     │
                     ▼
-             PERMANOVA (batch-corrected)  (skipped if params.global = false)
+             ANOVA (batch-corrected)  (always runs)
 
-NORMALIZE (all batches) ──► PERMANOVA (normalized)  (skipped if params.global = false)
+NORMALIZE (all batches) ──► ANOVA (normalized)  (always runs)
 ```
 
-`PERMANOVA` and `BATCHVSBATCH` are each a single parameterized Nextflow process
+`ANOVA` and `BATCHVSBATCH` are each a single parameterized Nextflow process
 invoked twice via `include { X as Y }` aliasing (a process cannot be called twice
 under its own name in one workflow):
 
 - `BATCHVSBATCH_PRE` runs on QC-filtered cells (`qc_filter/*/filtered_cells.parquet`),
   `BATCHVSBATCH_POST` on normalized cells (`normalization/cells/*.parquet`).
-- `PERMANOVA_NORMALIZED` runs on normalized cells, `PERMANOVA_BATCH_CORRECTED` on
+- `ANOVA_NORMALIZED` runs on normalized cells, `ANOVA_BATCH_CORRECTED` on
   batch-corrected cells (`batch_correction/cells/*.parquet`).
 
 Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection
-branch, `PERMANOVA`, `BATCH_CORRECT_FIT`) read published output files from disk via
+branch, `ANOVA`, `BATCH_CORRECT_FIT`) read published output files from disk via
 glob patterns after all upstream per-batch processes finish, rather than consuming
 Nextflow channel outputs directly. `params.global` (default `true`) gates
-`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection branch, and
-`PERMANOVA` — `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` always run.
+`BATCHVSBATCH`, `OVWT_GLOBAL`, and the `*_GLOBAL` feature-selection branch —
+`ANOVA`, `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` always run.
 
 ## Stages
 
@@ -75,7 +75,7 @@ Nextflow channel outputs directly. `params.global` (default `true`) gates
 | OvWT cell scoring | `ovwtcellscores.py` | `OVWT_CELLSCORES_BATCHWISE` | `cell_scores.parquet` |
 | Feature selection | `aggregate.py`, `features.py` | `AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-variant aggregate) |
 | Batch correction | `batchcorrect.py` | `BATCH_CORRECT_FIT`, `BATCH_CORRECT_TRANSFORM` | `stats_vb.parquet`, `centroids.parquet`, corrected cells |
-| Batch-effect assessment | `permanova.py` | `PERMANOVA` (normalized and batch-corrected) | `permanova.parquet` |
+| Batch-effect assessment | `anova.py` | `ANOVA` (normalized and batch-corrected) | `anova.parquet` |
 
 See the [CLI Reference](cli/qcfilter.md) pages for each module's config fields and
 the [API Reference](api/qcfilter.md) pages for full function documentation.
@@ -159,7 +159,7 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
     fit/stats_vb.parquet
     fit/centroids.parquet
     cells/<batch>.parquet
-    permanova/permanova.parquet
-  permanova/
-    permanova.parquet           # from normalized cells
+    anova/anova.parquet
+  anova/
+    anova.parquet                # from normalized cells
 ```

@@ -30,7 +30,7 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
       ├──► BATCHVSBATCH (post)      (global — waits for all batches; skipped if params.global = false)
       ├──► OVWT_BATCHWISE           (per batch)
       ├──► OVWT_GLOBAL              (global — waits for all batches; skipped if params.global = false)
-      ├──► PERMANOVA (normalized)   (global — waits for all batches; always runs)
+      ├──► ANOVA (normalized)   (global — waits for all batches; always runs)
       └──► Feature selection (skipped entirely if params.feature_selection = false;
                                batchwise always runs otherwise, global additionally
                                waits for all batches and is skipped if params.global = false):
@@ -148,10 +148,9 @@ uv run fisseq-feature-select \
     'feature_type_files=out/aggregates/*.parquet' \
     block_list_file=out/blocklist.parquet
 
-uv run fisseq-permanova \
+uv run fisseq-anova \
     output_dir=./out \
-    'input_file=data/batches/*.parquet' \
-    n_permutations=999
+    'input_file=data/batches/*.parquet'
 
 uv run fisseq-ovwt \
     output_dir=./out \
@@ -242,12 +241,12 @@ fisseq-data-pipeline/
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
 │   ├── ovwtcellscores.py          # Cell scoring via trained models
 │   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value
-│   └── permanova.py               # Per-variant pairwise PERMANOVA entry point
+│   └── anova.py                   # Per-feature one-way ANOVA entry point
 ├── modules/local/
 │   ├── input.nf
 │   ├── qc_filter.nf
 │   ├── normalize.nf
-│   ├── permanova.nf
+│   ├── anova.nf
 │   ├── batchvsbatch.nf
 │   ├── ovwt_batchwise.nf
 │   ├── ovwt_global.nf
@@ -292,9 +291,9 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`load_batches`** (`utils/batches.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
-**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH, OVWT_GLOBAL, the feature-selection processes, PERMANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH` and `PERMANOVA` are each a single parameterized process (`modules/local/batchvsbatch.nf`, `modules/local/permanova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow) — `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet` with `use_parent_name=true`; `BATCHVSBATCH_POST` waits on `global_signal` (all NORMALIZE done) and globs `normalization/cells/*.parquet`. Likewise `PERMANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `PERMANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet` — both PERMANOVA calls always run, unconditionally. All varying bits (glob path, `use_parent_name`, `publishDir` subpath) are passed in as process input values, not hardcoded per-call.
+**Nextflow synchronization pattern** (`workflows/fisseq.nf`): global processes (BATCHVSBATCH, OVWT_GLOBAL, the feature-selection processes, ANOVA) wait for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `input_dir` path. `BATCHVSBATCH` and `ANOVA` are each a single parameterized process (`modules/local/batchvsbatch.nf`, `modules/local/anova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow) — `BATCHVSBATCH_PRE` waits on `qc_signal` (all QC_FILTER done) and globs `qc_filter/*/filtered_cells.parquet` with `use_parent_name=true`; `BATCHVSBATCH_POST` waits on `global_signal` (all NORMALIZE done) and globs `normalization/cells/*.parquet`. Likewise `ANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `ANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet` — both ANOVA calls always run, unconditionally. All varying bits (glob path, `use_parent_name`, `publishDir` subpath) are passed in as process input values, not hardcoded per-call.
 
-**Feature-selection pipeline** (`workflows/fisseq.nf`) follows the same aliasing pattern, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each invoked once as `*_BATCHWISE` and once as `*_GLOBAL`. Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_types`) and `bootstrap_ch` (`1..params.bootstrap`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_key, feature_type])` — gathering all `params.bootstrap` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.feature_selection` (default `true`) gates the entire feature-selection branch, `*_BATCHWISE` and `*_GLOBAL` alike — set it to `false` to skip feature selection entirely. Within that, `params.global` (default `true`) additionally gates the `*_GLOBAL` sub-branch alone (batchwise still runs), and separately gates `OVWT_GLOBAL` and both aliased `BATCHVSBATCH` calls (`_PRE`/`_POST`) — set it to `false` to skip all of those (e.g. for datasets where the global bootstrap × feature-type cross product across all batches combined is prohibitively expensive). `PERMANOVA` (`_NORMALIZED`/`_BATCH_CORRECTED`) and the batch-correction branch (`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`) always run regardless of either flag.
+**Feature-selection pipeline** (`workflows/fisseq.nf`) follows the same aliasing pattern, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each invoked once as `*_BATCHWISE` and once as `*_GLOBAL`. Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_types`) and `bootstrap_ch` (`1..params.bootstrap`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_key, feature_type])` — gathering all `params.bootstrap` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.feature_selection` (default `true`) gates the entire feature-selection branch, `*_BATCHWISE` and `*_GLOBAL` alike — set it to `false` to skip feature selection entirely. Within that, `params.global` (default `true`) additionally gates the `*_GLOBAL` sub-branch alone (batchwise still runs), and separately gates `OVWT_GLOBAL` and both aliased `BATCHVSBATCH` calls (`_PRE`/`_POST`) — set it to `false` to skip all of those (e.g. for datasets where the global bootstrap × feature-type cross product across all batches combined is prohibitively expensive). `ANOVA` (`_NORMALIZED`/`_BATCH_CORRECTED`) and the batch-correction branch (`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`) always run regardless of either flag.
 
 ### CLI entry points (registered in `pyproject.toml`)
 
@@ -312,7 +311,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 | `fisseq-feature-select` | `features:main` | Final stage: joins per-feature-type aggregates, applies combined blocklist, pycytominer selection |
 | `fisseq-ovwt` | `ovwt:main` | One-vs-WT XGBoost training |
 | `fisseq-ovwt-cell-scores` | `ovwtcellscores:main` | Score cells against trained OvWT models |
-| `fisseq-permanova` | `permanova:main` | Per-variant PERMANOVA (cosine distance) |
+| `fisseq-anova` | `anova:main` | Per-feature one-way ANOVA |
 | `fisseq-batch-vs-batch` | `batchvsbatch:main` | Per-variant multiclass batch classifier (OvR AUC + Mann-Whitney p per batch) |
 
 All share base Hydra fields: `output_dir` (required), `output_root` (optional prefix), `log_level` (default `"info"`).

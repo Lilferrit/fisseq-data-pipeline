@@ -1,12 +1,12 @@
-"""Per-feature PERMANOVA batch-effect assessment via pairwise absolute distance.
+"""Per-feature one-way ANOVA batch-effect assessment via sufficient statistics.
 
-Hydra entry point ``fisseq-permanova``, backing the Nextflow process ``PERMANOVA``
+Hydra entry point ``fisseq-anova``, backing the Nextflow process ``ANOVA``
 (run once against normalized cells, once against batch-corrected cells). Restricts
 to cells classified as Synonymous (via :func:`.utils.variant.classify_variant`)
 whose label does not carry a ``:downsampled`` tag, then for each feature column,
-computes a pseudo-F statistic from all pairwise absolute distances between that
-feature's scalar values (Anderson 2001 sum-of-squares decomposition) and an
-optional permutation p-value.
+computes a one-way ANOVA F-statistic from per-batch-group sufficient statistics
+(sum, sum of squares, count) and a closed-form p-value via the F-distribution
+survival function.
 """
 
 import dataclasses
@@ -18,6 +18,7 @@ from typing import Optional
 import hydra
 import numpy as np
 import polars as pl
+import scipy.stats
 from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
@@ -31,25 +32,18 @@ _cs = ConfigStore.instance()
 
 
 @dataclasses.dataclass
-class PermanovaConfig(LabeledInputConfig):
+class AnovaConfig(LabeledInputConfig):
     """
-    Hydra structured configuration for the PERMANOVA entry point.
+    Hydra structured configuration for the ANOVA entry point.
 
     Extends :class:`.config.LabeledInputConfig` with parameters controlling
-    per-feature PERMANOVA batch-effect assessment.
+    per-feature one-way ANOVA batch-effect assessment.
 
     ``input_file`` is interpreted as a glob pattern. Each matching file is
     treated as a separate batch; the batch name is the filename stem.
 
     Attributes
     ----------
-    n_permutations : int
-        Number of label permutations used to estimate the p-value for each
-        feature. ``0`` skips the permutation test entirely (``p_value`` is
-        ``None``). Defaults to ``999``.
-    seed : int
-        Base random seed for label permutation; feature ``i`` (in column
-        order) uses ``seed + i``. Defaults to ``42``.
     feature_batch_size : Optional[int]
         If set, feature columns are collected and processed in chunks of at
         most this many columns at a time, each chunk collected in its own
@@ -62,37 +56,29 @@ class PermanovaConfig(LabeledInputConfig):
         in a single query).
     """
 
-    n_permutations: int = 999
-    seed: int = 42
     feature_batch_size: Optional[int] = None
 
 
-_cs.store(name="permanova_main", node=PermanovaConfig)
+_cs.store(name="anova_main", node=AnovaConfig)
 
 
 def _f_statistic(
-    d2: np.ndarray,
-    idx_a: np.ndarray,
-    idx_b: np.ndarray,
-    group_of_sample: np.ndarray,
-    group_sizes: np.ndarray,
+    sum_g: np.ndarray,
+    sumsq_g: np.ndarray,
+    n_g: np.ndarray,
     n: int,
     a: int,
 ) -> float:
     """
-    Compute the PERMANOVA pseudo-F statistic via the Anderson (2001)
-    sum-of-squares decomposition.
+    Compute the one-way ANOVA F-statistic from per-group sufficient statistics.
 
     Parameters
     ----------
-    d2 : np.ndarray
-        Squared distances, one per unordered sample pair.
-    idx_a, idx_b : np.ndarray
-        Sample indices (into ``group_of_sample``/``group_sizes``) for each
-        pair in ``d2``.
-    group_of_sample : np.ndarray
-        Integer group (batch) label for each sample, aligned with sample index.
-    group_sizes : np.ndarray
+    sum_g : np.ndarray
+        Per-group sum of values, indexed by group label.
+    sumsq_g : np.ndarray
+        Per-group sum of squared values, indexed by group label.
+    n_g : np.ndarray
         Number of samples in each group, indexed by group label.
     n : int
         Total number of samples.
@@ -102,57 +88,27 @@ def _f_statistic(
     Returns
     -------
     float
-        Pseudo-F statistic. May be ``nan``/``inf`` for degenerate inputs
-        (e.g. every group has exactly one member).
+        F-statistic. May be ``nan``/``inf`` for degenerate inputs (e.g. every
+        group has exactly one member, so within-group degrees of freedom is 0).
     """
-    ss_total = d2.sum() / n
-    group_a = group_of_sample[idx_a]
-    group_b = group_of_sample[idx_b]
-    same = group_a == group_b
-    weights = 1.0 / group_sizes[group_a]
-    ss_within = (d2[same] * weights[same]).sum()
+    ss_within = (sumsq_g - sum_g**2 / n_g).sum()
+    ss_total = sumsq_g.sum() - sum_g.sum() ** 2 / n
     ss_between = ss_total - ss_within
     return (ss_between / (a - 1)) / (ss_within / (n - a))
 
 
-def _pairwise_abs_distance(x: np.ndarray) -> np.ndarray:
-    """
-    Compute the full symmetric n x n absolute-difference distance matrix for
-    one feature's values across n samples, via broadcasting.
-
-    Unlike the multi-feature cosine-distance path this replaces, there is
-    only one dimension here, so there is no per-pair masking to exclude
-    non-finite values: a non-finite entry in ``x`` simply makes every pair
-    involving that sample non-finite, and that propagates into ``d2``/
-    ``f_obs`` in :func:`_compute_permanova_stats`/:func:`_f_statistic`.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        Length-n array of one feature's values.
-
-    Returns
-    -------
-    np.ndarray
-        n x n symmetric matrix where entry ``(i, j)`` is ``abs(x[i] - x[j])``.
-    """
-    return np.abs(x[:, None] - x[None, :])
-
-
-def _compute_permanova_stats(
+def _compute_anova_stats(
     x: np.ndarray,
     batch_labels: np.ndarray,
-    n_permutations: int,
-    seed: int,
 ) -> Optional[dict]:
     """
-    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one
+    Compute the one-way ANOVA F-statistic and closed-form p-value for one
     feature's already-collected values and batch labels.
 
-    Computes the full pairwise absolute-distance matrix via
-    :func:`_pairwise_abs_distance`, extracts the condensed upper triangle
-    as unordered sample pairs, and derives the F-statistic via
-    :func:`_f_statistic`'s sum-of-squares decomposition.
+    Computes per-batch-group sum, sum of squares, and count in a single pass
+    (via ``np.bincount`` over the group coding), derives the F-statistic via
+    :func:`_f_statistic`'s sum-of-squares decomposition, and the p-value via
+    the F-distribution survival function (``scipy.stats.f.sf``).
 
     Parameters
     ----------
@@ -160,18 +116,13 @@ def _compute_permanova_stats(
         Length-n array of one feature's values.
     batch_labels : np.ndarray
         Length-n array of batch identifiers.
-    n_permutations : int
-        Number of label permutations used to estimate the p-value. ``0``
-        skips the permutation test entirely (``p_value`` is ``None``).
-    seed : int
-        Random seed for label permutation.
 
     Returns
     -------
     dict or None
-        ``{"f_statistic": float, "p_value": float or None}``, or ``None``
-        (with a logged warning) if fewer than 2 samples or fewer than 2
-        batches are present.
+        ``{"f_statistic": float, "p_value": float}``, or ``None`` (with a
+        logged warning) if fewer than 2 samples or fewer than 2 batches are
+        present.
     """
     n = x.shape[0]
     _, group_of_sample, group_sizes = np.unique(
@@ -188,44 +139,26 @@ def _compute_permanova_stats(
         )
         return None
 
-    abs_dist = _pairwise_abs_distance(x)
-    idx_a, idx_b = np.triu_indices(n, k=1)
-    d2 = abs_dist[idx_a, idx_b] ** 2
+    sum_g = np.bincount(group_of_sample, weights=x, minlength=a)
+    sumsq_g = np.bincount(group_of_sample, weights=x**2, minlength=a)
 
-    f_obs = _f_statistic(d2, idx_a, idx_b, group_of_sample, group_sizes, n, a)
-
-    if n_permutations <= 0:
-        logging.info("f_statistic=%.4f, p_value=None", f_obs)
-        return {"f_statistic": f_obs, "p_value": None}
-
-    rng = np.random.default_rng(seed)
-    count_ge = 0
-    for _ in range(n_permutations):
-        perm_group = rng.permutation(group_of_sample)
-        f_perm = _f_statistic(d2, idx_a, idx_b, perm_group, group_sizes, n, a)
-        if f_perm >= f_obs:
-            count_ge += 1
-    p_value = (count_ge + 1) / (n_permutations + 1)
+    f_obs = _f_statistic(sum_g, sumsq_g, group_sizes, n, a)
+    p_value = float(scipy.stats.f.sf(f_obs, dfn=a - 1, dfd=n - a))
 
     logging.info("f_statistic=%.4f, p_value=%.4f", f_obs, p_value)
     return {"f_statistic": f_obs, "p_value": p_value}
 
 
-def compute_feature_permanova(
+def compute_feature_anova(
     feature_lf: pl.LazyFrame,
     feature_col: str,
     batch_col: str,
-    n_permutations: int,
-    seed: int,
 ) -> Optional[dict]:
     """
-    Compute the PERMANOVA pseudo-F statistic (and optional p-value) for one feature.
+    Compute the one-way ANOVA F-statistic and p-value for one feature.
 
     Collects the feature's values and batch labels to NumPy and delegates to
-    :func:`_compute_permanova_stats`, which computes all unique unordered
-    sample pairs (including cross-batch pairs) via
-    :func:`_pairwise_abs_distance` and derives the F-statistic from the
-    sum-of-squares decomposition.
+    :func:`_compute_anova_stats`.
 
     Parameters
     ----------
@@ -233,18 +166,14 @@ def compute_feature_permanova(
         Cell-level lazy frame already filtered to the desired rows, containing
         ``feature_col`` and ``batch_col``.
     feature_col : str
-        Name of the feature column to use for the distance matrix.
+        Name of the feature column to test.
     batch_col : str
         Name of the batch grouping column.
-    n_permutations : int
-        Number of label permutations for the p-value. ``0`` skips the test.
-    seed : int
-        Random seed for label permutation.
 
     Returns
     -------
     dict or None
-        ``{"f_statistic": float, "p_value": float or None}``, or ``None`` (with
+        ``{"f_statistic": float, "p_value": float}``, or ``None`` (with
         a logged warning) if fewer than 2 samples or fewer than 2 batches
         are present.
     """
@@ -255,7 +184,7 @@ def compute_feature_permanova(
     x = collected.get_column(feature_col).to_numpy()
     batch_labels = collected.get_column(batch_col).to_numpy()
 
-    return _compute_permanova_stats(x, batch_labels, n_permutations, seed)
+    return _compute_anova_stats(x, batch_labels)
 
 
 def _iter_feature_batches(
@@ -331,10 +260,10 @@ def _iter_feature_batches(
         yield collected, chunk
 
 
-@hydra.main(version_base=None, config_path=None, config_name="permanova_main")
+@hydra.main(version_base=None, config_path=None, config_name="anova_main")
 def main(cfg: DictConfig) -> None:
     """
-    Hydra entry point: per-feature PERMANOVA batch-effect assessment.
+    Hydra entry point: per-feature one-way ANOVA batch-effect assessment.
 
     Steps
     -----
@@ -346,16 +275,16 @@ def main(cfg: DictConfig) -> None:
        from this restriction in chunks of ``feature_batch_size`` columns at
        a time (or all at once if ``feature_batch_size`` is unset) via
        :func:`_iter_feature_batches`.
-    3. For each feature column, compute the PERMANOVA pseudo-F statistic
-       (and optional permutation p-value) via
-       :func:`_compute_permanova_stats`. Features with fewer than 2
-       samples/batches after filtering, or that raise an exception, are
-       skipped with a logged warning rather than aborting the whole run.
+    3. For each feature column, compute the one-way ANOVA F-statistic and
+       closed-form p-value via :func:`_compute_anova_stats`. Features with
+       fewer than 2 samples/batches after filtering, or that raise an
+       exception, are skipped with a logged warning rather than aborting
+       the whole run.
     4. Write one row per feature to a Parquet file via ``sink_parquet``.
 
     Output files
     ------------
-    - ``{prefix}permanova.parquet`` — one row per feature, with columns
+    - ``{prefix}anova.parquet`` — one row per feature, with columns
       ``feature``, ``f_value``, and ``p_value``.
 
     where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,
@@ -365,23 +294,22 @@ def main(cfg: DictConfig) -> None:
     -------------
     Override any field on the command line, e.g.::
 
-        python -m fisseq_data_pipeline.permanova \\
+        python -m fisseq_data_pipeline.anova \\
             output_dir=./out \\
             'input_file=data/batches/*.parquet' \\
-            n_permutations=999 \\
             feature_batch_size=50
     """
-    perm_cfg: PermanovaConfig = OmegaConf.to_object(cfg)
+    anova_cfg: AnovaConfig = OmegaConf.to_object(cfg)
 
-    output_dir = pathlib.Path(perm_cfg.output_dir)
+    output_dir = pathlib.Path(anova_cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    perm_cfg.output_dir = output_dir
-    setup_logging(perm_cfg, "permanova")
+    anova_cfg.output_dir = output_dir
+    setup_logging(anova_cfg, "anova")
 
-    label_col = perm_cfg.label_column
+    label_col = anova_cfg.label_column
     batch_col = META_BATCH_COL
 
-    lf, _ = load_batches(perm_cfg.input_file)
+    lf, _ = load_batches(anova_cfg.input_file)
 
     feature_cols = list(lf.select(FEATURE_SELECTOR).collect_schema().names())
     logging.info("Using %d feature column(s)", len(feature_cols))
@@ -391,9 +319,8 @@ def main(cfg: DictConfig) -> None:
     # below collects batch_col alongside each feature chunk in the same
     # query, since Polars does not guarantee row order matches across
     # separate .collect() calls on the same lazy plan. No separate "seen in
-    # >1 batch" prequalification is needed (unlike the old per-variant
-    # code): that check is inherent to _compute_permanova_stats's own
-    # n<2 / a<2 bail-out, now applied per feature.
+    # >1 batch" prequalification is needed: that check is inherent to
+    # _compute_anova_stats's own n<2 / a<2 bail-out, applied per feature.
     filtered_lf = lf.filter(
         pl.col(label_col).map_elements(
             lambda v: classify_variant(v) == "Synonymous", return_dtype=pl.Boolean
@@ -402,27 +329,20 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Per-feature loop, processed in chunks of feature_batch_size columns
-    # (or all columns at once if unset). feature_idx increments exactly
-    # once per feature, in original feature_cols order, regardless of
-    # chunking, so feature_batch_size is purely a memory/compute trade-off
-    # and never changes results (including permutation p-values).
+    # (or all columns at once if unset). feature_batch_size is purely a
+    # memory/compute trade-off and never changes results.
     records: list[dict] = []
-    feature_idx = 0
     for collected, chunk in _iter_feature_batches(
-        filtered_lf, feature_cols, batch_col, perm_cfg.feature_batch_size
+        filtered_lf, feature_cols, batch_col, anova_cfg.feature_batch_size
     ):
         batch_labels = collected.get_column(batch_col).to_numpy()
         for feature_col in chunk:
-            seed = perm_cfg.seed + feature_idx
-            feature_idx += 1
             try:
                 x = collected.get_column(feature_col).to_numpy()
-                result = _compute_permanova_stats(
-                    x, batch_labels, perm_cfg.n_permutations, seed
-                )
+                result = _compute_anova_stats(x, batch_labels)
             except Exception:
                 logging.warning(
-                    "Failed to compute PERMANOVA for feature %r, skipping:\n%s",
+                    "Failed to compute ANOVA for feature %r, skipping:\n%s",
                     feature_col,
                     traceback.format_exc(),
                 )
@@ -442,8 +362,8 @@ def main(cfg: DictConfig) -> None:
         schema={"feature": pl.Utf8, "f_value": pl.Float64, "p_value": pl.Float64},
     )
 
-    prefix = f"{perm_cfg.output_root}." if perm_cfg.output_root is not None else ""
-    out_path = output_dir / f"{prefix}permanova.parquet"
+    prefix = f"{anova_cfg.output_root}." if anova_cfg.output_root is not None else ""
+    out_path = output_dir / f"{prefix}anova.parquet"
     logging.info("Writing results to %s", out_path)
     stats_df.lazy().sink_parquet(out_path)
     logging.info("Done")

@@ -48,12 +48,12 @@ This runs the default `FisseqPipeline`, which chains every stage described in
    six-stage breakdown.
 7. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
    (always runs, regardless of `params.global`).
-8. `PERMANOVA` — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells (if `params.global`).
+8. `ANOVA` — batch-effect assessment, run once on normalized cells and once
+   on batch-corrected cells (always runs).
 
 Override any [parameter](nextflow.md#parameters) on the command line, e.g. to
 adjust QC thresholds or skip the global-only processes (`OVWT_GLOBAL`, the global
-feature-selection branch, `BATCHVSBATCH`, and `PERMANOVA`):
+feature-selection branch, and `BATCHVSBATCH`):
 
 ```bash
 nextflow run . \
@@ -83,10 +83,9 @@ The two results most analyses care about:
 - `<input_dir>/feature_select_batchwise/<batch>/output.parquet` (and
   `feature_select_global/output.parquet`, if `params.global`) — final
   per-variant, feature-selected profiles.
-- `<input_dir>/permanova/permanova.parquet` and
-  `<input_dir>/batch_correction/permanova/permanova.parquet` — per-variant
-  batch-effect PERMANOVA results, before and after batch correction (present
-  only if `params.global`).
+- `<input_dir>/anova/anova.parquet` and
+  `<input_dir>/batch_correction/anova/anova.parquet` — per-feature
+  batch-effect ANOVA results, before and after batch correction.
 
 ## 5. Running individual steps
 

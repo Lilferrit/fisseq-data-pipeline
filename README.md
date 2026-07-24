@@ -12,7 +12,7 @@ morphological features. The high-level shape:
 ```text
 (optional) YAML config -> cell-level features -> QC filtering -> normalization
     -> batch-effect checks -> one-vs-WT classification -> bootstrap feature selection
-    -> batch correction -> PERMANOVA batch-effect testing
+    -> batch correction -> ANOVA batch-effect testing
 ```
 
 ## Quick start

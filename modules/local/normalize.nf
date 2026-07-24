@@ -2,7 +2,7 @@ nextflow.enable.dsl = 2
 
 // NORMALIZE: output_root namespaces outputs so all batches can share normalization/.
 // cells go to normalization/cells/ and normalizers go to normalization/normalizers/
-// so that the permanova/ovwt glob "normalization/cells/*.parquet" only hits cell data.
+// so that the anova/ovwt glob "normalization/cells/*.parquet" only hits cell data.
 process NORMALIZE {
     errorStrategy 'ignore'
     publishDir "${params.input_dir}/normalization", mode: 'copy', saveAs: { fname ->

@@ -228,9 +228,9 @@ def test_pipeline_feature_select_global_outputs(pipeline_outputs):
     assert (exp_dir / "feature_select_global" / "blocklist.parquet").exists()
 
 
-def test_pipeline_permanova_outputs(pipeline_outputs):
+def test_pipeline_anova_outputs(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "permanova" / "permanova.parquet").exists()
+    assert (exp_dir / "anova" / "anova.parquet").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -288,23 +288,23 @@ def test_feature_select_global_uses_both_batches(pipeline_outputs):
     assert (df["meta_batch_num_unique"] == 2).all()
 
 
-def test_permanova_has_expected_columns(pipeline_outputs):
+def test_anova_has_expected_columns(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
+    df = pl.read_parquet(exp_dir / "anova" / "anova.parquet")
     expected = {"feature", "f_value", "p_value"}
     assert expected.issubset(set(df.columns))
     assert len(df) > 0
 
 
-def test_permanova_f_statistic_is_finite(pipeline_outputs):
+def test_anova_f_statistic_is_finite(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "permanova" / "permanova.parquet")
+    df = pl.read_parquet(exp_dir / "anova" / "anova.parquet")
     assert df["f_value"].is_finite().all()
     assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
 
 
 # ---------------------------------------------------------------------------
-# Batch correction branch (qc_filtering -> batch_correction -> permanova),
+# Batch correction branch (qc_filtering -> batch_correction -> anova),
 # independent of the normalize branch above.
 # ---------------------------------------------------------------------------
 
@@ -322,26 +322,22 @@ def test_pipeline_batch_correction_cells_outputs(pipeline_outputs, batch_stem):
     assert (exp_dir / "batch_correction" / "cells" / f"{batch_stem}.parquet").exists()
 
 
-def test_pipeline_batch_correction_permanova_outputs(pipeline_outputs):
+def test_pipeline_batch_correction_anova_outputs(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "batch_correction" / "permanova" / "permanova.parquet").exists()
+    assert (exp_dir / "batch_correction" / "anova" / "anova.parquet").exists()
 
 
-def test_batch_correction_permanova_has_expected_columns(pipeline_outputs):
+def test_batch_correction_anova_has_expected_columns(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(
-        exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
-    )
+    df = pl.read_parquet(exp_dir / "batch_correction" / "anova" / "anova.parquet")
     expected = {"feature", "f_value", "p_value"}
     assert expected.issubset(set(df.columns))
     assert len(df) > 0
 
 
-def test_batch_correction_permanova_f_statistic_is_finite(pipeline_outputs):
+def test_batch_correction_anova_f_statistic_is_finite(pipeline_outputs):
     exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(
-        exp_dir / "batch_correction" / "permanova" / "permanova.parquet"
-    )
+    df = pl.read_parquet(exp_dir / "batch_correction" / "anova" / "anova.parquet")
     assert df["f_value"].is_finite().all()
     assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
 

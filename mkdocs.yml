@@ -11,7 +11,7 @@ nav:
       - Aggregate: cli/aggregate.md
       - Feature Selection: cli/features.md
       - Batch Correction: cli/batchcorrect.md
-      - PERMANOVA: cli/permanova.md
+      - ANOVA: cli/anova.md
       - One-vs-WT: cli/ovwt.md
       - OvWT Cell Scores: cli/ovwtcellscores.md
       - Batch vs. Batch: cli/batchvsbatch.md
@@ -22,7 +22,7 @@ nav:
       - aggregate: api/aggregate.md
       - features: api/features.md
       - batchcorrect: api/batchcorrect.md
-      - permanova: api/permanova.md
+      - anova: api/anova.md
       - ovwt: api/ovwt.md
       - ovwtcellscores: api/ovwtcellscores.md
       - batchvsbatch: api/batchvsbatch.md
