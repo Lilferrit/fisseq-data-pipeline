@@ -120,7 +120,7 @@ class GenerateSplitConfig(LabeledInputConfig):
         Seed for the stratified 50/50
         :func:`sklearn.model_selection.train_test_split` by ``label_column``.
         In the Nextflow pipeline this is set directly to the bootstrap-loop
-        index (``1..params.bootstrap``), so each bootstrap replicate gets a
+        index (``1..params.feature_select_bootstrap_reps``), so each bootstrap replicate gets a
         distinct, reproducible split. Required.
     """
 

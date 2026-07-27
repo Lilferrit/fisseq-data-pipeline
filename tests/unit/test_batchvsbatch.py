@@ -123,9 +123,9 @@ def test_train_test_val_split_all_batches_in_train():
     for variant in df[_LABEL_COL].unique().to_list():
         variant_train = train.filter(pl.col(_LABEL_COL) == variant)
         batches_in_train = set(variant_train[_BATCH_COL].unique().to_list())
-        assert (
-            len(batches_in_train) == 3
-        ), f"Variant {variant} should have all 3 batches in train, got {batches_in_train}"
+        assert len(batches_in_train) == 3, (
+            f"Variant {variant} should have all 3 batches in train, got {batches_in_train}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +248,9 @@ def test_extract_ovr_stats_separable_batch_high_auroc(model_and_test):
     model, test, classes, _ = model_and_test
     stats = m.extract_ovr_stats(model, test, _FEATURE_COLS, _BATCH_COL, classes)
     batch0_row = next(r for r in stats if r["batch"] == "batch_0")
-    assert (
-        batch0_row["auroc"] > 0.8
-    ), f"Expected high AUROC for separable batch_0, got {batch0_row['auroc']}"
+    assert batch0_row["auroc"] > 0.8, (
+        f"Expected high AUROC for separable batch_0, got {batch0_row['auroc']}"
+    )
 
 
 # ---------------------------------------------------------------------------

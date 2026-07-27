@@ -26,8 +26,8 @@ process BATCHVSBATCH {
         output_dir=. \\
         "input_file=${cells_glob}" \\
         use_parent_name=${use_parent_name} \\
-        min_cells=${params.bvb_min_cells} \\
-        min_batches=${params.bvb_min_batches} \\
+        min_cells=${params.batchvsbatch_min_cells} \\
+        min_batches=${params.batchvsbatch_min_batches} \\
         block_list_file=${block_list_file}
     """
 }

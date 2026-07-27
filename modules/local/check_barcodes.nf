@@ -7,7 +7,7 @@ nextflow.enable.dsl = 2
 // the response variable) to flag barcodes whose cells score anomalously
 // relative to the variant's other barcodes. Variants with only one distinct
 // barcode are skipped (nothing to compare). Gated by params.run_check_barcodes,
-// which also forces params.single_cell_scores on -- see workflows/fisseq.nf.
+// which also forces params.run_single_cell_scores on -- see workflows/fisseq.nf.
 process CHECK_BARCODES {
     errorStrategy 'ignore'
     label 'process_medium'

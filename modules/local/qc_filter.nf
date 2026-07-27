@@ -2,7 +2,7 @@ nextflow.enable.dsl = 2
 
 // QC_FILTER: wraps fisseq-qc-filter. Runs once per batch parquet in input/,
 // applying edit-distance, barcode-count, and variant-barcode-count filters.
-// When params.downsample_fraction is set, filtered_cells.parquet is also
+// When params.qc_downsample_fraction is set, filtered_cells.parquet is also
 // augmented with reproducibly-downsampled pseudo-variant rows built only
 // from cells that already passed those filters; barcode_counts.parquet and
 // variants_per_barcode.parquet reflect pre-downsampling counts either way.
@@ -28,10 +28,10 @@ process QC_FILTER {
     fisseq-qc-filter \\
         output_dir=. \\
         'cell_files=[${input_file}]' \\
-        bc_threshold=${params.bc_threshold} \\
-        variant_bc_threshold=${params.variant_bc_threshold} \\
+        bc_threshold=${params.barcode_count_threshold} \\
+        variant_bc_threshold=${params.variant_barcode_count_threshold} \\
         edit_distance_threshold=${params.edit_distance_threshold} \\
-        downsample_fraction=${params.downsample_fraction} \\
-        downsample_seed=${params.downsample_seed}
+        downsample_fraction=${params.qc_downsample_fraction} \\
+        downsample_seed=${params.qc_downsample_seed}
     """
 }

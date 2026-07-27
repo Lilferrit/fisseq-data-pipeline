@@ -1,7 +1,7 @@
 """Variant selection from a YAML spec.
 
 Hydra entry point ``fisseq-input`` / Nextflow process ``INPUT`` (optional upstream
-stage, gated by ``params.config_dir``). Reads a hand-authored YAML config
+stage, gated by ``params.yaml_config_dir``). Reads a hand-authored YAML config
 (``config_path``, parsed separately from the Hydra CLI config) describing one or
 more input cell-score files (CSV or Parquet), classifies each row's variant,
 and restricts to a fixed set of variant classes plus the most common missense

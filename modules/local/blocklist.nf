@@ -21,7 +21,7 @@ process BLOCKLIST {
     fisseq-blocklist \\
         output_dir=. \\
         "correlation_files=*.parquet" \\
-        minimum_correlation=${params.minimum_correlation}
+        minimum_correlation=${params.feature_select_min_correlation}
     mv blocklist.parquet ${feature_type}.parquet
     """
 }

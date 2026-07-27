@@ -6,7 +6,7 @@ nextflow.enable.dsl = 2
 // directly in the task work dir regardless of output_dir.
 // This process runs once per (batch, feature_type) -- no repeated
 // per-instance identity to vary a downsample seed by -- so seed is fixed
-// when params.aggregate_downsample_wt is set.
+// when params.feature_select_downsample_wt is set.
 process AGGREGATE_FEATURE_TYPE {
     errorStrategy 'ignore'
     label 'process_medium'
@@ -26,7 +26,7 @@ process AGGREGATE_FEATURE_TYPE {
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\
         aggregator=${feature_type} \\
-        downsample_wt=${params.aggregate_downsample_wt} \\
+        downsample_wt=${params.feature_select_downsample_wt} \\
         seed=0
     mv ${feature_type}.*.parquet ${feature_type}.parquet
     """
