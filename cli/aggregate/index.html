@@ -1340,7 +1340,7 @@ single-file path.</p>
 <h2 id="aggregators">Aggregators<a class="headerlink" href="#aggregators" title="Permanent link">&para;</a></h2>
 <p>Seven strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
 <code>"multi"</code>/combined option; combining feature types happens in Nextflow by running
-<code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_types</code> entry.</p>
+<code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_select_types</code> entry.</p>
 <table>
 <thead>
 <tr>
@@ -1484,7 +1484,7 @@ single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">seed</span><span class="o">=</span><span class="m">1</span>
 </code></pre></div>
-<p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>seed</code> are driven by <code>params.aggregate_downsample_wt</code>
+<p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>seed</code> are driven by <code>params.feature_select_downsample_wt</code>
 (see <a href="../../nextflow/#parameters">Parameters</a>) — <code>AGGREGATE_HALF</code> derives a distinct seed per
 <code>(bootstrap_idx, half_num)</code> so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against

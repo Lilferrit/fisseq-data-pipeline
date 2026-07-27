@@ -1380,16 +1380,16 @@ in its own Parquet file under <code>&lt;input_dir&gt;/input/</code>:</p>
 <li><code>QC_FILTER</code> — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).</li>
 <li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (global, if
-   <code>params.global</code>).</li>
+   <code>params.run_global</code>).</li>
 <li><code>NORMALIZE</code> — z-score normalization fit on WT control cells (per batch).</li>
 <li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global, if
-   <code>params.global</code>).</li>
+   <code>params.run_global</code>).</li>
 <li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification.</li>
-<li>Bootstrap feature selection (batchwise and, if <code>params.global</code>, global) —
+<li>Bootstrap feature selection (batchwise and, if <code>params.run_global</code>, global) —
    see <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
    six-stage breakdown.</li>
 <li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction
-   (always runs, regardless of <code>params.global</code>).</li>
+   (always runs, regardless of <code>params.run_global</code>).</li>
 <li><code>ANOVA</code> — batch-effect assessment, run once on normalized cells and once
    on batch-corrected cells (always runs).</li>
 </ol>
@@ -1398,8 +1398,8 @@ adjust QC thresholds or skip the global-only processes (<code>OVWT_GLOBAL</code>
 feature-selection branch, and <code>BATCHVSBATCH</code>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--bc_threshold<span class="w"> </span><span class="m">15</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--global<span class="w"> </span><span class="nb">false</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--barcode_count_threshold<span class="w"> </span><span class="m">15</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--run_global<span class="w"> </span><span class="nb">false</span>
 </code></pre></div>
 <p>To run on a cluster, supply your own config:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
@@ -1413,7 +1413,7 @@ feature-selection branch, and <code>BATCHVSBATCH</code>):</p>
 The two results most analyses care about:</p>
 <ul>
 <li><code>&lt;input_dir&gt;/feature_select_batchwise/&lt;batch&gt;/output.parquet</code> (and
-  <code>feature_select_global/output.parquet</code>, if <code>params.global</code>) — final
+  <code>feature_select_global/output.parquet</code>, if <code>params.run_global</code>) — final
   per-variant, feature-selected profiles.</li>
 <li><code>&lt;input_dir&gt;/anova/anova.parquet</code> and
   <code>&lt;input_dir&gt;/batch_correction/anova/anova.parquet</code> — per-feature

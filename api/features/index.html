@@ -2206,7 +2206,7 @@ entry point.</p>
                 <p>Seed for the stratified 50/50
 :func:<code>sklearn.model_selection.train_test_split</code> by <code>label_column</code>.
 In the Nextflow pipeline this is set directly to the bootstrap-loop
-index (<code>1..params.bootstrap</code>), so each bootstrap replicate gets a
+index (<code>1..params.feature_select_bootstrap_reps</code>), so each bootstrap replicate gets a
 distinct, reproducible split. Required.</p>
               </div>
             </td>
@@ -2251,7 +2251,7 @@ distinct, reproducible split. Required.</p>
 <a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="sd">        Seed for the stratified 50/50</span>
 <a id="__codelineno-0-121" name="__codelineno-0-121"></a><span class="sd">        :func:`sklearn.model_selection.train_test_split` by ``label_column``.</span>
 <a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">        In the Nextflow pipeline this is set directly to the bootstrap-loop</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">        index (``1..params.bootstrap``), so each bootstrap replicate gets a</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">        index (``1..params.feature_select_bootstrap_reps``), so each bootstrap replicate gets a</span>
 <a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">        distinct, reproducible split. Required.</span>
 <a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-126" name="__codelineno-0-126"></a>

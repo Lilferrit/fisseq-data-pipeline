@@ -553,6 +553,84 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pipeline selection
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#branch-toggles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Branch toggles
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#qc-filtering-qc_filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      QC filtering (QC_FILTER)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-effect-detection-anova_blocklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Batch-effect detection (ANOVA_BLOCKLIST)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-vs-batch-comparison-batchvsbatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      Batch-vs-batch comparison (BATCHVSBATCH)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-vs-wildtype-classification-ovwt_global-ovwt_batchwise" class="md-nav__link">
+    <span class="md-ellipsis">
+      One-vs-wildtype classification (OVWT_GLOBAL / OVWT_BATCHWISE)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Feature selection (bootstrap + aggregation + correlation)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1376,6 +1454,84 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pipeline selection
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#branch-toggles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Branch toggles
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#qc-filtering-qc_filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      QC filtering (QC_FILTER)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-effect-detection-anova_blocklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Batch-effect detection (ANOVA_BLOCKLIST)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-vs-batch-comparison-batchvsbatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      Batch-vs-batch comparison (BATCHVSBATCH)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-vs-wildtype-classification-ovwt_global-ovwt_batchwise" class="md-nav__link">
+    <span class="md-ellipsis">
+      One-vs-wildtype classification (OVWT_GLOBAL / OVWT_BATCHWISE)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Feature selection (bootstrap + aggregation + correlation)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1405,9 +1561,9 @@
 
 <h1 id="nextflow-workflow">Nextflow Workflow<a class="headerlink" href="#nextflow-workflow" title="Permanent link">&para;</a></h1>
 <h2 id="entry-point">Entry point<a class="headerlink" href="#entry-point" title="Permanent link">&para;</a></h2>
-<p><code>main.nf</code> dispatches to one of two DSL2 workflows based on <code>--workflow</code>:</p>
+<p><code>main.nf</code> dispatches to one of two DSL2 workflows based on <code>--pipeline_mode</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">workflow</span><span class="w"> </span><span class="o">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">(</span><span class="n">params</span><span class="o">.</span><span class="na">workflow</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">&quot;ovwt&quot;</span><span class="o">)</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">(</span><span class="n">params</span><span class="o">.</span><span class="na">pipeline_mode</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">&quot;ovwt&quot;</span><span class="o">)</span><span class="w"> </span><span class="o">{</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">        </span><span class="n">OvwtPipeline</span><span class="o">()</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="o">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="o">{</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">        </span><span class="n">FisseqPipeline</span><span class="o">()</span>
@@ -1417,7 +1573,7 @@
 <table>
 <thead>
 <tr>
-<th><code>--workflow</code></th>
+<th><code>--pipeline_mode</code></th>
 <th>Workflow</th>
 <th>Definition</th>
 <th>Use when</th>
@@ -1441,7 +1597,7 @@
 <p>Both workflows validate that <code>--input_dir</code> is set and that <code>&lt;input_dir&gt;/input/</code>
 exists and contains at least one <code>.parquet</code> file, then build a per-batch channel
 from <code>&lt;input_dir&gt;/input/*.parquet</code> (one tuple per file, keyed by filename stem).
-If <code>--config_dir</code> is also set, that non-empty-check is relaxed (see
+If <code>--yaml_config_dir</code> is also set, that non-empty-check is relaxed (see
 <a href="#optional-input-stage">Optional INPUT stage</a> below) since <code>&lt;input_dir&gt;/input/</code>
 may not exist yet on a first config-driven run.</p>
 <h2 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h2>
@@ -1475,7 +1631,7 @@ task doesn't abort the whole run.</p>
 <td><code>INPUT</code></td>
 <td><code>input.nf</code></td>
 <td><code>fisseq-input</code></td>
-<td>per config file, optional (<code>params.config_dir</code>)</td>
+<td>per config file, optional (<code>params.yaml_config_dir</code>)</td>
 </tr>
 <tr>
 <td><code>QC_FILTER</code></td>
@@ -1493,7 +1649,7 @@ task doesn't abort the whole run.</p>
 <td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
 <td><code>batchvsbatch.nf</code></td>
 <td><code>fisseq-batch-vs-batch</code></td>
-<td>global, twice, optional (<code>params.global</code>); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>global, twice, optional (<code>params.run_global</code>); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FILTERED</code>)</td>
@@ -1505,19 +1661,19 @@ task doesn't abort the whole run.</p>
 <td><code>OVWT_GLOBAL</code></td>
 <td><code>ovwt_global.nf</code></td>
 <td><code>fisseq-ovwt</code></td>
-<td>global, optional (<code>params.global</code>); always filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>global, optional (<code>params.run_global</code>); always filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
 <td><code>ovwt_cellscores_batchwise.nf</code></td>
 <td><code>fisseq-ovwt-cell-scores</code></td>
-<td>per batch; optional in <code>FisseqPipeline</code> (<code>params.single_cell_scores</code>), always runs in <code>OvwtPipeline</code></td>
+<td>per batch; optional in <code>FisseqPipeline</code> (<code>params.run_single_cell_scores</code>), always runs in <code>OvwtPipeline</code></td>
 </tr>
 <tr>
 <td><code>CHECK_BARCODES</code></td>
 <td><code>check_barcodes.nf</code></td>
 <td><code>fisseq-check-barcodes</code></td>
-<td>per batch, optional (<code>params.run_check_barcodes</code>, which also forces <code>single_cell_scores</code> on)</td>
+<td>per batch, optional (<code>params.run_check_barcodes</code>, which also forces <code>run_single_cell_scores</code> on)</td>
 </tr>
 <tr>
 <td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
@@ -1592,7 +1748,7 @@ task doesn't abort the whole run.</p>
 in a single workflow) — see <a href="../architecture/">Architecture</a> for what each aliased
 invocation does differently (which cells glob, which <code>publishDir</code> subpath).</p>
 <h3 id="optional-input-stage">Optional <code>INPUT</code> stage<a class="headerlink" href="#optional-input-stage" title="Permanent link">&para;</a></h3>
-<p>When <code>--config_dir</code> is set, <code>INPUT</code> runs once per <code>*.yaml</code> file found there
+<p>When <code>--yaml_config_dir</code> is set, <code>INPUT</code> runs once per <code>*.yaml</code> file found there
 (<code>fisseq-input</code>, see <a href="../cli/input/">CLI Reference: Input</a>) and publishes its output
 into <code>&lt;input_dir&gt;/input/</code>, the same directory pre-staged batch files live in. Both
 <code>workflows/fisseq.nf</code> and <code>workflows/ovwt.nf</code> merge this generated channel with the
@@ -1606,10 +1762,10 @@ produced a given batch.</p>
   where <code>&lt;input_dir&gt;/input/</code> already contains a file <code>INPUT</code> previously published
   there, the glob channel would match it independently of <code>INPUT</code>'s live output for
   this run, feeding the same batch into <code>QC_FILTER</code> twice. Both workflows avoid this
-  by eagerly listing <code>config_dir</code>'s <code>*.yaml</code> basenames up front and filtering those
+  by eagerly listing <code>yaml_config_dir</code>'s <code>*.yaml</code> basenames up front and filtering those
   names out of the glob channel before <code>.mix()</code>-ing in <code>INPUT</code>'s real output.</li>
 <li><strong>Precedence.</strong> If a batch name exists both as a pre-staged file in <code>input/</code> and as
-  a <code>config_dir/*.yaml</code>, the config-derived version silently wins — the pre-staged
+  a <code>yaml_config_dir/*.yaml</code>, the config-derived version silently wins — the pre-staged
   file is excluded from the glob channel by the same filter.</li>
 </ul>
 <p>Like every other process, <code>INPUT</code> uses <code>errorStrategy 'ignore'</code>: a failed conversion
@@ -1621,24 +1777,25 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <code>FINALIZE_FEATURE_SELECT</code>) is the most complex part of the DAG. In
 <code>workflows/fisseq.nf</code>:</p>
 <ul>
-<li><code>feature_types_ch</code> (<code>Channel.fromList(params.feature_types)</code>) and <code>bootstrap_ch</code>
-  (<code>Channel.of(1..params.bootstrap)</code>) are crossed via <code>.combine()</code> to fan out one
+<li><code>feature_types_ch</code> (<code>Channel.fromList(params.feature_select_types)</code>) and <code>bootstrap_ch</code>
+  (<code>Channel.of(1..params.feature_select_bootstrap_reps)</code>) are crossed via <code>.combine()</code> to fan out one
   task per (feature type, bootstrap replicate).</li>
 <li>Each <code>GENERATE_SPLIT</code> output is expanded into two per-half tuples via
   <code>.flatMap()</code>, then re-paired after <code>AGGREGATE_HALF</code> via
   <code>.groupTuple(by: [batch_key, bootstrap_idx, feature_type])</code> before correlation.</li>
 <li><code>BLOCKLIST</code>'s <code>.groupTuple(by: [batch_key, feature_type])</code> is the pipeline's only
-  cross-bootstrap synchronization point — it gathers all <code>params.bootstrap</code>
+  cross-bootstrap synchronization point — it gathers all <code>params.feature_select_bootstrap_reps</code>
   correlation replicates for one feature type before computing a median-<code>r</code>
   threshold.</li>
 <li>The batchwise branch always runs; the global branch (constant <code>global_key =
   "global"</code> standing in for <code>batch_stem</code>) is gated behind
-  <code>params.global.toString().toBoolean()</code> (an explicit string-to-boolean parse,
-  since Nextflow CLI overrides like <code>--global false</code> arrive as the truthy Groovy
+  <code>params.run_global.toString().toBoolean()</code> (an explicit string-to-boolean parse,
+  since Nextflow CLI overrides like <code>--run_global false</code> arrive as the truthy Groovy
   string <code>"false"</code>).</li>
 </ul>
 <h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
 <p>Defaults live in <code>nextflow.config</code> at the repo root:</p>
+<h3 id="pipeline-selection">Pipeline selection<a class="headerlink" href="#pipeline-selection" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1649,27 +1806,76 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 </thead>
 <tbody>
 <tr>
+<td><code>--pipeline_mode</code></td>
+<td><code>"fisseq"</code></td>
+<td>Which workflow to run: <code>"fisseq"</code> or <code>"ovwt"</code>.</td>
+</tr>
+<tr>
 <td><code>--input_dir</code></td>
 <td><code>null</code> (<strong>required</strong>)</td>
 <td>Root directory containing <code>input/*.parquet</code> batch files.</td>
 </tr>
 <tr>
-<td><code>--config_dir</code></td>
+<td><code>--yaml_config_dir</code></td>
 <td><code>null</code></td>
 <td>Optional directory of YAML configs; each generates one <code>input/*.parquet</code> via <code>INPUT</code>, merged with any pre-staged files in <code>input/</code>. See <a href="#optional-input-stage">Optional INPUT stage</a>.</td>
 </tr>
+</tbody>
+</table>
+<h3 id="branch-toggles">Branch toggles<a class="headerlink" href="#branch-toggles" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
 <tr>
-<td><code>--workflow</code></td>
-<td><code>"fisseq"</code></td>
-<td>Which workflow to run: <code>"fisseq"</code> or <code>"ovwt"</code>.</td>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--run_global</code></td>
+<td><code>true</code></td>
+<td>Whether to run <code>OVWT_GLOBAL</code>, <code>BATCHVSBATCH</code>, and the global feature-selection branch.</td>
 </tr>
 <tr>
-<td><code>--bc_threshold</code></td>
+<td><code>--run_feature_selection</code></td>
+<td><code>true</code></td>
+<td>Whether to run the feature-selection branch (batchwise + global) at all.</td>
+</tr>
+<tr>
+<td><code>--run_filtered_ovwt</code></td>
+<td><code>true</code></td>
+<td>Run <code>OVWT_BATCHWISE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass.</td>
+</tr>
+<tr>
+<td><code>--run_single_cell_scores</code></td>
+<td><code>false</code></td>
+<td><code>FisseqPipeline</code> only: run <code>OVWT_CELLSCORES_BATCHWISE</code> per batch after <code>OVWT_BATCHWISE_UNFILTERED</code>. Always on in <code>OvwtPipeline</code>. Forced on if <code>--run_check_barcodes true</code>.</td>
+</tr>
+<tr>
+<td><code>--run_check_barcodes</code></td>
+<td><code>false</code></td>
+<td>Run <code>CHECK_BARCODES</code> (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies <code>--run_single_cell_scores true</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="qc-filtering-qc_filter">QC filtering (<code>QC_FILTER</code>)<a class="headerlink" href="#qc-filtering-qc_filter" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--barcode_count_threshold</code></td>
 <td><code>10</code></td>
 <td>Minimum cells per barcode (QC filter).</td>
 </tr>
 <tr>
-<td><code>--variant_bc_threshold</code></td>
+<td><code>--variant_barcode_count_threshold</code></td>
 <td><code>4</code></td>
 <td>Minimum distinct barcodes per variant (QC filter).</td>
 </tr>
@@ -1679,74 +1885,124 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td>Maximum allowed edit distance (QC filter).</td>
 </tr>
 <tr>
-<td><code>--downsample_fraction</code></td>
+<td><code>--qc_downsample_fraction</code></td>
 <td><code>null</code></td>
 <td>Optional QC-filter pseudo-variant downsampling fraction <code>(0, 1]</code>; drawn from cells that already passed QC. <code>null</code> disables it.</td>
 </tr>
 <tr>
-<td><code>--downsample_seed</code></td>
+<td><code>--qc_downsample_seed</code></td>
 <td><code>0</code></td>
 <td>Seed for the deterministic downsample selection.</td>
 </tr>
+</tbody>
+</table>
+<h3 id="batch-effect-detection-anova_blocklist">Batch-effect detection (<code>ANOVA_BLOCKLIST</code>)<a class="headerlink" href="#batch-effect-detection-anova_blocklist" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
 <tr>
-<td><code>--bvb_min_cells</code></td>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--anova_blocklist_pvalue_threshold</code></td>
+<td><code>0.05</code></td>
+<td>A feature is blocked (<code>feature_ok = false</code>) when its <code>ANOVA_NORMALIZED</code> p-value is strictly less than this threshold (a statistically significant batch effect was detected).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="batch-vs-batch-comparison-batchvsbatch">Batch-vs-batch comparison (<code>BATCHVSBATCH</code>)<a class="headerlink" href="#batch-vs-batch-comparison-batchvsbatch" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--batchvsbatch_min_cells</code></td>
 <td><code>50</code></td>
 <td>Minimum total cells for a variant to be profiled in batch-vs-batch.</td>
 </tr>
 <tr>
-<td><code>--bvb_min_batches</code></td>
+<td><code>--batchvsbatch_min_batches</code></td>
 <td><code>2</code></td>
 <td>Minimum unique batches a variant must appear in for batch-vs-batch.</td>
 </tr>
+</tbody>
+</table>
+<h3 id="one-vs-wildtype-classification-ovwt_global-ovwt_batchwise">One-vs-wildtype classification (<code>OVWT_GLOBAL</code> / <code>OVWT_BATCHWISE</code>)<a class="headerlink" href="#one-vs-wildtype-classification-ovwt_global-ovwt_batchwise" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
 <tr>
 <td><code>--ovwt_min_cells</code></td>
 <td><code>100</code></td>
 <td>Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of <code>250</code>).</td>
 </tr>
 <tr>
-<td><code>--downsample_wt</code></td>
+<td><code>--ovwt_downsample_wt</code></td>
 <td><code>5000</code></td>
 <td>Wildtype downsample target for OvWT classification.</td>
 </tr>
+</tbody>
+</table>
+<h3 id="feature-selection-bootstrap-aggregation-correlation">Feature selection (bootstrap + aggregation + correlation)<a class="headerlink" href="#feature-selection-bootstrap-aggregation-correlation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
 <tr>
-<td><code>--aggregate_downsample_wt</code></td>
-<td><code>null</code></td>
-<td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#fisseq-aggregate-feature-type-config-fields">CLI Reference: aggregate</a>.</td>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
 </tr>
+</thead>
+<tbody>
 <tr>
-<td><code>--feature_types</code></td>
+<td><code>--feature_select_types</code></td>
 <td><code>["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]</code></td>
 <td>Aggregators used in feature selection (all 7 of <code>aggregate.py</code>'s aggregators).</td>
 </tr>
 <tr>
-<td><code>--bootstrap</code></td>
+<td><code>--feature_select_bootstrap_reps</code></td>
 <td><code>10</code></td>
 <td>Number of pseudo-replicate bootstrap splits for feature selection.</td>
 </tr>
 <tr>
-<td><code>--global</code></td>
-<td><code>true</code></td>
-<td>Whether to run <code>OVWT_GLOBAL</code> and the global feature-selection branch.</td>
+<td><code>--feature_select_downsample_wt</code></td>
+<td><code>null</code></td>
+<td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#fisseq-aggregate-feature-type-config-fields">CLI Reference: aggregate</a>.</td>
 </tr>
 <tr>
-<td><code>--anova_pvalue_threshold</code></td>
-<td><code>0.05</code></td>
-<td><code>ANOVA_BLOCKLIST</code>: a feature is blocked (<code>feature_ok = false</code>) when its <code>ANOVA_NORMALIZED</code> p-value is strictly less than this threshold (a statistically significant batch effect was detected).</td>
+<td><code>--feature_select_min_correlation</code></td>
+<td><code>0.5</code></td>
+<td>Minimum median Pearson <code>r</code> required for a feature to pass <code>BLOCKLIST</code>.</td>
 </tr>
+</tbody>
+</table>
+<h3 id="single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes">Single-cell scoring &amp; barcode QC (<code>OVWT_CELLSCORES_BATCHWISE</code> / <code>CHECK_BARCODES</code>)<a class="headerlink" href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
 <tr>
-<td><code>--single_cell_scores</code></td>
-<td><code>false</code></td>
-<td><code>FisseqPipeline</code> only: run <code>OVWT_CELLSCORES_BATCHWISE</code> per batch after <code>OVWT_BATCHWISE_UNFILTERED</code>. Always on in <code>OvwtPipeline</code>. Forced on if <code>--run_check_barcodes true</code>.</td>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
 </tr>
+</thead>
+<tbody>
 <tr>
-<td><code>--single_cell_scores_source</code></td>
+<td><code>--single_cell_scores_split</code></td>
 <td><code>"test"</code></td>
 <td>Which <code>OVWT_BATCHWISE</code> split to score: <code>"test"</code> or <code>"train"</code>. Any other value fails fast with a clear error.</td>
-</tr>
-<tr>
-<td><code>--run_check_barcodes</code></td>
-<td><code>false</code></td>
-<td>Run <code>CHECK_BARCODES</code> (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies <code>--single_cell_scores true</code>.</td>
 </tr>
 <tr>
 <td><code>--barcode_check_min_cells</code></td>
@@ -1757,11 +2013,6 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--barcode_check_alpha</code></td>
 <td><code>0.05</code></td>
 <td><code>CHECK_BARCODES</code>: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this.</td>
-</tr>
-<tr>
-<td><code>--run_filtered_ovwt</code></td>
-<td><code>true</code></td>
-<td>Run <code>OVWT_BATCHWISE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass.</td>
 </tr>
 </tbody>
 </table>
