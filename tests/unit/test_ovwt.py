@@ -4,6 +4,7 @@ import pytest
 from omegaconf import OmegaConf
 
 from fisseq_data_pipeline.ovwt import (
+    _exclude_blocked_barcodes,
     _exclude_blocked_features,
     downsample_wildtype,
     filter_min_cells,
@@ -42,7 +43,9 @@ def _split_cfg(label_column: str = "label") -> OmegaConf:
             "feature_cols": None,
             "min_cells": None,
             "downsample_wt": False,
-            "block_list_file": None,
+            "feature_block_list_file": None,
+            "barcode_block_list_file": None,
+            "barcode_column": "meta_barcode",
         }
     )
 
@@ -367,7 +370,9 @@ def test_train_test_val_split_row_idx_excludes_filtered_rows():
             "feature_cols": None,
             "min_cells": 10,
             "downsample_wt": False,
-            "block_list_file": None,
+            "feature_block_list_file": None,
+            "barcode_block_list_file": None,
+            "barcode_column": "meta_barcode",
         }
     )
     train, test, val = train_test_val_split(df, cfg)
@@ -400,8 +405,8 @@ def test_train_test_val_split_preserves_class_ratio():
 # ---------------------------------------------------------------------------
 
 
-def _write_block_list(tmp_path, feature_ok: dict[str, bool]):
-    path = tmp_path / "block_list.parquet"
+def _write_feature_block_list(tmp_path, feature_ok: dict[str, bool]):
+    path = tmp_path / "feature_block_list.parquet"
     pl.DataFrame(
         {
             "feature": list(feature_ok.keys()),
@@ -419,40 +424,182 @@ def test_exclude_blocked_features_none_is_no_op():
 
 
 def test_exclude_blocked_features_drops_blocked(tmp_path):
-    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": False})
+    path = _write_feature_block_list(
+        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
+    )
     result = _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], str(path))
     assert result == ["Intensity_Mean"]
 
 
 def test_exclude_blocked_features_all_ok_returns_unchanged(tmp_path):
-    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": True})
+    path = _write_feature_block_list(
+        tmp_path, {"Intensity_Mean": True, "Texture_Var": True}
+    )
     result = _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], str(path))
     assert result == ["Intensity_Mean", "Texture_Var"]
 
 
 # ---------------------------------------------------------------------------
-# train_test_val_split -- block_list_file integration
+# _exclude_blocked_barcodes
 # ---------------------------------------------------------------------------
 
 
-def test_train_test_val_split_block_list_file_excludes_feature(tmp_path):
+def _write_barcode_block_list(tmp_path, barcode_ok: dict[str, bool]):
+    path = tmp_path / "barcode_block_list.parquet"
+    pl.DataFrame(
+        {
+            "barcode": list(barcode_ok.keys()),
+            "barcode_ok": list(barcode_ok.values()),
+        }
+    ).write_parquet(path)
+    return path
+
+
+def _make_barcode_df(n: int = 20) -> pl.DataFrame:
+    rng = np.random.default_rng(0)
+    half = n // 2
+    return pl.DataFrame(
+        {
+            "Intensity_Mean": rng.random(n).tolist(),
+            "Texture_Var": rng.random(n).tolist(),
+            "label": ["WT"] * half + ["V1"] * half,
+            "meta_barcode": (["bc_wt"] * half)
+            + (["bc_ok"] * (half - 2))
+            + (["bc_blocked"] * 2),
+        }
+    )
+
+
+def test_exclude_blocked_barcodes_none_is_no_op():
+    df = _make_barcode_df(n=10)
+    result = _exclude_blocked_barcodes(df, "meta_barcode", None)
+    assert result.equals(df)
+
+
+def test_exclude_blocked_barcodes_drops_rows(tmp_path):
+    df = _make_barcode_df(n=20)
+    path = _write_barcode_block_list(
+        tmp_path, {"bc_wt": True, "bc_ok": True, "bc_blocked": False}
+    )
+    result = _exclude_blocked_barcodes(df, "meta_barcode", str(path))
+    assert "bc_blocked" not in result["meta_barcode"].to_list()
+    assert len(result) == len(df) - 2
+
+
+# ---------------------------------------------------------------------------
+# train_test_val_split -- feature_block_list_file / barcode_block_list_file
+# integration
+# ---------------------------------------------------------------------------
+
+
+def test_train_test_val_split_feature_block_list_file_excludes_feature(tmp_path):
     df = _make_df(n=20)
-    path = _write_block_list(tmp_path, {"Intensity_Mean": True, "Texture_Var": False})
+    path = _write_feature_block_list(
+        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
+    )
     cfg = _split_cfg()
-    cfg.block_list_file = str(path)
+    cfg.feature_block_list_file = str(path)
     train, test, val = train_test_val_split(df, cfg)
     for split in (train, test, val):
         assert "Texture_Var" not in split.columns
         assert "Intensity_Mean" in split.columns
 
 
-def test_train_test_val_split_block_list_file_none_keeps_all_features(tmp_path):
+def test_train_test_val_split_barcode_block_list_file_excludes_cells(tmp_path):
+    df = _make_barcode_df(n=20)
+    path = _write_barcode_block_list(
+        tmp_path, {"bc_wt": True, "bc_ok": True, "bc_blocked": False}
+    )
+    cfg = _split_cfg()
+    cfg.barcode_block_list_file = str(path)
+    original_blocked_idx = set(
+        df.with_row_index("__row_idx__")
+        .filter(pl.col("meta_barcode") == "bc_blocked")["__row_idx__"]
+        .to_list()
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    all_idx = set()
+    for split in (train, test, val):
+        # meta_barcode is not a feature column, so it's dropped from the
+        # returned splits -- only the row-level effect is observable here.
+        assert "meta_barcode" not in split.columns
+        all_idx.update(split["__row_idx__"].to_list())
+    assert all_idx.isdisjoint(original_blocked_idx)
+    assert len(all_idx) == len(df) - len(original_blocked_idx)
+
+
+def test_train_test_val_split_feature_and_barcode_block_list_files_both_applied(
+    tmp_path,
+):
+    df = _make_barcode_df(n=20)
+    feature_path = _write_feature_block_list(
+        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
+    )
+    barcode_path = _write_barcode_block_list(
+        tmp_path, {"bc_wt": True, "bc_ok": True, "bc_blocked": False}
+    )
+    cfg = _split_cfg()
+    cfg.feature_block_list_file = str(feature_path)
+    cfg.barcode_block_list_file = str(barcode_path)
+    original_blocked_idx = set(
+        df.with_row_index("__row_idx__")
+        .filter(pl.col("meta_barcode") == "bc_blocked")["__row_idx__"]
+        .to_list()
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    all_idx = set()
+    for split in (train, test, val):
+        assert "Texture_Var" not in split.columns
+        assert "Intensity_Mean" in split.columns
+        all_idx.update(split["__row_idx__"].to_list())
+    # Both effects combine: the blocked feature column is gone AND the
+    # blocked barcode's rows are absent.
+    assert all_idx.isdisjoint(original_blocked_idx)
+
+
+def test_train_test_val_split_neither_block_list_file_keeps_everything(tmp_path):
     df = _make_df(n=20)
     cfg = _split_cfg()
-    assert cfg.block_list_file is None
+    assert cfg.feature_block_list_file is None
+    assert cfg.barcode_block_list_file is None
     train, _, _ = train_test_val_split(df, cfg)
     assert "Intensity_Mean" in train.columns
     assert "Texture_Var" in train.columns
+    assert len(train) > 0
+
+
+def test_train_test_val_split_barcode_filter_can_push_variant_below_min_cells(
+    tmp_path,
+):
+    # V1 has exactly min_cells=5 cells, all carrying barcode "bc_v1" -- once
+    # that barcode is blocked, V1 drops to 0 cells and should be excluded
+    # entirely (a downstream effect of the row-level barcode filter, not the
+    # min_cells filter looking at barcodes directly).
+    rng = np.random.default_rng(0)
+    df = pl.DataFrame(
+        {
+            "Intensity_Mean": rng.random(15).tolist(),
+            "label": ["WT"] * 10 + ["V1"] * 5,
+            "meta_barcode": ["bc_wt"] * 10 + ["bc_v1"] * 5,
+        }
+    )
+    barcode_path = _write_barcode_block_list(tmp_path, {"bc_wt": True, "bc_v1": False})
+    cfg = OmegaConf.create(
+        {
+            "label_column": "label",
+            "wt_label": "WT",
+            "random_state": 0,
+            "feature_cols": None,
+            "min_cells": 5,
+            "downsample_wt": False,
+            "feature_block_list_file": None,
+            "barcode_block_list_file": str(barcode_path),
+            "barcode_column": "meta_barcode",
+        }
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    for split in (train, test, val):
+        assert "V1" not in split["label"].to_list()
 
 
 # ---------------------------------------------------------------------------

@@ -54,10 +54,12 @@ workflow OvwtPipeline {
 
     // Step 2: Batchwise OvWT — trains models and saves split index files.
     // OVWT_BATCHWISE is shared with FisseqPipeline, which parameterizes it
-    // over block_list_file/publish_subdir (see modules/local/ovwt_batchwise.nf);
-    // OvwtPipeline doesn't run ANOVA at all, so it always passes block_list_file=null
-    // (unfiltered) and preserves the original ovwt_batchwise/ output path.
-    ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb -> tuple(stem, fc, null, "ovwt_batchwise") }
+    // over feature_block_list_file/barcode_block_list_file/publish_subdir
+    // (see modules/local/ovwt_batchwise.nf); OvwtPipeline doesn't run
+    // ANOVA_BLOCKLIST or BARCODE_BLOCKLIST at all, so it always passes both
+    // block-list vals as null (unfiltered) and preserves the original
+    // ovwt_batchwise/ output path.
+    ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb -> tuple(stem, fc, null, null, "ovwt_batchwise") }
     OVWT_BATCHWISE(ovwt_input_ch)
 
     // Step 3: Score the params.single_cell_scores_split split's cells via

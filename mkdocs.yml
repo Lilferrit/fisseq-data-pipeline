@@ -16,6 +16,7 @@ nav:
       - One-vs-WT: cli/ovwt.md
       - OvWT Cell Scores: cli/ovwtcellscores.md
       - Check Barcodes: cli/checkbarcodes.md
+      - Barcode Block-list: cli/barcodeblocklist.md
       - Batch vs. Batch: cli/batchvsbatch.md
   - API Reference:
       - input: api/input.md
@@ -29,6 +30,7 @@ nav:
       - ovwt: api/ovwt.md
       - ovwtcellscores: api/ovwtcellscores.md
       - checkbarcodes: api/checkbarcodes.md
+      - barcodeblocklist: api/barcodeblocklist.md
       - batchvsbatch: api/batchvsbatch.md
       - config: api/config.md
       - utils: api/utils.md

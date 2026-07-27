@@ -241,9 +241,9 @@ def test_pipeline_ovwt_batchwise_outputs(pipeline_outputs, batch_stem):
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
-def test_pipeline_ovwt_batchwise_filtered_outputs(pipeline_outputs, batch_stem):
+def test_pipeline_ovwt_batchwise_feature_filtered_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
-    batch_dir = exp_dir / "ovwt_batchwise_filtered" / batch_stem
+    batch_dir = exp_dir / "ovwt_batchwise_feature_filtered" / batch_stem
     assert (batch_dir / "results.parquet").exists()
     assert (batch_dir / "models.pkl").exists()
     assert (batch_dir / "test_index.parquet").exists()
@@ -501,6 +501,109 @@ def test_check_barcodes_p_adj_in_unit_interval(
     assert df["p_adj"].is_between(0.0, 1.0, closed="both").all()
 
 
+# ---------------------------------------------------------------------------
+# run_barcode_filtered_ovwt (default true; _CHECK_BARCODES_NF_PARAMS already
+# sets run_check_barcodes=true, so check_barcodes_pipeline_outputs exercises
+# the default-enabled BARCODE_BLOCKLIST -> OVWT_BATCHWISE_BARCODE_FILTERED path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_barcode_blocklist_outputs(check_barcodes_pipeline_outputs, batch_stem):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    assert (
+        exp_dir / "barcode_blocklist" / batch_stem / "barcode_blocklist.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_barcode_blocklist_has_expected_columns(
+    check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "barcode_blocklist" / batch_stem / "barcode_blocklist.parquet"
+    )
+    assert set(df.columns) == {"barcode", "p_adj", "barcode_ok"}
+    assert len(df) > 0
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_ovwt_batchwise_barcode_filtered_outputs(
+    check_barcodes_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = check_barcodes_pipeline_outputs
+    batch_dir = exp_dir / "ovwt_batchwise_barcode_filtered" / batch_stem
+    assert (batch_dir / "results.parquet").exists()
+    assert (batch_dir / "models.pkl").exists()
+    assert (batch_dir / "test_index.parquet").exists()
+
+
+@pytest.fixture(scope="session")
+def run_barcode_filtered_ovwt_disabled_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp(
+        "nf_run_barcode_filtered_ovwt_disabled_experiment"
+    )
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--input_dir",
+            str(exp_dir),
+            "--run_barcode_filtered_ovwt",
+            "false",
+            *_CHECK_BARCODES_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    return exp_dir, result
+
+
+def test_run_barcode_filtered_ovwt_disabled_pipeline_exits_cleanly(
+    run_barcode_filtered_ovwt_disabled_outputs,
+):
+    _, result = run_barcode_filtered_ovwt_disabled_outputs
+    assert result.returncode == 0, result.stderr
+
+
+def test_run_barcode_filtered_ovwt_disabled_skips_barcode_blocklist_and_filtered_output(
+    run_barcode_filtered_ovwt_disabled_outputs,
+):
+    """params.run_barcode_filtered_ovwt defaults to true (see
+    test_barcode_blocklist_outputs / test_pipeline_ovwt_batchwise_barcode_filtered_outputs
+    for the default-enabled case); false must skip both BARCODE_BLOCKLIST and
+    OVWT_BATCHWISE_BARCODE_FILTERED entirely, while CHECK_BARCODES (set
+    explicitly via _CHECK_BARCODES_NF_PARAMS) is unaffected."""
+    exp_dir, _ = run_barcode_filtered_ovwt_disabled_outputs
+    assert not (exp_dir / "barcode_blocklist").exists()
+    assert not (exp_dir / "ovwt_batchwise_barcode_filtered").exists()
+    assert (exp_dir / "check_barcodes" / "batch1" / "results.parquet").exists()
+
+
+def test_run_barcode_filtered_ovwt_default_true_does_not_force_check_barcodes(
+    pipeline_outputs,
+):
+    """run_barcode_filtered_ovwt defaults to true, but must NOT force
+    run_check_barcodes on -- otherwise the default FisseqPipeline output
+    (run_check_barcodes=false) would silently start producing CHECK_BARCODES/
+    BARCODE_BLOCKLIST/OVWT_BATCHWISE_BARCODE_FILTERED output. pipeline_outputs
+    uses only _NF_PARAMS (no --run_check_barcodes, no --run_barcode_filtered_ovwt
+    override), so this exercises both defaults simultaneously."""
+    exp_dir, _ = pipeline_outputs
+    assert not (exp_dir / "barcode_blocklist").exists()
+    assert not (exp_dir / "ovwt_batchwise_barcode_filtered").exists()
+
+
 def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
     if shutil.which("nextflow") is None:
         pytest.skip("nextflow not on PATH")
@@ -531,11 +634,13 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def run_filtered_ovwt_disabled_outputs(tmp_path_factory):
+def run_feature_filtered_ovwt_disabled_outputs(tmp_path_factory):
     if shutil.which("nextflow") is None:
         pytest.skip("nextflow not on PATH")
 
-    exp_dir = tmp_path_factory.mktemp("nf_run_filtered_ovwt_disabled_experiment")
+    exp_dir = tmp_path_factory.mktemp(
+        "nf_run_feature_filtered_ovwt_disabled_experiment"
+    )
     _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
     _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
 
@@ -546,7 +651,7 @@ def run_filtered_ovwt_disabled_outputs(tmp_path_factory):
             str(_PROJECT_ROOT),
             "--input_dir",
             str(exp_dir),
-            "--run_filtered_ovwt",
+            "--run_feature_filtered_ovwt",
             "false",
             *_NF_PARAMS,
         ],
@@ -558,28 +663,29 @@ def run_filtered_ovwt_disabled_outputs(tmp_path_factory):
     return exp_dir, result
 
 
-def test_run_filtered_ovwt_disabled_pipeline_exits_cleanly(
-    run_filtered_ovwt_disabled_outputs,
+def test_run_feature_filtered_ovwt_disabled_pipeline_exits_cleanly(
+    run_feature_filtered_ovwt_disabled_outputs,
 ):
-    _, result = run_filtered_ovwt_disabled_outputs
+    _, result = run_feature_filtered_ovwt_disabled_outputs
     assert result.returncode == 0, result.stderr
 
 
-def test_run_filtered_ovwt_disabled_skips_filtered_output(
-    run_filtered_ovwt_disabled_outputs,
+def test_run_feature_filtered_ovwt_disabled_skips_filtered_output(
+    run_feature_filtered_ovwt_disabled_outputs,
 ):
-    """params.run_filtered_ovwt defaults to true (see
-    test_pipeline_ovwt_batchwise_filtered_outputs for the default-enabled
-    case); false must skip OVWT_BATCHWISE_FILTERED entirely."""
-    exp_dir, _ = run_filtered_ovwt_disabled_outputs
-    assert not (exp_dir / "ovwt_batchwise_filtered").exists()
+    """params.run_feature_filtered_ovwt defaults to true (see
+    test_pipeline_ovwt_batchwise_feature_filtered_outputs for the
+    default-enabled case); false must skip OVWT_BATCHWISE_FEATURE_FILTERED
+    entirely."""
+    exp_dir, _ = run_feature_filtered_ovwt_disabled_outputs
+    assert not (exp_dir / "ovwt_batchwise_feature_filtered").exists()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
-def test_run_filtered_ovwt_disabled_unfiltered_output_unaffected(
-    run_filtered_ovwt_disabled_outputs, batch_stem
+def test_run_feature_filtered_ovwt_disabled_unfiltered_output_unaffected(
+    run_feature_filtered_ovwt_disabled_outputs, batch_stem
 ):
-    exp_dir, _ = run_filtered_ovwt_disabled_outputs
+    exp_dir, _ = run_feature_filtered_ovwt_disabled_outputs
     batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
     assert (batch_dir / "results.parquet").exists()
     assert (batch_dir / "models.pkl").exists()

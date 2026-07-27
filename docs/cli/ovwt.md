@@ -1,14 +1,19 @@
 # One-vs-WT
 
-`fisseq-ovwt` (Nextflow processes `OVWT_BATCHWISE`, aliased into an unfiltered
-and a filtered invocation, and `OVWT_GLOBAL`, always filtered) trains a
-separate XGBoost binary classifier for each non-wildtype variant, treating the
-task as "this variant vs. wildtype." An 80/10/10 train/test/val split (stratified
-by label) is shared across all variants. Wildtype cells can be downsampled to
-reduce class imbalance. Results (per-variant AUROC and accuracy on train/val/test
-splits) and all trained models are serialized to disk. `block_list_file` (see
-[ANOVA Block-list](anovablocklist.md)) optionally excludes features with a
-significant batch effect before splitting/training.
+`fisseq-ovwt` (Nextflow processes `OVWT_BATCHWISE`, aliased into unfiltered,
+feature-filtered, and barcode-filtered invocations, and `OVWT_GLOBAL`, always
+feature-filtered) trains a separate XGBoost binary classifier for each
+non-wildtype variant, treating the task as "this variant vs. wildtype." An
+80/10/10 train/test/val split (stratified by label) is shared across all
+variants. Wildtype cells can be downsampled to reduce class imbalance.
+Results (per-variant AUROC and accuracy on train/val/test splits) and all
+trained models are serialized to disk. `feature_block_list_file` (see
+[ANOVA Block-list](anovablocklist.md)) optionally excludes features (columns)
+with a significant batch effect before splitting/training.
+`barcode_block_list_file` (see [Barcode Block-list](barcodeblocklist.md))
+optionally excludes cells (rows) whose barcode scored anomalously before
+splitting/training. The two are independent and additive -- either, both, or
+neither may be set.
 
 ## Config fields
 
@@ -24,7 +29,9 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Nextflow Workflow](../nextflow.md#parameters). |
 | `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
 | `save_splits` | `true` | Write lightweight train/test/val index files (row position + source file) to `output_dir`. |
-| `block_list_file` | `null` | Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `fisseq-anova-blocklist`'s output). Features where `feature_ok` is `false` are excluded before splitting/training. |
+| `feature_block_list_file` | `null` | (renamed from `block_list_file`) Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `fisseq-anova-blocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
+| `barcode_block_list_file` | `null` | Optional path to a parquet file with `barcode` (str) and `barcode_ok` (bool) columns (e.g. `fisseq-barcode-blocklist`'s output). Cells whose `barcode_column` value is blocked are excluded (dropped as rows) before splitting/training. |
+| `barcode_column` | `"meta_barcode"` | Column in `input_file` identifying each cell's barcode, used to apply `barcode_block_list_file`. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
 | `xgboost.weigh_samples` | `true` | Use balanced sample weights to handle class imbalance. |
