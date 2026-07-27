@@ -61,10 +61,11 @@ task doesn't abort the whole run.
 | `QC_FILTER` | `qc_filter.nf` | `fisseq-qc-filter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `fisseq-normalize` | per batch |
 | `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `fisseq-batch-vs-batch` | global, twice, optional (`params.run_global`); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
-| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FILTERED`) | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch, twice; `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`, `_FILTERED` does and is optional (`params.run_filtered_ovwt`) |
-| `OVWT_GLOBAL` | `ovwt_global.nf` | `fisseq-ovwt` | global, optional (`params.run_global`); always filtered against `ANOVA_BLOCKLIST` |
+| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FEATURE_FILTERED` / `_BARCODE_FILTERED`) | `ovwt_batchwise.nf` | `fisseq-ovwt` | per batch, three times (`FisseqPipeline`); `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`/`BARCODE_BLOCKLIST`, `_FEATURE_FILTERED` depends on `ANOVA_BLOCKLIST` and is optional (`params.run_feature_filtered_ovwt`), `_BARCODE_FILTERED` depends on that batch's `BARCODE_BLOCKLIST` output and is optional (`params.run_barcode_filtered_ovwt`) |
+| `OVWT_GLOBAL` | `ovwt_global.nf` | `fisseq-ovwt` | global, optional (`params.run_global`); always feature-filtered against `ANOVA_BLOCKLIST` |
 | `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `fisseq-ovwt-cell-scores` | per batch; optional in `FisseqPipeline` (`params.run_single_cell_scores`), always runs in `OvwtPipeline` |
 | `CHECK_BARCODES` | `check_barcodes.nf` | `fisseq-check-barcodes` | per batch, optional (`params.run_check_barcodes`, which also forces `run_single_cell_scores` on) |
+| `BARCODE_BLOCKLIST` | `barcode_blocklist.nf` | `fisseq-barcode-blocklist` | per batch, requires both `params.run_check_barcodes` and `params.run_barcode_filtered_ovwt` true (the latter does not force the former on); consumes that batch's `CHECK_BARCODES` output; `FisseqPipeline` only |
 | `AGGREGATE_FEATURE_TYPE` (aliased `_BATCHWISE` / `_GLOBAL`) | `aggregate_feature_type.nf` | `fisseq-aggregate-feature-type` | per (batch or global) × feature type |
 | `GENERATE_SPLIT` (aliased) | `generate_split.nf` | `fisseq-generate-split` | per (batch or global) × bootstrap replicate |
 | `AGGREGATE_HALF` (aliased) | `aggregate_half.nf` | `fisseq-aggregate-feature-type` (with `index_file`) | per (batch or global) × bootstrap × feature type × half |
@@ -150,9 +151,10 @@ Defaults live in `nextflow.config` at the repo root:
 | --------- | ------- | ----------- |
 | `--run_global` | `true` | Whether to run `OVWT_GLOBAL`, `BATCHVSBATCH`, and the global feature-selection branch. |
 | `--run_feature_selection` | `true` | Whether to run the feature-selection branch (batchwise + global) at all. |
-| `--run_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_FILTERED` (per-batch OvWT filtered against `anova_blocklist/anova_blocklist.parquet`). Set `false` to skip it and keep only the unfiltered pass. |
+| `--run_feature_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_FEATURE_FILTERED` (per-batch OvWT filtered against `anova_blocklist/anova_blocklist.parquet`). Set `false` to skip it and keep only the unfiltered pass. (Renamed from `--run_filtered_ovwt`.) |
 | `--run_single_cell_scores` | `false` | `FisseqPipeline` only: run `OVWT_CELLSCORES_BATCHWISE` per batch after `OVWT_BATCHWISE_UNFILTERED`. Always on in `OvwtPipeline`. Forced on if `--run_check_barcodes true`. |
 | `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--run_single_cell_scores true`. |
+| `--run_barcode_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_BARCODE_FILTERED` (per-batch OvWT filtered against `barcode_blocklist/<batch>/barcode_blocklist.parquet`). Only takes effect when `--run_check_barcodes true` is also set (default `false`) -- does NOT force it on, so the default pipeline output is unaffected. |
 
 ### QC filtering (`QC_FILTER`)
 
@@ -169,6 +171,12 @@ Defaults live in `nextflow.config` at the repo root:
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
 | `--anova_blocklist_pvalue_threshold` | `0.05` | A feature is blocked (`feature_ok = false`) when its `ANOVA_NORMALIZED` p-value is strictly less than this threshold (a statistically significant batch effect was detected). |
+
+### Barcode-level blocklist (`BARCODE_BLOCKLIST`)
+
+| Parameter | Default | Description |
+| --------- | ------- | ----------- |
+| `--barcode_blocklist_pvalue_threshold` | `0.05` | A barcode is blocked (`barcode_ok = false`) when the median of its `CHECK_BARCODES` `p_adj` values is strictly less than this threshold. |
 
 ### Batch-vs-batch comparison (`BATCHVSBATCH`)
 

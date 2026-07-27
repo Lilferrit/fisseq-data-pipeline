@@ -16,13 +16,22 @@ nextflow.enable.dsl = 2
  *   NORMALIZE  (per batch)                                                │
  *        │                                                                │
  *        ├──► BATCHVSBATCH (post)     (global, waits for all NORMALIZE)  │
- *        ├──► OVWT_BATCHWISE          (per batch)                        │
+ *        ├──► OVWT_BATCHWISE          (per batch: unfiltered,            │
+ *        │        │                    feature-filtered against          │
+ *        │        │                    ANOVA_BLOCKLIST, and              │
+ *        │        │                    barcode-filtered -- see below)    │
  *        │        └──► OVWT_CELLSCORES_BATCHWISE  (per batch, optional:  │
  *        │                 params.run_single_cell_scores; always on in  │
  *        │                 OvwtPipeline)                                 │
  *        │                 └──► CHECK_BARCODES  (per batch, optional:    │
  *        │                          params.run_check_barcodes; implies   │
  *        │                          run_single_cell_scores)               │
+ *        │                          └──► BARCODE_BLOCKLIST  (per batch,  │
+ *        │                                   optional: params.run_barcode_ │
+ *        │                                   filtered_ovwt; implies      │
+ *        │                                   run_check_barcodes)         │
+ *        │                                   └──► OVWT_BATCHWISE          │
+ *        │                                        (barcode-filtered pass)│
  *        ├──► OVWT_GLOBAL             (global, waits for all NORMALIZE)  │
  *        ├──► FEATURE_SELECT_BATCHWISE (per batch) ◄─────────────────────┘
  *        └──► FEATURE_SELECT_GLOBAL   (global, waits for all NORMALIZE)
@@ -34,10 +43,13 @@ nextflow.enable.dsl = 2
  *     normalization/normalizers/       {batch_stem}.normalizer.parquet
  *     batchvsbatch/pre/                results.parquet  (pre batch correction)
  *     batchvsbatch/post/               results.parquet  (post batch correction)
- *     ovwt_batchwise/{batch_stem}/     results.csv (enriched), models.pkl
+ *     ovwt_batchwise/{batch_stem}/     results.csv (enriched), models.pkl  (unfiltered)
+ *     ovwt_batchwise_feature_filtered/{batch_stem}/  same, filtered against ANOVA_BLOCKLIST
+ *     ovwt_batchwise_barcode_filtered/{batch_stem}/  same, filtered against BARCODE_BLOCKLIST
  *     ovwt_global/                     results.csv, models.pkl
  *     ovwt_cellscores_batchwise/{batch_stem}/  cell_scores.parquet
  *     check_barcodes/{batch_stem}/     results.parquet  (per-variant Tukey HSD across barcodes)
+ *     barcode_blocklist/{batch_stem}/  barcode_blocklist.parquet  (per-barcode median p_adj + barcode_ok)
  *     feature_select_batchwise/{batch_stem}/  {batch_stem}.parquet, feature_correlations
  *     feature_select_global/           global.parquet, feature_correlations, redundancy-filtered
  */

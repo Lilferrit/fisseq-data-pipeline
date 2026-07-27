@@ -27,6 +27,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .utils.batches import load_batches
+from .utils.constants import META_BARCODE_COL
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
 from .utils.xgbparams import (
@@ -69,11 +70,22 @@ class OvwtConfig(LabeledInputConfig):
         ``output_dir``. Each file records the original row position and source
         file path for each cell in the split rather than duplicating the full
         feature matrix. Defaults to ``True``.
-    block_list_file : str or None
+    feature_block_list_file : str or None
         Optional path to a parquet file with at least ``feature`` (str) and
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
-        ``False`` are excluded before splitting/training. Defaults to
-        ``None`` (no features blocked).
+        ``False`` are excluded (dropped as columns) before splitting/training.
+        Defaults to ``None`` (no features blocked).
+    barcode_block_list_file : str or None
+        Optional path to a parquet file with at least ``barcode`` (str) and
+        ``barcode_ok`` (bool) columns (e.g. the output of
+        :mod:`.barcodeblocklist`). Cells whose ``barcode_column`` value is
+        blocked are excluded (dropped as rows) before splitting/training.
+        Defaults to ``None`` (no barcodes blocked). Independent of and
+        additive with ``feature_block_list_file``.
+    barcode_column : str
+        Name of the column in ``input_file`` identifying each cell's
+        barcode, used to apply ``barcode_block_list_file``. Defaults to
+        :data:`.utils.constants.META_BARCODE_COL` (``"meta_barcode"``).
     xgboost : XGBoostConfig
         XGBoost training configuration. Defaults to :class:`XGBoostConfig`.
     """
@@ -84,7 +96,9 @@ class OvwtConfig(LabeledInputConfig):
     min_cells: Optional[int] = 250
     downsample_wt: Union[bool, int] = True
     save_splits: bool = True
-    block_list_file: Optional[str] = None
+    feature_block_list_file: Optional[str] = None
+    barcode_block_list_file: Optional[str] = None
+    barcode_column: str = META_BARCODE_COL
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
 
@@ -356,7 +370,7 @@ def filter_min_cells(
 
 
 def _exclude_blocked_features(
-    feature_cols: list[str], block_list_file: Optional[str]
+    feature_cols: list[str], feature_block_list_file: Optional[str]
 ) -> list[str]:
     """
     Drop blocked feature names from a feature column list.
@@ -365,7 +379,7 @@ def _exclude_blocked_features(
     ----------
     feature_cols : list[str]
         Candidate feature column names.
-    block_list_file : str or None
+    feature_block_list_file : str or None
         Path to a parquet file with ``feature`` (str) and ``feature_ok``
         (bool) columns, or ``None`` to skip filtering entirely.
 
@@ -373,13 +387,47 @@ def _exclude_blocked_features(
     -------
     list[str]
         ``feature_cols`` with any feature whose ``feature_ok`` is ``False``
-        removed. Unchanged if ``block_list_file`` is ``None``.
+        removed. Unchanged if ``feature_block_list_file`` is ``None``.
     """
-    if block_list_file is None:
+    if feature_block_list_file is None:
         return feature_cols
-    bl_df = pl.read_parquet(block_list_file)
+    bl_df = pl.read_parquet(feature_block_list_file)
     blocked = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
     return [f for f in feature_cols if f not in blocked]
+
+
+def _exclude_blocked_barcodes(
+    data_df: pl.DataFrame,
+    barcode_column: str,
+    barcode_block_list_file: Optional[str],
+) -> pl.DataFrame:
+    """
+    Drop cells whose barcode is blocked.
+
+    Parameters
+    ----------
+    data_df : pl.DataFrame
+        Cell-level DataFrame containing ``barcode_column``.
+    barcode_column : str
+        Name of the column identifying each cell's barcode.
+    barcode_block_list_file : str or None
+        Path to a parquet file with ``barcode`` (str) and ``barcode_ok``
+        (bool) columns (e.g. the output of :mod:`.barcodeblocklist`), or
+        ``None`` to skip filtering entirely.
+
+    Returns
+    -------
+    pl.DataFrame
+        ``data_df`` with rows whose ``barcode_column`` value is blocked
+        removed. Unchanged if ``barcode_block_list_file`` is ``None``.
+    """
+    if barcode_block_list_file is None:
+        return data_df
+    bl_df = pl.read_parquet(barcode_block_list_file)
+    blocked = set(bl_df.filter(~pl.col("barcode_ok"))["barcode"].to_list())
+    if not blocked:
+        return data_df
+    return data_df.filter(~pl.col(barcode_column).is_in(blocked))
 
 
 def train_test_val_split(
@@ -399,8 +447,9 @@ def train_test_val_split(
         Full feature DataFrame containing feature columns and ``cfg.label_column``.
     cfg : DictConfig
         Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
-        ``min_cells``, ``downsample_wt``, ``random_state``, and
-        ``block_list_file``.
+        ``min_cells``, ``downsample_wt``, ``random_state``,
+        ``feature_block_list_file``, ``barcode_block_list_file``, and
+        ``barcode_column``.
 
     Returns
     -------
@@ -417,9 +466,18 @@ def train_test_val_split(
         feature_cols = list(cfg.feature_cols)
     else:
         feature_cols = get_feature_cols(data_df)
-    feature_cols = _exclude_blocked_features(feature_cols, cfg.block_list_file)
+    feature_cols = _exclude_blocked_features(feature_cols, cfg.feature_block_list_file)
 
     data_df = data_df.with_row_index("__row_idx__")
+    # Barcode row-filter applied here, while barcode_column is still present
+    # (before the column-narrowing select below drops it) and after
+    # with_row_index so __row_idx__ still records true original position.
+    # This runs before min_cells filtering, so a variant that drops below
+    # min_cells purely because its barcode(s) got blocked is correctly
+    # excluded as a result.
+    data_df = _exclude_blocked_barcodes(
+        data_df, cfg.barcode_column, cfg.barcode_block_list_file
+    )
     select_cols = feature_cols + [label_col]
     data_df = data_df.select(select_cols + ["__row_idx__"])
     data_df = data_df.filter(pl.col(label_col).is_not_null())

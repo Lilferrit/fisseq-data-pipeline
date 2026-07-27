@@ -10,7 +10,7 @@ process OVWT_GLOBAL {
     publishDir "${params.input_dir}/ovwt_global", mode: 'copy'
 
     input:
-    tuple val(input_dir), val(block_list_file)
+    tuple val(input_dir), val(feature_block_list_file)
 
     output:
     path("results.parquet")
@@ -25,6 +25,6 @@ process OVWT_GLOBAL {
         "input_file=${input_dir}/normalization/cells/*.parquet" \\
         min_cells=${params.ovwt_min_cells} \\
         downsample_wt=${params.ovwt_downsample_wt} \\
-        block_list_file=${block_list_file}
+        feature_block_list_file=${feature_block_list_file}
     """
 }

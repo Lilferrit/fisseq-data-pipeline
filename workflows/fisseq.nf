@@ -2,10 +2,10 @@ nextflow.enable.dsl = 2
 
 // FisseqPipeline: the default, full end-to-end DAG. Wires together QC_FILTER
 // -> NORMALIZE -> ANOVA (normalized) -> ANOVA_BLOCKLIST -> BATCHVSBATCH
-// (pre unfiltered / post filtered) -> OVWT (batchwise unfiltered + filtered,
-// global filtered only) -> bootstrap feature selection (batchwise/global,
-// gated by params.run_feature_selection) -> BATCH_CORRECT_FIT/TRANSFORM ->
-// ANOVA (batch-corrected).
+// (pre unfiltered / post filtered) -> OVWT (batchwise unfiltered + feature-
+// filtered + barcode-filtered, global feature-filtered only) -> bootstrap
+// feature selection (batchwise/global, gated by params.run_feature_selection)
+// -> BATCH_CORRECT_FIT/TRANSFORM -> ANOVA (batch-corrected).
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
 // gated by params.run_global (default true); ANOVA, ANOVA_BLOCKLIST, and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
@@ -14,19 +14,28 @@ nextflow.enable.dsl = 2
 // scoring params.single_cell_scores_split's "test" or "train" split), which
 // in turn optionally feeds CHECK_BARCODES (per batch, gated by
 // params.run_check_barcodes -- a per-variant Tukey HSD across barcodes using
-// each cell's own-model score as the response variable). run_check_barcodes
-// implies run_single_cell_scores, so setting it alone is enough.
+// each cell's own-model score as the response variable), which in turn
+// optionally feeds BARCODE_BLOCKLIST (per batch, gated by
+// params.run_barcode_filtered_ovwt, default true) -> OVWT_BATCHWISE_BARCODE_FILTERED
+// (retrains that batch excluding cells with a blocked barcode).
+// run_check_barcodes implies run_single_cell_scores, so setting it alone is
+// enough; run_barcode_filtered_ovwt does NOT force run_check_barcodes on --
+// it only takes effect once run_check_barcodes is independently true, so the
+// default (run_check_barcodes=false) output set is unaffected by
+// run_barcode_filtered_ovwt's own default.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
 include { NORMALIZE                 } from '../modules/local/normalize'
 include { BATCHVSBATCH as BATCHVSBATCH_PRE  } from '../modules/local/batchvsbatch'
 include { BATCHVSBATCH as BATCHVSBATCH_POST } from '../modules/local/batchvsbatch'
-include { OVWT_BATCHWISE as OVWT_BATCHWISE_UNFILTERED } from '../modules/local/ovwt_batchwise'
-include { OVWT_BATCHWISE as OVWT_BATCHWISE_FILTERED   } from '../modules/local/ovwt_batchwise'
+include { OVWT_BATCHWISE as OVWT_BATCHWISE_UNFILTERED       } from '../modules/local/ovwt_batchwise'
+include { OVWT_BATCHWISE as OVWT_BATCHWISE_FEATURE_FILTERED } from '../modules/local/ovwt_batchwise'
+include { OVWT_BATCHWISE as OVWT_BATCHWISE_BARCODE_FILTERED } from '../modules/local/ovwt_batchwise'
 include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
 include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'
 include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
+include { BARCODE_BLOCKLIST         } from '../modules/local/barcode_blocklist'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_BATCHWISE } from '../modules/local/aggregate_feature_type'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_GLOBAL    } from '../modules/local/aggregate_feature_type'
@@ -126,8 +135,8 @@ workflow FisseqPipeline {
 
     // ANOVA_BLOCKLIST — derives a feature block-list from ANOVA_NORMALIZED's
     // p-values. Always runs, not gated by params.run_global/params.run_feature_selection,
-    // since OVWT_BATCHWISE_FILTERED (when enabled), BATCHVSBATCH_POST, and
-    // OVWT_GLOBAL all need it.
+    // since OVWT_BATCHWISE_FEATURE_FILTERED (when enabled), BATCHVSBATCH_POST,
+    // and OVWT_GLOBAL all need it.
     ANOVA_BLOCKLIST(ANOVA_NORMALIZED.out)
     anova_blocklist_ch = ANOVA_BLOCKLIST.out  // single-element path channel
 
@@ -141,9 +150,10 @@ workflow FisseqPipeline {
     // Same parse for params.run_feature_selection: gates the entire
     // feature-selection branch below (batchwise and global).
     run_feature_selection = params.run_feature_selection.toString().toBoolean()
-    // Same parse for params.run_filtered_ovwt: gates OVWT_BATCHWISE_FILTERED
-    // alone (OVWT_BATCHWISE_UNFILTERED is unaffected).
-    run_filtered_ovwt = params.run_filtered_ovwt.toString().toBoolean()
+    // Same parse for params.run_feature_filtered_ovwt: gates
+    // OVWT_BATCHWISE_FEATURE_FILTERED alone (OVWT_BATCHWISE_UNFILTERED is
+    // unaffected).
+    run_feature_filtered_ovwt = params.run_feature_filtered_ovwt.toString().toBoolean()
 
     // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
     // (optional, gated on params.run_global). Unfiltered: runs immediately after
@@ -162,26 +172,34 @@ workflow FisseqPipeline {
         )
     }
 
-    // Step 5: OvWT — batchwise, both variants.
+    // Step 5: OvWT — batchwise, unfiltered + feature-filtered (barcode-filtered
+    // is wired below, after CHECK_BARCODES/BARCODE_BLOCKLIST are available).
     // Unfiltered: unchanged, no dependency on ANOVA_BLOCKLIST.
-    OVWT_BATCHWISE_UNFILTERED(norm_ch.map { stem, p -> tuple(stem, p, null, "ovwt_batchwise") })
-    // Filtered: broadcasts the single ANOVA_BLOCKLIST output onto every
-    // per-batch tuple, same .combine() idiom as BATCH_CORRECT_TRANSFORM below.
-    // Optional, gated on params.run_filtered_ovwt.
-    if (run_filtered_ovwt) {
-        OVWT_BATCHWISE_FILTERED(
+    OVWT_BATCHWISE_UNFILTERED(norm_ch.map { stem, p -> tuple(stem, p, null, null, "ovwt_batchwise") })
+    // Feature-filtered: broadcasts the single ANOVA_BLOCKLIST output onto
+    // every per-batch tuple, same .combine() idiom as BATCH_CORRECT_TRANSFORM
+    // below. Optional, gated on params.run_feature_filtered_ovwt.
+    if (run_feature_filtered_ovwt) {
+        OVWT_BATCHWISE_FEATURE_FILTERED(
             norm_ch.combine(anova_blocklist_ch)
-                .map { stem, p, bl -> tuple(stem, p, bl, "ovwt_batchwise_filtered") }
+                .map { stem, p, bl -> tuple(stem, p, bl, null, "ovwt_batchwise_feature_filtered") }
         )
     }
 
     // Step 5b: single-cell scores (optional, gated on
     // params.run_single_cell_scores) -> per-batch barcode-outlier check
-    // (optional, gated on params.run_check_barcodes). run_check_barcodes
+    // (optional, gated on params.run_check_barcodes) -> per-batch barcode
+    // block-list -> OVWT_BATCHWISE_BARCODE_FILTERED. run_check_barcodes
     // implies run_single_cell_scores -- see nextflow.config's comment for
-    // this param.
+    // this param. params.run_barcode_filtered_ovwt (default true) does NOT
+    // force run_check_barcodes on -- it only decides whether, once
+    // run_check_barcodes is independently true, the barcode-filtered retrain
+    // also happens. This keeps run_check_barcodes=false (the default)
+    // producing the same output set it always has, regardless of
+    // run_barcode_filtered_ovwt's default.
     run_single_cell_scores = params.run_single_cell_scores.toString().toBoolean()
     run_check_barcodes = params.run_check_barcodes.toString().toBoolean()
+    run_barcode_filtered_ovwt = params.run_barcode_filtered_ovwt.toString().toBoolean()
     if (run_check_barcodes) {
         run_single_cell_scores = true
     }
@@ -203,6 +221,24 @@ workflow FisseqPipeline {
 
         if (run_check_barcodes) {
             CHECK_BARCODES(OVWT_CELLSCORES_BATCHWISE.out)
+
+            if (run_barcode_filtered_ovwt) {
+                // Per-batch, unlike ANOVA_BLOCKLIST (global) -- consumes
+                // CHECK_BARCODES' per-batch (batch_stem, results_file)
+                // tuple directly.
+                BARCODE_BLOCKLIST(CHECK_BARCODES.out)
+                barcode_blocklist_ch = BARCODE_BLOCKLIST.out  // (batch_stem, barcode_blocklist_file)
+
+                // .join(), not .combine(): both norm_ch and
+                // barcode_blocklist_ch already carry exactly one entry per
+                // batch_stem that made it through CHECK_BARCODES -- .combine()
+                // would be a global broadcast, which is wrong here since the
+                // blocklist is per-batch, not global.
+                OVWT_BATCHWISE_BARCODE_FILTERED(
+                    norm_ch.join(barcode_blocklist_ch)
+                        .map { stem, p, bl -> tuple(stem, p, null, bl, "ovwt_batchwise_barcode_filtered") }
+                )
+            }
         }
     }
 
