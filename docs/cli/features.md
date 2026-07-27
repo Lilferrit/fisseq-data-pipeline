@@ -3,7 +3,7 @@
 `features.py` implements a bootstrap pseudo-replicate feature-selection pipeline
 as five Hydra entry points, each a Nextflow process (see
 [Nextflow Workflow](../nextflow.md)). Cells are split into stratified 50/50
-pseudo-replicate halves across `params.bootstrap` replicates; each half is
+pseudo-replicate halves across `params.feature_select_bootstrap_reps` replicates; each half is
 aggregated per feature type (via [`fisseq-aggregate-feature-type`](aggregate.md)),
 correlated against its partner half, and a per-feature blocklist is derived from
 the median correlation across all bootstrap replicates. The final stage joins the

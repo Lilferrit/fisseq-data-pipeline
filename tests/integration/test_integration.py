@@ -35,28 +35,28 @@ _FEATURE_COLS = [
 ]
 
 # Low thresholds so the small synthetic dataset passes every pipeline step.
-# anova_pvalue_threshold is raised well above the default 0.05: with this
+# anova_blocklist_pvalue_threshold is raised well above the default 0.05: with this
 # synthetic dataset's fixed seeds, the 5 feature columns have no real batch
 # effect (ANOVA p-values ~0.16-0.98), so the default threshold blocks none of
 # them -- making the filtered and unfiltered OvWT/batch-vs-batch runs
 # indistinguishable for test purposes. 0.5 blocks 4 of the 5 features,
 # exercising a non-trivial (some blocked, some not) split.
 _NF_PARAMS = [
-    "--bc_threshold",
+    "--barcode_count_threshold",
     "3",
-    "--variant_bc_threshold",
+    "--variant_barcode_count_threshold",
     "3",
     "--ovwt_min_cells",
     "25",
-    "--downsample_wt",
+    "--ovwt_downsample_wt",
     "50",
-    "--bvb_min_cells",
+    "--batchvsbatch_min_cells",
     "50",
-    "--bvb_min_batches",
+    "--batchvsbatch_min_batches",
     "2",
-    "--bootstrap",
+    "--feature_select_bootstrap_reps",
     "3",
-    "--anova_pvalue_threshold",
+    "--anova_blocklist_pvalue_threshold",
     "0.5",
 ]
 
@@ -83,25 +83,25 @@ def _write_batch(path: Path, seed: int = 42) -> None:
 
 
 _OVWT_NF_PARAMS = [
-    "--bc_threshold",
+    "--barcode_count_threshold",
     "3",
-    "--variant_bc_threshold",
+    "--variant_barcode_count_threshold",
     "3",
     "--ovwt_min_cells",
     "25",
-    "--downsample_wt",
+    "--ovwt_downsample_wt",
     "50",
 ]
 
-# single_cell_scores / run_check_barcodes: barcode_check_min_cells is dropped
+# run_single_cell_scores / run_check_barcodes: barcode_check_min_cells is dropped
 # to 2 (default 10) since this synthetic dataset only has 6 cells per
-# barcode, and single_cell_scores_source=train (rather than the default
+# barcode, and single_cell_scores_split=train (rather than the default
 # test) is used to keep more cells per barcode after the 80/10/10 split so
 # CHECK_BARCODES has enough per-barcode samples to compare.
 _CHECK_BARCODES_NF_PARAMS = _NF_PARAMS + [
     "--run_check_barcodes",
     "true",
-    "--single_cell_scores_source",
+    "--single_cell_scores_split",
     "train",
     "--barcode_check_min_cells",
     "2",
@@ -148,7 +148,7 @@ def _run_ovwt_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--workflow",
+            "--pipeline_mode",
             "ovwt",
             "--input_dir",
             str(exp_dir),
@@ -295,7 +295,7 @@ def test_anova_blocklist_has_expected_columns(pipeline_outputs):
 
 
 def test_single_cell_scores_and_check_barcodes_disabled_by_default(pipeline_outputs):
-    """params.single_cell_scores and params.run_check_barcodes both default to
+    """params.run_single_cell_scores and params.run_check_barcodes both default to
     false -- FisseqPipeline's output set must be unchanged from before these
     flags existed."""
     exp_dir, _ = pipeline_outputs
@@ -315,9 +315,9 @@ def test_normalized_cells_wt_mean_near_zero(pipeline_outputs, batch_stem):
     wt = df.filter(pl.col("meta_aa_changes") == "WT")
     feature_cols = [c for c in df.columns if not c.startswith("meta_")]
     for col in feature_cols:
-        assert (
-            abs(wt[col].drop_nulls().mean()) < 0.5
-        ), f"WT mean for {col} not near zero after normalization"
+        assert abs(wt[col].drop_nulls().mean()) < 0.5, (
+            f"WT mean for {col} not near zero after normalization"
+        )
 
 
 @pytest.mark.parametrize("stage", ["pre", "post"])
@@ -422,14 +422,14 @@ def test_batch_correction_wt_means_converge_across_batches(pipeline_outputs):
     for col in feature_cols:
         mean1 = wt1[col].drop_nulls().mean()
         mean2 = wt2[col].drop_nulls().mean()
-        assert (
-            abs(mean1 - mean2) < 0.5
-        ), f"WT mean for {col} did not converge across batches after batch correction"
+        assert abs(mean1 - mean2) < 0.5, (
+            f"WT mean for {col} did not converge across batches after batch correction"
+        )
 
 
 # ---------------------------------------------------------------------------
-# single_cell_scores / run_check_barcodes — session fixture and tests
-# (FisseqPipeline, params.run_check_barcodes=true implying single_cell_scores)
+# run_single_cell_scores / run_check_barcodes — session fixture and tests
+# (FisseqPipeline, params.run_check_barcodes=true implying run_single_cell_scores)
 # ---------------------------------------------------------------------------
 
 
@@ -515,9 +515,9 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
             str(_PROJECT_ROOT),
             "--input_dir",
             str(exp_dir),
-            "--single_cell_scores",
+            "--run_single_cell_scores",
             "true",
-            "--single_cell_scores_source",
+            "--single_cell_scores_split",
             "bogus",
             *_NF_PARAMS,
         ],
@@ -527,7 +527,7 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
         timeout=600,
     )
     assert result.returncode != 0
-    assert "single_cell_scores_source" in (result.stdout + result.stderr)
+    assert "single_cell_scores_split" in (result.stdout + result.stderr)
 
 
 @pytest.fixture(scope="session")
@@ -662,13 +662,13 @@ def ovwt_check_barcodes_pipeline_outputs(tmp_path_factory):
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--workflow",
+            "--pipeline_mode",
             "ovwt",
             "--input_dir",
             str(exp_dir),
             "--run_check_barcodes",
             "true",
-            "--single_cell_scores_source",
+            "--single_cell_scores_split",
             "train",
             "--barcode_check_min_cells",
             "2",
@@ -698,7 +698,7 @@ def test_ovwt_check_barcodes_results_outputs(
 
 
 # ---------------------------------------------------------------------------
-# params.config_dir — optional INPUT stage (workflows/fisseq.nf,
+# params.yaml_config_dir — optional INPUT stage (workflows/fisseq.nf,
 # workflows/ovwt.nf). Uses the lighter OvwtPipeline so this test isn't
 # bottlenecked by the full feature-selection DAG; the thing under test is the
 # INPUT -> QC_FILTER channel wiring, not downstream analysis.
@@ -718,11 +718,11 @@ def _run_config_dir_pipeline(
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--workflow",
+            "--pipeline_mode",
             "ovwt",
             "--input_dir",
             str(exp_dir),
-            "--config_dir",
+            "--yaml_config_dir",
             str(config_dir),
             *_OVWT_NF_PARAMS,
         ],

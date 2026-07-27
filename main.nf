@@ -18,11 +18,11 @@ nextflow.enable.dsl = 2
  *        ├──► BATCHVSBATCH (post)     (global, waits for all NORMALIZE)  │
  *        ├──► OVWT_BATCHWISE          (per batch)                        │
  *        │        └──► OVWT_CELLSCORES_BATCHWISE  (per batch, optional:  │
- *        │                 params.single_cell_scores; always on in       │
+ *        │                 params.run_single_cell_scores; always on in  │
  *        │                 OvwtPipeline)                                 │
  *        │                 └──► CHECK_BARCODES  (per batch, optional:    │
  *        │                          params.run_check_barcodes; implies   │
- *        │                          single_cell_scores)                  │
+ *        │                          run_single_cell_scores)               │
  *        ├──► OVWT_GLOBAL             (global, waits for all NORMALIZE)  │
  *        ├──► FEATURE_SELECT_BATCHWISE (per batch) ◄─────────────────────┘
  *        └──► FEATURE_SELECT_GLOBAL   (global, waits for all NORMALIZE)
@@ -48,7 +48,7 @@ include { FisseqPipeline } from './workflows/fisseq'
 include { OvwtPipeline   } from './workflows/ovwt'
 
 workflow {
-    if (params.workflow == "ovwt") {
+    if (params.pipeline_mode == "ovwt") {
         OvwtPipeline()
     } else {
         FisseqPipeline()

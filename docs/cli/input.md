@@ -1,6 +1,6 @@
 # Input
 
-`fisseq-input` (Nextflow process `INPUT`, optional — gated by `params.config_dir`)
+`fisseq-input` (Nextflow process `INPUT`, optional — gated by `params.yaml_config_dir`)
 reads a hand-authored YAML config describing one or more raw cell-score files
 (CSV or Parquet), classifies each row's variant, and restricts to a fixed set of
 variant classes plus the most common missense variants. Writes a single

@@ -4,18 +4,18 @@ nextflow.enable.dsl = 2
 // -> NORMALIZE -> ANOVA (normalized) -> ANOVA_BLOCKLIST -> BATCHVSBATCH
 // (pre unfiltered / post filtered) -> OVWT (batchwise unfiltered + filtered,
 // global filtered only) -> bootstrap feature selection (batchwise/global,
-// gated by params.feature_selection) -> BATCH_CORRECT_FIT/TRANSFORM ->
+// gated by params.run_feature_selection) -> BATCH_CORRECT_FIT/TRANSFORM ->
 // ANOVA (batch-corrected).
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
-// gated by params.global (default true); ANOVA, ANOVA_BLOCKLIST, and
+// gated by params.run_global (default true); ANOVA, ANOVA_BLOCKLIST, and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
 // OVWT_BATCHWISE_UNFILTERED additionally optionally feeds
-// OVWT_CELLSCORES_BATCHWISE (per batch, gated by params.single_cell_scores,
-// scoring params.single_cell_scores_source's "test" or "train" split), which
+// OVWT_CELLSCORES_BATCHWISE (per batch, gated by params.run_single_cell_scores,
+// scoring params.single_cell_scores_split's "test" or "train" split), which
 // in turn optionally feeds CHECK_BARCODES (per batch, gated by
 // params.run_check_barcodes -- a per-variant Tukey HSD across barcodes using
 // each cell's own-model score as the response variable). run_check_barcodes
-// implies single_cell_scores, so setting it alone is enough.
+// implies run_single_cell_scores, so setting it alone is enough.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
@@ -53,20 +53,20 @@ workflow FisseqPipeline {
         error "ERROR: --input_dir is required.\n  Usage: nextflow run fisseq.nf --input_dir /path/to/data"
     }
 
-    // If params.config_dir is set, INPUT generates one input/*.parquet per
-    // YAML config file there, merged with any pre-staged files already in
-    // <input_dir>/input/. config_files is listed eagerly (not via a Channel)
-    // so its basenames can be used synchronously below to dedupe against the
-    // pre-staged glob.
+    // If params.yaml_config_dir is set, INPUT generates one input/*.parquet
+    // per YAML config file there, merged with any pre-staged files already
+    // in <input_dir>/input/. config_files is listed eagerly (not via a
+    // Channel) so its basenames can be used synchronously below to dedupe
+    // against the pre-staged glob.
     def config_files = []
-    if (params.config_dir != null) {
-        def configSubdir = file(params.config_dir)
+    if (params.yaml_config_dir != null) {
+        def configSubdir = file(params.yaml_config_dir)
         if (!configSubdir.isDirectory()) {
-            error "ERROR: ${params.config_dir} does not exist or is not a directory"
+            error "ERROR: ${params.yaml_config_dir} does not exist or is not a directory"
         }
         config_files = configSubdir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
         if (config_files.size() == 0) {
-            error "ERROR: No .yaml files found in ${params.config_dir}"
+            error "ERROR: No .yaml files found in ${params.yaml_config_dir}"
         }
     }
     def config_names = config_files.collect { it.baseName } as Set
@@ -76,7 +76,7 @@ workflow FisseqPipeline {
         ? (inputSubdir.listFiles()?.findAll { it.name.endsWith('.parquet') } ?: [])
         : []
     if (inputParquets.size() == 0 && config_files.size() == 0) {
-        error "ERROR: No .parquet files found in ${params.input_dir}/input and no --config_dir supplied"
+        error "ERROR: No .parquet files found in ${params.input_dir}/input and no --yaml_config_dir supplied"
     }
 
     // Resolve input_dir to absolute path so global process scripts can glob published outputs.
@@ -93,7 +93,7 @@ workflow FisseqPipeline {
         .map { f -> [ f.baseName, f ] }
         .filter { name, f -> !(name in config_names) }
 
-    if (params.config_dir != null) {
+    if (params.yaml_config_dir != null) {
         config_ch = Channel.fromList(config_files).map { f -> [ f.baseName, f ] }
         generated_ch = INPUT(config_ch)
         input_ch = glob_input_ch.mix(generated_ch)
@@ -125,28 +125,28 @@ workflow FisseqPipeline {
     ANOVA_NORMALIZED(global_signal.map { d -> [d, "${d}/normalization/cells/*.parquet", "anova"] })
 
     // ANOVA_BLOCKLIST — derives a feature block-list from ANOVA_NORMALIZED's
-    // p-values. Always runs, not gated by params.global/params.feature_selection,
+    // p-values. Always runs, not gated by params.run_global/params.run_feature_selection,
     // since OVWT_BATCHWISE_FILTERED (when enabled), BATCHVSBATCH_POST, and
     // OVWT_GLOBAL all need it.
     ANOVA_BLOCKLIST(ANOVA_NORMALIZED.out)
     anova_blocklist_ch = ANOVA_BLOCKLIST.out  // single-element path channel
 
-    // Explicit String->Boolean parse: Nextflow CLI overrides (e.g. --global
-    // false) arrive as the String "false", which is truthy in Groovy — a
-    // bare `if (params.global)` (or `as Boolean`) would run the "disabled"
-    // branch anyway. `.toBoolean()` parses "true"/"false" text correctly.
-    // Gates BATCHVSBATCH, OVWT_GLOBAL, and (when feature selection is
-    // enabled) the *_GLOBAL feature-selection branch.
-    run_global = params.global.toString().toBoolean()
-    // Same parse for params.feature_selection: gates the entire
+    // Explicit String->Boolean parse: Nextflow CLI overrides (e.g.
+    // --run_global false) arrive as the String "false", which is truthy in
+    // Groovy — a bare `if (params.run_global)` (or `as Boolean`) would run
+    // the "disabled" branch anyway. `.toBoolean()` parses "true"/"false"
+    // text correctly. Gates BATCHVSBATCH, OVWT_GLOBAL, and (when feature
+    // selection is enabled) the *_GLOBAL feature-selection branch.
+    run_global = params.run_global.toString().toBoolean()
+    // Same parse for params.run_feature_selection: gates the entire
     // feature-selection branch below (batchwise and global).
-    run_feature_selection = params.feature_selection.toString().toBoolean()
+    run_feature_selection = params.run_feature_selection.toString().toBoolean()
     // Same parse for params.run_filtered_ovwt: gates OVWT_BATCHWISE_FILTERED
     // alone (OVWT_BATCHWISE_UNFILTERED is unaffected).
     run_filtered_ovwt = params.run_filtered_ovwt.toString().toBoolean()
 
     // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
-    // (optional, gated on params.global). Unfiltered: runs immediately after
+    // (optional, gated on params.run_global). Unfiltered: runs immediately after
     // QC_FILTER, no dependency on ANOVA_BLOCKLIST, to preserve its current
     // early/parallel scheduling.
     if (run_global) {
@@ -154,7 +154,7 @@ workflow FisseqPipeline {
     }
 
     // Step 4: Batch-vs-batch — post batch correction (normalized cells)
-    // (optional, gated on params.global). Filtered against ANOVA_BLOCKLIST.
+    // (optional, gated on params.run_global). Filtered against ANOVA_BLOCKLIST.
     if (run_global) {
         BATCHVSBATCH_POST(
             global_signal.combine(anova_blocklist_ch)
@@ -175,19 +175,20 @@ workflow FisseqPipeline {
         )
     }
 
-    // Step 5b: single-cell scores (optional, gated on params.single_cell_scores)
-    // -> per-batch barcode-outlier check (optional, gated on
-    // params.run_check_barcodes). run_check_barcodes implies
-    // single_cell_scores -- see nextflow.config's comment for this param.
-    run_single_cell_scores = params.single_cell_scores.toString().toBoolean()
+    // Step 5b: single-cell scores (optional, gated on
+    // params.run_single_cell_scores) -> per-batch barcode-outlier check
+    // (optional, gated on params.run_check_barcodes). run_check_barcodes
+    // implies run_single_cell_scores -- see nextflow.config's comment for
+    // this param.
+    run_single_cell_scores = params.run_single_cell_scores.toString().toBoolean()
     run_check_barcodes = params.run_check_barcodes.toString().toBoolean()
     if (run_check_barcodes) {
         run_single_cell_scores = true
     }
 
-    score_source = params.single_cell_scores_source
+    score_source = params.single_cell_scores_split
     if (!(score_source in ["test", "train"])) {
-        error "ERROR: --single_cell_scores_source must be 'test' or 'train', got '${score_source}'"
+        error "ERROR: --single_cell_scores_split must be 'test' or 'train', got '${score_source}'"
     }
 
     if (run_single_cell_scores) {
@@ -205,7 +206,7 @@ workflow FisseqPipeline {
         }
     }
 
-    // Step 6: OvWT — global (optional, gated on params.global). Always
+    // Step 6: OvWT — global (optional, gated on params.run_global). Always
     // filtered against ANOVA_BLOCKLIST -- there is no unfiltered global run.
     if (run_global) {
         OVWT_GLOBAL(global_signal.combine(anova_blocklist_ch).map { d, bl -> tuple(d, bl) })
@@ -217,14 +218,14 @@ workflow FisseqPipeline {
     //   -> correlation -> per-feature-type blocklist (gathered over bootstraps).
     // Stage 3: combine per-feature-type blocklists.
     // Stage 4: join stage-1 aggregates, apply combined blocklist, pycytominer select.
-    // The entire branch (batchwise + global) is gated on params.feature_selection;
-    // the global sub-branch is additionally gated on params.global below.
+    // The entire branch (batchwise + global) is gated on params.run_feature_selection;
+    // the global sub-branch is additionally gated on params.run_global below.
     if (run_feature_selection) {
-    feature_types_ch = Channel.fromList(params.feature_types)
-    // Explicit cast: Nextflow CLI overrides (e.g. --bootstrap 3) arrive as
-    // Strings and silently produce a bogus/huge range if left uncoerced in
-    // a Groovy IntRange (1..params.bootstrap).
-    bootstrap_ch = Channel.of(1..(params.bootstrap as int))
+    feature_types_ch = Channel.fromList(params.feature_select_types)
+    // Explicit cast: Nextflow CLI overrides (e.g. --feature_select_bootstrap_reps 3)
+    // arrive as Strings and silently produce a bogus/huge range if left
+    // uncoerced in a Groovy IntRange (1..params.feature_select_bootstrap_reps).
+    bootstrap_ch = Channel.of(1..(params.feature_select_bootstrap_reps as int))
 
     // --- Batchwise ---
 
@@ -297,7 +298,7 @@ workflow FisseqPipeline {
             tuple(batch_stem, feature_type, correlation_file)
         }
         .groupTuple(by: [0, 1])
-        // (batch_stem, feature_type, [correlation_file, ...])  (N = params.bootstrap)
+        // (batch_stem, feature_type, [correlation_file, ...])  (N = params.feature_select_bootstrap_reps)
         .map { batch_stem, feature_type, correlation_files ->
             tuple(batch_stem, feature_type, correlation_files, "feature_select_batchwise/${batch_stem}")
         }
@@ -308,7 +309,7 @@ workflow FisseqPipeline {
     combine_bl_input_ch = bl_ch
         .map { batch_stem, feature_type, blocklist_file -> tuple(batch_stem, blocklist_file) }
         .groupTuple(by: 0)
-        // (batch_stem, [blocklist_file, ...])  (N = params.feature_types.size())
+        // (batch_stem, [blocklist_file, ...])  (N = params.feature_select_types.size())
         .map { batch_stem, blocklist_files ->
             tuple(batch_stem, blocklist_files, "feature_select_batchwise/${batch_stem}")
         }
@@ -321,7 +322,7 @@ workflow FisseqPipeline {
     finalize_input_ch = agg_ch
         .map { batch_stem, feature_type, agg_file -> tuple(batch_stem, agg_file) }
         .groupTuple(by: 0)
-        // (batch_stem, [agg_file, ...])  (N = params.feature_types.size())
+        // (batch_stem, [agg_file, ...])  (N = params.feature_select_types.size())
         .join(norm_ch)
         .join(combined_bl_ch)
         .map { batch_stem, agg_files, normalized_parquet, combined_bl_file ->
@@ -330,7 +331,7 @@ workflow FisseqPipeline {
         }
     FINALIZE_FEATURE_SELECT_BATCHWISE(finalize_input_ch)
 
-    // --- Global (within feature selection, additionally gated on params.global) ---
+    // --- Global (within feature selection, additionally gated on params.run_global) ---
     // Same shape as batchwise, minus the per-batch dimension: a constant
     // global_key stands in for batch_stem for tuple-shape/grouping purposes
     // only, and the "which cells" glob is derived from global_signal instead

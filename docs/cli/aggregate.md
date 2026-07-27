@@ -17,7 +17,7 @@ single-file path.
 
 Seven strategies are available via the `aggregator` field — there is **no**
 `"multi"`/combined option; combining feature types happens in Nextflow by running
-`AGGREGATE_FEATURE_TYPE` once per `params.feature_types` entry.
+`AGGREGATE_FEATURE_TYPE` once per `params.feature_select_types` entry.
 
 | Value | Description |
 | ----- | ----------- |
@@ -80,7 +80,7 @@ uv run fisseq-aggregate-feature-type \
     seed=1
 ```
 
-In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.aggregate_downsample_wt`
+In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_select_downsample_wt`
 (see [Parameters](../nextflow.md#parameters)) — `AGGREGATE_HALF` derives a distinct seed per
 `(bootstrap_idx, half_num)` so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against

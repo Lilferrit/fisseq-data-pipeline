@@ -38,16 +38,16 @@ This runs the default `FisseqPipeline`, which chains every stage described in
 1. `QC_FILTER` — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).
 2. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (global, if
-   `params.global`).
+   `params.run_global`).
 3. `NORMALIZE` — z-score normalization fit on WT control cells (per batch).
 4. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (global, if
-   `params.global`).
+   `params.run_global`).
 5. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification.
-6. Bootstrap feature selection (batchwise and, if `params.global`, global) —
+6. Bootstrap feature selection (batchwise and, if `params.run_global`, global) —
    see [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
    six-stage breakdown.
 7. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
-   (always runs, regardless of `params.global`).
+   (always runs, regardless of `params.run_global`).
 8. `ANOVA` — batch-effect assessment, run once on normalized cells and once
    on batch-corrected cells (always runs).
 
@@ -58,8 +58,8 @@ feature-selection branch, and `BATCHVSBATCH`):
 ```bash
 nextflow run . \
     --input_dir /path/to/experiment \
-    --bc_threshold 15 \
-    --global false
+    --barcode_count_threshold 15 \
+    --run_global false
 ```
 
 To run on a cluster, supply your own config:
@@ -81,7 +81,7 @@ All outputs land under `<input_dir>`, alongside `input/` — see
 The two results most analyses care about:
 
 - `<input_dir>/feature_select_batchwise/<batch>/output.parquet` (and
-  `feature_select_global/output.parquet`, if `params.global`) — final
+  `feature_select_global/output.parquet`, if `params.run_global`) — final
   per-variant, feature-selected profiles.
 - `<input_dir>/anova/anova.parquet` and
   `<input_dir>/batch_correction/anova/anova.parquet` — per-feature

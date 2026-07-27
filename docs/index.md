@@ -30,13 +30,13 @@ input/*.parquet  (one file per batch)
      ▼
 QC_FILTER   (per batch)
      │
-     ├──► BATCHVSBATCH (pre)        (global, optional — params.global)
+     ├──► BATCHVSBATCH (pre)        (global, optional — params.run_global)
      ▼
 NORMALIZE   (per batch)
      │
-     ├──► BATCHVSBATCH (post)       (global, optional — params.global)
+     ├──► BATCHVSBATCH (post)       (global, optional — params.run_global)
      ├──► OVWT_BATCHWISE             (per batch)
-     ├──► OVWT_GLOBAL                (global, optional — params.global)
+     ├──► OVWT_GLOBAL                (global, optional — params.run_global)
      ├──► Feature selection          (batchwise always; global optional)
      └──► ANOVA (normalized)         (global — always runs)
 

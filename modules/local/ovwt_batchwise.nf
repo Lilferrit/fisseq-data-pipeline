@@ -10,10 +10,10 @@ nextflow.enable.dsl = 2
 // block_list_file is a val (not a staged path) so a Groovy null can be
 // passed through directly -- fisseq-ovwt's block_list_file=null CLI arg
 // parses as Python None via Hydra/OmegaConf, the same trick used for
-// downsample_fraction in qc_filter.nf.
+// qc_downsample_fraction in qc_filter.nf.
 // Publishes results.parquet, models.pkl, test_index.parquet, and
 // train_index.parquet (consumed by OVWT_CELLSCORES_BATCHWISE, selected via
-// params.single_cell_scores_source) under <publish_subdir>/<batch_stem>/.
+// params.single_cell_scores_split) under <publish_subdir>/<batch_stem>/.
 process OVWT_BATCHWISE {
     errorStrategy 'ignore'
     publishDir { "${params.input_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
@@ -32,7 +32,7 @@ process OVWT_BATCHWISE {
         output_dir=. \\
         input_file=${normalized_parquet} \\
         min_cells=${params.ovwt_min_cells} \\
-        downsample_wt=${params.downsample_wt} \\
+        downsample_wt=${params.ovwt_downsample_wt} \\
         block_list_file=${block_list_file}
     """
 }

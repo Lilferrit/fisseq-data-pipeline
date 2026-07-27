@@ -1,8 +1,8 @@
 nextflow.enable.dsl = 2
 
 // OvwtPipeline: lighter alternative to FisseqPipeline, selected via
-// `--workflow ovwt`. Wires QC_FILTER -> OVWT_BATCHWISE ->
-// OVWT_CELLSCORES_BATCHWISE (scoring the params.single_cell_scores_source
+// `--pipeline_mode ovwt`. Wires QC_FILTER -> OVWT_BATCHWISE ->
+// OVWT_CELLSCORES_BATCHWISE (scoring the params.single_cell_scores_split
 // split; always runs here, unlike FisseqPipeline where it's optional) ->
 // CHECK_BARCODES (optional, gated by params.run_check_barcodes) — no
 // normalization, batch correction, or feature selection.
@@ -20,20 +20,20 @@ workflow OvwtPipeline {
     // See workflows/fisseq.nf for the full rationale behind this block
     // (relaxed validation + dedup against config-derived files).
     def config_files = []
-    if (params.config_dir != null) {
-        def configSubdir = file(params.config_dir)
+    if (params.yaml_config_dir != null) {
+        def configSubdir = file(params.yaml_config_dir)
         if (!configSubdir.isDirectory()) {
-            error "ERROR: ${params.config_dir} does not exist or is not a directory"
+            error "ERROR: ${params.yaml_config_dir} does not exist or is not a directory"
         }
         config_files = configSubdir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
         if (config_files.size() == 0) {
-            error "ERROR: No .yaml files found in ${params.config_dir}"
+            error "ERROR: No .yaml files found in ${params.yaml_config_dir}"
         }
     }
     def config_names = config_files.collect { it.baseName } as Set
 
     def inputSubdir = file("${params.input_dir}/input")
-    if (!inputSubdir.isDirectory() && params.config_dir == null) {
+    if (!inputSubdir.isDirectory() && params.yaml_config_dir == null) {
         error "ERROR: ${params.input_dir}/input does not exist or is not a directory"
     }
 
@@ -41,7 +41,7 @@ workflow OvwtPipeline {
         .map { f -> [f.baseName, f] }
         .filter { name, f -> !(name in config_names) }
 
-    if (params.config_dir != null) {
+    if (params.yaml_config_dir != null) {
         config_ch = Channel.fromList(config_files).map { f -> [f.baseName, f] }
         generated_ch = INPUT(config_ch)
         input_ch = glob_input_ch.mix(generated_ch)
@@ -60,11 +60,11 @@ workflow OvwtPipeline {
     ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb -> tuple(stem, fc, null, "ovwt_batchwise") }
     OVWT_BATCHWISE(ovwt_input_ch)
 
-    // Step 3: Score the params.single_cell_scores_source split's cells via
+    // Step 3: Score the params.single_cell_scores_split split's cells via
     // the saved index (auto-detected by load_input).
-    score_source = params.single_cell_scores_source
+    score_source = params.single_cell_scores_split
     if (!(score_source in ["test", "train"])) {
-        error "ERROR: --single_cell_scores_source must be 'test' or 'train', got '${score_source}'"
+        error "ERROR: --single_cell_scores_split must be 'test' or 'train', got '${score_source}'"
     }
     cellscores_input_ch = OVWT_BATCHWISE.out
         .map { stem, _res, mdl, test_idx, train_idx ->
