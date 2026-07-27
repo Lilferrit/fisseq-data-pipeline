@@ -9,10 +9,10 @@
       
       
       
-        <link rel="prev" href="../normalize/">
+        <link rel="prev" href="../checkbarcodes/">
       
       
-        <link rel="next" href="../features/">
+        <link rel="next" href="../batchvsbatch/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -20,7 +20,7 @@
     
     
       
-        <title>Aggregate - Fisseq Data Pipeline</title>
+        <title>Barcode Block-list - Fisseq Data Pipeline</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#aggregate" class="md-skip">
+        <a href="#barcode-block-list" class="md-skip">
           Skip to content
         </a>
       
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Aggregate
+              Barcode Block-list
             
           </span>
         </div>
@@ -582,32 +582,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Aggregate
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../aggregate/" class="md-nav__link">
         
   
   
@@ -618,53 +596,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#aggregators" class="md-nav__link">
-    <span class="md-ellipsis">
-      Aggregators
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fisseq-aggregate-config-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      fisseq-aggregate config fields
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fisseq-aggregate-feature-type-config-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      fisseq-aggregate-feature-type config fields
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -835,10 +766,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../barcodeblocklist/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Barcode Block-list
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -849,6 +802,53 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#config-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Config fields
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output files
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1328,27 +1328,27 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#aggregators" class="md-nav__link">
+  <a href="#config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      Aggregators
+      Config fields
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-aggregate-config-fields" class="md-nav__link">
+  <a href="#output-files" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-aggregate config fields
+      Output files
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-aggregate-feature-type-config-fields" class="md-nav__link">
+  <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-aggregate-feature-type config fields
+      Example
     </span>
   </a>
   
@@ -1370,175 +1370,56 @@
 
 
 
-<h1 id="aggregate">Aggregate<a class="headerlink" href="#aggregate" title="Permanent link">&para;</a></h1>
-<p><code>aggregate.py</code> provides two Hydra entry points:</p>
+<h1 id="barcode-block-list">Barcode Block-list<a class="headerlink" href="#barcode-block-list" title="Permanent link">&para;</a></h1>
+<p><code>fisseq-barcode-blocklist</code> (Nextflow process <code>BARCODE_BLOCKLIST</code>, run once
+per batch, same cadence as <a href="../checkbarcodes/">Check Barcodes</a>) derives a
+barcode block-list from the output of <code>fisseq-check-barcodes</code>. Each
+barcode's <code>p_adj</code> values are pooled across every comparison it took part in
+(a barcode can appear as either <code>barcode</code> or <code>comparison_barcode</code> in a given
+pair, so both columns are unioned before aggregating) and summarized as
+their median. A barcode is blocked (<code>barcode_ok = false</code>) when that median
+is strictly less than <code>pvalue_threshold</code>, i.e. its cells score anomalously
+relative to the variant's other barcodes; otherwise it is kept
+(<code>barcode_ok = true</code>). The output follows the same key/<code>_ok</code> convention as
+<a href="../anovablocklist/">ANOVA Block-list</a>, and is consumed by the
+<code>barcode_block_list_file</code> field on <a href="../ovwt/">OvWT</a>.</p>
+<h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
+<p>Extends <code>AppConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>check_barcodes_file</code></td>
+<td><strong>required</strong></td>
+<td>Path to a single batch's CHECK_BARCODES results parquet (output of <code>fisseq-check-barcodes</code>), with columns <code>barcode</code>, <code>comparison_barcode</code>, <code>p_adj</code>.</td>
+</tr>
+<tr>
+<td><code>pvalue_threshold</code></td>
+<td><code>0.05</code></td>
+<td>A barcode is blocked when the median of its <code>p_adj</code> values is strictly less than this threshold.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>fisseq-aggregate</code></strong> — standalone: aggregates cell-level data to one row per
-  variant, then normalizes the result to a synonymous-variant baseline and
-  attaches per-variant metadata. Not wired into the Nextflow pipeline directly.</li>
-<li><strong><code>fisseq-aggregate-feature-type</code></strong> (Nextflow processes <code>AGGREGATE_FEATURE_TYPE</code>
-  and <code>AGGREGATE_HALF</code>) — a leaner version used by the feature-selection branch:
-  runs a single aggregator, writes only <code>[label_column] + &lt;stat columns&gt;</code>, with no
-  normalizer, metadata join, or impact score.</li>
+<li><code>{output_dir}/barcode_blocklist.parquet</code> — one row per distinct barcode,
+  with columns <code>barcode</code>, <code>p_adj</code> (median across all comparisons), and
+  <code>barcode_ok</code>.</li>
 </ul>
-<p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
-single-file path.</p>
-<h2 id="aggregators">Aggregators<a class="headerlink" href="#aggregators" title="Permanent link">&para;</a></h2>
-<p>Seven strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
-<code>"multi"</code>/combined option; combining feature types happens in Nextflow by running
-<code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_select_types</code> entry.</p>
-<table>
-<thead>
-<tr>
-<th>Value</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>mean</code></td>
-<td>Per-variant feature mean</td>
-</tr>
-<tr>
-<td><code>median</code></td>
-<td>Per-variant feature median</td>
-</tr>
-<tr>
-<td><code>MAD</code></td>
-<td>Per-variant median absolute deviation</td>
-</tr>
-<tr>
-<td><code>std</code></td>
-<td>Per-variant standard deviation</td>
-</tr>
-<tr>
-<td><code>KS</code></td>
-<td>Kolmogorov-Smirnov statistic vs. WT/control distribution</td>
-</tr>
-<tr>
-<td><code>QQ</code></td>
-<td>Q-Q Pearson correlation vs. WT/control distribution</td>
-</tr>
-<tr>
-<td><code>AUROC</code></td>
-<td>AUROC vs. WT/control distribution. Directional: <code>0.5</code> means identical distributions, <code>1.0</code> means the variant is consistently higher than the reference, <code>0.0</code> means consistently lower (not symmetrized to <code>[0.5, 1]</code>).</td>
-</tr>
-</tbody>
-</table>
-<h2 id="fisseq-aggregate-config-fields"><code>fisseq-aggregate</code> config fields<a class="headerlink" href="#fisseq-aggregate-config-fields" title="Permanent link">&para;</a></h2>
-<p>Extends <code>LabeledInputConfig</code> (adds <code>input_file</code>, <code>label_column</code>) plus the
-<a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>input_file</code></td>
-<td><strong>required</strong></td>
-<td>Glob pattern or path to cell-level data.</td>
-</tr>
-<tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
-</tr>
-<tr>
-<td><code>aggregator</code></td>
-<td><strong>required</strong></td>
-<td>One of the seven aggregators above.</td>
-</tr>
-<tr>
-<td><code>save_normalizer</code></td>
-<td><code>true</code></td>
-<td>Write the synonymous-baseline normalizer.</td>
-</tr>
-<tr>
-<td><code>block_list_file</code></td>
-<td><code>null</code></td>
-<td>Parquet with <code>feature</code> and <code>feature_ok</code> columns; blocked features are skipped.</td>
-</tr>
-<tr>
-<td><code>compute_impact_score</code></td>
-<td><code>true</code></td>
-<td>Append an impact score column derived from variant classification.</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
-single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_dir}/{filename}</code>. Plus
-<code>normalizer.parquet</code> when <code>save_normalizer=true</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-aggregate<span class="w"> </span><span class="se">\</span>
+<h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-barcode-blocklist<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="s1">&#39;input_file=data/batches/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>KS
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">check_barcodes_file</span><span class="o">=</span>out/results.parquet<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">pvalue_threshold</span><span class="o">=</span><span class="m">0</span>.05
 </code></pre></div>
-<h2 id="fisseq-aggregate-feature-type-config-fields"><code>fisseq-aggregate-feature-type</code> config fields<a class="headerlink" href="#fisseq-aggregate-feature-type-config-fields" title="Permanent link">&para;</a></h2>
-<p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>input_file</code></td>
-<td><strong>required</strong></td>
-<td>Glob pattern or path to cell-level data.</td>
-</tr>
-<tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
-</tr>
-<tr>
-<td><code>aggregator</code></td>
-<td><strong>required</strong></td>
-<td>One of the seven aggregators above.</td>
-</tr>
-<tr>
-<td><code>index_file</code></td>
-<td><code>null</code></td>
-<td>Optional path to a single-column row-index parquet (as written by <code>fisseq-generate-split</code>) restricting aggregation to a pseudo-replicate half.</td>
-</tr>
-<tr>
-<td><code>downsample_wt</code></td>
-<td><code>null</code></td>
-<td>Optional downsample of control (wildtype) rows before aggregation. A float in <code>(0, 1)</code> keeps that fraction; an int keeps that many. <code>null</code> disables downsampling.</td>
-</tr>
-<tr>
-<td><code>seed</code></td>
-<td><code>0</code></td>
-<td>Random seed for the <code>downsample_wt</code> draw. Ignored when <code>downsample_wt</code> is <code>null</code>.</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
-single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-aggregate-feature-type<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>data/normalized.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>mean<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nv">index_file</span><span class="o">=</span>./half1.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">seed</span><span class="o">=</span><span class="m">1</span>
-</code></pre></div>
-<p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>seed</code> are driven by <code>params.feature_select_downsample_wt</code>
-(see <a href="../../nextflow/#parameters">Parameters</a>) — <code>AGGREGATE_HALF</code> derives a distinct seed per
-<code>(bootstrap_idx, half_num)</code> so each pseudo-replicate half draws an independent wildtype
-subsample, which is what lets the bootstrap comparison test feature reproducibility against
-different WT samples rather than reusing one fixed sample everywhere. <code>AGGREGATE_FEATURE_TYPE</code>
-(the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
-identity to vary by.</p>
-<p>See <a href="../../api/aggregate/">API Reference: aggregate</a> for full function
-documentation, including the <code>BaseAggregator</code> class hierarchy.</p>
+<p>See <a href="../../api/barcodeblocklist/">API Reference: barcodeblocklist</a> for full
+function documentation.</p>
 
 
 

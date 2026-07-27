@@ -593,6 +593,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#barcode-level-blocklist-barcode_blocklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Barcode-level blocklist (BARCODE_BLOCKLIST)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#batch-vs-batch-comparison-batchvsbatch" class="md-nav__link">
     <span class="md-ellipsis">
       Batch-vs-batch comparison (BATCHVSBATCH)
@@ -953,6 +962,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/barcodeblocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Barcode Block-list
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli/batchvsbatch/" class="md-nav__link">
         
   
@@ -1279,6 +1311,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/barcodeblocklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    barcodeblocklist
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/batchvsbatch/" class="md-nav__link">
         
   
@@ -1494,6 +1549,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#barcode-level-blocklist-barcode_blocklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Barcode-level blocklist (BARCODE_BLOCKLIST)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#batch-vs-batch-comparison-batchvsbatch" class="md-nav__link">
     <span class="md-ellipsis">
       Batch-vs-batch comparison (BATCHVSBATCH)
@@ -1652,16 +1716,16 @@ task doesn't abort the whole run.</p>
 <td>global, twice, optional (<code>params.run_global</code>); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
-<td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FILTERED</code>)</td>
+<td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FEATURE_FILTERED</code> / <code>_BARCODE_FILTERED</code>)</td>
 <td><code>ovwt_batchwise.nf</code></td>
 <td><code>fisseq-ovwt</code></td>
-<td>per batch, twice; <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>, <code>_FILTERED</code> does and is optional (<code>params.run_filtered_ovwt</code>)</td>
+<td>per batch, three times (<code>FisseqPipeline</code>); <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>/<code>BARCODE_BLOCKLIST</code>, <code>_FEATURE_FILTERED</code> depends on <code>ANOVA_BLOCKLIST</code> and is optional (<code>params.run_feature_filtered_ovwt</code>), <code>_BARCODE_FILTERED</code> depends on that batch's <code>BARCODE_BLOCKLIST</code> output and is optional (<code>params.run_barcode_filtered_ovwt</code>)</td>
 </tr>
 <tr>
 <td><code>OVWT_GLOBAL</code></td>
 <td><code>ovwt_global.nf</code></td>
 <td><code>fisseq-ovwt</code></td>
-<td>global, optional (<code>params.run_global</code>); always filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>global, optional (<code>params.run_global</code>); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
@@ -1674,6 +1738,12 @@ task doesn't abort the whole run.</p>
 <td><code>check_barcodes.nf</code></td>
 <td><code>fisseq-check-barcodes</code></td>
 <td>per batch, optional (<code>params.run_check_barcodes</code>, which also forces <code>run_single_cell_scores</code> on)</td>
+</tr>
+<tr>
+<td><code>BARCODE_BLOCKLIST</code></td>
+<td><code>barcode_blocklist.nf</code></td>
+<td><code>fisseq-barcode-blocklist</code></td>
+<td>per batch, requires both <code>params.run_check_barcodes</code> and <code>params.run_barcode_filtered_ovwt</code> true (the latter does not force the former on); consumes that batch's <code>CHECK_BARCODES</code> output; <code>FisseqPipeline</code> only</td>
 </tr>
 <tr>
 <td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
@@ -1843,9 +1913,9 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td>Whether to run the feature-selection branch (batchwise + global) at all.</td>
 </tr>
 <tr>
-<td><code>--run_filtered_ovwt</code></td>
+<td><code>--run_feature_filtered_ovwt</code></td>
 <td><code>true</code></td>
-<td>Run <code>OVWT_BATCHWISE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass.</td>
+<td>Run <code>OVWT_BATCHWISE_FEATURE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass. (Renamed from <code>--run_filtered_ovwt</code>.)</td>
 </tr>
 <tr>
 <td><code>--run_single_cell_scores</code></td>
@@ -1856,6 +1926,11 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--run_check_barcodes</code></td>
 <td><code>false</code></td>
 <td>Run <code>CHECK_BARCODES</code> (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies <code>--run_single_cell_scores true</code>.</td>
+</tr>
+<tr>
+<td><code>--run_barcode_filtered_ovwt</code></td>
+<td><code>true</code></td>
+<td>Run <code>OVWT_BATCHWISE_BARCODE_FILTERED</code> (per-batch OvWT filtered against <code>barcode_blocklist/&lt;batch&gt;/barcode_blocklist.parquet</code>). Only takes effect when <code>--run_check_barcodes true</code> is also set (default <code>false</code>) -- does NOT force it on, so the default pipeline output is unaffected.</td>
 </tr>
 </tbody>
 </table>
@@ -1910,6 +1985,23 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <td><code>--anova_blocklist_pvalue_threshold</code></td>
 <td><code>0.05</code></td>
 <td>A feature is blocked (<code>feature_ok = false</code>) when its <code>ANOVA_NORMALIZED</code> p-value is strictly less than this threshold (a statistically significant batch effect was detected).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="barcode-level-blocklist-barcode_blocklist">Barcode-level blocklist (<code>BARCODE_BLOCKLIST</code>)<a class="headerlink" href="#barcode-level-blocklist-barcode_blocklist" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--barcode_blocklist_pvalue_threshold</code></td>
+<td><code>0.05</code></td>
+<td>A barcode is blocked (<code>barcode_ok = false</code>) when the median of its <code>CHECK_BARCODES</code> <code>p_adj</code> values is strictly less than this threshold.</td>
 </tr>
 </tbody>
 </table>
