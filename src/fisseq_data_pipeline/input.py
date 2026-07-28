@@ -141,6 +141,10 @@ def load_and_tag(path: str) -> pl.LazyFrame:
     else:
         raise ValueError(f"Unsupported input file extension '{suffix}' for {path}")
 
+    # Workaround: unsigned integer columns have been observed to hide negative
+    # values (silently reinterpreted), so force them to signed integers.
+    lf = lf.with_columns(cs.unsigned_integer().cast(pl.Int64))
+
     return lf.with_row_index(name="origin_row_idx").with_columns(
         pl.lit(str(path)).alias("origin_file")
     )
