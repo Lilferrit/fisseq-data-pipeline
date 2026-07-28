@@ -3093,7 +3093,7 @@ is present in the input.</p>
         <p>Row-index-based filtering helpers for the bootstrap feature-selection pipeline.</p>
 <p>Defines the <code>TMP_IDX_COL</code> row-index convention and :func:<code>filter_by_index_file</code>,
 used to restrict a cell-level LazyFrame to one pseudo-replicate half written by
-:func:<code>fisseq_data_pipeline.features.generate_split_main</code>.</p>
+:func:<code>fisseq_data_pipeline.generatesplit.main</code>.</p>
 
 
 
@@ -3242,7 +3242,7 @@ integer parquet file.</p>
 <p>Adds <code>TMP_IDX_COL</code> via :func:<code>add_row_index</code>. If <code>index_file</code> is
 given, it is read as a parquet file with a single integer column named
 <code>TMP_IDX_COL</code> (as written by
-:func:<code>fisseq_data_pipeline.features.generate_split_main</code>), and <code>lf</code> is
+:func:<code>fisseq_data_pipeline.generatesplit.main</code>), and <code>lf</code> is
 filtered to those rows via :func:<code>get_replicate_lf</code>. If <code>index_file</code> is
 <code>None</code>, all rows are kept. <code>TMP_IDX_COL</code> is dropped from the result
 either way.</p>
@@ -3361,7 +3361,7 @@ either way.</p>
 <a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">    Adds ``TMP_IDX_COL`` via :func:`add_row_index`. If ``index_file`` is</span>
 <a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    given, it is read as a parquet file with a single integer column named</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    ``TMP_IDX_COL`` (as written by</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    :func:`fisseq_data_pipeline.features.generate_split_main`), and ``lf`` is</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">    :func:`fisseq_data_pipeline.generatesplit.main`), and ``lf`` is</span>
 <a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    filtered to those rows via :func:`get_replicate_lf`. If ``index_file`` is</span>
 <a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    ``None``, all rows are kept. ``TMP_IDX_COL`` is dropped from the result</span>
 <a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    either way.</span>

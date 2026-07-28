@@ -1435,7 +1435,7 @@
     <div class="doc doc-contents first">
 
         <p>Cell scoring against trained one-vs-wildtype models.</p>
-<p>Hydra entry point <code>fisseq-ovwt-cell-scores</code>, backing the Nextflow process
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.ovwtcellscores</code>), backing the Nextflow process
 <code>OVWT_CELLSCORES_BATCHWISE</code>. Loads the pickled per-variant models produced by
 :mod:<code>.ovwt</code>, scores every cell in batches against each model, and writes
 per-variant prediction scores alongside metadata columns.</p>

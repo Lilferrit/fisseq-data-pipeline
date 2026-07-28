@@ -1389,7 +1389,7 @@
 
 
 <h1 id="qc-filter">QC Filter<a class="headerlink" href="#qc-filter" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-qc-filter</code> (Nextflow process <code>QC_FILTER</code>) reads one or more raw CSV/Parquet
+<p><code>python -m fisseq_data_pipeline.qcfilter</code> (Nextflow process <code>QC_FILTER</code>) reads one or more raw CSV/Parquet
 cell files, renames columns to canonical <code>meta_*</code> names, and applies three
 sequential filters:</p>
 <ol>
@@ -1481,7 +1481,7 @@ set.</p>
 <li><code>variants_per_barcode.parquet</code> — per-variant barcode counts and pass/fail flags</li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-qc-filter<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.qcfilter<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="s1">&#39;cell_files=[data/plate1.parquet, data/plate2.parquet]&#39;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">bc_threshold</span><span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>

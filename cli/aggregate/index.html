@@ -644,18 +644,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-aggregate-config-fields" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelineaggregate-config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-aggregate config fields
+      python -m fisseq_data_pipeline.aggregate config fields
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-aggregate-feature-type-config-fields" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-aggregate-feature-type config fields
+      python -m fisseq_data_pipeline.aggregatefeaturetype config fields
     </span>
   </a>
   
@@ -1337,18 +1337,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-aggregate-config-fields" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelineaggregate-config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-aggregate config fields
+      python -m fisseq_data_pipeline.aggregate config fields
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-aggregate-feature-type-config-fields" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-aggregate-feature-type config fields
+      python -m fisseq_data_pipeline.aggregatefeaturetype config fields
     </span>
   </a>
   
@@ -1371,15 +1371,18 @@
 
 
 <h1 id="aggregate">Aggregate<a class="headerlink" href="#aggregate" title="Permanent link">&para;</a></h1>
-<p><code>aggregate.py</code> provides two Hydra entry points:</p>
+<p>Cell-level aggregation is implemented as two Hydra entry points across two modules:</p>
 <ul>
-<li><strong><code>fisseq-aggregate</code></strong> — standalone: aggregates cell-level data to one row per
-  variant, then normalizes the result to a synonymous-variant baseline and
-  attaches per-variant metadata. Not wired into the Nextflow pipeline directly.</li>
-<li><strong><code>fisseq-aggregate-feature-type</code></strong> (Nextflow processes <code>AGGREGATE_FEATURE_TYPE</code>
-  and <code>AGGREGATE_HALF</code>) — a leaner version used by the feature-selection branch:
-  runs a single aggregator, writes only <code>[label_column] + &lt;stat columns&gt;</code>, with no
-  normalizer, metadata join, or impact score.</li>
+<li><strong><code>python -m fisseq_data_pipeline.aggregate</code></strong> — standalone: aggregates
+  cell-level data to one row per variant, then normalizes the result to a
+  synonymous-variant baseline and attaches per-variant metadata. Not wired into
+  the Nextflow pipeline directly.</li>
+<li><strong><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></strong> (Nextflow processes
+  <code>AGGREGATE_FEATURE_TYPE</code> and <code>AGGREGATE_HALF</code>) — a leaner version used by the
+  feature-selection branch: runs a single aggregator, writes only
+  <code>[label_column] + &lt;stat columns&gt;</code>, with no normalizer, metadata join, or impact
+  score. Imports <code>aggregate()</code> and <code>downsample_control()</code> from
+  <code>fisseq_data_pipeline.aggregate</code>.</li>
 </ul>
 <p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
 single-file path.</p>
@@ -1425,7 +1428,7 @@ single-file path.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="fisseq-aggregate-config-fields"><code>fisseq-aggregate</code> config fields<a class="headerlink" href="#fisseq-aggregate-config-fields" title="Permanent link">&para;</a></h2>
+<h2 id="python-m-fisseq_data_pipelineaggregate-config-fields"><code>python -m fisseq_data_pipeline.aggregate</code> config fields<a class="headerlink" href="#python-m-fisseq_data_pipelineaggregate-config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> (adds <code>input_file</code>, <code>label_column</code>) plus the
 <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
@@ -1472,12 +1475,12 @@ single-file path.</p>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
 single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_dir}/{filename}</code>. Plus
 <code>normalizer.parquet</code> when <code>save_normalizer=true</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-aggregate<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.aggregate<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="s1">&#39;input_file=data/batches/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>KS
 </code></pre></div>
-<h2 id="fisseq-aggregate-feature-type-config-fields"><code>fisseq-aggregate-feature-type</code> config fields<a class="headerlink" href="#fisseq-aggregate-feature-type-config-fields" title="Permanent link">&para;</a></h2>
+<h2 id="python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code> config fields<a class="headerlink" href="#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
 <thead>
@@ -1506,7 +1509,7 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <tr>
 <td><code>index_file</code></td>
 <td><code>null</code></td>
-<td>Optional path to a single-column row-index parquet (as written by <code>fisseq-generate-split</code>) restricting aggregation to a pseudo-replicate half.</td>
+<td>Optional path to a single-column row-index parquet (as written by <code>python -m fisseq_data_pipeline.generatesplit</code>) restricting aggregation to a pseudo-replicate half.</td>
 </tr>
 <tr>
 <td><code>downsample_wt</code></td>
@@ -1522,7 +1525,7 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
 single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-aggregate-feature-type<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.aggregatefeaturetype<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>data/normalized.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>mean<span class="w"> </span><span class="se">\</span>

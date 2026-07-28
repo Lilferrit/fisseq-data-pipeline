@@ -1371,7 +1371,7 @@
 
 
 <h1 id="one-vs-wt">One-vs-WT<a class="headerlink" href="#one-vs-wt" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-ovwt</code> (Nextflow processes <code>OVWT_BATCHWISE</code>, aliased into unfiltered,
+<p><code>python -m fisseq_data_pipeline.ovwt</code> (Nextflow processes <code>OVWT_BATCHWISE</code>, aliased into unfiltered,
 feature-filtered, and barcode-filtered invocations, and <code>OVWT_GLOBAL</code>, always
 feature-filtered) trains a separate XGBoost binary classifier for each
 non-wildtype variant, treating the task as "this variant vs. wildtype." An
@@ -1439,12 +1439,12 @@ neither may be set.</p>
 <tr>
 <td><code>feature_block_list_file</code></td>
 <td><code>null</code></td>
-<td>(renamed from <code>block_list_file</code>) Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>fisseq-anova-blocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded (dropped as columns) before splitting/training.</td>
+<td>(renamed from <code>block_list_file</code>) Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>python -m fisseq_data_pipeline.anovablocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded (dropped as columns) before splitting/training.</td>
 </tr>
 <tr>
 <td><code>barcode_block_list_file</code></td>
 <td><code>null</code></td>
-<td>Optional path to a parquet file with <code>barcode</code> (str) and <code>barcode_ok</code> (bool) columns (e.g. <code>fisseq-barcode-blocklist</code>'s output). Cells whose <code>barcode_column</code> value is blocked are excluded (dropped as rows) before splitting/training.</td>
+<td>Optional path to a parquet file with <code>barcode</code> (str) and <code>barcode_ok</code> (bool) columns (e.g. <code>python -m fisseq_data_pipeline.barcodeblocklist</code>'s output). Cells whose <code>barcode_column</code> value is blocked are excluded (dropped as rows) before splitting/training.</td>
 </tr>
 <tr>
 <td><code>barcode_column</code></td>
@@ -1489,7 +1489,7 @@ neither may be set.</p>
   when <code>save_splits=true</code>, the default)</li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-ovwt<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.ovwt<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/features.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">min_cells</span><span class="o">=</span><span class="m">250</span><span class="w"> </span><span class="se">\</span>

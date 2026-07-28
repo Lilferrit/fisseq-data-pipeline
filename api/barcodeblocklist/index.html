@@ -1417,7 +1417,7 @@
     <div class="doc doc-contents first">
 
         <p>Barcode block-list derived from per-barcode CHECK_BARCODES p-values.</p>
-<p>Hydra entry point <code>fisseq-barcode-blocklist</code>, backing the Nextflow process
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.barcodeblocklist</code>), backing the Nextflow process
 <code>BARCODE_BLOCKLIST</code> (per batch, same cadence as <code>CHECK_BARCODES</code> -- unlike
 <code>ANOVA_BLOCKLIST</code>, which runs once globally). Consumes the output of
 :mod:<code>.checkbarcodes</code> (columns <code>variant</code>, <code>barcode</code>, <code>group_mean</code>,

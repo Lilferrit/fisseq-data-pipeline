@@ -1417,7 +1417,7 @@
     <div class="doc doc-contents first">
 
         <p>Per-variant barcode-outlier detection via pairwise Tukey HSD, vectorized.</p>
-<p>Hydra entry point <code>fisseq-check-barcodes</code>, backing the Nextflow process
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.checkbarcodes</code>), backing the Nextflow process
 <code>CHECK_BARCODES</code> (per batch, gated by <code>params.run_check_barcodes</code>). Consumes
 the wide-format <code>cell_scores.parquet</code> produced by
 :mod:<code>.ovwtcellscores</code> (one column per trained one-vs-wildtype model, plus

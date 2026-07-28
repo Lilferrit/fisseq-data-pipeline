@@ -658,45 +658,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-fisseq-generate-split-generate_split" class="md-nav__link">
+  <a href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" class="md-nav__link">
     <span class="md-ellipsis">
-      1. fisseq-generate-split (GENERATE_SPLIT)
+      1. python -m fisseq_data_pipeline.generatesplit (GENERATE_SPLIT)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-fisseq-correlate-features-correlate_features" class="md-nav__link">
+  <a href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" class="md-nav__link">
     <span class="md-ellipsis">
-      2. fisseq-correlate-features (CORRELATE_FEATURES)
+      2. python -m fisseq_data_pipeline.correlatefeatures (CORRELATE_FEATURES)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-fisseq-blocklist-blocklist" class="md-nav__link">
+  <a href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" class="md-nav__link">
     <span class="md-ellipsis">
-      3. fisseq-blocklist (BLOCKLIST)
+      3. python -m fisseq_data_pipeline.blocklist (BLOCKLIST)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-fisseq-combine-blocklists-combine_blocklists" class="md-nav__link">
+  <a href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" class="md-nav__link">
     <span class="md-ellipsis">
-      4. fisseq-combine-blocklists (COMBINE_BLOCKLISTS)
+      4. python -m fisseq_data_pipeline.combineblocklists (COMBINE_BLOCKLISTS)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-fisseq-feature-select-finalize_feature_select" class="md-nav__link">
+  <a href="#5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select" class="md-nav__link">
     <span class="md-ellipsis">
-      5. fisseq-feature-select (FINALIZE_FEATURE_SELECT)
+      5. python -m fisseq_data_pipeline.featureselect (FINALIZE_FEATURE_SELECT)
     </span>
   </a>
   
@@ -1346,45 +1346,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-fisseq-generate-split-generate_split" class="md-nav__link">
+  <a href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" class="md-nav__link">
     <span class="md-ellipsis">
-      1. fisseq-generate-split (GENERATE_SPLIT)
+      1. python -m fisseq_data_pipeline.generatesplit (GENERATE_SPLIT)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-fisseq-correlate-features-correlate_features" class="md-nav__link">
+  <a href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" class="md-nav__link">
     <span class="md-ellipsis">
-      2. fisseq-correlate-features (CORRELATE_FEATURES)
+      2. python -m fisseq_data_pipeline.correlatefeatures (CORRELATE_FEATURES)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-fisseq-blocklist-blocklist" class="md-nav__link">
+  <a href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" class="md-nav__link">
     <span class="md-ellipsis">
-      3. fisseq-blocklist (BLOCKLIST)
+      3. python -m fisseq_data_pipeline.blocklist (BLOCKLIST)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-fisseq-combine-blocklists-combine_blocklists" class="md-nav__link">
+  <a href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" class="md-nav__link">
     <span class="md-ellipsis">
-      4. fisseq-combine-blocklists (COMBINE_BLOCKLISTS)
+      4. python -m fisseq_data_pipeline.combineblocklists (COMBINE_BLOCKLISTS)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-fisseq-feature-select-finalize_feature_select" class="md-nav__link">
+  <a href="#5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select" class="md-nav__link">
     <span class="md-ellipsis">
-      5. fisseq-feature-select (FINALIZE_FEATURE_SELECT)
+      5. python -m fisseq_data_pipeline.featureselect (FINALIZE_FEATURE_SELECT)
     </span>
   </a>
   
@@ -1407,17 +1407,17 @@
 
 
 <h1 id="feature-selection">Feature Selection<a class="headerlink" href="#feature-selection" title="Permanent link">&para;</a></h1>
-<p><code>features.py</code> implements a bootstrap pseudo-replicate feature-selection pipeline
-as five Hydra entry points, each a Nextflow process (see
+<p>The bootstrap pseudo-replicate feature-selection pipeline is implemented as five
+Hydra entry points, one per module, each a Nextflow process (see
 <a href="../../nextflow/">Nextflow Workflow</a>). Cells are split into stratified 50/50
 pseudo-replicate halves across <code>params.feature_select_bootstrap_reps</code> replicates; each half is
-aggregated per feature type (via <a href="../aggregate/"><code>fisseq-aggregate-feature-type</code></a>),
+aggregated per feature type (via <a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>),
 correlated against its partner half, and a per-feature blocklist is derived from
 the median correlation across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.</p>
 <p>All configs extend the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
-<h2 id="1-fisseq-generate-split-generate_split">1. <code>fisseq-generate-split</code> (<code>GENERATE_SPLIT</code>)<a class="headerlink" href="#1-fisseq-generate-split-generate_split" title="Permanent link">&para;</a></h2>
+<h2 id="1-python-m-fisseq_data_pipelinegeneratesplit-generate_split">1. <code>python -m fisseq_data_pipeline.generatesplit</code> (<code>GENERATE_SPLIT</code>)<a class="headerlink" href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" title="Permanent link">&para;</a></h2>
 <p>Generates one stratified 50/50 pseudo-replicate split.</p>
 <table>
 <thead>
@@ -1446,12 +1446,12 @@ selection.</p>
 </tbody>
 </table>
 <p><strong>Output</strong>: <code>half1.parquet</code>, <code>half2.parquet</code> (single-column row-index files).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-generate-split<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.generatesplit<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>data/normalized.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">random_state</span><span class="o">=</span><span class="m">3</span>
 </code></pre></div>
-<h2 id="2-fisseq-correlate-features-correlate_features">2. <code>fisseq-correlate-features</code> (<code>CORRELATE_FEATURES</code>)<a class="headerlink" href="#2-fisseq-correlate-features-correlate_features" title="Permanent link">&para;</a></h2>
+<h2 id="2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features">2. <code>python -m fisseq_data_pipeline.correlatefeatures</code> (<code>CORRELATE_FEATURES</code>)<a class="headerlink" href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" title="Permanent link">&para;</a></h2>
 <p>Computes per-feature Pearson correlation between two aggregate halves for the same
 feature type.</p>
 <table>
@@ -1481,12 +1481,12 @@ feature type.</p>
 </tbody>
 </table>
 <p><strong>Output</strong>: <code>correlations.parquet</code> (columns: <code>feature</code>, <code>r</code>, <code>r_squared</code>, <code>p_value</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-correlate-features<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.correlatefeatures<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nv">half1_file</span><span class="o">=</span>out/half1.mean.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">half2_file</span><span class="o">=</span>out/half2.mean.parquet
 </code></pre></div>
-<h2 id="3-fisseq-blocklist-blocklist">3. <code>fisseq-blocklist</code> (<code>BLOCKLIST</code>)<a class="headerlink" href="#3-fisseq-blocklist-blocklist" title="Permanent link">&para;</a></h2>
+<h2 id="3-python-m-fisseq_data_pipelineblocklist-blocklist">3. <code>python -m fisseq_data_pipeline.blocklist</code> (<code>BLOCKLIST</code>)<a class="headerlink" href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" title="Permanent link">&para;</a></h2>
 <p>The one intentional cross-bootstrap synchronization point: gathers every bootstrap
 replicate's correlation table for one feature type and computes each feature's
 median <code>r</code> across replicates.</p>
@@ -1512,12 +1512,12 @@ median <code>r</code> across replicates.</p>
 </tbody>
 </table>
 <p><strong>Output</strong>: <code>blocklist.parquet</code> (columns: <code>feature</code>, <code>median_r</code>, <code>feature_ok</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-blocklist<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.blocklist<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="s1">&#39;correlation_files=out/correlations/mean/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nv">minimum_correlation</span><span class="o">=</span><span class="m">0</span>.5
 </code></pre></div>
-<h2 id="4-fisseq-combine-blocklists-combine_blocklists">4. <code>fisseq-combine-blocklists</code> (<code>COMBINE_BLOCKLISTS</code>)<a class="headerlink" href="#4-fisseq-combine-blocklists-combine_blocklists" title="Permanent link">&para;</a></h2>
+<h2 id="4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists">4. <code>python -m fisseq_data_pipeline.combineblocklists</code> (<code>COMBINE_BLOCKLISTS</code>)<a class="headerlink" href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" title="Permanent link">&para;</a></h2>
 <p>Concatenates every feature type's blocklist into one combined blocklist (a plain
 concat is correct — stat-suffixed feature names never collide across feature
 types).</p>
@@ -1538,13 +1538,13 @@ types).</p>
 </tbody>
 </table>
 <p><strong>Output</strong>: <code>blocklist.parquet</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-combine-blocklists<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.combineblocklists<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="s1">&#39;blocklist_files=out/blocklists/*.parquet&#39;</span>
 </code></pre></div>
-<h2 id="5-fisseq-feature-select-finalize_feature_select">5. <code>fisseq-feature-select</code> (<code>FINALIZE_FEATURE_SELECT</code>)<a class="headerlink" href="#5-fisseq-feature-select-finalize_feature_select" title="Permanent link">&para;</a></h2>
+<h2 id="5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select">5. <code>python -m fisseq_data_pipeline.featureselect</code> (<code>FINALIZE_FEATURE_SELECT</code>)<a class="headerlink" href="#5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select" title="Permanent link">&para;</a></h2>
 <p>The final stage: joins every feature type's full aggregate (from
-<a href="../aggregate/"><code>fisseq-aggregate-feature-type</code></a>) on <code>label_column</code>, drops blocked
+<a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>) on <code>label_column</code>, drops blocked
 feature columns, and runs <code>pycytominer.feature_select</code> (variance threshold,
 built-in blocklist, correlation threshold).</p>
 <table>
@@ -1585,7 +1585,7 @@ built-in blocklist, correlation threshold).</p>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
 single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-feature-select<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.featureselect<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="s1">&#39;feature_type_files=out/aggregates/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>

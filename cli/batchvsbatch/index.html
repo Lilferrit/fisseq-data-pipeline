@@ -1371,7 +1371,7 @@
 
 
 <h1 id="batch-vs-batch">Batch vs. Batch<a class="headerlink" href="#batch-vs-batch" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-batch-vs-batch</code> (Nextflow process <code>BATCHVSBATCH</code>, run once pre- and once
+<p><code>python -m fisseq_data_pipeline.batchvsbatch</code> (Nextflow process <code>BATCHVSBATCH</code>, run once pre- and once
 post-normalization — <code>_PRE</code> unfiltered, <code>_POST</code> filtered against the
 <a href="../anovablocklist/">ANOVA block-list</a>) detects per-variant batch effects using a
 multiclass XGBoost classifier. For each variant, a single model is trained to
@@ -1436,7 +1436,7 @@ model is trained per variant (not per (variant, batch) pair).</p>
 <tr>
 <td><code>block_list_file</code></td>
 <td><code>null</code></td>
-<td>Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>fisseq-anova-blocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded before splitting/training.</td>
+<td>Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>python -m fisseq_data_pipeline.anovablocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded before splitting/training.</td>
 </tr>
 <tr>
 <td><code>xgboost.num_boost_round</code></td>
@@ -1471,7 +1471,7 @@ model is trained per variant (not per (variant, batch) pair).</p>
   <code>variant</code>, <code>batch</code>, <code>auroc</code>, <code>mw_pvalue</code>, <code>n_batch_cells</code>, <code>n_cells</code>.</li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-batch-vs-batch<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.batchvsbatch<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/features.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">batch_column</span><span class="o">=</span>meta_batch

@@ -1371,9 +1371,9 @@
 
 
 <h1 id="barcode-block-list">Barcode Block-list<a class="headerlink" href="#barcode-block-list" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-barcode-blocklist</code> (Nextflow process <code>BARCODE_BLOCKLIST</code>, run once
+<p><code>python -m fisseq_data_pipeline.barcodeblocklist</code> (Nextflow process <code>BARCODE_BLOCKLIST</code>, run once
 per batch, same cadence as <a href="../checkbarcodes/">Check Barcodes</a>) derives a
-barcode block-list from the output of <code>fisseq-check-barcodes</code>. Each
+barcode block-list from the output of <code>python -m fisseq_data_pipeline.checkbarcodes</code>. Each
 barcode's <code>p_adj</code> values are pooled across every comparison it took part in
 (a barcode can appear as either <code>barcode</code> or <code>comparison_barcode</code> in a given
 pair, so both columns are unioned before aggregating) and summarized as
@@ -1397,7 +1397,7 @@ relative to the variant's other barcodes; otherwise it is kept
 <tr>
 <td><code>check_barcodes_file</code></td>
 <td><strong>required</strong></td>
-<td>Path to a single batch's CHECK_BARCODES results parquet (output of <code>fisseq-check-barcodes</code>), with columns <code>barcode</code>, <code>comparison_barcode</code>, <code>p_adj</code>.</td>
+<td>Path to a single batch's CHECK_BARCODES results parquet (output of <code>python -m fisseq_data_pipeline.checkbarcodes</code>), with columns <code>barcode</code>, <code>comparison_barcode</code>, <code>p_adj</code>.</td>
 </tr>
 <tr>
 <td><code>pvalue_threshold</code></td>
@@ -1413,7 +1413,7 @@ relative to the variant's other barcodes; otherwise it is kept
   <code>barcode_ok</code>.</li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-barcode-blocklist<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.barcodeblocklist<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">check_barcodes_file</span><span class="o">=</span>out/results.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">pvalue_threshold</span><span class="o">=</span><span class="m">0</span>.05

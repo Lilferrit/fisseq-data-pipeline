@@ -1678,9 +1678,9 @@ may not exist yet on a first config-driven run.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
 </code></pre></div>
 <h2 id="processes">Processes<a class="headerlink" href="#processes" title="Permanent link">&para;</a></h2>
-<p>Every process wraps one <code>fisseq-*</code> CLI command (see <a href="../cli/qcfilter/">CLI Reference</a>
-for each tool's config fields) and sets <code>errorStrategy 'ignore'</code> so a single failed
-task doesn't abort the whole run.</p>
+<p>Every process wraps one <code>python -m fisseq_data_pipeline.&lt;module&gt;</code> invocation (see
+<a href="../cli/qcfilter/">CLI Reference</a> for each tool's config fields) and sets
+<code>errorStrategy 'ignore'</code> so a single failed task doesn't abort the whole run.</p>
 <table>
 <thead>
 <tr>
@@ -1694,121 +1694,121 @@ task doesn't abort the whole run.</p>
 <tr>
 <td><code>INPUT</code></td>
 <td><code>input.nf</code></td>
-<td><code>fisseq-input</code></td>
+<td><code>python -m fisseq_data_pipeline.input</code></td>
 <td>per config file, optional (<code>params.yaml_config_dir</code>)</td>
 </tr>
 <tr>
 <td><code>QC_FILTER</code></td>
 <td><code>qc_filter.nf</code></td>
-<td><code>fisseq-qc-filter</code></td>
+<td><code>python -m fisseq_data_pipeline.qcfilter</code></td>
 <td>per batch</td>
 </tr>
 <tr>
 <td><code>NORMALIZE</code></td>
 <td><code>normalize.nf</code></td>
-<td><code>fisseq-normalize</code></td>
+<td><code>python -m fisseq_data_pipeline.normalize</code></td>
 <td>per batch</td>
 </tr>
 <tr>
 <td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
 <td><code>batchvsbatch.nf</code></td>
-<td><code>fisseq-batch-vs-batch</code></td>
+<td><code>python -m fisseq_data_pipeline.batchvsbatch</code></td>
 <td>global, twice, optional (<code>params.run_global</code>); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FEATURE_FILTERED</code> / <code>_BARCODE_FILTERED</code>)</td>
 <td><code>ovwt_batchwise.nf</code></td>
-<td><code>fisseq-ovwt</code></td>
+<td><code>python -m fisseq_data_pipeline.ovwt</code></td>
 <td>per batch, three times (<code>FisseqPipeline</code>); <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>/<code>BARCODE_BLOCKLIST</code>, <code>_FEATURE_FILTERED</code> depends on <code>ANOVA_BLOCKLIST</code> and is optional (<code>params.run_feature_filtered_ovwt</code>), <code>_BARCODE_FILTERED</code> depends on that batch's <code>BARCODE_BLOCKLIST</code> output and is optional (<code>params.run_barcode_filtered_ovwt</code>)</td>
 </tr>
 <tr>
 <td><code>OVWT_GLOBAL</code></td>
 <td><code>ovwt_global.nf</code></td>
-<td><code>fisseq-ovwt</code></td>
+<td><code>python -m fisseq_data_pipeline.ovwt</code></td>
 <td>global, optional (<code>params.run_global</code>); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
 <td><code>ovwt_cellscores_batchwise.nf</code></td>
-<td><code>fisseq-ovwt-cell-scores</code></td>
+<td><code>python -m fisseq_data_pipeline.ovwtcellscores</code></td>
 <td>per batch; optional in <code>FisseqPipeline</code> (<code>params.run_single_cell_scores</code>), always runs in <code>OvwtPipeline</code></td>
 </tr>
 <tr>
 <td><code>CHECK_BARCODES</code></td>
 <td><code>check_barcodes.nf</code></td>
-<td><code>fisseq-check-barcodes</code></td>
+<td><code>python -m fisseq_data_pipeline.checkbarcodes</code></td>
 <td>per batch, optional (<code>params.run_check_barcodes</code>, which also forces <code>run_single_cell_scores</code> on)</td>
 </tr>
 <tr>
 <td><code>BARCODE_BLOCKLIST</code></td>
 <td><code>barcode_blocklist.nf</code></td>
-<td><code>fisseq-barcode-blocklist</code></td>
+<td><code>python -m fisseq_data_pipeline.barcodeblocklist</code></td>
 <td>per batch, requires both <code>params.run_check_barcodes</code> and <code>params.run_barcode_filtered_ovwt</code> true (the latter does not force the former on); consumes that batch's <code>CHECK_BARCODES</code> output; <code>FisseqPipeline</code> only</td>
 </tr>
 <tr>
 <td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
 <td><code>aggregate_feature_type.nf</code></td>
-<td><code>fisseq-aggregate-feature-type</code></td>
+<td><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></td>
 <td>per (batch or global) × feature type</td>
 </tr>
 <tr>
 <td><code>GENERATE_SPLIT</code> (aliased)</td>
 <td><code>generate_split.nf</code></td>
-<td><code>fisseq-generate-split</code></td>
+<td><code>python -m fisseq_data_pipeline.generatesplit</code></td>
 <td>per (batch or global) × bootstrap replicate</td>
 </tr>
 <tr>
 <td><code>AGGREGATE_HALF</code> (aliased)</td>
 <td><code>aggregate_half.nf</code></td>
-<td><code>fisseq-aggregate-feature-type</code> (with <code>index_file</code>)</td>
+<td><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code> (with <code>index_file</code>)</td>
 <td>per (batch or global) × bootstrap × feature type × half</td>
 </tr>
 <tr>
 <td><code>CORRELATE_FEATURES</code> (aliased)</td>
 <td><code>correlate_features.nf</code></td>
-<td><code>fisseq-correlate-features</code></td>
+<td><code>python -m fisseq_data_pipeline.correlatefeatures</code></td>
 <td>per (batch or global) × bootstrap × feature type</td>
 </tr>
 <tr>
 <td><code>BLOCKLIST</code> (aliased)</td>
 <td><code>blocklist.nf</code></td>
-<td><code>fisseq-blocklist</code></td>
+<td><code>python -m fisseq_data_pipeline.blocklist</code></td>
 <td>per (batch or global) × feature type — gathers all bootstrap replicates</td>
 </tr>
 <tr>
 <td><code>COMBINE_BLOCKLISTS</code> (aliased)</td>
 <td><code>combine_blocklists.nf</code></td>
-<td><code>fisseq-combine-blocklists</code></td>
+<td><code>python -m fisseq_data_pipeline.combineblocklists</code></td>
 <td>per (batch or global) — gathers all feature types</td>
 </tr>
 <tr>
 <td><code>FINALIZE_FEATURE_SELECT</code> (aliased)</td>
 <td><code>finalize_feature_select.nf</code></td>
-<td><code>fisseq-feature-select</code></td>
+<td><code>python -m fisseq_data_pipeline.featureselect</code></td>
 <td>per (batch or global)</td>
 </tr>
 <tr>
 <td><code>BATCH_CORRECT_FIT</code></td>
 <td><code>batch_correct_fit.nf</code></td>
-<td><code>fisseq-batch-correct-fit</code></td>
+<td><code>python -m fisseq_data_pipeline.batchcorrect</code></td>
 <td>global, waits for all <code>QC_FILTER</code></td>
 </tr>
 <tr>
 <td><code>BATCH_CORRECT_TRANSFORM</code></td>
 <td><code>batch_correct_transform.nf</code></td>
-<td><code>fisseq-batch-correct-transform</code></td>
+<td><code>python -m fisseq_data_pipeline.batchcorrecttransform</code></td>
 <td>per batch</td>
 </tr>
 <tr>
 <td><code>ANOVA</code> (aliased <code>_NORMALIZED</code> / <code>_BATCH_CORRECTED</code>)</td>
 <td><code>anova.nf</code></td>
-<td><code>fisseq-anova</code></td>
+<td><code>python -m fisseq_data_pipeline.anova</code></td>
 <td>global, twice, always runs</td>
 </tr>
 <tr>
 <td><code>ANOVA_BLOCKLIST</code></td>
 <td><code>anova_blocklist.nf</code></td>
-<td><code>fisseq-anova-blocklist</code></td>
+<td><code>python -m fisseq_data_pipeline.anovablocklist</code></td>
 <td>global, always runs; consumes <code>ANOVA_NORMALIZED</code>'s output</td>
 </tr>
 </tbody>
@@ -1819,7 +1819,7 @@ in a single workflow) — see <a href="../architecture/">Architecture</a> for wh
 invocation does differently (which cells glob, which <code>publishDir</code> subpath).</p>
 <h3 id="optional-input-stage">Optional <code>INPUT</code> stage<a class="headerlink" href="#optional-input-stage" title="Permanent link">&para;</a></h3>
 <p>When <code>--yaml_config_dir</code> is set, <code>INPUT</code> runs once per <code>*.yaml</code> file found there
-(<code>fisseq-input</code>, see <a href="../cli/input/">CLI Reference: Input</a>) and publishes its output
+(<code>python -m fisseq_data_pipeline.input</code>, see <a href="../cli/input/">CLI Reference: Input</a>) and publishes its output
 into <code>&lt;input_dir&gt;/input/</code>, the same directory pre-staged batch files live in. Both
 <code>workflows/fisseq.nf</code> and <code>workflows/ovwt.nf</code> merge this generated channel with the
 pre-existing <code>Channel.fromPath("&lt;input_dir&gt;/input/*.parquet")</code> glob channel via
@@ -2072,7 +2072,7 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 <tr>
 <td><code>--feature_select_downsample_wt</code></td>
 <td><code>null</code></td>
-<td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#fisseq-aggregate-feature-type-config-fields">CLI Reference: aggregate</a>.</td>
+<td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields">CLI Reference: aggregate</a>.</td>
 </tr>
 <tr>
 <td><code>--feature_select_min_correlation</code></td>

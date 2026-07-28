@@ -1399,7 +1399,7 @@
     <div class="doc doc-contents first">
 
         <p>Feature block-list derived from per-feature ANOVA p-values.</p>
-<p>Hydra entry point <code>fisseq-anova-blocklist</code>, backing the Nextflow process
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.anovablocklist</code>), backing the Nextflow process
 <code>ANOVA_BLOCKLIST</code>. Consumes the output of :mod:<code>.anova</code> as-is (columns
 <code>feature</code>, <code>f_value</code>, <code>p_value</code>) and marks each feature <code>feature_ok</code>
 based on whether its ANOVA p-value indicates a statistically significant
@@ -1407,7 +1407,7 @@ batch effect: a feature is blocked (<code>feature_ok = False</code>) when
 <code>p_value &lt; pvalue_threshold</code> (a significant batch effect was detected),
 matching the <code>block_list_file</code> convention already used by
 :class:<code>fisseq_data_pipeline.aggregate.AggregateConfig</code> and
-:class:<code>fisseq_data_pipeline.features.FinalizeFeatureSelectConfig</code>.</p>
+:class:<code>fisseq_data_pipeline.featureselect.FinalizeFeatureSelectConfig</code>.</p>
 
 
 
@@ -1588,7 +1588,7 @@ statistically significant batch effect was detected. Defaults to
 for every feature -- i.e. a feature is blocked when its p-value indicates
 a statistically significant batch effect. Emits one row per input
 feature (not just the blocked ones), matching the convention used by
-:func:<code>fisseq_data_pipeline.features.blocklist_main</code>.</p>
+:func:<code>fisseq_data_pipeline.blocklist.main</code>.</p>
 
 
 <details class="output-file" open>
@@ -1669,7 +1669,7 @@ feature (not just the blocked ones), matching the convention used by
 <a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">    for every feature -- i.e. a feature is blocked when its p-value indicates</span>
 <a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">    a statistically significant batch effect. Emits one row per input</span>
 <a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">    feature (not just the blocked ones), matching the convention used by</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    :func:`fisseq_data_pipeline.features.blocklist_main`.</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">    :func:`fisseq_data_pipeline.blocklist.main`.</span>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a>
 <a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    Output file</span>
 <a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">    -----------</span>

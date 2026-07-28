@@ -1525,7 +1525,7 @@
     <div class="doc doc-contents first">
 
         <p>Edit-distance and barcode-count QC filtering for raw FISSEQ cell data.</p>
-<p>Hydra entry point <code>fisseq-qc-filter</code> / Nextflow process <code>QC_FILTER</code> (first
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.qcfilter</code>) / Nextflow process <code>QC_FILTER</code> (first
 pipeline stage). Reads one or more raw CSV/Parquet cell files, renames columns to
 canonical <code>meta_*</code> names, and applies sequential edit-distance, barcode-count,
 and variant-barcode-count filters. Writes <code>filtered_cells.parquet</code>,

@@ -1543,7 +1543,7 @@
     <div class="doc doc-contents first">
 
         <p>Variant selection from a YAML spec.</p>
-<p>Hydra entry point <code>fisseq-input</code> / Nextflow process <code>INPUT</code> (optional upstream
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.input</code>) / Nextflow process <code>INPUT</code> (optional upstream
 stage, gated by <code>params.yaml_config_dir</code>). Reads a hand-authored YAML config
 (<code>config_path</code>, parsed separately from the Hydra CLI config) describing one or
 more input cell-score files (CSV or Parquet), classifies each row's variant,
@@ -1611,7 +1611,7 @@ what remains (allowlist is applied first).</p>
 
 <details class="usage" open>
   <summary>Usage</summary>
-  <div class="highlight"><pre><span></span><code>uv run fisseq-input \
+  <div class="highlight"><pre><span></span><code>uv run python -m fisseq_data_pipeline.input \
     output_dir=./out \
     config_path=/path/to/config.yaml
 </code></pre></div>

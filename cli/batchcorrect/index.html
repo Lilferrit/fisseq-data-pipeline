@@ -681,18 +681,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#fisseq-batch-correct-fit-batch_correct_fit" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelinebatchcorrect-batch_correct_fit" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-batch-correct-fit (BATCH_CORRECT_FIT)
+      python -m fisseq_data_pipeline.batchcorrect (BATCH_CORRECT_FIT)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-batch-correct-transform-batch_correct_transform" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelinebatchcorrecttransform-batch_correct_transform" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-batch-correct-transform (BATCH_CORRECT_TRANSFORM)
+      python -m fisseq_data_pipeline.batchcorrecttransform (BATCH_CORRECT_TRANSFORM)
     </span>
   </a>
   
@@ -1319,18 +1319,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#fisseq-batch-correct-fit-batch_correct_fit" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelinebatchcorrect-batch_correct_fit" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-batch-correct-fit (BATCH_CORRECT_FIT)
+      python -m fisseq_data_pipeline.batchcorrect (BATCH_CORRECT_FIT)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#fisseq-batch-correct-transform-batch_correct_transform" class="md-nav__link">
+  <a href="#python-m-fisseq_data_pipelinebatchcorrecttransform-batch_correct_transform" class="md-nav__link">
     <span class="md-ellipsis">
-      fisseq-batch-correct-transform (BATCH_CORRECT_TRANSFORM)
+      python -m fisseq_data_pipeline.batchcorrecttransform (BATCH_CORRECT_TRANSFORM)
     </span>
   </a>
   
@@ -1353,14 +1353,14 @@
 
 
 <h1 id="batch-correction">Batch Correction<a class="headerlink" href="#batch-correction" title="Permanent link">&para;</a></h1>
-<p><code>batchcorrect.py</code> implements two-pass centroid batch correction as two Hydra entry
-points, backing the Nextflow processes <code>BATCH_CORRECT_FIT</code> and
+<p>Two-pass centroid batch correction is implemented as two Hydra entry points across
+two modules, backing the Nextflow processes <code>BATCH_CORRECT_FIT</code> and
 <code>BATCH_CORRECT_TRANSFORM</code>. Fitting computes per-(variant, batch) statistics and
 per-variant centroids across all batches; transforming rescales one batch's cells
 first to its variant's own centroid, then to the wildtype centroid.</p>
 <p>Both configs extend <code>LabeledInputConfig</code> plus the
 <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
-<h2 id="fisseq-batch-correct-fit-batch_correct_fit"><code>fisseq-batch-correct-fit</code> (<code>BATCH_CORRECT_FIT</code>)<a class="headerlink" href="#fisseq-batch-correct-fit-batch_correct_fit" title="Permanent link">&para;</a></h2>
+<h2 id="python-m-fisseq_data_pipelinebatchcorrect-batch_correct_fit"><code>python -m fisseq_data_pipeline.batchcorrect</code> (<code>BATCH_CORRECT_FIT</code>)<a class="headerlink" href="#python-m-fisseq_data_pipelinebatchcorrect-batch_correct_fit" title="Permanent link">&para;</a></h2>
 <p>Runs once globally, after all batches have been QC-filtered.</p>
 <table>
 <thead>
@@ -1395,11 +1395,11 @@ first to its variant's own centroid, then to the wildtype centroid.</p>
 </table>
 <p><strong>Output</strong>: <code>stats_vb.parquet</code> (per-(variant, batch) statistics), <code>centroids.parquet</code>
 (per-variant centroids).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-batch-correct-fit<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.batchcorrect<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="s1">&#39;input_file=data/batches/*.parquet&#39;</span>
 </code></pre></div>
-<h2 id="fisseq-batch-correct-transform-batch_correct_transform"><code>fisseq-batch-correct-transform</code> (<code>BATCH_CORRECT_TRANSFORM</code>)<a class="headerlink" href="#fisseq-batch-correct-transform-batch_correct_transform" title="Permanent link">&para;</a></h2>
+<h2 id="python-m-fisseq_data_pipelinebatchcorrecttransform-batch_correct_transform"><code>python -m fisseq_data_pipeline.batchcorrecttransform</code> (<code>BATCH_CORRECT_TRANSFORM</code>)<a class="headerlink" href="#python-m-fisseq_data_pipelinebatchcorrecttransform-batch_correct_transform" title="Permanent link">&para;</a></h2>
 <p>Runs once per batch.</p>
 <table>
 <thead>
@@ -1444,7 +1444,7 @@ first to its variant's own centroid, then to the wildtype centroid.</p>
 </table>
 <p><strong>Output</strong>: <code>{output_dir}/{filename}</code> (same name as the input file), or
 <code>{output_root}.{stem}.{ext}</code> when <code>output_root</code> is set.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-batch-correct-transform<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.batchcorrecttransform<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>data/batch1.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">batch</span><span class="o">=</span>batch1<span class="w"> </span><span class="se">\</span>

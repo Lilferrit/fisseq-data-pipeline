@@ -1371,10 +1371,10 @@
 
 
 <h1 id="ovwt-cell-scores">OvWT Cell Scores<a class="headerlink" href="#ovwt-cell-scores" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-ovwt-cell-scores</code> (Nextflow process <code>OVWT_CELLSCORES_BATCHWISE</code>) scores
+<p><code>python -m fisseq_data_pipeline.ovwtcellscores</code> (Nextflow process <code>OVWT_CELLSCORES_BATCHWISE</code>) scores
 every cell against each trained one-vs-wildtype model produced by
-<a href="../ovwt/"><code>fisseq-ovwt</code></a>. <code>input_file</code> accepts either a full feature parquet or a
-split index parquet (as written by <code>fisseq-ovwt</code> when <code>save_splits=true</code>) — the
+<a href="../ovwt/"><code>python -m fisseq_data_pipeline.ovwt</code></a>. <code>input_file</code> accepts either a full feature parquet or a
+split index parquet (as written by <code>python -m fisseq_data_pipeline.ovwt</code> when <code>save_splits=true</code>) — the
 file type is auto-detected by its schema.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
@@ -1390,7 +1390,7 @@ file type is auto-detected by its schema.</p>
 <tr>
 <td><code>input_file</code></td>
 <td><strong>required</strong></td>
-<td>Full feature parquet, or a split index parquet from <code>fisseq-ovwt</code>.</td>
+<td>Full feature parquet, or a split index parquet from <code>python -m fisseq_data_pipeline.ovwt</code>.</td>
 </tr>
 <tr>
 <td><code>label_column</code></td>
@@ -1400,7 +1400,7 @@ file type is auto-detected by its schema.</p>
 <tr>
 <td><code>models_path</code></td>
 <td><strong>required</strong></td>
-<td>Path to the pickled <code>dict[str, xgb.Booster]</code> produced by <code>fisseq-ovwt</code>.</td>
+<td>Path to the pickled <code>dict[str, xgb.Booster]</code> produced by <code>python -m fisseq_data_pipeline.ovwt</code>.</td>
 </tr>
 <tr>
 <td><code>wt_label</code></td>
@@ -1420,7 +1420,7 @@ file type is auto-detected by its schema.</p>
   <code>meta_*</code> columns from the input.</li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-ovwt-cell-scores<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.ovwtcellscores<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/features.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">models_path</span><span class="o">=</span>out/models.pkl

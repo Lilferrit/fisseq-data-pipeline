@@ -1543,7 +1543,7 @@
     <div class="doc doc-contents first">
 
         <p>One-vs-wildtype XGBoost variant classification.</p>
-<p>Hydra entry point <code>fisseq-ovwt</code>, backing the Nextflow processes <code>OVWT_BATCHWISE</code>
+<p>Hydra entry point (<code>python -m fisseq_data_pipeline.ovwt</code>), backing the Nextflow processes <code>OVWT_BATCHWISE</code>
 and <code>OVWT_GLOBAL</code>. Trains a separate binary XGBoost classifier per non-wildtype
 variant against a shared 80/10/10 stratified split, optionally downsampling
 wildtype cells, and writes per-variant AUROC/accuracy results plus the trained

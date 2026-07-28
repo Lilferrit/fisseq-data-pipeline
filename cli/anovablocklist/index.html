@@ -1371,15 +1371,15 @@
 
 
 <h1 id="anova-block-list">ANOVA Block-list<a class="headerlink" href="#anova-block-list" title="Permanent link">&para;</a></h1>
-<p><code>fisseq-anova-blocklist</code> (Nextflow process <code>ANOVA_BLOCKLIST</code>, always runs)
-derives a feature block-list from the output of <code>fisseq-anova</code> (run against
+<p><code>python -m fisseq_data_pipeline.anovablocklist</code> (Nextflow process <code>ANOVA_BLOCKLIST</code>, always runs)
+derives a feature block-list from the output of <code>python -m fisseq_data_pipeline.anova</code> (run against
 normalized cells). A feature is blocked (<code>feature_ok = false</code>) when its
 ANOVA <code>p_value</code> is strictly less than <code>pvalue_threshold</code>, i.e. when a
 statistically significant batch effect was detected; otherwise it is kept
 (<code>feature_ok = true</code>). The output follows the same <code>feature</code>/<code>feature_ok</code>
-convention as the correlation-based blocklist (<code>fisseq-blocklist</code>) and the
-<code>block_list_file</code> fields on <code>fisseq-aggregate</code>, <code>fisseq-feature-select</code>,
-<code>fisseq-ovwt</code>, and <code>fisseq-batch-vs-batch</code>.</p>
+convention as the correlation-based blocklist (<code>python -m fisseq_data_pipeline.blocklist</code>) and the
+<code>block_list_file</code> fields on <code>python -m fisseq_data_pipeline.aggregate</code>, <code>python -m fisseq_data_pipeline.featureselect</code>,
+<code>python -m fisseq_data_pipeline.ovwt</code>, and <code>python -m fisseq_data_pipeline.batchvsbatch</code>.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>AppConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
@@ -1394,7 +1394,7 @@ convention as the correlation-based blocklist (<code>fisseq-blocklist</code>) an
 <tr>
 <td><code>anova_file</code></td>
 <td><strong>required</strong></td>
-<td>Path to the ANOVA results parquet file (output of <code>fisseq-anova</code>), with columns <code>feature</code>, <code>f_value</code>, <code>p_value</code>.</td>
+<td>Path to the ANOVA results parquet file (output of <code>python -m fisseq_data_pipeline.anova</code>), with columns <code>feature</code>, <code>f_value</code>, <code>p_value</code>.</td>
 </tr>
 <tr>
 <td><code>pvalue_threshold</code></td>
@@ -1409,7 +1409,7 @@ convention as the correlation-based blocklist (<code>fisseq-blocklist</code>) an
   columns <code>feature</code>, <code>p_value</code>, <code>feature_ok</code>.</li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>fisseq-anova-blocklist<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.anovablocklist<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">anova_file</span><span class="o">=</span>out/anova.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">pvalue_threshold</span><span class="o">=</span><span class="m">0</span>.05

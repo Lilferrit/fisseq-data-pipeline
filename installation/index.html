@@ -1415,13 +1415,14 @@
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># Install pre-commit hooks (one-time)</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>uv<span class="w"> </span>run<span class="w"> </span>pre-commit<span class="w"> </span>install
 </code></pre></div>
-<p>The package installs in editable mode, so <code>fisseq-*</code> CLI commands are immediately
-available via <code>uv run fisseq-qc-filter</code>, <code>uv run fisseq-normalize</code>, etc. See the
+<p>The package installs in editable mode, so every pipeline step is immediately
+runnable via <code>uv run python -m fisseq_data_pipeline.qcfilter</code>,
+<code>uv run python -m fisseq_data_pipeline.normalize</code>, etc. See the
 <a href="../cli/qcfilter/">CLI Reference</a> for every available command.</p>
 <h3 id="install-with-pip-no-clone">Install with pip (no clone)<a class="headerlink" href="#install-with-pip-no-clone" title="Permanent link">&para;</a></h3>
-<p>If you just need the <code>fisseq-*</code> CLI tools available on <code>PATH</code> — e.g. on a
-compute node, in a container, or for a quick one-off install — <code>pip install</code>
-directly from GitHub instead of cloning and using <code>uv sync</code>:</p>
+<p>If you just need the pipeline steps importable — e.g. on a compute node, in a
+container, or for a quick one-off install — <code>pip install</code> directly from GitHub
+instead of cloning and using <code>uv sync</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/Lilferrit/fisseq-data-pipeline.git
 </code></pre></div>
 <p>Pin a branch, tag, or commit with <code>@</code>:</p>
@@ -1437,7 +1438,7 @@ To run on a cluster:</p>
 <ol>
 <li>Write your own config (or copy and adapt <code>nextflow.config</code>).</li>
 <li>Uncomment and fill in a profile block — pick one <code>beforeScript</code> option to make
-   the <code>fisseq-*</code> CLI tools available on each compute node:</li>
+   the <code>fisseq_data_pipeline</code> package available on each compute node:</li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1">// Option A: activate a pre-existing venv (recommended for shared clusters)</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">beforeScript</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;source /path/to/your/venv/bin/activate&#39;</span>
