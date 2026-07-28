@@ -1,8 +1,8 @@
 # Barcode Block-list
 
-`fisseq-barcode-blocklist` (Nextflow process `BARCODE_BLOCKLIST`, run once
+`python -m fisseq_data_pipeline.barcodeblocklist` (Nextflow process `BARCODE_BLOCKLIST`, run once
 per batch, same cadence as [Check Barcodes](checkbarcodes.md)) derives a
-barcode block-list from the output of `fisseq-check-barcodes`. Each
+barcode block-list from the output of `python -m fisseq_data_pipeline.checkbarcodes`. Each
 barcode's `p_adj` values are pooled across every comparison it took part in
 (a barcode can appear as either `barcode` or `comparison_barcode` in a given
 pair, so both columns are unioned before aggregating) and summarized as
@@ -19,7 +19,7 @@ Extends `AppConfig` plus the [common config fields](qcfilter.md#common-config-fi
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
-| `check_barcodes_file` | **required** | Path to a single batch's CHECK_BARCODES results parquet (output of `fisseq-check-barcodes`), with columns `barcode`, `comparison_barcode`, `p_adj`. |
+| `check_barcodes_file` | **required** | Path to a single batch's CHECK_BARCODES results parquet (output of `python -m fisseq_data_pipeline.checkbarcodes`), with columns `barcode`, `comparison_barcode`, `p_adj`. |
 | `pvalue_threshold` | `0.05` | A barcode is blocked when the median of its `p_adj` values is strictly less than this threshold. |
 
 ## Output files
@@ -31,7 +31,7 @@ Extends `AppConfig` plus the [common config fields](qcfilter.md#common-config-fi
 ## Example
 
 ```bash
-uv run fisseq-barcode-blocklist \
+uv run python -m fisseq_data_pipeline.barcodeblocklist \
     output_dir=./out \
     check_barcodes_file=out/results.parquet \
     pvalue_threshold=0.05

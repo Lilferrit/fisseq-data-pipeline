@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// QC_FILTER: wraps fisseq-qc-filter. Runs once per batch parquet in input/,
+// QC_FILTER: wraps python -m fisseq_data_pipeline.qcfilter. Runs once per batch parquet in input/,
 // applying edit-distance, barcode-count, and variant-barcode-count filters.
 // When params.qc_downsample_fraction is set, filtered_cells.parquet is also
 // augmented with reproducibly-downsampled pseudo-variant rows built only
@@ -25,7 +25,7 @@ process QC_FILTER {
     script:
     """
     echo "Starting QC_FILTER for ${batch_stem}"
-    fisseq-qc-filter \\
+    python -m fisseq_data_pipeline.qcfilter \\
         output_dir=. \\
         'cell_files=[${input_file}]' \\
         bc_threshold=${params.barcode_count_threshold} \\

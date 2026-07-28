@@ -19,7 +19,7 @@ process NORMALIZE {
     script:
     """
     echo "Starting NORMALIZE for ${batch_stem}"
-    fisseq-normalize \\
+    python -m fisseq_data_pipeline.normalize \\
         output_dir=. \\
         output_root=${batch_stem} \\
         input_file=${filtered_cells} \\

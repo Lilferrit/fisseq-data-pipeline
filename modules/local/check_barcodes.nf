@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// CHECK_BARCODES: wraps fisseq-check-barcodes. Runs once per batch on that
+// CHECK_BARCODES: wraps python -m fisseq_data_pipeline.checkbarcodes. Runs once per batch on that
 // batch's single-cell scores (OVWT_CELLSCORES_BATCHWISE output), grouping by
 // variant and running a pairwise Tukey HSD across each variant's barcodes
 // (using each cell's score against its own trained one-vs-wildtype model as
@@ -22,7 +22,7 @@ process CHECK_BARCODES {
     script:
     """
     echo "Starting CHECK_BARCODES for ${batch_stem}"
-    fisseq-check-barcodes \\
+    python -m fisseq_data_pipeline.checkbarcodes \\
         output_dir=. \\
         input_file=${scores_file} \\
         min_cells=${params.barcode_check_min_cells} \\

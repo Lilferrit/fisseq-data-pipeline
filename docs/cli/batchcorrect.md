@@ -1,7 +1,7 @@
 # Batch Correction
 
-`batchcorrect.py` implements two-pass centroid batch correction as two Hydra entry
-points, backing the Nextflow processes `BATCH_CORRECT_FIT` and
+Two-pass centroid batch correction is implemented as two Hydra entry points across
+two modules, backing the Nextflow processes `BATCH_CORRECT_FIT` and
 `BATCH_CORRECT_TRANSFORM`. Fitting computes per-(variant, batch) statistics and
 per-variant centroids across all batches; transforming rescales one batch's cells
 first to its variant's own centroid, then to the wildtype centroid.
@@ -9,7 +9,7 @@ first to its variant's own centroid, then to the wildtype centroid.
 Both configs extend `LabeledInputConfig` plus the
 [common config fields](qcfilter.md#common-config-fields).
 
-## `fisseq-batch-correct-fit` (`BATCH_CORRECT_FIT`)
+## `python -m fisseq_data_pipeline.batchcorrect` (`BATCH_CORRECT_FIT`)
 
 Runs once globally, after all batches have been QC-filtered.
 
@@ -24,12 +24,12 @@ Runs once globally, after all batches have been QC-filtered.
 (per-variant centroids).
 
 ```bash
-uv run fisseq-batch-correct-fit \
+uv run python -m fisseq_data_pipeline.batchcorrect \
     output_dir=./out \
     'input_file=data/batches/*.parquet'
 ```
 
-## `fisseq-batch-correct-transform` (`BATCH_CORRECT_TRANSFORM`)
+## `python -m fisseq_data_pipeline.batchcorrecttransform` (`BATCH_CORRECT_TRANSFORM`)
 
 Runs once per batch.
 
@@ -46,7 +46,7 @@ Runs once per batch.
 `{output_root}.{stem}.{ext}` when `output_root` is set.
 
 ```bash
-uv run fisseq-batch-correct-transform \
+uv run python -m fisseq_data_pipeline.batchcorrecttransform \
     output_dir=./out \
     input_file=data/batch1.parquet \
     batch=batch1 \

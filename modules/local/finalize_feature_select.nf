@@ -17,7 +17,7 @@ process FINALIZE_FEATURE_SELECT {
     echo "Starting FINALIZE_FEATURE_SELECT for ${batch_key}"
     mkdir -p ft
     mv ${feature_type_files} ft/
-    fisseq-feature-select \\
+    python -m fisseq_data_pipeline.featureselect \\
         output_dir=. \\
         output_root=out \\
         "input_file=${cells_glob}" \\

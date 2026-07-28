@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// GENERATE_SPLIT: wraps fisseq-generate-split. Feature-selection stage 2a —
+// GENERATE_SPLIT: wraps python -m fisseq_data_pipeline.generatesplit. Feature-selection stage 2a —
 // one stratified 50/50 pseudo-replicate split per (batch or global,
 // bootstrap replicate), seeded by bootstrap_idx. Emits half1.parquet and
 // half2.parquet, consumed by AGGREGATE_HALF.
@@ -18,7 +18,7 @@ process GENERATE_SPLIT {
     script:
     """
     echo "Starting GENERATE_SPLIT for ${batch_key} / bootstrap ${bootstrap_idx}"
-    fisseq-generate-split \\
+    python -m fisseq_data_pipeline.generatesplit \\
         output_dir=. \\
         "input_file=${cells_glob}" \\
         random_state=${bootstrap_idx}

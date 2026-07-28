@@ -1,6 +1,6 @@
 # ANOVA
 
-`fisseq-anova` (Nextflow process `ANOVA`, run once against normalized cells and
+`python -m fisseq_data_pipeline.anova` (Nextflow process `ANOVA`, run once against normalized cells and
 once against batch-corrected cells) assesses batch effects in cell-level data
 using a per-feature one-way ANOVA. `input_file` is treated as a glob pattern;
 each matching file becomes one batch (labeled by its filename stem). Restricted
@@ -32,7 +32,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 ## Example
 
 ```bash
-uv run fisseq-anova \
+uv run python -m fisseq_data_pipeline.anova \
     output_dir=./out \
     'input_file=data/batches/*.parquet'
 ```

@@ -1,14 +1,17 @@
 # Aggregate
 
-`aggregate.py` provides two Hydra entry points:
+Cell-level aggregation is implemented as two Hydra entry points across two modules:
 
-- **`fisseq-aggregate`** — standalone: aggregates cell-level data to one row per
-  variant, then normalizes the result to a synonymous-variant baseline and
-  attaches per-variant metadata. Not wired into the Nextflow pipeline directly.
-- **`fisseq-aggregate-feature-type`** (Nextflow processes `AGGREGATE_FEATURE_TYPE`
-  and `AGGREGATE_HALF`) — a leaner version used by the feature-selection branch:
-  runs a single aggregator, writes only `[label_column] + <stat columns>`, with no
-  normalizer, metadata join, or impact score.
+- **`python -m fisseq_data_pipeline.aggregate`** — standalone: aggregates
+  cell-level data to one row per variant, then normalizes the result to a
+  synonymous-variant baseline and attaches per-variant metadata. Not wired into
+  the Nextflow pipeline directly.
+- **`python -m fisseq_data_pipeline.aggregatefeaturetype`** (Nextflow processes
+  `AGGREGATE_FEATURE_TYPE` and `AGGREGATE_HALF`) — a leaner version used by the
+  feature-selection branch: runs a single aggregator, writes only
+  `[label_column] + <stat columns>`, with no normalizer, metadata join, or impact
+  score. Imports `aggregate()` and `downsample_control()` from
+  `fisseq_data_pipeline.aggregate`.
 
 Both accept `input_file` as a glob pattern (via `load_batches`) or a concrete
 single-file path.
@@ -29,7 +32,7 @@ Seven strategies are available via the `aggregator` field — there is **no**
 | `QQ` | Q-Q Pearson correlation vs. WT/control distribution |
 | `AUROC` | AUROC vs. WT/control distribution. Directional: `0.5` means identical distributions, `1.0` means the variant is consistently higher than the reference, `0.0` means consistently lower (not symmetrized to `[0.5, 1]`). |
 
-## `fisseq-aggregate` config fields
+## `python -m fisseq_data_pipeline.aggregate` config fields
 
 Extends `LabeledInputConfig` (adds `input_file`, `label_column`) plus the
 [common config fields](qcfilter.md#common-config-fields).
@@ -48,13 +51,13 @@ single-file input → `{output_root}.{stem}.{ext}` or `{output_dir}/{filename}`.
 `normalizer.parquet` when `save_normalizer=true`.
 
 ```bash
-uv run fisseq-aggregate \
+uv run python -m fisseq_data_pipeline.aggregate \
     output_dir=./out \
     'input_file=data/batches/*.parquet' \
     aggregator=KS
 ```
 
-## `fisseq-aggregate-feature-type` config fields
+## `python -m fisseq_data_pipeline.aggregatefeaturetype` config fields
 
 Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-config-fields).
 
@@ -63,7 +66,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `input_file` | **required** | Glob pattern or path to cell-level data. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `aggregator` | **required** | One of the seven aggregators above. |
-| `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `fisseq-generate-split`) restricting aggregation to a pseudo-replicate half. |
+| `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `python -m fisseq_data_pipeline.generatesplit`) restricting aggregation to a pseudo-replicate half. |
 | `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
 | `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |
 
@@ -71,7 +74,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
 
 ```bash
-uv run fisseq-aggregate-feature-type \
+uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
     output_dir=./out \
     input_file=data/normalized.parquet \
     aggregator=mean \

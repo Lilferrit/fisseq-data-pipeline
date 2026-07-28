@@ -1,6 +1,6 @@
 """Feature block-list derived from per-feature ANOVA p-values.
 
-Hydra entry point ``fisseq-anova-blocklist``, backing the Nextflow process
+Hydra entry point (``python -m fisseq_data_pipeline.anovablocklist``), backing the Nextflow process
 ``ANOVA_BLOCKLIST``. Consumes the output of :mod:`.anova` as-is (columns
 ``feature``, ``f_value``, ``p_value``) and marks each feature ``feature_ok``
 based on whether its ANOVA p-value indicates a statistically significant
@@ -8,7 +8,7 @@ batch effect: a feature is blocked (``feature_ok = False``) when
 ``p_value < pvalue_threshold`` (a significant batch effect was detected),
 matching the ``block_list_file`` convention already used by
 :class:`fisseq_data_pipeline.aggregate.AggregateConfig` and
-:class:`fisseq_data_pipeline.features.FinalizeFeatureSelectConfig`.
+:class:`fisseq_data_pipeline.featureselect.FinalizeFeatureSelectConfig`.
 """
 
 import dataclasses
@@ -60,7 +60,7 @@ def main(cfg: DictConfig) -> None:
     for every feature -- i.e. a feature is blocked when its p-value indicates
     a statistically significant batch effect. Emits one row per input
     feature (not just the blocked ones), matching the convention used by
-    :func:`fisseq_data_pipeline.features.blocklist_main`.
+    :func:`fisseq_data_pipeline.blocklist.main`.
 
     Output file
     -----------

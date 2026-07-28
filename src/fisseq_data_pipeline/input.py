@@ -1,6 +1,6 @@
 """Variant selection from a YAML spec.
 
-Hydra entry point ``fisseq-input`` / Nextflow process ``INPUT`` (optional upstream
+Hydra entry point (``python -m fisseq_data_pipeline.input``) / Nextflow process ``INPUT`` (optional upstream
 stage, gated by ``params.yaml_config_dir``). Reads a hand-authored YAML config
 (``config_path``, parsed separately from the Hydra CLI config) describing one or
 more input cell-score files (CSV or Parquet), classifies each row's variant,
@@ -65,7 +65,7 @@ what remains (allowlist is applied first).
 
 Usage
 -----
-    uv run fisseq-input \\
+    uv run python -m fisseq_data_pipeline.input \\
         output_dir=./out \\
         config_path=/path/to/config.yaml
 """

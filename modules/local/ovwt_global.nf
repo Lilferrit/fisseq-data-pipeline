@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// OVWT_GLOBAL: wraps fisseq-ovwt. Runs once across all batches' normalized
+// OVWT_GLOBAL: wraps python -m fisseq_data_pipeline.ovwt. Runs once across all batches' normalized
 // cells (globs normalization/cells/*.parquet), gated by params.run_global.
 // Always filtered against the ANOVA_BLOCKLIST output -- there is no
 // unfiltered global OvWT run. Publishes results.parquet and models.pkl
@@ -20,7 +20,7 @@ process OVWT_GLOBAL {
     // TODO: add global OvWT visualization
     """
     echo "Starting OVWT_GLOBAL for global"
-    fisseq-ovwt \\
+    python -m fisseq_data_pipeline.ovwt \\
         output_dir=. \\
         "input_file=${input_dir}/normalization/cells/*.parquet" \\
         min_cells=${params.ovwt_min_cells} \\

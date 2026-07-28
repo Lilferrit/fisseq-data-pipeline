@@ -1,6 +1,6 @@
 # Check Barcodes
 
-`fisseq-check-barcodes` (Nextflow process `CHECK_BARCODES`, run once per batch,
+`python -m fisseq_data_pipeline.checkbarcodes` (Nextflow process `CHECK_BARCODES`, run once per batch,
 gated by `params.run_check_barcodes`) detects barcodes whose cells score
 differently from the rest of the cells carrying the same variant's other
 barcodes. `input_file` is a `cell_scores.parquet` produced by
@@ -43,7 +43,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 ## Example
 
 ```bash
-uv run fisseq-check-barcodes \
+uv run python -m fisseq_data_pipeline.checkbarcodes \
     output_dir=./out \
     input_file=out/cell_scores.parquet \
     min_cells=10 \

@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// ANOVA: wraps fisseq-anova. Parameterized over which cells glob and
+// ANOVA: wraps python -m fisseq_data_pipeline.anova. Parameterized over which cells glob and
 // publish subdirectory to use, so workflows/fisseq.nf invokes this process
 // twice via `include { ANOVA as X }` aliasing: once against normalized
 // cells, once against batch-corrected cells.
@@ -17,7 +17,7 @@ process ANOVA {
     script:
     """
     echo "Starting ANOVA for ${publish_subdir}"
-    fisseq-anova \\
+    python -m fisseq_data_pipeline.anova \\
         output_dir=. \\
         "input_file=${cells_glob}"
     """
