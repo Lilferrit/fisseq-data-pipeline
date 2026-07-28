@@ -22,15 +22,16 @@ uv sync --group dev
 uv run pre-commit install
 ```
 
-The package installs in editable mode, so `fisseq-*` CLI commands are immediately
-available via `uv run fisseq-qc-filter`, `uv run fisseq-normalize`, etc. See the
+The package installs in editable mode, so every pipeline step is immediately
+runnable via `uv run python -m fisseq_data_pipeline.qcfilter`,
+`uv run python -m fisseq_data_pipeline.normalize`, etc. See the
 [CLI Reference](cli/qcfilter.md) for every available command.
 
 ### Install with pip (no clone)
 
-If you just need the `fisseq-*` CLI tools available on `PATH` — e.g. on a
-compute node, in a container, or for a quick one-off install — `pip install`
-directly from GitHub instead of cloning and using `uv sync`:
+If you just need the pipeline steps importable — e.g. on a compute node, in a
+container, or for a quick one-off install — `pip install` directly from GitHub
+instead of cloning and using `uv sync`:
 
 ```bash
 pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
@@ -54,7 +55,7 @@ To run on a cluster:
 
 1. Write your own config (or copy and adapt `nextflow.config`).
 2. Uncomment and fill in a profile block — pick one `beforeScript` option to make
-   the `fisseq-*` CLI tools available on each compute node:
+   the `fisseq_data_pipeline` package available on each compute node:
 
    ```groovy
    // Option A: activate a pre-existing venv (recommended for shared clusters)

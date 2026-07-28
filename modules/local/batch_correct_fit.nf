@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// BATCH_CORRECT_FIT: wraps fisseq-batch-correct-fit. Runs once globally,
+// BATCH_CORRECT_FIT: wraps python -m fisseq_data_pipeline.batchcorrect. Runs once globally,
 // waiting for all QC_FILTER batches, fitting per-(variant, batch) statistics
 // and per-variant centroids across all QC-filtered cells. Emits
 // stats_vb.parquet and centroids.parquet, consumed by BATCH_CORRECT_TRANSFORM.
@@ -17,7 +17,7 @@ process BATCH_CORRECT_FIT {
     script:
     """
     echo "Starting BATCH_CORRECT_FIT for global"
-    fisseq-batch-correct-fit \\
+    python -m fisseq_data_pipeline.batchcorrect \\
         output_dir=. \\
         "input_file=${input_dir}/qc_filter/*/filtered_cells.parquet" \\
         use_parent_name=true \\

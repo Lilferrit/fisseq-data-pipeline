@@ -8,9 +8,7 @@ from omegaconf import OmegaConf
 from fisseq_data_pipeline.batchcorrect import (
     BatchCorrectFitConfig,
     BatchCorrector,
-    BatchCorrectTransformConfig,
-    fit_main,
-    transform_main,
+    main,
 )
 
 # ---------------------------------------------------------------------------
@@ -235,7 +233,7 @@ def test_transform_drops_rows_for_unfitted_variant():
 
 
 # ---------------------------------------------------------------------------
-# fit_main / transform_main — output file count == input file count
+# main (fit) — writes stats/centroids files
 # ---------------------------------------------------------------------------
 
 
@@ -244,18 +242,6 @@ def make_fit_cfg(tmp_path, output_dir):
         BatchCorrectFitConfig(
             output_dir=str(output_dir),
             input_file=str(tmp_path / "input" / "*.parquet"),
-        )
-    )
-
-
-def make_transform_cfg(input_file, output_dir, batch, stats_file, centroids_file):
-    return OmegaConf.structured(
-        BatchCorrectTransformConfig(
-            output_dir=str(output_dir),
-            input_file=str(input_file),
-            batch=batch,
-            stats_file=str(stats_file),
-            centroids_file=str(centroids_file),
         )
     )
 
@@ -272,7 +258,7 @@ def write_batch_file(path, variant, meta_cell_id, f1, f2) -> None:
     ).write_parquet(path)
 
 
-def test_fit_and_transform_output_file_count_matches_input_and_traces_batches(tmp_path):
+def test_main_writes_stats_and_centroids_files(tmp_path):
     input_dir = tmp_path / "input"
     write_batch_file(
         input_dir / "batch1.parquet",
@@ -291,45 +277,7 @@ def test_fit_and_transform_output_file_count_matches_input_and_traces_batches(tm
 
     fit_dir = tmp_path / "fit"
     with patch("fisseq_data_pipeline.batchcorrect.setup_logging"):
-        fit_main.__wrapped__(make_fit_cfg(tmp_path, fit_dir))
+        main.__wrapped__(make_fit_cfg(tmp_path, fit_dir))
 
-    stats_file = fit_dir / "stats_vb.parquet"
-    centroids_file = fit_dir / "centroids.parquet"
-    assert stats_file.exists()
-    assert centroids_file.exists()
-
-    corrected_dir = tmp_path / "corrected"
-    for stem in ("batch1", "batch2"):
-        batch_out_dir = corrected_dir / stem
-        with patch("fisseq_data_pipeline.batchcorrect.setup_logging"):
-            transform_main.__wrapped__(
-                make_transform_cfg(
-                    input_dir / f"{stem}.parquet",
-                    batch_out_dir,
-                    stem,
-                    stats_file,
-                    centroids_file,
-                )
-            )
-
-    output_files = sorted(corrected_dir.glob("*/*.parquet"))
-    assert len(output_files) == 2
-
-    out1 = pl.read_parquet(corrected_dir / "batch1" / "batch1.parquet")
-    out2 = pl.read_parquet(corrected_dir / "batch2" / "batch2.parquet")
-
-    # Correspondence: batch1's output meta_cell_ids all came from batch1's input, and vice versa.
-    assert set(out1["meta_cell_id"].to_list()) == {
-        "b1_0",
-        "b1_1",
-        "b1_2",
-        "b1_3",
-        "b1_4",
-    }
-    assert set(out2["meta_cell_id"].to_list()) == {
-        "b2_0",
-        "b2_1",
-        "b2_2",
-        "b2_3",
-        "b2_4",
-    }
+    assert (fit_dir / "stats_vb.parquet").exists()
+    assert (fit_dir / "centroids.parquet").exists()

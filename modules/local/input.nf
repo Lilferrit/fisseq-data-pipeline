@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// INPUT: wraps fisseq-input. Runs once per YAML config file in
+// INPUT: wraps python -m fisseq_data_pipeline.input. Runs once per YAML config file in
 // params.yaml_config_dir (optional upstream stage), producing one input/-ready
 // cell-level Parquet file from a variant-selection spec instead of a
 // pre-staged raw batch file. Publishes into the same input/ directory
@@ -19,7 +19,7 @@ process INPUT {
     script:
     """
     echo "Starting INPUT for ${name}"
-    fisseq-input \\
+    python -m fisseq_data_pipeline.input \\
         output_dir=. \\
         output_root=${name} \\
         config_path=${yaml_config}

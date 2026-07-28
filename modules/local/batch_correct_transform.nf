@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// BATCH_CORRECT_TRANSFORM: wraps fisseq-batch-correct-transform. Runs once
+// BATCH_CORRECT_TRANSFORM: wraps python -m fisseq_data_pipeline.batchcorrecttransform. Runs once
 // per batch, applying the BATCH_CORRECT_FIT statistics to rescale that
 // batch's QC-filtered cells to the wildtype centroid. Publishes the
 // corrected batch under batch_correction/cells/.
@@ -17,7 +17,7 @@ process BATCH_CORRECT_TRANSFORM {
     script:
     """
     echo "Starting BATCH_CORRECT_TRANSFORM for ${batch_stem}"
-    fisseq-batch-correct-transform \\
+    python -m fisseq_data_pipeline.batchcorrecttransform \\
         output_dir=. \\
         output_root=${batch_stem} \\
         input_file=${filtered_cells} \\

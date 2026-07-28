@@ -1,6 +1,6 @@
 """Z-score normalization of cell-level features against a control baseline.
 
-Hydra entry point ``fisseq-normalize`` / Nextflow process ``NORMALIZE`` (second
+Hydra entry point (``python -m fisseq_data_pipeline.normalize``) / Nextflow process ``NORMALIZE`` (second
 pipeline stage). Fits the :class:`Normalizer` on rows matching a configurable SQL
 control-sample query (default: WT cells) and applies it to every feature column,
 producing normalized cell-level Parquet output plus an optional serialized

@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// BARCODE_BLOCKLIST: wraps fisseq-barcode-blocklist. Runs once per batch on
+// BARCODE_BLOCKLIST: wraps python -m fisseq_data_pipeline.barcodeblocklist. Runs once per batch on
 // that batch's CHECK_BARCODES results.parquet, aggregating each barcode's
 // p_adj values (pooled across both the `barcode` and `comparison_barcode`
 // columns) via median, and marking barcode_ok = median_p_adj >=
@@ -21,7 +21,7 @@ process BARCODE_BLOCKLIST {
     script:
     """
     echo "Starting BARCODE_BLOCKLIST for ${batch_stem}"
-    fisseq-barcode-blocklist \\
+    python -m fisseq_data_pipeline.barcodeblocklist \\
         output_dir=. \\
         check_barcodes_file=${results_file} \\
         pvalue_threshold=${params.barcode_blocklist_pvalue_threshold}

@@ -89,17 +89,17 @@ The two results most analyses care about:
 
 ## 5. Running individual steps
 
-Every Nextflow process wraps a standalone `fisseq-*` CLI tool. To debug or rerun
-one stage manually, invoke it directly — see the [CLI Reference](cli/qcfilter.md)
-for each tool's config fields:
+Every Nextflow process wraps a standalone `python -m fisseq_data_pipeline.<module>`
+invocation. To debug or rerun one stage manually, invoke it directly — see the
+[CLI Reference](cli/qcfilter.md) for each tool's config fields:
 
 ```bash
-uv run fisseq-qc-filter \
+uv run python -m fisseq_data_pipeline.qcfilter \
     output_dir=./out \
     'cell_files=[data/plate1.parquet]' \
     bc_threshold=10
 
-uv run fisseq-normalize \
+uv run python -m fisseq_data_pipeline.normalize \
     output_dir=./out \
     input_file=out/filtered_cells.parquet
 ```

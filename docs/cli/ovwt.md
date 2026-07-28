@@ -1,6 +1,6 @@
 # One-vs-WT
 
-`fisseq-ovwt` (Nextflow processes `OVWT_BATCHWISE`, aliased into unfiltered,
+`python -m fisseq_data_pipeline.ovwt` (Nextflow processes `OVWT_BATCHWISE`, aliased into unfiltered,
 feature-filtered, and barcode-filtered invocations, and `OVWT_GLOBAL`, always
 feature-filtered) trains a separate XGBoost binary classifier for each
 non-wildtype variant, treating the task as "this variant vs. wildtype." An
@@ -29,8 +29,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Nextflow Workflow](../nextflow.md#parameters). |
 | `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
 | `save_splits` | `true` | Write lightweight train/test/val index files (row position + source file) to `output_dir`. |
-| `feature_block_list_file` | `null` | (renamed from `block_list_file`) Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `fisseq-anova-blocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
-| `barcode_block_list_file` | `null` | Optional path to a parquet file with `barcode` (str) and `barcode_ok` (bool) columns (e.g. `fisseq-barcode-blocklist`'s output). Cells whose `barcode_column` value is blocked are excluded (dropped as rows) before splitting/training. |
+| `feature_block_list_file` | `null` | (renamed from `block_list_file`) Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.anovablocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
+| `barcode_block_list_file` | `null` | Optional path to a parquet file with `barcode` (str) and `barcode_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.barcodeblocklist`'s output). Cells whose `barcode_column` value is blocked are excluded (dropped as rows) before splitting/training. |
 | `barcode_column` | `"meta_barcode"` | Column in `input_file` identifying each cell's barcode, used to apply `barcode_block_list_file`. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
@@ -51,7 +51,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 ## Example
 
 ```bash
-uv run fisseq-ovwt \
+uv run python -m fisseq_data_pipeline.ovwt \
     output_dir=./out \
     input_file=out/features.parquet \
     min_cells=250 \

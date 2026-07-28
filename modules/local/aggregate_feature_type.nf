@@ -2,7 +2,7 @@ nextflow.enable.dsl = 2
 
 // cells_glob is a val (not staged into the task dir), so there is no
 // staging collision here; output_root takes priority over output_dir in
-// fisseq-aggregate-feature-type's own path resolution, so the output lands
+// python -m fisseq_data_pipeline.aggregatefeaturetype's own path resolution, so the output lands
 // directly in the task work dir regardless of output_dir.
 // This process runs once per (batch, feature_type) -- no repeated
 // per-instance identity to vary a downsample seed by -- so seed is fixed
@@ -21,7 +21,7 @@ process AGGREGATE_FEATURE_TYPE {
     script:
     """
     echo "Starting AGGREGATE_FEATURE_TYPE for ${batch_key} / ${feature_type}"
-    fisseq-aggregate-feature-type \\
+    python -m fisseq_data_pipeline.aggregatefeaturetype \\
         output_dir=. \\
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\

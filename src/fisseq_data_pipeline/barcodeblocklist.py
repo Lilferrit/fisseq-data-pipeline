@@ -1,6 +1,6 @@
 """Barcode block-list derived from per-barcode CHECK_BARCODES p-values.
 
-Hydra entry point ``fisseq-barcode-blocklist``, backing the Nextflow process
+Hydra entry point (``python -m fisseq_data_pipeline.barcodeblocklist``), backing the Nextflow process
 ``BARCODE_BLOCKLIST`` (per batch, same cadence as ``CHECK_BARCODES`` -- unlike
 ``ANOVA_BLOCKLIST``, which runs once globally). Consumes the output of
 :mod:`.checkbarcodes` (columns ``variant``, ``barcode``, ``group_mean``,

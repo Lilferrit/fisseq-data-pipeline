@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// ANOVA_BLOCKLIST: wraps fisseq-anova-blocklist. Consumes ANOVA_NORMALIZED's
+// ANOVA_BLOCKLIST: wraps python -m fisseq_data_pipeline.anovablocklist. Consumes ANOVA_NORMALIZED's
 // anova.parquet and marks each feature ok/blocked based on whether its
 // ANOVA p-value indicates a statistically significant batch effect
 // (p_value < params.anova_blocklist_pvalue_threshold => blocked). Always
@@ -20,7 +20,7 @@ process ANOVA_BLOCKLIST {
     script:
     """
     echo "Starting ANOVA_BLOCKLIST"
-    fisseq-anova-blocklist \\
+    python -m fisseq_data_pipeline.anovablocklist \\
         output_dir=. \\
         anova_file=${anova_file} \\
         pvalue_threshold=${params.anova_blocklist_pvalue_threshold}

@@ -1,10 +1,10 @@
 # Feature Selection
 
-`features.py` implements a bootstrap pseudo-replicate feature-selection pipeline
-as five Hydra entry points, each a Nextflow process (see
+The bootstrap pseudo-replicate feature-selection pipeline is implemented as five
+Hydra entry points, one per module, each a Nextflow process (see
 [Nextflow Workflow](../nextflow.md)). Cells are split into stratified 50/50
 pseudo-replicate halves across `params.feature_select_bootstrap_reps` replicates; each half is
-aggregated per feature type (via [`fisseq-aggregate-feature-type`](aggregate.md)),
+aggregated per feature type (via [`python -m fisseq_data_pipeline.aggregatefeaturetype`](aggregate.md)),
 correlated against its partner half, and a per-feature blocklist is derived from
 the median correlation across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
@@ -12,7 +12,7 @@ selection.
 
 All configs extend the [common config fields](qcfilter.md#common-config-fields).
 
-## 1. `fisseq-generate-split` (`GENERATE_SPLIT`)
+## 1. `python -m fisseq_data_pipeline.generatesplit` (`GENERATE_SPLIT`)
 
 Generates one stratified 50/50 pseudo-replicate split.
 
@@ -25,13 +25,13 @@ Generates one stratified 50/50 pseudo-replicate split.
 **Output**: `half1.parquet`, `half2.parquet` (single-column row-index files).
 
 ```bash
-uv run fisseq-generate-split \
+uv run python -m fisseq_data_pipeline.generatesplit \
     output_dir=./out \
     input_file=data/normalized.parquet \
     random_state=3
 ```
 
-## 2. `fisseq-correlate-features` (`CORRELATE_FEATURES`)
+## 2. `python -m fisseq_data_pipeline.correlatefeatures` (`CORRELATE_FEATURES`)
 
 Computes per-feature Pearson correlation between two aggregate halves for the same
 feature type.
@@ -45,13 +45,13 @@ feature type.
 **Output**: `correlations.parquet` (columns: `feature`, `r`, `r_squared`, `p_value`).
 
 ```bash
-uv run fisseq-correlate-features \
+uv run python -m fisseq_data_pipeline.correlatefeatures \
     output_dir=./out \
     half1_file=out/half1.mean.parquet \
     half2_file=out/half2.mean.parquet
 ```
 
-## 3. `fisseq-blocklist` (`BLOCKLIST`)
+## 3. `python -m fisseq_data_pipeline.blocklist` (`BLOCKLIST`)
 
 The one intentional cross-bootstrap synchronization point: gathers every bootstrap
 replicate's correlation table for one feature type and computes each feature's
@@ -65,13 +65,13 @@ median `r` across replicates.
 **Output**: `blocklist.parquet` (columns: `feature`, `median_r`, `feature_ok`).
 
 ```bash
-uv run fisseq-blocklist \
+uv run python -m fisseq_data_pipeline.blocklist \
     output_dir=./out \
     'correlation_files=out/correlations/mean/*.parquet' \
     minimum_correlation=0.5
 ```
 
-## 4. `fisseq-combine-blocklists` (`COMBINE_BLOCKLISTS`)
+## 4. `python -m fisseq_data_pipeline.combineblocklists` (`COMBINE_BLOCKLISTS`)
 
 Concatenates every feature type's blocklist into one combined blocklist (a plain
 concat is correct — stat-suffixed feature names never collide across feature
@@ -84,15 +84,15 @@ types).
 **Output**: `blocklist.parquet`.
 
 ```bash
-uv run fisseq-combine-blocklists \
+uv run python -m fisseq_data_pipeline.combineblocklists \
     output_dir=./out \
     'blocklist_files=out/blocklists/*.parquet'
 ```
 
-## 5. `fisseq-feature-select` (`FINALIZE_FEATURE_SELECT`)
+## 5. `python -m fisseq_data_pipeline.featureselect` (`FINALIZE_FEATURE_SELECT`)
 
 The final stage: joins every feature type's full aggregate (from
-[`fisseq-aggregate-feature-type`](aggregate.md)) on `label_column`, drops blocked
+[`python -m fisseq_data_pipeline.aggregatefeaturetype`](aggregate.md)) on `label_column`, drops blocked
 feature columns, and runs `pycytominer.feature_select` (variance threshold,
 built-in blocklist, correlation threshold).
 
@@ -108,7 +108,7 @@ built-in blocklist, correlation threshold).
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
 
 ```bash
-uv run fisseq-feature-select \
+uv run python -m fisseq_data_pipeline.featureselect \
     output_dir=./out \
     input_file=out/normalized.parquet \
     'feature_type_files=out/aggregates/*.parquet' \

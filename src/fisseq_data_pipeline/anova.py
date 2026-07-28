@@ -1,6 +1,6 @@
 """Per-feature one-way ANOVA batch-effect assessment via sufficient statistics.
 
-Hydra entry point ``fisseq-anova``, backing the Nextflow process ``ANOVA``
+Hydra entry point (``python -m fisseq_data_pipeline.anova``), backing the Nextflow process ``ANOVA``
 (run once against normalized cells, once against batch-corrected cells). Restricts
 to cells classified as Synonymous (via :func:`.utils.variant.classify_variant`)
 whose label does not carry a ``:downsampled`` tag, then for each feature column,

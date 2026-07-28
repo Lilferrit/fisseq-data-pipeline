@@ -1,6 +1,6 @@
 # Normalize
 
-`fisseq-normalize` (Nextflow process `NORMALIZE`) fits per-feature z-score
+`python -m fisseq_data_pipeline.normalize` (Nextflow process `NORMALIZE`) fits per-feature z-score
 statistics on control (WT) cells and applies them across the full dataset. Control
 rows are identified via a SQL WHERE clause evaluated against the input frame,
 making it easy to adapt to non-standard control labels without code changes.
@@ -28,7 +28,7 @@ Extends `InputConfig` (adds `input_file`) plus the
 ## Example
 
 ```bash
-uv run fisseq-normalize \
+uv run python -m fisseq_data_pipeline.normalize \
     output_dir=./out \
     input_file=out/filtered_cells.parquet
 ```

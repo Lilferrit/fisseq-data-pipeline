@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// OVWT_BATCHWISE: wraps fisseq-ovwt. Runs once per batch on that batch's
+// OVWT_BATCHWISE: wraps python -m fisseq_data_pipeline.ovwt. Runs once per batch on that batch's
 // normalized cells, training a one-vs-wildtype XGBoost model per variant.
 // Parameterized over feature_block_list_file, barcode_block_list_file, and
 // publish_subdir so workflows/fisseq.nf invokes this process three times via
@@ -13,7 +13,7 @@ nextflow.enable.dsl = 2
 // are independent -- either, both, or neither may be non-null for a given
 // call.
 // Both block-list fields are vals (not staged paths) so a Groovy null can be
-// passed through directly -- fisseq-ovwt's feature_block_list_file=null /
+// passed through directly -- python -m fisseq_data_pipeline.ovwt's feature_block_list_file=null /
 // barcode_block_list_file=null CLI args parse as Python None via
 // Hydra/OmegaConf, the same trick used for qc_downsample_fraction in
 // qc_filter.nf.
@@ -34,7 +34,7 @@ process OVWT_BATCHWISE {
     // TODO: add per-batch OvWT visualization
     """
     echo "Starting OVWT_BATCHWISE for ${batch_stem} (${publish_subdir})"
-    fisseq-ovwt \\
+    python -m fisseq_data_pipeline.ovwt \\
         output_dir=. \\
         input_file=${normalized_parquet} \\
         min_cells=${params.ovwt_min_cells} \\

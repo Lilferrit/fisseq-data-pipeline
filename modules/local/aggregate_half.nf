@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// Shells out to the same fisseq-aggregate-feature-type CLI as
+// Shells out to the same python -m fisseq_data_pipeline.aggregatefeaturetype CLI as
 // aggregate_feature_type.nf, with index_file set to one split half.
 // index_file is staged into the task dir as half1.parquet/half2.parquet;
 // the mv destination below is deliberately named differently so it never
@@ -24,7 +24,7 @@ process AGGREGATE_HALF {
     script:
     """
     echo "Starting AGGREGATE_HALF for ${batch_key} / bootstrap ${bootstrap_idx} / half ${half_num} / ${feature_type}"
-    fisseq-aggregate-feature-type \\
+    python -m fisseq_data_pipeline.aggregatefeaturetype \\
         output_dir=. \\
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\

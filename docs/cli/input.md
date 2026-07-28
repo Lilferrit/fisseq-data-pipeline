@@ -1,6 +1,6 @@
 # Input
 
-`fisseq-input` (Nextflow process `INPUT`, optional — gated by `params.yaml_config_dir`)
+`python -m fisseq_data_pipeline.input` (Nextflow process `INPUT`, optional — gated by `params.yaml_config_dir`)
 reads a hand-authored YAML config describing one or more raw cell-score files
 (CSV or Parquet), classifies each row's variant, and restricts to a fixed set of
 variant classes plus the most common missense variants. Writes a single
@@ -47,7 +47,7 @@ Written to `output_dir`, prefixed `{output_root}.` when `output_root` is set:
 ## Example
 
 ```bash
-uv run fisseq-input \
+uv run python -m fisseq_data_pipeline.input \
     output_dir=./out \
     config_path=configs/batch1.yaml
 ```

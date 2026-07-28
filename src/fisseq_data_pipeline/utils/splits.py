@@ -2,7 +2,7 @@
 
 Defines the ``TMP_IDX_COL`` row-index convention and :func:`filter_by_index_file`,
 used to restrict a cell-level LazyFrame to one pseudo-replicate half written by
-:func:`fisseq_data_pipeline.features.generate_split_main`.
+:func:`fisseq_data_pipeline.generatesplit.main`.
 """
 
 import os
@@ -61,7 +61,7 @@ def filter_by_index_file(
     Adds ``TMP_IDX_COL`` via :func:`add_row_index`. If ``index_file`` is
     given, it is read as a parquet file with a single integer column named
     ``TMP_IDX_COL`` (as written by
-    :func:`fisseq_data_pipeline.features.generate_split_main`), and ``lf`` is
+    :func:`fisseq_data_pipeline.generatesplit.main`), and ``lf`` is
     filtered to those rows via :func:`get_replicate_lf`. If ``index_file`` is
     ``None``, all rows are kept. ``TMP_IDX_COL`` is dropped from the result
     either way.

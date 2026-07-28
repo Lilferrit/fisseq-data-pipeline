@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// BATCHVSBATCH: wraps fisseq-batch-vs-batch. Parameterized over which cells
+// BATCHVSBATCH: wraps python -m fisseq_data_pipeline.batchvsbatch. Parameterized over which cells
 // glob, use_parent_name, publish subdirectory, and block_list_file to use,
 // so workflows/fisseq.nf invokes this process twice via
 // `include { BATCHVSBATCH as X }` aliasing: once pre-normalization
@@ -22,7 +22,7 @@ process BATCHVSBATCH {
     script:
     """
     echo "Starting BATCHVSBATCH for ${publish_subdir}"
-    fisseq-batch-vs-batch \\
+    python -m fisseq_data_pipeline.batchvsbatch \\
         output_dir=. \\
         "input_file=${cells_glob}" \\
         use_parent_name=${use_parent_name} \\

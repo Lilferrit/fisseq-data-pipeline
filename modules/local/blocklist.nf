@@ -1,6 +1,6 @@
 nextflow.enable.dsl = 2
 
-// BLOCKLIST: wraps fisseq-blocklist. Feature-selection stage 2d — the one
+// BLOCKLIST: wraps python -m fisseq_data_pipeline.blocklist. Feature-selection stage 2d — the one
 // intentional cross-bootstrap synchronization point: gathers every bootstrap
 // replicate's CORRELATE_FEATURES output for one (batch or global, feature
 // type), and marks each feature ok/blocked by its median correlation.
@@ -18,7 +18,7 @@ process BLOCKLIST {
     script:
     """
     echo "Starting BLOCKLIST for ${batch_key} / ${feature_type}"
-    fisseq-blocklist \\
+    python -m fisseq_data_pipeline.blocklist \\
         output_dir=. \\
         "correlation_files=*.parquet" \\
         minimum_correlation=${params.feature_select_min_correlation}

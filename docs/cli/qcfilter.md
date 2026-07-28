@@ -1,6 +1,6 @@
 # QC Filter
 
-`fisseq-qc-filter` (Nextflow process `QC_FILTER`) reads one or more raw CSV/Parquet
+`python -m fisseq_data_pipeline.qcfilter` (Nextflow process `QC_FILTER`) reads one or more raw CSV/Parquet
 cell files, renames columns to canonical `meta_*` names, and applies three
 sequential filters:
 
@@ -50,7 +50,7 @@ Written to `output_dir` (each prefixed `{output_root}.` when `output_root` is se
 ## Example
 
 ```bash
-uv run fisseq-qc-filter \
+uv run python -m fisseq_data_pipeline.qcfilter \
     output_dir=./out \
     'cell_files=[data/plate1.parquet, data/plate2.parquet]' \
     bc_threshold=10 \
