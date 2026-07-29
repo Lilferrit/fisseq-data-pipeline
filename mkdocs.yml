@@ -1,6 +1,7 @@
 site_name: Fisseq Data Pipeline
 nav:
   - Home: index.md
+  - Quickstart: quickstart.md
   - Architecture: architecture.md
   - Installation: installation.md
   - Nextflow Workflow: nextflow.md

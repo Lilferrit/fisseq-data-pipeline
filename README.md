@@ -39,6 +39,10 @@ nextflow run Lilferrit/fisseq-data-pipeline -c your.config --input_dir /path/to/
 
 ## Documentation
 
+See the **[Quickstart Guide](https://lilferrit.github.io/fisseq-data-pipeline/quickstart/)**
+for a full walkthrough of getting your first run going, including cluster/SGE
+setup.
+
 Full documentation — architecture, Nextflow workflow reference, CLI/config
 options, and an end-to-end walkthrough — is at
 **[lilferrit.github.io/fisseq-data-pipeline](https://lilferrit.github.io/fisseq-data-pipeline)**.
