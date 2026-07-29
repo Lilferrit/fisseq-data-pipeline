@@ -9,8 +9,10 @@
       
       
       
-        <link rel="prev" href="../api/utils/">
+        <link rel="prev" href="..">
       
+      
+        <link rel="next" href="../architecture/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -18,7 +20,7 @@
     
     
       
-        <title>Walkthrough - Fisseq Data Pipeline</title>
+        <title>Quickstart - Fisseq Data Pipeline</title>
       
     
     
@@ -74,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#walkthrough-running-the-pipeline-end-to-end" class="md-skip">
+        <a href="#quickstart" class="md-skip">
           Skip to content
         </a>
       
@@ -108,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Walkthrough
+              Quickstart
             
           </span>
         </div>
@@ -224,9 +226,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../quickstart/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -340,11 +344,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../walkthrough/" class="md-tabs__link">
         
   
   
@@ -416,10 +418,32 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../quickstart/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Quickstart
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -430,6 +454,101 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Install
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-get-a-nextflowconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Get a nextflow.config
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Get a nextflow.config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#making-your-own-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      Making your own profile
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-run-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Run commands
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Run commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-a-single-step-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running a single step directly
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-example-cluster-launcher-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Example cluster launcher script
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next steps
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1248,32 +1367,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Walkthrough
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../walkthrough/" class="md-nav__link">
         
   
   
@@ -1284,71 +1381,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-install" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Install
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-lay-out-your-input-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Lay out your input data
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-run-the-pipeline" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Run the pipeline
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-inspect-the-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. Inspect the results
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-running-individual-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Running individual steps
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1389,36 +1421,66 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-lay-out-your-input-data" class="md-nav__link">
+  <a href="#2-get-a-nextflowconfig" class="md-nav__link">
     <span class="md-ellipsis">
-      2. Lay out your input data
+      2. Get a nextflow.config
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Get a nextflow.config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#making-your-own-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      Making your own profile
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-run-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Run commands
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Run commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#running-a-single-step-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running a single step directly
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-example-cluster-launcher-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Example cluster launcher script
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-run-the-pipeline" class="md-nav__link">
+  <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
-      3. Run the pipeline
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-inspect-the-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. Inspect the results
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-running-individual-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Running individual steps
+      Next steps
     </span>
   </a>
   
@@ -1440,85 +1502,143 @@
 
 
 
-<h1 id="walkthrough-running-the-pipeline-end-to-end">Walkthrough: running the pipeline end to end<a class="headerlink" href="#walkthrough-running-the-pipeline-end-to-end" title="Permanent link">&para;</a></h1>
-<p>This walks through a full run of the default <code>fisseq</code> workflow, from raw
-CellProfiler output to final feature-selected results.</p>
+<h1 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h1>
+<p>The fastest path from a fresh checkout to a first pipeline run, including
+setting up a cluster config. For more depth, see
+<a href="../installation/">Installation</a> (full environment setup),
+<a href="../nextflow/">Nextflow Workflow</a> (every parameter and profile), and
+<a href="../walkthrough/">Walkthrough</a> (stage-by-stage detail on what each part of the
+pipeline does).</p>
 <h2 id="1-install">1. Install<a class="headerlink" href="#1-install" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Lilferrit/fisseq-data-pipeline.git
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>fisseq-data-pipeline
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>uv<span class="w"> </span>sync<span class="w"> </span>--group<span class="w"> </span>dev
 </code></pre></div>
-<p>See <a href="../installation/">Installation</a> for details, including cluster/HPC setup.</p>
-<h2 id="2-lay-out-your-input-data">2. Lay out your input data<a class="headerlink" href="#2-lay-out-your-input-data" title="Permanent link">&para;</a></h2>
-<p>Each batch's CellProfiler feature matrix (with barcode/variant annotations) goes
-in its own Parquet file under <code>&lt;input_dir&gt;/input/</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;input_dir&gt;/
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  input/
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    batch1.parquet
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    batch2.parquet
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    ...
+<p>Or, without cloning:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/Lilferrit/fisseq-data-pipeline.git
 </code></pre></div>
-<h2 id="3-run-the-pipeline">3. Run the pipeline<a class="headerlink" href="#3-run-the-pipeline" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
+<p>See <a href="../installation/">Installation</a> for requirements and the pip-only path in
+more detail.</p>
+<h2 id="2-get-a-nextflowconfig">2. Get a <code>nextflow.config</code><a class="headerlink" href="#2-get-a-nextflowconfig" title="Permanent link">&para;</a></h2>
+<p>The repo ships a <code>nextflow.config</code> at its root with default <code>params</code> and a set
+of commented-out profile stubs (<code>venv</code>, <code>conda</code>, <code>singularity</code>, <code>sge</code>). You can
+either run with it as-is, or copy it and use it as a template for your own
+site.</p>
+<p>If you've already cloned the repo, you have it at <code>nextflow.config</code>. To fetch
+just the config file on its own — e.g. onto a cluster head node where you
+don't want a full clone — download it directly from GitHub:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>wget<span class="w"> </span>https://raw.githubusercontent.com/Lilferrit/fisseq-data-pipeline/main/nextflow.config<span class="w"> </span>-O<span class="w"> </span>your.config
 </code></pre></div>
-<p>This runs the default <code>FisseqPipeline</code>, which chains every stage described in
-<a href="../architecture/">Architecture</a>:</p>
+<h3 id="making-your-own-profile">Making your own profile<a class="headerlink" href="#making-your-own-profile" title="Permanent link">&para;</a></h3>
+<p>Nextflow profiles control <em>where</em> and <em>how</em> each process runs (executor,
+queue, resources, environment setup) — separate from the pipeline <code>params</code> in
+the same file. To add one:</p>
 <ol>
-<li><code>QC_FILTER</code> — edit-distance, barcode-count, and variant-barcode-count filtering
-   (per batch).</li>
-<li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (global, if
-   <code>params.run_global</code>).</li>
-<li><code>NORMALIZE</code> — z-score normalization fit on WT control cells (per batch).</li>
-<li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global, if
-   <code>params.run_global</code>).</li>
-<li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification.</li>
-<li>Bootstrap feature selection (batchwise and, if <code>params.run_global</code>, global) —
-   see <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
-   six-stage breakdown.</li>
-<li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction
-   (always runs, regardless of <code>params.run_global</code>).</li>
-<li><code>ANOVA</code> — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells (always runs).</li>
+<li>Copy <code>your.config</code> (or <code>nextflow.config</code>) somewhere you can edit it.</li>
+<li>Uncomment one of the stub blocks in <code>profiles { }</code> — the <code>sge</code> stub is the
+   right starting point for a Sun Grid Engine cluster:</li>
 </ol>
-<p>Override any <a href="../nextflow/#parameters">parameter</a> on the command line, e.g. to
-adjust QC thresholds or skip the global-only processes (<code>OVWT_GLOBAL</code>, the global
-feature-selection branch, and <code>BATCHVSBATCH</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--barcode_count_threshold<span class="w"> </span><span class="m">15</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--run_global<span class="w"> </span><span class="nb">false</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">sge</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">process</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">        </span><span class="n">executor</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;sge&#39;</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">        </span><span class="n">queue</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;all.q&#39;</span><span class="w">           </span><span class="c1">// SGE queue name</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">        </span><span class="n">clusterOptions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;-V&#39;</span><span class="w">              </span><span class="c1">// forward current environment to each job</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">        </span><span class="n">cpus</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">        </span><span class="n">memory</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;16 GB&#39;</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">        </span><span class="n">time</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;4h&#39;</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">        </span><span class="n">beforeScript</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;source /path/to/.venv/bin/activate&quot;</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="o">}</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="o">}</span>
 </code></pre></div>
-<p>To run on a cluster, supply your own config:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
+<ol>
+<li>Rename the block to something specific to your site if you like (e.g.
+   <code>my_sge</code>) and fill in your actual queue name, resource limits, and a
+   <code>beforeScript</code> that makes <code>fisseq_data_pipeline</code> importable on each compute
+   node — either activating a pre-built venv (recommended) or installing it
+   fresh on every run. See <a href="../installation/#cluster-hpc">Installation: Cluster / HPC</a>
+   for both <code>beforeScript</code> options in full.</li>
+<li>Pass your config and profile name at run time with <code>-c your.config -profile
+   my_sge</code> (see the run commands below).</li>
+</ol>
+<h2 id="3-run-commands">3. Run commands<a class="headerlink" href="#3-run-commands" title="Permanent link">&para;</a></h2>
+<p>Run the full pipeline directly from GitHub, no local clone required:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>Lilferrit/fisseq-data-pipeline<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>-c<span class="w"> </span>your.config<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>-profile<span class="w"> </span>my_sge<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
-<p>If a run is interrupted, resume from the last completed task:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
+<p>Or from a local clone:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>my_sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
-<h2 id="4-inspect-the-results">4. Inspect the results<a class="headerlink" href="#4-inspect-the-results" title="Permanent link">&para;</a></h2>
-<p>All outputs land under <code>&lt;input_dir&gt;</code>, alongside <code>input/</code> — see
-<a href="../architecture/#output-layout">Architecture: Output layout</a> for the full tree.
-The two results most analyses care about:</p>
+<p>Resume a previously interrupted run instead of starting over:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>my_sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
+</code></pre></div>
+<p>See <a href="../nextflow/#parameters">Nextflow Workflow: Parameters</a> for every
+<code>--param</code> the pipeline accepts.</p>
+<h3 id="running-a-single-step-directly">Running a single step directly<a class="headerlink" href="#running-a-single-step-directly" title="Permanent link">&para;</a></h3>
+<p>Every pipeline stage is also runnable on its own as a Python CLI, without
+Nextflow — useful for debugging or rerunning one step against different
+inputs. For example, aggregating cell-level features to one row per variant:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.aggregate<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="s1">&#39;input_file=data/batches/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>KS
+</code></pre></div>
+<p>See the <a href="../cli/aggregate/">CLI Reference</a> for every tool's config fields and
+example command.</p>
+<h2 id="4-example-cluster-launcher-script">4. Example cluster launcher script<a class="headerlink" href="#4-example-cluster-launcher-script" title="Permanent link">&para;</a></h2>
+<p>A minimal launcher script for submitting the pipeline as an SGE job, kept
+up-to-date and re-installable on every run. Save it in the directory you want
+the run's working files and <code>.nextflow</code> cache in, adjust <code>SCRIPT_DIR</code> and
+<code>-profile</code>, and submit it as your SGE job script:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="ch">#!/usr/bin/env bash</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nv">SCRIPT_DIR</span><span class="o">=</span><span class="s2">&quot;/path/to/your/analysis/dir&quot;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>module<span class="w"> </span>load<span class="w"> </span>nextflow
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">NXF_HOME</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/.nextflow&quot;</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1"># NOTE: for SGE jobs, replace $SCRIPT_DIR with a hard-coded absolute path,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># since SGE may not run from the expected working directory.</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>!<span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/.venv&quot;</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No venv found at </span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/.venv — creating one with uv&quot;</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">    </span>uv<span class="w"> </span>venv<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/.venv&quot;</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="k">fi</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="nb">source</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/.venv/bin/activate&quot;</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="nv">RESUME_FLAG</span><span class="o">=</span><span class="s2">&quot;-resume&quot;</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">CLEAN</span><span class="k">:-</span><span class="nv">false</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">&quot;true&quot;</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">    </span><span class="nv">RESUME_FLAG</span><span class="o">=</span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="k">fi</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="c1"># Get the latest version in the python environment</span>
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="nv">REPO_URL</span><span class="o">=</span><span class="s2">&quot;https://github.com/Lilferrit/fisseq-data-pipeline.git&quot;</span>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">&quot;git+</span><span class="si">${</span><span class="nv">REPO_URL</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="c1"># Get the latest workflow version</span>
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>nextflow<span class="w"> </span>pull<span class="w"> </span>Lilferrit/fisseq-data-pipeline<span class="w"> </span>-r<span class="w"> </span>main
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>nextflow<span class="w"> </span>run<span class="w"> </span>Lilferrit/fisseq-data-pipeline<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a><span class="w">    </span>-c<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/your.config&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a><span class="w">    </span>-profile<span class="w"> </span>my_sge<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="w">    </span>--input_dir<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a><span class="w">    </span><span class="si">${</span><span class="nv">RESUME_FLAG</span><span class="si">}</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$@</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>Set <code>CLEAN=true</code> before running it to force a fresh run instead of resuming
+(e.g. <code>CLEAN=true ./run.sh</code>). Any extra arguments passed to the script (<code>"$@"</code>)
+are forwarded straight to <code>nextflow run</code>, so you can override any pipeline
+parameter without editing the script, e.g. <code>./run.sh --run_global false</code>.</p>
+<h2 id="next-steps">Next steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>&lt;input_dir&gt;/feature_select_batchwise/&lt;batch&gt;/output.parquet</code> (and
-  <code>feature_select_global/output.parquet</code>, if <code>params.run_global</code>) — final
-  per-variant, feature-selected profiles.</li>
-<li><code>&lt;input_dir&gt;/anova/anova.parquet</code> and
-  <code>&lt;input_dir&gt;/batch_correction/anova/anova.parquet</code> — per-feature
-  batch-effect ANOVA results, before and after batch correction.</li>
+<li><a href="../walkthrough/">Walkthrough</a> — a complete end-to-end run, stage by stage.</li>
+<li><a href="../nextflow/">Nextflow Workflow</a> — every process, parameter, and profile.</li>
+<li><a href="../architecture/">Architecture</a> — the full pipeline DAG and output layout.</li>
+<li><a href="../cli/qcfilter/">CLI Reference</a> — config fields and examples for every
+  standalone Python tool.</li>
 </ul>
-<h2 id="5-running-individual-steps">5. Running individual steps<a class="headerlink" href="#5-running-individual-steps" title="Permanent link">&para;</a></h2>
-<p>Every Nextflow process wraps a standalone <code>python -m fisseq_data_pipeline.&lt;module&gt;</code>
-invocation. To debug or rerun one stage manually, invoke it directly — see the
-<a href="../cli/qcfilter/">CLI Reference</a> for each tool's config fields:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.qcfilter<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="s1">&#39;cell_files=[data/plate1.parquet]&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nv">bc_threshold</span><span class="o">=</span><span class="m">10</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.normalize<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/filtered_cells.parquet
-</code></pre></div>
 
 
 
