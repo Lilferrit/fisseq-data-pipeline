@@ -7,6 +7,8 @@ population differs from wildtype (WT) controls using morphological features.
 
 ## Where to start
 
+- **[Quickstart](quickstart.md)** — the fastest path from a fresh checkout to
+  a first pipeline run, including setting up a cluster config.
 - **[Architecture](architecture.md)** — the full pipeline DAG, what each stage
   produces/consumes, and the key shared abstractions (`Normalizer`,
   `BaseAggregator`, `BatchCorrector`).
