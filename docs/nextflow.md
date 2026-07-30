@@ -110,6 +110,17 @@ Like every other process, `INPUT` uses `errorStrategy 'ignore'`: a failed conver
 for one config file simply drops that batch from the run (it is excluded from both
 the glob and the generated channel), rather than aborting the whole pipeline.
 
+`INPUT` does not receive the batch's hand-authored YAML file directly. Each
+batch's YAML is parsed and merged with the pipeline-wide defaults once, at
+workflow-construction time (see
+[Per-batch parameter overrides](#per-batch-parameter-overrides) below), and
+`INPUT` instead receives the resolved `input_paths` /`top_n_missense` /
+`convert_first` / `temp_dir` / `feature_allowlist_file` /
+`feature_blocklist_file` values as individual process inputs. The process
+script rebuilds a minimal YAML from those values before invoking
+`python -m fisseq_data_pipeline.input` — see the resume-caching rationale
+below for why.
+
 ### Feature-selection channel wiring
 
 The feature-selection branch (`AGGREGATE_FEATURE_TYPE` → `GENERATE_SPLIT` →
@@ -155,6 +166,21 @@ Defaults live in `nextflow.config` at the repo root:
 | `--run_single_cell_scores` | `false` | `FisseqPipeline` only: run `OVWT_CELLSCORES_BATCHWISE` per batch after `OVWT_BATCHWISE_UNFILTERED`. Always on in `OvwtPipeline`. Forced on if `--run_check_barcodes true`. |
 | `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--run_single_cell_scores true`. |
 | `--run_barcode_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_BARCODE_FILTERED` (per-batch OvWT filtered against `barcode_blocklist/<batch>/barcode_blocklist.parquet`). Only takes effect when `--run_check_barcodes true` is also set (default `false`) -- does NOT force it on, so the default pipeline output is unaffected. |
+
+### INPUT stage tunables
+
+| Parameter | Default | Description |
+| --------- | ------- | ----------- |
+| `--top_n_missense` | `null` | Number of Single Missense variants (by cell count) `INPUT` keeps, alongside Synonymous, WT, and Frameshift. `null` keeps all of them. |
+| `--convert_first` | `false` | `INPUT`: merge all of a batch's `input_paths` into one Parquet file up front. Only takes effect when `top_n_missense` is also set. |
+| `--temp_dir` | `null` | Where `convert_first`'s merged file is written; `null` falls back to `$TMPDIR`/the system temp dir. |
+| `--feature_allowlist_file` | `null` | `INPUT`: optional path to a glob-pattern feature allowlist file. |
+| `--feature_blocklist_file` | `null` | `INPUT`: optional path to a glob-pattern feature blocklist file. |
+
+These mirror `INPUT`'s per-batch YAML `config_path` schema (see
+[CLI Reference: Input](cli/input.md#config_path-yaml-schema)) and are
+overridable per batch exactly like every other parameter here — see
+[Per-batch parameter overrides](#per-batch-parameter-overrides).
 
 ### QC filtering (`QC_FILTER`)
 
@@ -208,6 +234,100 @@ Defaults live in `nextflow.config` at the repo root:
 | `--single_cell_scores_split` | `"test"` | Which `OVWT_BATCHWISE` split to score: `"test"` or `"train"`. Any other value fails fast with a clear error. |
 | `--barcode_check_min_cells` | `10` | `CHECK_BARCODES`: minimum cells required per barcode (within a variant) to include it in the comparison. |
 | `--barcode_check_alpha` | `0.05` | `CHECK_BARCODES`: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this. |
+
+## Per-batch parameter overrides
+
+Any batch YAML in `--yaml_config_dir` may set additional keys beyond
+`input_paths` to override that batch's own value for a `nextflow.config`
+parameter — without affecting any other batch. This is resolved once per
+batch, in Groovy, at workflow-construction time, by
+[`lib/BatchParams.groovy`](https://github.com/Lilferrit/fisseq-data-pipeline/blob/main/lib/BatchParams.groovy)'s
+`resolve()` function: it merges that batch's YAML on top of the pipeline-wide
+defaults, validates every key, and returns the merged result plus a list of
+which keys were actually overridden. Both `workflows/fisseq.nf` and
+`workflows/ovwt.nf` call this once per batch YAML file and log each override
+via `log.info` — e.g.:
+
+```text
+Batch 'batch3': overriding barcode_count_threshold (default=10) -> 3
+```
+
+### Not every parameter is batch-overridable
+
+Some `nextflow.config` parameters are **pipeline-wide-only** and cannot be
+set from a batch YAML — a batch YAML that tries gets a clear rejection error
+at config-resolution time, distinct from the error for a genuine typo (an
+unrecognized key). Two kinds of parameters fall in this bucket:
+
+- **Meta/bootstrap parameters** needed just to find and validate batch
+  YAMLs in the first place — `--pipeline_mode`, `--input_dir`,
+  `--yaml_config_dir`. There's a chicken-and-egg problem: these have to be
+  resolved before any batch config can even be located.
+- **Parameters with no per-batch consumer.** Several processes run once
+  across *all* batches rather than per batch — `BATCHVSBATCH`, `OVWT_GLOBAL`,
+  `ANOVA_BLOCKLIST` (derived from `ANOVA_NORMALIZED`, which globs the entire
+  `input_dir`, not one batch), and the `_GLOBAL`-suffixed feature-selection
+  chain. Params consumed only by those processes — `--run_global`,
+  `--batchvsbatch_min_cells`, `--batchvsbatch_min_batches`,
+  `--anova_blocklist_pvalue_threshold`, `--feature_select_types`,
+  `--feature_select_bootstrap_reps` — have no batch to attach a per-batch
+  override to, so they stay pipeline-wide-only. (`--feature_select_types`
+  and `--feature_select_bootstrap_reps` specifically determine shared
+  fan-out *cardinality* — how many feature-type/bootstrap tasks exist at
+  all — not a per-batch scalar value, so letting them vary per batch would
+  require a much larger restructuring than a simple value override.)
+
+Every other `nextflow.config` parameter — including the gating booleans
+`--run_feature_filtered_ovwt`, `--run_single_cell_scores`,
+`--run_check_barcodes`, `--run_barcode_filtered_ovwt`, and the *batchwise*
+effect of `--run_feature_selection` — is genuinely per-batch overridable.
+Each of these gates only a per-batch-only process or chain, so
+`workflows/fisseq.nf` implements them as a per-batch channel `.filter()`
+(via a `batchGates()` helper that also encodes the "`run_check_barcodes`
+implies `run_single_cell_scores`" / "`run_barcode_filtered_ovwt` only takes
+effect once `run_check_barcodes` is true" rules) rather than a workflow-scope
+`if`. `--run_feature_selection`'s *global* sub-branch (the `_GLOBAL`
+feature-selection chain) remains pipeline-wide-only, gated on
+`params.run_global && params.run_feature_selection` together, since that
+chain has no per-batch identity either.
+
+Parameters shared between a per-batch process and a global-only process
+(`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--feature_select_downsample_wt`,
+`--feature_select_min_correlation`) are overridable per batch for their
+batchwise consumer only (`OVWT_BATCHWISE`, `AGGREGATE_FEATURE_TYPE_BATCHWISE`
+/ `AGGREGATE_HALF_BATCHWISE`, `BLOCKLIST_BATCHWISE`) — their global
+counterpart (`OVWT_GLOBAL`, the `_GLOBAL` feature-selection processes)
+always uses the plain pipeline-wide value directly, regardless of any
+batch's override.
+
+### `input_paths`: the one exception in the other direction
+
+`input_paths` (the list of raw cell-score file paths for a batch) is
+**required in every batch YAML and has no `nextflow.config` default at
+all** — it is intentionally excluded from the override-symmetry described
+above. There is no sensible pipeline-wide default for a per-batch list of
+data files: unlike a threshold or a boolean gate, a default `input_paths`
+would look like something batches inherit, when in practice every batch
+must supply its own. A batch YAML that omits it fails clearly at
+config-resolution time rather than silently proceeding with no data.
+
+### Why resolved scalars, not the whole config, are passed to processes
+
+Every process that consumes a per-batch-overridable value receives it as an
+individual `val()` input (e.g. `QC_FILTER` takes
+`barcode_count_threshold`/`variant_barcode_count_threshold`/... as five
+separate `val()`s), never a whole config map or the raw YAML file. Nextflow's
+`-resume` cache key for a task is derived from its declared inputs — if a
+whole file or map were passed, changing *any* key in it (even one that
+process doesn't consume) would bust the cache for every task built from it.
+Passing only the specific scalars a process actually reads means an
+unrelated key change in one batch's YAML — or a non-semantic edit to it —
+does not invalidate that batch's tasks on the next `-resume` run. This is
+also why `INPUT` no longer receives the batch's YAML file directly (see
+[Optional INPUT stage](#optional-input-stage) above): it now takes the
+resolved scalars as `val()` inputs and rebuilds a minimal YAML from them
+inside the process script, so only those scalars — not the original file's
+bytes — determine its cache key.
 
 ## Profiles
 

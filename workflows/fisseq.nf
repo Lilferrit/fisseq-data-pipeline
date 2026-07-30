@@ -62,6 +62,41 @@ workflow FisseqPipeline {
         error "ERROR: --input_dir is required.\n  Usage: nextflow run fisseq.nf --input_dir /path/to/data"
     }
 
+    // Pipeline-wide defaults for every batch-overridable key (see
+    // lib/BatchParams.groovy), pre-coerced exactly the way the rest of this
+    // workflow already coerces params.X (CLI overrides like --run_global
+    // false arrive as the Groovy-truthy String "false") so a batch YAML's
+    // native-typed value compares correctly against an equivalent
+    // CLI-supplied default -- see BatchParams.resolve()'s doc comment.
+    def batchParamDefaults = [
+        barcode_count_threshold           : params.barcode_count_threshold,
+        variant_barcode_count_threshold   : params.variant_barcode_count_threshold,
+        edit_distance_threshold           : params.edit_distance_threshold,
+        qc_downsample_fraction            : params.qc_downsample_fraction,
+        qc_downsample_seed                : params.qc_downsample_seed,
+        barcode_blocklist_pvalue_threshold: params.barcode_blocklist_pvalue_threshold,
+        ovwt_min_cells                    : params.ovwt_min_cells,
+        ovwt_downsample_wt                : params.ovwt_downsample_wt,
+        feature_select_downsample_wt      : params.feature_select_downsample_wt,
+        feature_select_min_correlation    : params.feature_select_min_correlation,
+        barcode_check_min_cells           : params.barcode_check_min_cells,
+        barcode_check_alpha               : params.barcode_check_alpha,
+        single_cell_scores_split          : params.single_cell_scores_split,
+        run_feature_filtered_ovwt         : params.run_feature_filtered_ovwt.toString().toBoolean(),
+        run_single_cell_scores            : params.run_single_cell_scores.toString().toBoolean(),
+        run_check_barcodes                : params.run_check_barcodes.toString().toBoolean(),
+        run_barcode_filtered_ovwt         : params.run_barcode_filtered_ovwt.toString().toBoolean(),
+        run_feature_selection             : params.run_feature_selection.toString().toBoolean(),
+        top_n_missense                    : params.top_n_missense,
+        convert_first                     : params.convert_first.toString().toBoolean(),
+        temp_dir                          : params.temp_dir,
+        feature_allowlist_file            : params.feature_allowlist_file,
+        feature_blocklist_file            : params.feature_blocklist_file,
+    ]
+    if (!(batchParamDefaults.single_cell_scores_split in ["test", "train"])) {
+        error "ERROR: --single_cell_scores_split must be 'test' or 'train', got '${batchParamDefaults.single_cell_scores_split}'"
+    }
+
     // If params.yaml_config_dir is set, INPUT generates one input/*.parquet
     // per YAML config file there, merged with any pre-staged files already
     // in <input_dir>/input/. config_files is listed eagerly (not via a
@@ -79,6 +114,51 @@ workflow FisseqPipeline {
         }
     }
     def config_names = config_files.collect { it.baseName } as Set
+
+    // Resolve every batch YAML's overrides once, here, at
+    // workflow-construction time -- see lib/BatchParams.groovy and
+    // docs/nextflow.md's "Per-batch parameter overrides" section. Batches
+    // with no YAML (pre-staged parquet glob) fall back to
+    // batchParamDefaults directly via .withDefault; this is safe to share
+    // by reference since nothing downstream mutates a resolved config map
+    // in place -- per-batch derived values (e.g. the gating "implies"
+    // logic in batchGates()) are computed into NEW maps, never written
+    // back into resolvedBatchConfigs.
+    def resolvedBatchConfigs = [:].withDefault { batchParamDefaults }
+    config_files.each { f ->
+        def stem = f.baseName
+        def yamlMap = (new org.yaml.snakeyaml.Yaml().load(f.text) ?: [:]) as Map
+        def resolution
+        try {
+            resolution = BatchParams.resolve(stem, batchParamDefaults, yamlMap)
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            error "ERROR: ${e.message}"
+        }
+        resolution.overrides.each { o ->
+            log.info "Batch '${o.batch}': overriding ${o.key} (default=${o.defaultValue}) -> ${o.overrideValue}"
+        }
+        if (!(resolution.resolved.single_cell_scores_split in ["test", "train"])) {
+            error "ERROR: batch '${stem}': single_cell_scores_split must be 'test' or 'train', got '${resolution.resolved.single_cell_scores_split}'"
+        }
+        resolvedBatchConfigs[stem] = resolution.resolved
+    }
+
+    // Per-batch effective gating booleans, baking in the "run_check_barcodes
+    // implies run_single_cell_scores" / "run_barcode_filtered_ovwt only
+    // takes effect once run_check_barcodes is true" rules that used to be
+    // expressed as nested workflow-scope `if`s. Returns a NEW map each
+    // call -- never mutates resolvedBatchConfigs.
+    batchGates = { stem ->
+        def cfg = resolvedBatchConfigs[stem]
+        def runCheckBarcodes = cfg.run_check_barcodes.toString().toBoolean()
+        [
+            run_check_barcodes       : runCheckBarcodes,
+            run_single_cell_scores   : cfg.run_single_cell_scores.toString().toBoolean() || runCheckBarcodes,
+            run_barcode_filtered_ovwt: cfg.run_barcode_filtered_ovwt.toString().toBoolean() && runCheckBarcodes,
+            run_feature_filtered_ovwt: cfg.run_feature_filtered_ovwt.toString().toBoolean(),
+            run_feature_selection    : cfg.run_feature_selection.toString().toBoolean(),
+        ]
+    }
 
     def inputSubdir = file("${params.input_dir}/input")
     def inputParquets = inputSubdir.isDirectory()
@@ -103,7 +183,12 @@ workflow FisseqPipeline {
         .filter { name, f -> !(name in config_names) }
 
     if (params.yaml_config_dir != null) {
-        config_ch = Channel.fromList(config_files).map { f -> [ f.baseName, f ] }
+        config_ch = Channel.fromList(config_files).map { f ->
+            def stem = f.baseName
+            def cfg = resolvedBatchConfigs[stem]
+            tuple(stem, cfg.input_paths, cfg.top_n_missense, cfg.convert_first,
+                  cfg.temp_dir, cfg.feature_allowlist_file, cfg.feature_blocklist_file)
+        }
         generated_ch = INPUT(config_ch)
         input_ch = glob_input_ch.mix(generated_ch)
     } else {
@@ -111,7 +196,12 @@ workflow FisseqPipeline {
     }
 
     // Step 1: QC filter (per batch)
-    qc_ch = QC_FILTER(input_ch).qc_outputs
+    qc_input_ch = input_ch.map { stem, f ->
+        def cfg = resolvedBatchConfigs[stem]
+        tuple(stem, f, cfg.barcode_count_threshold, cfg.variant_barcode_count_threshold,
+              cfg.edit_distance_threshold, cfg.qc_downsample_fraction, cfg.qc_downsample_seed)
+    }
+    qc_ch = QC_FILTER(qc_input_ch).qc_outputs
 
     // Step 2: Normalization (per batch)
     // qc_ch carries: (batch_stem, filtered_cells, barcode_counts, variants_per_barcode)
@@ -144,16 +234,16 @@ workflow FisseqPipeline {
     // --run_global false) arrive as the String "false", which is truthy in
     // Groovy — a bare `if (params.run_global)` (or `as Boolean`) would run
     // the "disabled" branch anyway. `.toBoolean()` parses "true"/"false"
-    // text correctly. Gates BATCHVSBATCH, OVWT_GLOBAL, and (when feature
-    // selection is enabled) the *_GLOBAL feature-selection branch.
+    // text correctly. Gates BATCHVSBATCH, OVWT_GLOBAL, and the *_GLOBAL
+    // feature-selection branch -- these are pipeline-wide-only (see
+    // lib/BatchParams.groovy's PIPELINE_WIDE_ONLY_KEYS), since none of the
+    // processes they gate have a per-batch identity to attach a per-batch
+    // override to.
     run_global = params.run_global.toString().toBoolean()
-    // Same parse for params.run_feature_selection: gates the entire
-    // feature-selection branch below (batchwise and global).
-    run_feature_selection = params.run_feature_selection.toString().toBoolean()
-    // Same parse for params.run_feature_filtered_ovwt: gates
-    // OVWT_BATCHWISE_FEATURE_FILTERED alone (OVWT_BATCHWISE_UNFILTERED is
-    // unaffected).
-    run_feature_filtered_ovwt = params.run_feature_filtered_ovwt.toString().toBoolean()
+    // Gates only the GLOBAL sub-branch of feature selection below; the
+    // batchwise portion is per-batch gated via batchGates() instead (see
+    // norm_ch_feature_selected further down).
+    run_feature_selection_global = params.run_feature_selection.toString().toBoolean()
 
     // Step 3: Batch-vs-batch — pre batch correction (QC-filtered cells, before normalization)
     // (optional, gated on params.run_global). Unfiltered: runs immediately after
@@ -174,73 +264,73 @@ workflow FisseqPipeline {
 
     // Step 5: OvWT — batchwise, unfiltered + feature-filtered (barcode-filtered
     // is wired below, after CHECK_BARCODES/BARCODE_BLOCKLIST are available).
-    // Unfiltered: unchanged, no dependency on ANOVA_BLOCKLIST.
-    OVWT_BATCHWISE_UNFILTERED(norm_ch.map { stem, p -> tuple(stem, p, null, null, "ovwt_batchwise") })
+    // Unfiltered: unchanged, no dependency on ANOVA_BLOCKLIST, always runs
+    // for every batch (no gate).
+    OVWT_BATCHWISE_UNFILTERED(
+        norm_ch.map { stem, p ->
+            def cfg = resolvedBatchConfigs[stem]
+            tuple(stem, p, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
+        }
+    )
     // Feature-filtered: broadcasts the single ANOVA_BLOCKLIST output onto
     // every per-batch tuple, same .combine() idiom as BATCH_CORRECT_TRANSFORM
-    // below. Optional, gated on params.run_feature_filtered_ovwt.
-    if (run_feature_filtered_ovwt) {
-        OVWT_BATCHWISE_FEATURE_FILTERED(
-            norm_ch.combine(anova_blocklist_ch)
-                .map { stem, p, bl -> tuple(stem, p, bl, null, "ovwt_batchwise_feature_filtered") }
-        )
-    }
-
-    // Step 5b: single-cell scores (optional, gated on
-    // params.run_single_cell_scores) -> per-batch barcode-outlier check
-    // (optional, gated on params.run_check_barcodes) -> per-batch barcode
-    // block-list -> OVWT_BATCHWISE_BARCODE_FILTERED. run_check_barcodes
-    // implies run_single_cell_scores -- see nextflow.config's comment for
-    // this param. params.run_barcode_filtered_ovwt (default true) does NOT
-    // force run_check_barcodes on -- it only decides whether, once
-    // run_check_barcodes is independently true, the barcode-filtered retrain
-    // also happens. This keeps run_check_barcodes=false (the default)
-    // producing the same output set it always has, regardless of
-    // run_barcode_filtered_ovwt's default.
-    run_single_cell_scores = params.run_single_cell_scores.toString().toBoolean()
-    run_check_barcodes = params.run_check_barcodes.toString().toBoolean()
-    run_barcode_filtered_ovwt = params.run_barcode_filtered_ovwt.toString().toBoolean()
-    if (run_check_barcodes) {
-        run_single_cell_scores = true
-    }
-
-    score_source = params.single_cell_scores_split
-    if (!(score_source in ["test", "train"])) {
-        error "ERROR: --single_cell_scores_split must be 'test' or 'train', got '${score_source}'"
-    }
-
-    if (run_single_cell_scores) {
-        // Scores off the unfiltered OVWT_BATCHWISE models (full feature set),
-        // matching what OvwtPipeline already does -- avoids standing up a
-        // second scoring branch off the filtered models.
-        cellscores_input_ch = OVWT_BATCHWISE_UNFILTERED.out
-            .map { stem, _res, mdl, test_idx, train_idx ->
-                tuple(stem, (score_source == "test") ? test_idx : train_idx, mdl)
-            }
-        OVWT_CELLSCORES_BATCHWISE(cellscores_input_ch)
-
-        if (run_check_barcodes) {
-            CHECK_BARCODES(OVWT_CELLSCORES_BATCHWISE.out)
-
-            if (run_barcode_filtered_ovwt) {
-                // Per-batch, unlike ANOVA_BLOCKLIST (global) -- consumes
-                // CHECK_BARCODES' per-batch (batch_stem, results_file)
-                // tuple directly.
-                BARCODE_BLOCKLIST(CHECK_BARCODES.out)
-                barcode_blocklist_ch = BARCODE_BLOCKLIST.out  // (batch_stem, barcode_blocklist_file)
-
-                // .join(), not .combine(): both norm_ch and
-                // barcode_blocklist_ch already carry exactly one entry per
-                // batch_stem that made it through CHECK_BARCODES -- .combine()
-                // would be a global broadcast, which is wrong here since the
-                // blocklist is per-batch, not global.
-                OVWT_BATCHWISE_BARCODE_FILTERED(
-                    norm_ch.join(barcode_blocklist_ch)
-                        .map { stem, p, bl -> tuple(stem, p, null, bl, "ovwt_batchwise_barcode_filtered") }
-                )
-            }
+    // below. Called unconditionally in Groovy source; batches whose resolved
+    // run_feature_filtered_ovwt is false are filtered out of the channel
+    // (0 tasks for them, behaviorally identical to the process being
+    // "absent" -- see batchGates() above).
+    feature_filtered_input_ch = norm_ch.combine(anova_blocklist_ch)
+        .filter { stem, p, bl -> batchGates.call(stem).run_feature_filtered_ovwt }
+        .map { stem, p, bl ->
+            def cfg = resolvedBatchConfigs[stem]
+            tuple(stem, p, bl, null, "ovwt_batchwise_feature_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
         }
-    }
+    OVWT_BATCHWISE_FEATURE_FILTERED(feature_filtered_input_ch)
+
+    // Step 5b: single-cell scores (per-batch gated on that batch's resolved
+    // run_single_cell_scores) -> per-batch barcode-outlier check (gated on
+    // run_check_barcodes) -> per-batch barcode block-list (gated on
+    // run_barcode_filtered_ovwt) -> OVWT_BATCHWISE_BARCODE_FILTERED. Each
+    // stage's *input* is the *previous* stage's *output*, so the
+    // "run_check_barcodes implies run_single_cell_scores" /
+    // "run_barcode_filtered_ovwt only takes effect once run_check_barcodes
+    // is true" relationships fall out naturally from batchGates() without
+    // re-deriving them at each filter -- see nextflow.config's comments for
+    // these params and batchGates()'s definition above.
+    score_source_ch = OVWT_BATCHWISE_UNFILTERED.out
+        .filter { stem, _res, mdl, test_idx, train_idx -> batchGates.call(stem).run_single_cell_scores }
+        .map { stem, _res, mdl, test_idx, train_idx ->
+            def split = resolvedBatchConfigs[stem].single_cell_scores_split
+            tuple(stem, (split == "test") ? test_idx : train_idx, mdl)
+        }
+    OVWT_CELLSCORES_BATCHWISE(score_source_ch)
+
+    check_barcodes_input_ch = OVWT_CELLSCORES_BATCHWISE.out
+        .filter { stem, scores -> batchGates.call(stem).run_check_barcodes }
+        .map { stem, scores ->
+            def cfg = resolvedBatchConfigs[stem]
+            tuple(stem, scores, cfg.barcode_check_min_cells, cfg.barcode_check_alpha)
+        }
+    CHECK_BARCODES(check_barcodes_input_ch)
+
+    // Per-batch, unlike ANOVA_BLOCKLIST (global) -- consumes CHECK_BARCODES'
+    // per-batch (batch_stem, results_file) tuple directly.
+    barcode_blocklist_input_ch = CHECK_BARCODES.out
+        .filter { stem, res -> batchGates.call(stem).run_barcode_filtered_ovwt }
+        .map { stem, res -> tuple(stem, res, resolvedBatchConfigs[stem].barcode_blocklist_pvalue_threshold) }
+    BARCODE_BLOCKLIST(barcode_blocklist_input_ch)
+    barcode_blocklist_ch = BARCODE_BLOCKLIST.out  // (batch_stem, barcode_blocklist_file)
+
+    // .join(), not .combine(): both norm_ch and barcode_blocklist_ch already
+    // carry exactly one entry per batch_stem that made it through
+    // CHECK_BARCODES -- .combine() would be a global broadcast, which is
+    // wrong here since the blocklist is per-batch, not global.
+    OVWT_BATCHWISE_BARCODE_FILTERED(
+        norm_ch.join(barcode_blocklist_ch)
+            .map { stem, p, bl ->
+                def cfg = resolvedBatchConfigs[stem]
+                tuple(stem, p, null, bl, "ovwt_batchwise_barcode_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
+            }
+    )
 
     // Step 6: OvWT — global (optional, gated on params.run_global). Always
     // filtered against ANOVA_BLOCKLIST -- there is no unfiltered global run.
@@ -254,29 +344,38 @@ workflow FisseqPipeline {
     //   -> correlation -> per-feature-type blocklist (gathered over bootstraps).
     // Stage 3: combine per-feature-type blocklists.
     // Stage 4: join stage-1 aggregates, apply combined blocklist, pycytominer select.
-    // The entire branch (batchwise + global) is gated on params.run_feature_selection;
-    // the global sub-branch is additionally gated on params.run_global below.
-    if (run_feature_selection) {
+    // The batchwise portion is per-batch gated on that batch's resolved
+    // run_feature_selection (via norm_ch_feature_selected below); the global
+    // sub-branch is pipeline-wide-only, gated on params.run_feature_selection
+    // && params.run_global together. feature_select_types/
+    // feature_select_bootstrap_reps are themselves pipeline-wide-only --
+    // they determine shared fan-out cardinality, not a per-batch scalar --
+    // so feature_types_ch/bootstrap_ch are built unconditionally, outside
+    // any gate.
     feature_types_ch = Channel.fromList(params.feature_select_types)
     // Explicit cast: Nextflow CLI overrides (e.g. --feature_select_bootstrap_reps 3)
     // arrive as Strings and silently produce a bogus/huge range if left
     // uncoerced in a Groovy IntRange (1..params.feature_select_bootstrap_reps).
     bootstrap_ch = Channel.of(1..(params.feature_select_bootstrap_reps as int))
 
-    // --- Batchwise ---
+    // --- Batchwise --- (per-batch gated on run_feature_selection; norm_ch is
+    // filtered once, independently, here -- every downstream groupTuple/
+    // .join() stage automatically only sees the surviving batch keys.)
+    norm_ch_feature_selected = norm_ch.filter { batch_stem, _p -> batchGates.call(batch_stem).run_feature_selection }
 
     // Stage 1: full per-feature-type aggregation, one task per (batch, feature_type).
-    agg_input_ch = norm_ch
+    agg_input_ch = norm_ch_feature_selected
         .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
         .combine(feature_types_ch)
         .map { batch_stem, cells_glob, feature_type ->
-            tuple(batch_stem, cells_glob, feature_type, "feature_select_batchwise/${batch_stem}")
+            tuple(batch_stem, cells_glob, feature_type, "feature_select_batchwise/${batch_stem}",
+                  resolvedBatchConfigs[batch_stem].feature_select_downsample_wt)
         }
     AGGREGATE_FEATURE_TYPE_BATCHWISE(agg_input_ch)
     agg_ch = AGGREGATE_FEATURE_TYPE_BATCHWISE.out  // (batch_stem, feature_type, agg_file)
 
     // Stage 2a: one 50/50 split per (batch, bootstrap replicate).
-    split_input_ch = norm_ch
+    split_input_ch = norm_ch_feature_selected
         .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
         .combine(bootstrap_ch)
         .map { batch_stem, cells_glob, bootstrap_idx ->
@@ -287,8 +386,9 @@ workflow FisseqPipeline {
 
     // Stage 2b: expand each split into two per-half tuples, cross with feature
     // types, and re-attach the batch's normalized-cells file via
-    // .combine(norm_ch, by: 0) (keyed on batch_stem — norm_ch has exactly one
-    // entry per batch_stem, so this is a per-batch broadcast, not a fan-out).
+    // .combine(norm_ch_feature_selected, by: 0) (keyed on batch_stem —
+    // norm_ch_feature_selected has exactly one entry per surviving
+    // batch_stem, so this is a per-batch broadcast, not a fan-out).
     // NOTE: .join() is NOT a broadcast operator — for a many-to-one key
     // relationship like this one it silently keeps only one match per key
     // and drops the rest, which starves all downstream stages. Only use
@@ -303,11 +403,12 @@ workflow FisseqPipeline {
     agg_half_input_ch = half_ch
         .combine(feature_types_ch)
         // (batch_stem, bootstrap_idx, half_num, index_file, feature_type)
-        .combine(norm_ch, by: 0)
+        .combine(norm_ch_feature_selected, by: 0)
         // (batch_stem, bootstrap_idx, half_num, index_file, feature_type, normalized_parquet)
         .map { batch_stem, bootstrap_idx, half_num, index_file, feature_type, normalized_parquet ->
             tuple(batch_stem, bootstrap_idx, half_num, index_file, feature_type,
-                  normalized_parquet.toString(), "feature_select_batchwise/${batch_stem}")
+                  normalized_parquet.toString(), "feature_select_batchwise/${batch_stem}",
+                  resolvedBatchConfigs[batch_stem].feature_select_downsample_wt)
         }
     AGGREGATE_HALF_BATCHWISE(agg_half_input_ch)
     half_agg_ch = AGGREGATE_HALF_BATCHWISE.out
@@ -336,7 +437,8 @@ workflow FisseqPipeline {
         .groupTuple(by: [0, 1])
         // (batch_stem, feature_type, [correlation_file, ...])  (N = params.feature_select_bootstrap_reps)
         .map { batch_stem, feature_type, correlation_files ->
-            tuple(batch_stem, feature_type, correlation_files, "feature_select_batchwise/${batch_stem}")
+            tuple(batch_stem, feature_type, correlation_files, "feature_select_batchwise/${batch_stem}",
+                  resolvedBatchConfigs[batch_stem].feature_select_min_correlation)
         }
     BLOCKLIST_BATCHWISE(blocklist_input_ch)
     bl_ch = BLOCKLIST_BATCHWISE.out  // (batch_stem, feature_type, blocklist_file)
@@ -353,13 +455,13 @@ workflow FisseqPipeline {
     combined_bl_ch = COMBINE_BLOCKLISTS_BATCHWISE.out  // (batch_stem, combined_blocklist_file)
 
     // Stage 4: group stage-1 output by batch_stem (all feature types' full
-    // aggregates), join norm_ch (raw cells, for metadata), join stage-3's
-    // combined blocklist.
+    // aggregates), join norm_ch_feature_selected (raw cells, for metadata),
+    // join stage-3's combined blocklist.
     finalize_input_ch = agg_ch
         .map { batch_stem, feature_type, agg_file -> tuple(batch_stem, agg_file) }
         .groupTuple(by: 0)
         // (batch_stem, [agg_file, ...])  (N = params.feature_select_types.size())
-        .join(norm_ch)
+        .join(norm_ch_feature_selected)
         .join(combined_bl_ch)
         .map { batch_stem, agg_files, normalized_parquet, combined_bl_file ->
             tuple(batch_stem, agg_files, normalized_parquet.toString(), combined_bl_file,
@@ -367,18 +469,20 @@ workflow FisseqPipeline {
         }
     FINALIZE_FEATURE_SELECT_BATCHWISE(finalize_input_ch)
 
-    // --- Global (within feature selection, additionally gated on params.run_global) ---
+    // --- Global (pipeline-wide-only, gated on params.run_global &&
+    // params.run_feature_selection together) ---
     // Same shape as batchwise, minus the per-batch dimension: a constant
     // global_key stands in for batch_stem for tuple-shape/grouping purposes
     // only, and the "which cells" glob is derived from global_signal instead
     // of norm_ch (exactly like today's global processes glob published output).
-    if (run_global) {
+    if (run_global && run_feature_selection_global) {
         global_key = "global"
 
         agg_global_input_ch = global_signal
             .combine(feature_types_ch)
             .map { d, feature_type ->
-                tuple(global_key, "${d}/normalization/cells/*.parquet", feature_type, "feature_select_global")
+                tuple(global_key, "${d}/normalization/cells/*.parquet", feature_type, "feature_select_global",
+                      params.feature_select_downsample_wt)
             }
         AGGREGATE_FEATURE_TYPE_GLOBAL(agg_global_input_ch)
         agg_global_ch = AGGREGATE_FEATURE_TYPE_GLOBAL.out  // (global_key, feature_type, agg_file)
@@ -403,7 +507,8 @@ workflow FisseqPipeline {
             .combine(global_signal)
             .map { key, bootstrap_idx, half_num, index_file, feature_type, d ->
                 tuple(key, bootstrap_idx, half_num, index_file, feature_type,
-                      "${d}/normalization/cells/*.parquet", "feature_select_global")
+                      "${d}/normalization/cells/*.parquet", "feature_select_global",
+                      params.feature_select_downsample_wt)
             }
         AGGREGATE_HALF_GLOBAL(agg_half_global_input_ch)
         half_agg_global_ch = AGGREGATE_HALF_GLOBAL.out
@@ -424,7 +529,7 @@ workflow FisseqPipeline {
             }
             .groupTuple(by: [0, 1])
             .map { key, feature_type, correlation_files ->
-                tuple(key, feature_type, correlation_files, "feature_select_global")
+                tuple(key, feature_type, correlation_files, "feature_select_global", params.feature_select_min_correlation)
             }
         BLOCKLIST_GLOBAL(blocklist_global_input_ch)
         bl_global_ch = BLOCKLIST_GLOBAL.out  // (global_key, feature_type, blocklist_file)
@@ -445,7 +550,6 @@ workflow FisseqPipeline {
                       combined_bl_file, "feature_select_global")
             }
         FINALIZE_FEATURE_SELECT_GLOBAL(finalize_global_input_ch)
-    }
     }
 
     // ANOVA (normalized) now runs earlier, right after global_signal is

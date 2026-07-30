@@ -327,7 +327,10 @@ fisseq-data-pipeline/
 │   ├── combine_blocklists.nf
 │   └── finalize_feature_select.nf
 ├── workflows/
-│   └── fisseq.nf                  # Main Nextflow workflow DAG
+│   ├── fisseq.nf                  # Main Nextflow workflow DAG
+│   └── ovwt.nf                    # Lighter OvWT-only workflow DAG (--pipeline_mode ovwt)
+├── lib/
+│   └── BatchParams.groovy         # Per-batch YAML override merge/validation (see Gotcha 13)
 ├── main.nf                        # Nextflow entrypoint (dispatches FisseqPipeline/OvwtPipeline)
 ├── nextflow.config                # Default params + commented-out profile stubs (venv/conda/singularity/sge)
 ├── tests/
@@ -545,6 +548,11 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 11. **`aaChanges`/`meta_aa_changes` may carry a `:<tag>` metadata suffix** (e.g. `V123A:downsampled-half`). Two independent things can put a tag there: (a) upstream raw data may already arrive pre-tagged (any raw file fed into `QC_FILTER`, pre-staged or otherwise); (b) `qcfilter.py`'s own optional pseudo-variant downsampling step (`downsample_fraction`), which runs *after* `filter_columns` inside `qcfilter.py:main` and sets `meta_variant_tag` directly on the pseudo rows it generates — those rows never pass through the tag-split step at all, since it already ran earlier in the same call. For any row that arrives with a raw, still-suffixed label, the tag is stripped exactly once, in `qcfilter.py:filter_columns` — `meta_aa_changes` is always the tag-stripped base and `meta_variant_tag` holds the tag (`null` when absent). Every stage after `QC_FILTER` therefore sees clean, pooled variant labels either way; do not re-strip or re-parse tags downstream — if you need to segment on the tag, use `meta_variant_tag` directly. `utils/variant.py:classify_variant` assumes its input is already tag-stripped. Note: `barcode_counts.parquet`/`variants_per_barcode.parquet` are computed by `add_qc_queries` *before* the pseudo-variant downsampling step runs, so they never include pseudo rows, even when `downsample_fraction` is set.
 
 12. **`params.yaml_config_dir`** (optional) generates `input/*.parquet` files via the `INPUT` process instead of requiring them pre-staged. If a batch name exists both as a pre-staged file and as a `yaml_config_dir/*.yaml`, the config-derived version silently wins (the pre-staged file is filtered out of the glob channel in `workflows/fisseq.nf`/`workflows/ovwt.nf`). Like every other process, `INPUT` uses `errorStrategy 'ignore'` — a failed config conversion just drops that batch from the run rather than aborting, so a "missing" batch in the output may mean its `INPUT` task failed, not that it was never requested.
+
+13. **Any batch YAML in `yaml_config_dir` can override most `nextflow.config` params for just that batch** — resolved once per batch, in Groovy, by `lib/BatchParams.groovy`'s `resolve()` (see `docs/nextflow.md`'s "Per-batch parameter overrides" section for the full mechanism; unlike the rest of `docs/`, that section is current and was written alongside this code). Every override is logged via `log.info` at workflow-construction time — never buried in a process script. Three things to keep in mind:
+    - `input_paths` is the one required, batch-YAML-only key with **no** `nextflow.config` default — there's no sensible pipeline-wide default for a per-batch list of raw data files. A batch YAML that omits it fails clearly.
+    - Not every param has a per-batch meaning. `--run_global`, `--batchvsbatch_min_cells`, `--batchvsbatch_min_batches`, `--anova_blocklist_pvalue_threshold`, `--feature_select_types`, and `--feature_select_bootstrap_reps` are consumed only by processes that run once across *all* batches (`BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA_BLOCKLIST`, the `_GLOBAL` feature-selection chain), so they're pipeline-wide-only — a batch YAML that tries to set one of these gets a clear rejection error (distinct wording from the plain-unrecognized-key error), not a silent no-op.
+    - Processes reading a batch-overridable param never receive the whole batch YAML or a merged config map — only the individual resolved scalar(s) they consume, as `val()` inputs. This is deliberate: passing a whole file/map would make Nextflow's `-resume` cache key sensitive to every key in it, so an unrelated change in one batch's YAML would bust the cache for every process that batch feeds. `INPUT` itself no longer takes the raw YAML file as a process input for this same reason — it takes the resolved scalars and rebuilds a minimal YAML from them inside the process script.
 
 ---
 

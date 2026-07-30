@@ -1,5 +1,6 @@
 """Integration tests for the FISSEQ Nextflow pipeline."""
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -811,13 +812,15 @@ def test_ovwt_check_barcodes_results_outputs(
 # ---------------------------------------------------------------------------
 
 
-def _write_input_config(path: Path, source_path: Path) -> None:
+def _write_input_config(path: Path, source_path: Path, **overrides) -> None:
+    cfg = {"input_paths": [str(source_path)]}
+    cfg.update(overrides)
     with open(path, "w") as f:
-        yaml.safe_dump({"input_paths": [str(source_path)]}, f)
+        yaml.safe_dump(cfg, f)
 
 
 def _run_config_dir_pipeline(
-    exp_dir: Path, config_dir: Path
+    exp_dir: Path, config_dir: Path, resume: bool = False
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
@@ -831,6 +834,7 @@ def _run_config_dir_pipeline(
             "--yaml_config_dir",
             str(config_dir),
             *_OVWT_NF_PARAMS,
+            *(["-resume"] if resume else []),
         ],
         cwd=exp_dir,
         capture_output=True,
@@ -892,3 +896,156 @@ def test_config_dir_batch_not_double_processed(config_dir_pipeline_outputs):
     # channel would produce exactly 2x this row count.
     expected_cells = sum(n * c for _, n, c in _VARIANTS.values())
     assert df.shape[0] == expected_cells
+
+
+# ---------------------------------------------------------------------------
+# Per-batch YAML parameter overrides (lib/BatchParams.groovy). Two
+# config-driven batches per test, so both are YAML-controllable, using
+# OvwtPipeline for the same "not bottlenecked by the full DAG" reason as the
+# yaml_config_dir tests above.
+# ---------------------------------------------------------------------------
+
+
+def _two_batch_config_dir(tmp_path_factory, **batch1_overrides):
+    """Set up an experiment dir with two config-driven batches; batch1 gets
+    `**batch1_overrides` merged into its YAML, batch2 has no overrides."""
+    exp_dir = tmp_path_factory.mktemp("nf_batch_override_experiment")
+    raw_dir = tmp_path_factory.mktemp("nf_batch_override_raw")
+    _write_batch(raw_dir / "batch1_source.parquet", seed=1)
+    _write_batch(raw_dir / "batch2_source.parquet", seed=2)
+    config_dir = exp_dir / "configs"
+    config_dir.mkdir()
+    _write_input_config(
+        config_dir / "batch1.yaml",
+        raw_dir / "batch1_source.parquet",
+        **batch1_overrides,
+    )
+    _write_input_config(config_dir / "batch2.yaml", raw_dir / "batch2_source.parquet")
+    return exp_dir, config_dir
+
+
+def test_batch_yaml_numeric_override_takes_effect(tmp_path_factory):
+    # batch1 overrides barcode_count_threshold well above every barcode's
+    # cell count (6), so its filtered_cells.parquet ends up empty; batch2
+    # keeps the pipeline-wide default (3, from _OVWT_NF_PARAMS), which every
+    # barcode clears, keeping the full synthetic dataset.
+    exp_dir, config_dir = _two_batch_config_dir(
+        tmp_path_factory, barcode_count_threshold=1000
+    )
+    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    assert result.returncode == 0, result.stderr
+
+    batch1_df = pl.read_parquet(exp_dir / "qc_filter" / "batch1" / "filtered_cells.parquet")
+    batch2_df = pl.read_parquet(exp_dir / "qc_filter" / "batch2" / "filtered_cells.parquet")
+    assert batch1_df.shape[0] == 0
+    expected_cells = sum(n * c for _, n, c in _VARIANTS.values())
+    assert batch2_df.shape[0] == expected_cells
+
+    # The override must be logged clearly (batch name, key, default, override).
+    assert "batch1" in result.stdout
+    assert "barcode_count_threshold" in result.stdout
+
+
+def test_batch_yaml_gating_override_takes_effect(tmp_path_factory):
+    # Pipeline-wide default leaves run_check_barcodes off; batch1's YAML
+    # turns it on for itself only. barcode_check_min_cells/
+    # single_cell_scores_split come from the CLI defaults below (shared by
+    # both batches) so CHECK_BARCODES has enough per-barcode samples to
+    # compare, matching _CHECK_BARCODES_NF_PARAMS's rationale above.
+    exp_dir, config_dir = _two_batch_config_dir(
+        tmp_path_factory, run_check_barcodes=True
+    )
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--pipeline_mode",
+            "ovwt",
+            "--input_dir",
+            str(exp_dir),
+            "--yaml_config_dir",
+            str(config_dir),
+            *_OVWT_NF_PARAMS,
+            "--barcode_check_min_cells",
+            "2",
+            "--single_cell_scores_split",
+            "train",
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (exp_dir / "check_barcodes" / "batch1" / "results.parquet").exists()
+    assert not (exp_dir / "check_barcodes" / "batch2").exists()
+
+
+def test_batch_yaml_unknown_key_rejected(tmp_path_factory):
+    exp_dir, config_dir = _two_batch_config_dir(
+        tmp_path_factory, totally_bogus_param=1
+    )
+    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "unrecognized" in output
+    assert "batch1" in output
+
+
+def test_batch_yaml_missing_input_paths_rejected(tmp_path_factory):
+    exp_dir = tmp_path_factory.mktemp("nf_missing_input_paths_experiment")
+    config_dir = exp_dir / "configs"
+    config_dir.mkdir()
+    with open(config_dir / "batch1.yaml", "w") as f:
+        yaml.safe_dump({"top_n_missense": 5}, f)
+
+    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "input_paths" in output
+    assert "required" in output
+
+
+def test_batch_yaml_pipeline_wide_key_rejected(tmp_path_factory):
+    exp_dir, config_dir = _two_batch_config_dir(tmp_path_factory, run_global=False)
+    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "pipeline-wide-only" in output
+    # Distinct error path from the unknown-key case above.
+    assert "unrecognized" not in output
+
+
+def test_batch_yaml_unrelated_key_change_does_not_bust_resume_cache(tmp_path_factory):
+    # This is the actual point of the per-batch override mechanism: a batch
+    # process only receives the resolved val() scalars it consumes, never
+    # the whole batch YAML/config map, so an unrelated key change in that
+    # YAML must not invalidate -resume caching for tasks that don't consume
+    # it. feature_select_min_correlation has zero process consumers in
+    # OvwtPipeline (it's only wired into BLOCKLIST_BATCHWISE/_GLOBAL, part
+    # of FisseqPipeline's feature-selection chain, which OvwtPipeline
+    # doesn't have) -- so overriding it for batch1 should leave every task
+    # for both batches cached on the next -resume run.
+    exp_dir, config_dir = _two_batch_config_dir(tmp_path_factory)
+    result1 = _run_config_dir_pipeline(exp_dir, config_dir)
+    assert result1.returncode == 0, result1.stderr
+
+    batch1_yaml_path = config_dir / "batch1.yaml"
+    with open(batch1_yaml_path) as f:
+        cfg = yaml.safe_load(f)
+    cfg["feature_select_min_correlation"] = 0.9
+    with open(batch1_yaml_path, "w") as f:
+        yaml.safe_dump(cfg, f)
+
+    result2 = _run_config_dir_pipeline(exp_dir, config_dir, resume=True)
+    assert result2.returncode == 0, result2.stderr
+    # The override was still resolved and logged...
+    assert "batch1" in result2.stdout
+    assert "feature_select_min_correlation" in result2.stdout
+    # ...but every task from both batches stayed cached -- nothing to
+    # re-run, since no process consumes this key.
+    assert "completed=0" in result2.stdout
+    cached_match = re.search(r"cached=(\d+)", result2.stdout)
+    assert cached_match is not None
+    assert int(cached_match.group(1)) > 0

@@ -10,7 +10,7 @@ process BLOCKLIST {
     publishDir { "${params.input_dir}/${publish_subdir}/blocklists" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir)
+    tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir), val(minimum_correlation)
 
     output:
     tuple val(batch_key), val(feature_type), path("${feature_type}.parquet")
@@ -21,7 +21,7 @@ process BLOCKLIST {
     python -m fisseq_data_pipeline.blocklist \\
         output_dir=. \\
         "correlation_files=*.parquet" \\
-        minimum_correlation=${params.feature_select_min_correlation}
+        minimum_correlation=${minimum_correlation}
     mv blocklist.parquet ${feature_type}.parquet
     """
 }

@@ -25,7 +25,7 @@ process OVWT_BATCHWISE {
     publishDir { "${params.input_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(normalized_parquet), val(feature_block_list_file), val(barcode_block_list_file), val(publish_subdir)
+    tuple val(batch_stem), path(normalized_parquet), val(feature_block_list_file), val(barcode_block_list_file), val(publish_subdir), val(ovwt_min_cells), val(ovwt_downsample_wt)
 
     output:
     tuple val(batch_stem), path("results.parquet"), path("models.pkl"), path("test_index.parquet"), path("train_index.parquet")
@@ -37,8 +37,8 @@ process OVWT_BATCHWISE {
     python -m fisseq_data_pipeline.ovwt \\
         output_dir=. \\
         input_file=${normalized_parquet} \\
-        min_cells=${params.ovwt_min_cells} \\
-        downsample_wt=${params.ovwt_downsample_wt} \\
+        min_cells=${ovwt_min_cells} \\
+        downsample_wt=${ovwt_downsample_wt} \\
         feature_block_list_file=${feature_block_list_file} \\
         barcode_block_list_file=${barcode_block_list_file}
     """

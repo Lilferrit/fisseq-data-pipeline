@@ -22,9 +22,14 @@ input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
 top_n_missense: null              # optional, default null (keep all Single Missense variants)
 feature_allowlist_file: null      # optional, default null (no allowlist)
 feature_blocklist_file: null      # optional, default null (no blocklist)
+convert_first: false              # optional, default false (see below)
+temp_dir: null                    # optional, default $TMPDIR or the system temp dir
 ```
 
 - `input_paths` — one or more raw cell-score files (CSV or Parquet), concatenated.
+  **Required, and batch-YAML-only** — there is no pipeline-wide default for a
+  per-batch list of raw data files (see
+  [Per-batch parameter overrides](../nextflow.md#per-batch-parameter-overrides)).
 - `top_n_missense` — if set, the number of Single Missense variants (by cell
   count) to keep, alongside Synonymous, WT, and Frameshift variants. Omit or
   set to `null` (the default) to keep all Single Missense variants without
@@ -36,6 +41,24 @@ feature_blocklist_file: null      # optional, default null (no blocklist)
   kept; if a blocklist is also given, matching columns are then dropped from
   what remains (allowlist is applied first). Identity columns (`upBarcode`,
   `editDistance`, `aaChanges`) and metadata columns are unaffected.
+- `convert_first` — set to `true` to merge all `input_paths` into a single
+  Parquet file up front (written to `temp_dir`, deleted once the run
+  finishes) before variant classification, instead of re-scanning/
+  re-concatenating the original files on every downstream pass. Only takes
+  effect when `top_n_missense` is also set (that's what causes the extra
+  pass it optimizes for); otherwise this is a no-op even if `true`.
+- `temp_dir` — where `convert_first`'s merged file is written. Defaults to
+  `$TMPDIR` if set, otherwise the system temp directory. Never read when
+  `convert_first` is false (or a no-op per above).
+
+Except for `input_paths`, every field above is also a plain `nextflow.config`
+pipeline-wide default (`params.top_n_missense`, `params.convert_first`,
+`params.temp_dir`, `params.feature_allowlist_file`,
+`params.feature_blocklist_file`) — set one on the command line or in
+`nextflow.config` to apply it to every batch, and/or override it for a
+specific batch in that batch's YAML. See
+[Per-batch parameter overrides](../nextflow.md#per-batch-parameter-overrides)
+for the full mechanism.
 
 ## Output files
 

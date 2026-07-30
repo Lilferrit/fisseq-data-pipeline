@@ -13,7 +13,9 @@ process QC_FILTER {
     publishDir { "${params.input_dir}/qc_filter/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(input_file)
+    tuple val(batch_stem), path(input_file), val(barcode_count_threshold), \
+          val(variant_barcode_count_threshold), val(edit_distance_threshold), \
+          val(qc_downsample_fraction), val(qc_downsample_seed)
 
     output:
     tuple val(batch_stem), \
@@ -28,10 +30,10 @@ process QC_FILTER {
     python -m fisseq_data_pipeline.qcfilter \\
         output_dir=. \\
         'cell_files=[${input_file}]' \\
-        bc_threshold=${params.barcode_count_threshold} \\
-        variant_bc_threshold=${params.variant_barcode_count_threshold} \\
-        edit_distance_threshold=${params.edit_distance_threshold} \\
-        downsample_fraction=${params.qc_downsample_fraction} \\
-        downsample_seed=${params.qc_downsample_seed}
+        bc_threshold=${barcode_count_threshold} \\
+        variant_bc_threshold=${variant_barcode_count_threshold} \\
+        edit_distance_threshold=${edit_distance_threshold} \\
+        downsample_fraction=${qc_downsample_fraction} \\
+        downsample_seed=${qc_downsample_seed}
     """
 }
