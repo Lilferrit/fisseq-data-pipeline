@@ -14,7 +14,7 @@ process CHECK_BARCODES {
     publishDir { "${params.input_dir}/check_barcodes/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(scores_file)
+    tuple val(batch_stem), path(scores_file), val(barcode_check_min_cells), val(barcode_check_alpha)
 
     output:
     tuple val(batch_stem), path("results.parquet")
@@ -25,7 +25,7 @@ process CHECK_BARCODES {
     python -m fisseq_data_pipeline.checkbarcodes \\
         output_dir=. \\
         input_file=${scores_file} \\
-        min_cells=${params.barcode_check_min_cells} \\
-        alpha=${params.barcode_check_alpha}
+        min_cells=${barcode_check_min_cells} \\
+        alpha=${barcode_check_alpha}
     """
 }

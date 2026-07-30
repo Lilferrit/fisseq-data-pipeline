@@ -13,7 +13,7 @@ process BARCODE_BLOCKLIST {
     publishDir { "${params.input_dir}/barcode_blocklist/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(results_file)
+    tuple val(batch_stem), path(results_file), val(barcode_blocklist_pvalue_threshold)
 
     output:
     tuple val(batch_stem), path("barcode_blocklist.parquet")
@@ -24,6 +24,6 @@ process BARCODE_BLOCKLIST {
     python -m fisseq_data_pipeline.barcodeblocklist \\
         output_dir=. \\
         check_barcodes_file=${results_file} \\
-        pvalue_threshold=${params.barcode_blocklist_pvalue_threshold}
+        pvalue_threshold=${barcode_blocklist_pvalue_threshold}
     """
 }
