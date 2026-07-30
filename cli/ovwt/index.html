@@ -1473,6 +1473,16 @@ neither may be set.</p>
 <td>If <code>true</code>, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. <code>false</code> disables downsampling.</td>
 </tr>
 <tr>
+<td><code>max_cells_per_barcode_wt</code></td>
+<td><code>null</code></td>
+<td>Cap cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count, independently of every other barcode. <code>null</code> disables the cap. Applied before <code>min_cells</code> and <code>downsample_wt</code>.</td>
+</tr>
+<tr>
+<td><code>max_cells_per_barcode_variant</code></td>
+<td><code>null</code></td>
+<td>Cap cells per non-wildtype barcode, analogous to <code>max_cells_per_barcode_wt</code>. <code>null</code> disables the cap.</td>
+</tr>
+<tr>
 <td><code>save_splits</code></td>
 <td><code>true</code></td>
 <td>Write lightweight train/test/val index files (row position + source file) to <code>output_dir</code>.</td>

@@ -1862,7 +1862,7 @@ may not exist yet on a first config-driven run.</p>
 <td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FEATURE_FILTERED</code> / <code>_BARCODE_FILTERED</code>)</td>
 <td><code>ovwt_batchwise.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.ovwt</code></td>
-<td>per batch, three times (<code>FisseqPipeline</code>); <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>/<code>BARCODE_BLOCKLIST</code>, <code>_FEATURE_FILTERED</code> depends on <code>ANOVA_BLOCKLIST</code> and is optional (<code>params.run_feature_filtered_ovwt</code>), <code>_BARCODE_FILTERED</code> depends on that batch's <code>BARCODE_BLOCKLIST</code> output and is optional (<code>params.run_barcode_filtered_ovwt</code>)</td>
+<td>per batch, three times (<code>FisseqPipeline</code>); <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>/<code>BARCODE_BLOCKLIST</code> and is optional (<code>params.run_ovwt</code>), <code>_FEATURE_FILTERED</code> depends on <code>ANOVA_BLOCKLIST</code> and is optional (<code>params.run_feature_filtered_ovwt</code>), <code>_BARCODE_FILTERED</code> depends on that batch's <code>BARCODE_BLOCKLIST</code> output and is optional (<code>params.run_barcode_filtered_ovwt</code>)</td>
 </tr>
 <tr>
 <td><code>OVWT_GLOBAL</code></td>
@@ -2066,6 +2066,11 @@ below for why.</p>
 <td>Whether to run the feature-selection branch (batchwise + global) at all.</td>
 </tr>
 <tr>
+<td><code>--run_ovwt</code></td>
+<td><code>true</code></td>
+<td><code>FisseqPipeline</code> only: run <code>OVWT_BATCHWISE_UNFILTERED</code> (the normal/unfiltered per-batch OvWT pass) for that batch. Setting <code>false</code> also disables <code>run_single_cell_scores</code>/<code>run_check_barcodes</code>/<code>run_barcode_filtered_ovwt</code> for that batch regardless of their own settings, since all three consume this pass's output. No effect in <code>OvwtPipeline</code> (its entire purpose is this pass, so it always runs there).</td>
+</tr>
+<tr>
 <td><code>--run_feature_filtered_ovwt</code></td>
 <td><code>true</code></td>
 <td>Run <code>OVWT_BATCHWISE_FEATURE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass. (Renamed from <code>--run_filtered_ovwt</code>.)</td>
@@ -2241,6 +2246,16 @@ overridable per batch exactly like every other parameter here — see
 <td><code>5000</code></td>
 <td>Wildtype downsample target for OvWT classification.</td>
 </tr>
+<tr>
+<td><code>--max_cells_per_barcode_wt</code></td>
+<td><code>null</code></td>
+<td>Optional cap on cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count. <code>null</code> disables the cap.</td>
+</tr>
+<tr>
+<td><code>--max_cells_per_barcode_variant</code></td>
+<td><code>null</code></td>
+<td>Optional cap on cells per non-wildtype barcode, analogous to <code>--max_cells_per_barcode_wt</code>. <code>null</code> disables the cap.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="feature-selection-bootstrap-aggregation-correlation">Feature selection (bootstrap + aggregation + correlation)<a class="headerlink" href="#feature-selection-bootstrap-aggregation-correlation" title="Permanent link">&para;</a></h3>
@@ -2340,7 +2355,7 @@ unrecognized key). Two kinds of parameters fall in this bucket:</p>
   require a much larger restructuring than a simple value override.)</li>
 </ul>
 <p>Every other <code>nextflow.config</code> parameter — including the gating booleans
-<code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
+<code>--run_ovwt</code>, <code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
 <code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, and the <em>batchwise</em>
 effect of <code>--run_feature_selection</code> — is genuinely per-batch overridable.
 Each of these gates only a per-batch-only process or chain, so
