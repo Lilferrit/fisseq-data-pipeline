@@ -616,6 +616,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#input-stage-tunables" class="md-nav__link">
+    <span class="md-ellipsis">
+      INPUT stage tunables
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#qc-filtering-qc_filter" class="md-nav__link">
     <span class="md-ellipsis">
       QC filtering (QC_FILTER)
@@ -673,6 +682,48 @@
   <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
     <span class="md-ellipsis">
       Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-batch-parameter-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      Per-batch parameter overrides
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Per-batch parameter overrides">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#not-every-parameter-is-batch-overridable" class="md-nav__link">
+    <span class="md-ellipsis">
+      Not every parameter is batch-overridable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input_paths-the-one-exception-in-the-other-direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      input_paths: the one exception in the other direction
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why resolved scalars, not the whole config, are passed to processes
     </span>
   </a>
   
@@ -1572,6 +1623,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#input-stage-tunables" class="md-nav__link">
+    <span class="md-ellipsis">
+      INPUT stage tunables
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#qc-filtering-qc_filter" class="md-nav__link">
     <span class="md-ellipsis">
       QC filtering (QC_FILTER)
@@ -1629,6 +1689,48 @@
   <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
     <span class="md-ellipsis">
       Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-batch-parameter-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      Per-batch parameter overrides
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Per-batch parameter overrides">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#not-every-parameter-is-batch-overridable" class="md-nav__link">
+    <span class="md-ellipsis">
+      Not every parameter is batch-overridable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input_paths-the-one-exception-in-the-other-direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      input_paths: the one exception in the other direction
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why resolved scalars, not the whole config, are passed to processes
     </span>
   </a>
   
@@ -1882,6 +1984,16 @@ produced a given batch.</p>
 <p>Like every other process, <code>INPUT</code> uses <code>errorStrategy 'ignore'</code>: a failed conversion
 for one config file simply drops that batch from the run (it is excluded from both
 the glob and the generated channel), rather than aborting the whole pipeline.</p>
+<p><code>INPUT</code> does not receive the batch's hand-authored YAML file directly. Each
+batch's YAML is parsed and merged with the pipeline-wide defaults once, at
+workflow-construction time (see
+<a href="#per-batch-parameter-overrides">Per-batch parameter overrides</a> below), and
+<code>INPUT</code> instead receives the resolved <code>input_paths</code> /<code>top_n_missense</code> /
+<code>convert_first</code> / <code>temp_dir</code> / <code>feature_allowlist_file</code> /
+<code>feature_blocklist_file</code> values as individual process inputs. The process
+script rebuilds a minimal YAML from those values before invoking
+<code>python -m fisseq_data_pipeline.input</code> — see the resume-caching rationale
+below for why.</p>
 <h3 id="feature-selection-channel-wiring">Feature-selection channel wiring<a class="headerlink" href="#feature-selection-channel-wiring" title="Permanent link">&para;</a></h3>
 <p>The feature-selection branch (<code>AGGREGATE_FEATURE_TYPE</code> → <code>GENERATE_SPLIT</code> →
 <code>AGGREGATE_HALF</code> → <code>CORRELATE_FEATURES</code> → <code>BLOCKLIST</code> → <code>COMBINE_BLOCKLISTS</code> →
@@ -1975,6 +2087,47 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 </tr>
 </tbody>
 </table>
+<h3 id="input-stage-tunables">INPUT stage tunables<a class="headerlink" href="#input-stage-tunables" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--top_n_missense</code></td>
+<td><code>null</code></td>
+<td>Number of Single Missense variants (by cell count) <code>INPUT</code> keeps, alongside Synonymous, WT, and Frameshift. <code>null</code> keeps all of them.</td>
+</tr>
+<tr>
+<td><code>--convert_first</code></td>
+<td><code>false</code></td>
+<td><code>INPUT</code>: merge all of a batch's <code>input_paths</code> into one Parquet file up front. Only takes effect when <code>top_n_missense</code> is also set.</td>
+</tr>
+<tr>
+<td><code>--temp_dir</code></td>
+<td><code>null</code></td>
+<td>Where <code>convert_first</code>'s merged file is written; <code>null</code> falls back to <code>$TMPDIR</code>/the system temp dir.</td>
+</tr>
+<tr>
+<td><code>--feature_allowlist_file</code></td>
+<td><code>null</code></td>
+<td><code>INPUT</code>: optional path to a glob-pattern feature allowlist file.</td>
+</tr>
+<tr>
+<td><code>--feature_blocklist_file</code></td>
+<td><code>null</code></td>
+<td><code>INPUT</code>: optional path to a glob-pattern feature blocklist file.</td>
+</tr>
+</tbody>
+</table>
+<p>These mirror <code>INPUT</code>'s per-batch YAML <code>config_path</code> schema (see
+<a href="../cli/input/#config_path-yaml-schema">CLI Reference: Input</a>) and are
+overridable per batch exactly like every other parameter here — see
+<a href="#per-batch-parameter-overrides">Per-batch parameter overrides</a>.</p>
 <h3 id="qc-filtering-qc_filter">QC filtering (<code>QC_FILTER</code>)<a class="headerlink" href="#qc-filtering-qc_filter" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2149,6 +2302,89 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 </tr>
 </tbody>
 </table>
+<h2 id="per-batch-parameter-overrides">Per-batch parameter overrides<a class="headerlink" href="#per-batch-parameter-overrides" title="Permanent link">&para;</a></h2>
+<p>Any batch YAML in <code>--yaml_config_dir</code> may set additional keys beyond
+<code>input_paths</code> to override that batch's own value for a <code>nextflow.config</code>
+parameter — without affecting any other batch. This is resolved once per
+batch, in Groovy, at workflow-construction time, by
+<a href="https://github.com/Lilferrit/fisseq-data-pipeline/blob/main/lib/BatchParams.groovy"><code>lib/BatchParams.groovy</code></a>'s
+<code>resolve()</code> function: it merges that batch's YAML on top of the pipeline-wide
+defaults, validates every key, and returns the merged result plus a list of
+which keys were actually overridden. Both <code>workflows/fisseq.nf</code> and
+<code>workflows/ovwt.nf</code> call this once per batch YAML file and log each override
+via <code>log.info</code> — e.g.:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Batch &#39;batch3&#39;: overriding barcode_count_threshold (default=10) -&gt; 3
+</code></pre></div>
+<h3 id="not-every-parameter-is-batch-overridable">Not every parameter is batch-overridable<a class="headerlink" href="#not-every-parameter-is-batch-overridable" title="Permanent link">&para;</a></h3>
+<p>Some <code>nextflow.config</code> parameters are <strong>pipeline-wide-only</strong> and cannot be
+set from a batch YAML — a batch YAML that tries gets a clear rejection error
+at config-resolution time, distinct from the error for a genuine typo (an
+unrecognized key). Two kinds of parameters fall in this bucket:</p>
+<ul>
+<li><strong>Meta/bootstrap parameters</strong> needed just to find and validate batch
+  YAMLs in the first place — <code>--pipeline_mode</code>, <code>--input_dir</code>,
+  <code>--yaml_config_dir</code>. There's a chicken-and-egg problem: these have to be
+  resolved before any batch config can even be located.</li>
+<li><strong>Parameters with no per-batch consumer.</strong> Several processes run once
+  across <em>all</em> batches rather than per batch — <code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>,
+  <code>ANOVA_BLOCKLIST</code> (derived from <code>ANOVA_NORMALIZED</code>, which globs the entire
+  <code>input_dir</code>, not one batch), and the <code>_GLOBAL</code>-suffixed feature-selection
+  chain. Params consumed only by those processes — <code>--run_global</code>,
+  <code>--batchvsbatch_min_cells</code>, <code>--batchvsbatch_min_batches</code>,
+  <code>--anova_blocklist_pvalue_threshold</code>, <code>--feature_select_types</code>,
+  <code>--feature_select_bootstrap_reps</code> — have no batch to attach a per-batch
+  override to, so they stay pipeline-wide-only. (<code>--feature_select_types</code>
+  and <code>--feature_select_bootstrap_reps</code> specifically determine shared
+  fan-out <em>cardinality</em> — how many feature-type/bootstrap tasks exist at
+  all — not a per-batch scalar value, so letting them vary per batch would
+  require a much larger restructuring than a simple value override.)</li>
+</ul>
+<p>Every other <code>nextflow.config</code> parameter — including the gating booleans
+<code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
+<code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, and the <em>batchwise</em>
+effect of <code>--run_feature_selection</code> — is genuinely per-batch overridable.
+Each of these gates only a per-batch-only process or chain, so
+<code>workflows/fisseq.nf</code> implements them as a per-batch channel <code>.filter()</code>
+(via a <code>batchGates()</code> helper that also encodes the "<code>run_check_barcodes</code>
+implies <code>run_single_cell_scores</code>" / "<code>run_barcode_filtered_ovwt</code> only takes
+effect once <code>run_check_barcodes</code> is true" rules) rather than a workflow-scope
+<code>if</code>. <code>--run_feature_selection</code>'s <em>global</em> sub-branch (the <code>_GLOBAL</code>
+feature-selection chain) remains pipeline-wide-only, gated on
+<code>params.run_global &amp;&amp; params.run_feature_selection</code> together, since that
+chain has no per-batch identity either.</p>
+<p>Parameters shared between a per-batch process and a global-only process
+(<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
+<code>--feature_select_min_correlation</code>) are overridable per batch for their
+batchwise consumer only (<code>OVWT_BATCHWISE</code>, <code>AGGREGATE_FEATURE_TYPE_BATCHWISE</code>
+/ <code>AGGREGATE_HALF_BATCHWISE</code>, <code>BLOCKLIST_BATCHWISE</code>) — their global
+counterpart (<code>OVWT_GLOBAL</code>, the <code>_GLOBAL</code> feature-selection processes)
+always uses the plain pipeline-wide value directly, regardless of any
+batch's override.</p>
+<h3 id="input_paths-the-one-exception-in-the-other-direction"><code>input_paths</code>: the one exception in the other direction<a class="headerlink" href="#input_paths-the-one-exception-in-the-other-direction" title="Permanent link">&para;</a></h3>
+<p><code>input_paths</code> (the list of raw cell-score file paths for a batch) is
+<strong>required in every batch YAML and has no <code>nextflow.config</code> default at
+all</strong> — it is intentionally excluded from the override-symmetry described
+above. There is no sensible pipeline-wide default for a per-batch list of
+data files: unlike a threshold or a boolean gate, a default <code>input_paths</code>
+would look like something batches inherit, when in practice every batch
+must supply its own. A batch YAML that omits it fails clearly at
+config-resolution time rather than silently proceeding with no data.</p>
+<h3 id="why-resolved-scalars-not-the-whole-config-are-passed-to-processes">Why resolved scalars, not the whole config, are passed to processes<a class="headerlink" href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" title="Permanent link">&para;</a></h3>
+<p>Every process that consumes a per-batch-overridable value receives it as an
+individual <code>val()</code> input (e.g. <code>QC_FILTER</code> takes
+<code>barcode_count_threshold</code>/<code>variant_barcode_count_threshold</code>/... as five
+separate <code>val()</code>s), never a whole config map or the raw YAML file. Nextflow's
+<code>-resume</code> cache key for a task is derived from its declared inputs — if a
+whole file or map were passed, changing <em>any</em> key in it (even one that
+process doesn't consume) would bust the cache for every task built from it.
+Passing only the specific scalars a process actually reads means an
+unrelated key change in one batch's YAML — or a non-semantic edit to it —
+does not invalidate that batch's tasks on the next <code>-resume</code> run. This is
+also why <code>INPUT</code> no longer receives the batch's YAML file directly (see
+<a href="#optional-input-stage">Optional INPUT stage</a> above): it now takes the
+resolved scalars as <code>val()</code> inputs and rebuilds a minimal YAML from them
+inside the process script, so only those scalars — not the original file's
+bytes — determine its cache key.</p>
 <h2 id="profiles">Profiles<a class="headerlink" href="#profiles" title="Permanent link">&para;</a></h2>
 <p><code>nextflow.config</code> also ships commented-out profile stubs for <code>venv</code>, <code>conda</code>,
 <code>singularity</code>, and <code>sge</code> executors — see <a href="../installation/#cluster-hpc">Installation</a>
