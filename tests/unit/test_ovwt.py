@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 from fisseq_data_pipeline.ovwt import (
     _exclude_blocked_barcodes,
     _exclude_blocked_features,
+    downsample_per_barcode,
     downsample_wildtype,
     filter_min_cells,
     get_dmatrix,
@@ -43,6 +44,8 @@ def _split_cfg(label_column: str = "label") -> OmegaConf:
             "feature_cols": None,
             "min_cells": None,
             "downsample_wt": False,
+            "max_cells_per_barcode_wt": None,
+            "max_cells_per_barcode_variant": None,
             "feature_block_list_file": None,
             "barcode_block_list_file": None,
             "barcode_column": "meta_barcode",
@@ -260,6 +263,106 @@ def test_downsample_wildtype_integer_no_op_when_wt_equals_target():
 
 
 # ---------------------------------------------------------------------------
+# downsample_per_barcode
+# ---------------------------------------------------------------------------
+
+
+def _make_per_barcode_df(
+    wt_barcode_counts: dict[str, int],
+    variant_barcode_counts: dict[str, int],
+    variant_label: str = "V1",
+) -> pl.DataFrame:
+    """Build a DataFrame with explicit per-barcode cell counts, split WT/variant."""
+    rng = np.random.default_rng(0)
+    barcodes: list[str] = []
+    labels: list[str] = []
+    for bc, n in wt_barcode_counts.items():
+        barcodes.extend([bc] * n)
+        labels.extend(["WT"] * n)
+    for bc, n in variant_barcode_counts.items():
+        barcodes.extend([bc] * n)
+        labels.extend([variant_label] * n)
+    return pl.DataFrame(
+        {
+            "Intensity_Mean": rng.random(len(labels)).tolist(),
+            "label": labels,
+            "meta_barcode": barcodes,
+        }
+    )
+
+
+def test_downsample_per_barcode_caps_wt_barcode():
+    df = _make_per_barcode_df({"bc1": 50, "bc2": 10}, {"bc_v1": 20})
+    result = downsample_per_barcode(
+        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20
+    )
+    counts = result.filter(pl.col("label") == "WT").group_by("meta_barcode").len()
+    assert counts.filter(pl.col("meta_barcode") == "bc1")["len"][0] == 20
+    assert counts.filter(pl.col("meta_barcode") == "bc2")["len"][0] == 10
+
+
+def test_downsample_per_barcode_caps_variant_barcode():
+    df = _make_per_barcode_df({"bc1": 10}, {"bc_v1": 50, "bc_v2": 5})
+    result = downsample_per_barcode(
+        df, "meta_barcode", "label", "WT", seed=0, max_cells_variant=15
+    )
+    counts = result.filter(pl.col("label") != "WT").group_by("meta_barcode").len()
+    assert counts.filter(pl.col("meta_barcode") == "bc_v1")["len"][0] == 15
+    assert counts.filter(pl.col("meta_barcode") == "bc_v2")["len"][0] == 5
+
+
+def test_downsample_per_barcode_caps_are_independent():
+    df = _make_per_barcode_df({"bc1": 50}, {"bc_v1": 30})
+    result = downsample_per_barcode(
+        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20, max_cells_variant=10
+    )
+    assert (result.get_column("label") == "WT").sum() == 20
+    assert (result.get_column("label") == "V1").sum() == 10
+
+
+def test_downsample_per_barcode_none_caps_no_op():
+    df = _make_per_barcode_df({"bc1": 50}, {"bc_v1": 30})
+    result = downsample_per_barcode(df, "meta_barcode", "label", "WT", seed=0)
+    assert len(result) == len(df)
+
+
+def test_downsample_per_barcode_no_op_when_already_under_cap():
+    df = _make_per_barcode_df({"bc1": 5}, {"bc_v1": 5})
+    result = downsample_per_barcode(
+        df,
+        "meta_barcode",
+        "label",
+        "WT",
+        seed=0,
+        max_cells_wt=100,
+        max_cells_variant=100,
+    )
+    assert len(result) == len(df)
+
+
+def test_downsample_per_barcode_reproducible_with_same_seed():
+    df = _make_per_barcode_df({"bc1": 50}, {"bc_v1": 30})
+    result1 = downsample_per_barcode(
+        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20
+    )
+    result2 = downsample_per_barcode(
+        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20
+    )
+    assert sorted(result1["Intensity_Mean"].to_list()) == sorted(
+        result2["Intensity_Mean"].to_list()
+    )
+
+
+def test_downsample_per_barcode_multiple_barcodes_capped_independently():
+    df = _make_per_barcode_df({"bc1": 30, "bc2": 40}, {})
+    result = downsample_per_barcode(
+        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=25
+    )
+    counts = result.group_by("meta_barcode").len().sort("meta_barcode")
+    assert counts["len"].to_list() == [25, 25]
+
+
+# ---------------------------------------------------------------------------
 # filter_min_cells
 # ---------------------------------------------------------------------------
 
@@ -370,6 +473,8 @@ def test_train_test_val_split_row_idx_excludes_filtered_rows():
             "feature_cols": None,
             "min_cells": 10,
             "downsample_wt": False,
+            "max_cells_per_barcode_wt": None,
+            "max_cells_per_barcode_variant": None,
             "feature_block_list_file": None,
             "barcode_block_list_file": None,
             "barcode_column": "meta_barcode",
@@ -592,8 +697,71 @@ def test_train_test_val_split_barcode_filter_can_push_variant_below_min_cells(
             "feature_cols": None,
             "min_cells": 5,
             "downsample_wt": False,
+            "max_cells_per_barcode_wt": None,
+            "max_cells_per_barcode_variant": None,
             "feature_block_list_file": None,
             "barcode_block_list_file": str(barcode_path),
+            "barcode_column": "meta_barcode",
+        }
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    for split in (train, test, val):
+        assert "V1" not in split["label"].to_list()
+
+
+def test_train_test_val_split_max_cells_per_barcode_wt_caps_total_wt_rows():
+    rng = np.random.default_rng(0)
+    df = pl.DataFrame(
+        {
+            "Intensity_Mean": rng.random(40).tolist(),
+            "label": ["WT"] * 30 + ["V1"] * 10,
+            "meta_barcode": ["bc_wt"] * 30 + ["bc_v1"] * 10,
+        }
+    )
+    cfg = OmegaConf.create(
+        {
+            "label_column": "label",
+            "wt_label": "WT",
+            "random_state": 0,
+            "feature_cols": None,
+            "min_cells": None,
+            "downsample_wt": False,
+            "max_cells_per_barcode_wt": 10,
+            "max_cells_per_barcode_variant": None,
+            "feature_block_list_file": None,
+            "barcode_block_list_file": None,
+            "barcode_column": "meta_barcode",
+        }
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    total_wt = sum((split["label"] == "WT").sum() for split in (train, test, val))
+    assert total_wt == 10
+
+
+def test_train_test_val_split_max_cells_per_barcode_variant_can_push_variant_below_min_cells():
+    # V1 has 10 cells, all on barcode "bc_v1" -- capping that barcode to 3
+    # cells drops V1 to below min_cells=5, so it should be excluded entirely
+    # (same "downstream effect" pattern as the barcode-block-list test above).
+    rng = np.random.default_rng(0)
+    df = pl.DataFrame(
+        {
+            "Intensity_Mean": rng.random(20).tolist(),
+            "label": ["WT"] * 10 + ["V1"] * 10,
+            "meta_barcode": ["bc_wt"] * 10 + ["bc_v1"] * 10,
+        }
+    )
+    cfg = OmegaConf.create(
+        {
+            "label_column": "label",
+            "wt_label": "WT",
+            "random_state": 0,
+            "feature_cols": None,
+            "min_cells": 5,
+            "downsample_wt": False,
+            "max_cells_per_barcode_wt": None,
+            "max_cells_per_barcode_variant": 3,
+            "feature_block_list_file": None,
+            "barcode_block_list_file": None,
             "barcode_column": "meta_barcode",
         }
     )

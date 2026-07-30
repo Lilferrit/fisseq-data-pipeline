@@ -9,7 +9,8 @@ nextflow.enable.dsl = 2
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
 // gated by params.run_global (default true); ANOVA, ANOVA_BLOCKLIST, and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
-// OVWT_BATCHWISE_UNFILTERED additionally optionally feeds
+// OVWT_BATCHWISE_UNFILTERED is itself gated per batch by params.run_ovwt
+// (default true). It additionally optionally feeds
 // OVWT_CELLSCORES_BATCHWISE (per batch, gated by params.run_single_cell_scores,
 // scoring params.single_cell_scores_split's "test" or "train" split), which
 // in turn optionally feeds CHECK_BARCODES (per batch, gated by
@@ -22,7 +23,10 @@ nextflow.enable.dsl = 2
 // enough; run_barcode_filtered_ovwt does NOT force run_check_barcodes on --
 // it only takes effect once run_check_barcodes is independently true, so the
 // default (run_check_barcodes=false) output set is unaffected by
-// run_barcode_filtered_ovwt's own default.
+// run_barcode_filtered_ovwt's own default. run_ovwt=false short-circuits
+// this entire chain for that batch (single-cell-scores/check-barcodes/
+// barcode-filtered-ovwt all consume OVWT_BATCHWISE_UNFILTERED's output),
+// regardless of those params' own settings.
 // See AGENTS.md's "Project overview" DAG diagram for the full picture.
 include { INPUT                     } from '../modules/local/input'
 include { QC_FILTER                 } from '../modules/local/qc_filter'
@@ -77,11 +81,14 @@ workflow FisseqPipeline {
         barcode_blocklist_pvalue_threshold: params.barcode_blocklist_pvalue_threshold,
         ovwt_min_cells                    : params.ovwt_min_cells,
         ovwt_downsample_wt                : params.ovwt_downsample_wt,
+        max_cells_per_barcode_wt          : params.max_cells_per_barcode_wt,
+        max_cells_per_barcode_variant     : params.max_cells_per_barcode_variant,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
         barcode_check_min_cells           : params.barcode_check_min_cells,
         barcode_check_alpha               : params.barcode_check_alpha,
         single_cell_scores_split          : params.single_cell_scores_split,
+        run_ovwt                          : params.run_ovwt.toString().toBoolean(),
         run_feature_filtered_ovwt         : params.run_feature_filtered_ovwt.toString().toBoolean(),
         run_single_cell_scores            : params.run_single_cell_scores.toString().toBoolean(),
         run_check_barcodes                : params.run_check_barcodes.toString().toBoolean(),
@@ -152,6 +159,7 @@ workflow FisseqPipeline {
         def cfg = resolvedBatchConfigs[stem]
         def runCheckBarcodes = cfg.run_check_barcodes.toString().toBoolean()
         [
+            run_ovwt                 : cfg.run_ovwt.toString().toBoolean(),
             run_check_barcodes       : runCheckBarcodes,
             run_single_cell_scores   : cfg.run_single_cell_scores.toString().toBoolean() || runCheckBarcodes,
             run_barcode_filtered_ovwt: cfg.run_barcode_filtered_ovwt.toString().toBoolean() && runCheckBarcodes,
@@ -264,14 +272,25 @@ workflow FisseqPipeline {
 
     // Step 5: OvWT — batchwise, unfiltered + feature-filtered (barcode-filtered
     // is wired below, after CHECK_BARCODES/BARCODE_BLOCKLIST are available).
-    // Unfiltered: unchanged, no dependency on ANOVA_BLOCKLIST, always runs
-    // for every batch (no gate).
-    OVWT_BATCHWISE_UNFILTERED(
-        norm_ch.map { stem, p ->
+    // Unfiltered: no dependency on ANOVA_BLOCKLIST, per-batch gated on
+    // run_ovwt (default true, preserving the old "always runs" behavior).
+    // Since score_source_ch/CHECK_BARCODES/BARCODE_BLOCKLIST/
+    // OVWT_BATCHWISE_BARCODE_FILTERED below all consume this process's
+    // *output*, run_ovwt=false for a batch means that batch emits nothing
+    // here and therefore nothing downstream through that whole chain either
+    // -- regardless of that batch's own run_single_cell_scores/
+    // run_check_barcodes/run_barcode_filtered_ovwt settings. This falls out
+    // automatically from filtering the input channel (no separate "implies"
+    // logic needed, unlike the run_check_barcodes/run_single_cell_scores
+    // pair below).
+    ovwt_unfiltered_input_ch = norm_ch
+        .filter { stem, p -> batchGates.call(stem).run_ovwt }
+        .map { stem, p ->
             def cfg = resolvedBatchConfigs[stem]
-            tuple(stem, p, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
+            tuple(stem, p, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
+                  cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
         }
-    )
+    OVWT_BATCHWISE_UNFILTERED(ovwt_unfiltered_input_ch)
     // Feature-filtered: broadcasts the single ANOVA_BLOCKLIST output onto
     // every per-batch tuple, same .combine() idiom as BATCH_CORRECT_TRANSFORM
     // below. Called unconditionally in Groovy source; batches whose resolved
@@ -282,7 +301,8 @@ workflow FisseqPipeline {
         .filter { stem, p, bl -> batchGates.call(stem).run_feature_filtered_ovwt }
         .map { stem, p, bl ->
             def cfg = resolvedBatchConfigs[stem]
-            tuple(stem, p, bl, null, "ovwt_batchwise_feature_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
+            tuple(stem, p, bl, null, "ovwt_batchwise_feature_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
+                  cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
         }
     OVWT_BATCHWISE_FEATURE_FILTERED(feature_filtered_input_ch)
 
@@ -328,7 +348,8 @@ workflow FisseqPipeline {
         norm_ch.join(barcode_blocklist_ch)
             .map { stem, p, bl ->
                 def cfg = resolvedBatchConfigs[stem]
-                tuple(stem, p, null, bl, "ovwt_batchwise_barcode_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
+                tuple(stem, p, null, bl, "ovwt_batchwise_barcode_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
+                      cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
             }
     )
 

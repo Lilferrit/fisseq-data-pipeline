@@ -28,6 +28,8 @@ class BatchParams {
         // workflows/fisseq.nf)
         'ovwt_min_cells',
         'ovwt_downsample_wt',
+        'max_cells_per_barcode_wt',
+        'max_cells_per_barcode_variant',
         // feature-selection batchwise chain (shared names with the global
         // chain, which always uses the plain params.X default)
         'feature_select_downsample_wt',
@@ -38,6 +40,7 @@ class BatchParams {
         // which OVWT_BATCHWISE split feeds OVWT_CELLSCORES_BATCHWISE
         'single_cell_scores_split',
         // gating booleans with a per-batch-only effect
+        'run_ovwt',
         'run_feature_filtered_ovwt',
         'run_single_cell_scores',
         'run_check_barcodes',
