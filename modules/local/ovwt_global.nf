@@ -25,6 +25,8 @@ process OVWT_GLOBAL {
         "input_file=${input_dir}/normalization/cells/*.parquet" \\
         min_cells=${params.ovwt_min_cells} \\
         downsample_wt=${params.ovwt_downsample_wt} \\
+        max_cells_per_barcode_wt=${params.max_cells_per_barcode_wt} \\
+        max_cells_per_barcode_variant=${params.max_cells_per_barcode_variant} \\
         feature_block_list_file=${feature_block_list_file}
     """
 }

@@ -935,8 +935,12 @@ def test_batch_yaml_numeric_override_takes_effect(tmp_path_factory):
     result = _run_config_dir_pipeline(exp_dir, config_dir)
     assert result.returncode == 0, result.stderr
 
-    batch1_df = pl.read_parquet(exp_dir / "qc_filter" / "batch1" / "filtered_cells.parquet")
-    batch2_df = pl.read_parquet(exp_dir / "qc_filter" / "batch2" / "filtered_cells.parquet")
+    batch1_df = pl.read_parquet(
+        exp_dir / "qc_filter" / "batch1" / "filtered_cells.parquet"
+    )
+    batch2_df = pl.read_parquet(
+        exp_dir / "qc_filter" / "batch2" / "filtered_cells.parquet"
+    )
     assert batch1_df.shape[0] == 0
     expected_cells = sum(n * c for _, n, c in _VARIANTS.values())
     assert batch2_df.shape[0] == expected_cells
@@ -983,9 +987,7 @@ def test_batch_yaml_gating_override_takes_effect(tmp_path_factory):
 
 
 def test_batch_yaml_unknown_key_rejected(tmp_path_factory):
-    exp_dir, config_dir = _two_batch_config_dir(
-        tmp_path_factory, totally_bogus_param=1
-    )
+    exp_dir, config_dir = _two_batch_config_dir(tmp_path_factory, totally_bogus_param=1)
     result = _run_config_dir_pipeline(exp_dir, config_dir)
     assert result.returncode != 0
     output = result.stdout + result.stderr

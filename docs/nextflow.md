@@ -61,7 +61,7 @@ Every process wraps one `python -m fisseq_data_pipeline.<module>` invocation (se
 | `QC_FILTER` | `qc_filter.nf` | `python -m fisseq_data_pipeline.qcfilter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `python -m fisseq_data_pipeline.normalize` | per batch |
 | `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `python -m fisseq_data_pipeline.batchvsbatch` | global, twice, optional (`params.run_global`); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
-| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FEATURE_FILTERED` / `_BARCODE_FILTERED`) | `ovwt_batchwise.nf` | `python -m fisseq_data_pipeline.ovwt` | per batch, three times (`FisseqPipeline`); `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`/`BARCODE_BLOCKLIST`, `_FEATURE_FILTERED` depends on `ANOVA_BLOCKLIST` and is optional (`params.run_feature_filtered_ovwt`), `_BARCODE_FILTERED` depends on that batch's `BARCODE_BLOCKLIST` output and is optional (`params.run_barcode_filtered_ovwt`) |
+| `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FEATURE_FILTERED` / `_BARCODE_FILTERED`) | `ovwt_batchwise.nf` | `python -m fisseq_data_pipeline.ovwt` | per batch, three times (`FisseqPipeline`); `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`/`BARCODE_BLOCKLIST` and is optional (`params.run_ovwt`), `_FEATURE_FILTERED` depends on `ANOVA_BLOCKLIST` and is optional (`params.run_feature_filtered_ovwt`), `_BARCODE_FILTERED` depends on that batch's `BARCODE_BLOCKLIST` output and is optional (`params.run_barcode_filtered_ovwt`) |
 | `OVWT_GLOBAL` | `ovwt_global.nf` | `python -m fisseq_data_pipeline.ovwt` | global, optional (`params.run_global`); always feature-filtered against `ANOVA_BLOCKLIST` |
 | `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `python -m fisseq_data_pipeline.ovwtcellscores` | per batch; optional in `FisseqPipeline` (`params.run_single_cell_scores`), always runs in `OvwtPipeline` |
 | `CHECK_BARCODES` | `check_barcodes.nf` | `python -m fisseq_data_pipeline.checkbarcodes` | per batch, optional (`params.run_check_barcodes`, which also forces `run_single_cell_scores` on) |
@@ -162,6 +162,7 @@ Defaults live in `nextflow.config` at the repo root:
 | --------- | ------- | ----------- |
 | `--run_global` | `true` | Whether to run `OVWT_GLOBAL`, `BATCHVSBATCH`, and the global feature-selection branch. |
 | `--run_feature_selection` | `true` | Whether to run the feature-selection branch (batchwise + global) at all. |
+| `--run_ovwt` | `true` | `FisseqPipeline` only: run `OVWT_BATCHWISE_UNFILTERED` (the normal/unfiltered per-batch OvWT pass) for that batch. Setting `false` also disables `run_single_cell_scores`/`run_check_barcodes`/`run_barcode_filtered_ovwt` for that batch regardless of their own settings, since all three consume this pass's output. No effect in `OvwtPipeline` (its entire purpose is this pass, so it always runs there). |
 | `--run_feature_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_FEATURE_FILTERED` (per-batch OvWT filtered against `anova_blocklist/anova_blocklist.parquet`). Set `false` to skip it and keep only the unfiltered pass. (Renamed from `--run_filtered_ovwt`.) |
 | `--run_single_cell_scores` | `false` | `FisseqPipeline` only: run `OVWT_CELLSCORES_BATCHWISE` per batch after `OVWT_BATCHWISE_UNFILTERED`. Always on in `OvwtPipeline`. Forced on if `--run_check_barcodes true`. |
 | `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--run_single_cell_scores true`. |
@@ -217,6 +218,8 @@ overridable per batch exactly like every other parameter here — see
 | --------- | ------- | ----------- |
 | `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
 | `--ovwt_downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
+| `--max_cells_per_barcode_wt` | `null` | Optional cap on cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count. `null` disables the cap. |
+| `--max_cells_per_barcode_variant` | `null` | Optional cap on cells per non-wildtype barcode, analogous to `--max_cells_per_barcode_wt`. `null` disables the cap. |
 
 ### Feature selection (bootstrap + aggregation + correlation)
 
@@ -278,7 +281,7 @@ unrecognized key). Two kinds of parameters fall in this bucket:
   require a much larger restructuring than a simple value override.)
 
 Every other `nextflow.config` parameter — including the gating booleans
-`--run_feature_filtered_ovwt`, `--run_single_cell_scores`,
+`--run_ovwt`, `--run_feature_filtered_ovwt`, `--run_single_cell_scores`,
 `--run_check_barcodes`, `--run_barcode_filtered_ovwt`, and the *batchwise*
 effect of `--run_feature_selection` — is genuinely per-batch overridable.
 Each of these gates only a per-batch-only process or chain, so

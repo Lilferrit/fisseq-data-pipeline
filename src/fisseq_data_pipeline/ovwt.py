@@ -65,6 +65,15 @@ class OvwtConfig(LabeledInputConfig):
         variant group before splitting. If an integer, downsample to that
         exact count (no-op if wildtype count is already at or below the
         target). ``False`` disables downsampling. Defaults to ``True``.
+    max_cells_per_barcode_wt : int or None
+        Maximum cells allowed for any single wildtype barcode. Barcodes
+        exceeding this are randomly downsampled to this count, independently
+        of every other barcode. ``None`` disables this cap. Applied before
+        ``min_cells`` filtering and ``downsample_wt``. Defaults to ``None``.
+    max_cells_per_barcode_variant : int or None
+        Maximum cells allowed for any single non-wildtype barcode, analogous
+        to ``max_cells_per_barcode_wt``. ``None`` disables this cap. Defaults
+        to ``None``.
     save_splits : bool
         If ``True``, write lightweight train/test/val index files to
         ``output_dir``. Each file records the original row position and source
@@ -95,6 +104,8 @@ class OvwtConfig(LabeledInputConfig):
     feature_cols: Optional[list] = None
     min_cells: Optional[int] = 250
     downsample_wt: Union[bool, int] = True
+    max_cells_per_barcode_wt: Optional[int] = None
+    max_cells_per_barcode_variant: Optional[int] = None
     save_splits: bool = True
     feature_block_list_file: Optional[str] = None
     barcode_block_list_file: Optional[str] = None
@@ -280,6 +291,63 @@ def read_feature_file(file_path: PathLike) -> pl.DataFrame:
         )
 
 
+def downsample_per_barcode(
+    data_df: pl.DataFrame,
+    barcode_column: str,
+    label_col: str,
+    wt_label: str,
+    seed: int,
+    max_cells_wt: Optional[int] = None,
+    max_cells_variant: Optional[int] = None,
+) -> pl.DataFrame:
+    """
+    Cap each barcode's cell count independently, per wildtype/variant status.
+
+    Wildtype rows (``label_col == wt_label``) and variant rows are handled as
+    separate partitions, each with its own cap. Within a partition, any
+    barcode with more rows than its cap is randomly downsampled to exactly
+    that many rows; barcodes at or below the cap are left untouched.
+
+    Parameters
+    ----------
+    data_df : pl.DataFrame
+        DataFrame containing all variant and wildtype rows, including
+        ``barcode_column``.
+    barcode_column : str
+        Name of the column identifying each cell's barcode.
+    label_col : str
+        Name of the label column.
+    wt_label : str
+        Label string identifying wildtype rows.
+    seed : int
+        Random seed for per-barcode sampling.
+    max_cells_wt : int or None
+        Maximum rows per wildtype barcode. ``None`` disables capping for
+        wildtype rows.
+    max_cells_variant : int or None
+        Maximum rows per non-wildtype barcode. ``None`` disables capping for
+        variant rows.
+
+    Returns
+    -------
+    pl.DataFrame
+        ``data_df`` with over-cap barcodes downsampled.
+    """
+    if max_cells_wt is None and max_cells_variant is None:
+        return data_df
+
+    def _cap(df: pl.DataFrame, max_cells: Optional[int]) -> pl.DataFrame:
+        if max_cells is None or len(df) == 0:
+            return df
+        shuffled = df.sample(fraction=1.0, shuffle=True, seed=seed)
+        row_in_barcode = pl.int_range(pl.len()).over(barcode_column)
+        return shuffled.filter(row_in_barcode < max_cells)
+
+    wt_df = _cap(data_df.filter(pl.col(label_col) == wt_label), max_cells_wt)
+    variant_df = _cap(data_df.filter(pl.col(label_col) != wt_label), max_cells_variant)
+    return pl.concat([variant_df, wt_df])
+
+
 def downsample_wildtype(
     data_df: pl.DataFrame,
     label_col: str,
@@ -447,7 +515,8 @@ def train_test_val_split(
         Full feature DataFrame containing feature columns and ``cfg.label_column``.
     cfg : DictConfig
         Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
-        ``min_cells``, ``downsample_wt``, ``random_state``,
+        ``min_cells``, ``downsample_wt``, ``max_cells_per_barcode_wt``,
+        ``max_cells_per_barcode_variant``, ``random_state``,
         ``feature_block_list_file``, ``barcode_block_list_file``, and
         ``barcode_column``.
 
@@ -477,6 +546,20 @@ def train_test_val_split(
     # excluded as a result.
     data_df = _exclude_blocked_barcodes(
         data_df, cfg.barcode_column, cfg.barcode_block_list_file
+    )
+    # Per-barcode cap applied here too, for the same reason as the
+    # barcode-blocklist filter above: barcode_column must still be present,
+    # and running before min_cells filtering means a variant that drops
+    # below min_cells purely because its barcode(s) got capped is correctly
+    # excluded as a result.
+    data_df = downsample_per_barcode(
+        data_df,
+        cfg.barcode_column,
+        label_col,
+        cfg.wt_label,
+        cfg.random_state,
+        max_cells_wt=cfg.max_cells_per_barcode_wt,
+        max_cells_variant=cfg.max_cells_per_barcode_variant,
     )
     select_cols = feature_cols + [label_col]
     data_df = data_df.select(select_cols + ["__row_idx__"])

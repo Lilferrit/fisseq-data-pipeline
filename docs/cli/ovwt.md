@@ -28,6 +28,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `feature_cols` | `null` | Explicit list of feature column names; auto-detected if `null`. |
 | `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Nextflow Workflow](../nextflow.md#parameters). |
 | `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
+| `max_cells_per_barcode_wt` | `null` | Cap cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count, independently of every other barcode. `null` disables the cap. Applied before `min_cells` and `downsample_wt`. |
+| `max_cells_per_barcode_variant` | `null` | Cap cells per non-wildtype barcode, analogous to `max_cells_per_barcode_wt`. `null` disables the cap. |
 | `save_splits` | `true` | Write lightweight train/test/val index files (row position + source file) to `output_dir`. |
 | `feature_block_list_file` | `null` | (renamed from `block_list_file`) Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.anovablocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
 | `barcode_block_list_file` | `null` | Optional path to a parquet file with `barcode` (str) and `barcode_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.barcodeblocklist`'s output). Cells whose `barcode_column` value is blocked are excluded (dropped as rows) before splitting/training. |

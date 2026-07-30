@@ -33,11 +33,14 @@ workflow OvwtPipeline {
         barcode_blocklist_pvalue_threshold: params.barcode_blocklist_pvalue_threshold,
         ovwt_min_cells                    : params.ovwt_min_cells,
         ovwt_downsample_wt                : params.ovwt_downsample_wt,
+        max_cells_per_barcode_wt          : params.max_cells_per_barcode_wt,
+        max_cells_per_barcode_variant     : params.max_cells_per_barcode_variant,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
         barcode_check_min_cells           : params.barcode_check_min_cells,
         barcode_check_alpha               : params.barcode_check_alpha,
         single_cell_scores_split          : params.single_cell_scores_split,
+        run_ovwt                          : params.run_ovwt.toString().toBoolean(),
         run_feature_filtered_ovwt         : params.run_feature_filtered_ovwt.toString().toBoolean(),
         run_single_cell_scores            : params.run_single_cell_scores.toString().toBoolean(),
         run_check_barcodes                : params.run_check_barcodes.toString().toBoolean(),
@@ -128,7 +131,8 @@ workflow OvwtPipeline {
     // ovwt_batchwise/ output path.
     ovwt_input_ch = qc_ch.map { stem, fc, _bc, _vpb ->
         def cfg = resolvedBatchConfigs[stem]
-        tuple(stem, fc, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt)
+        tuple(stem, fc, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
+              cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
     }
     OVWT_BATCHWISE(ovwt_input_ch)
 
