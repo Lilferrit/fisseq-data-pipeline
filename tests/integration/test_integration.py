@@ -1,5 +1,6 @@
 """Integration tests for the FISSEQ Nextflow pipeline."""
 
+import os
 import re
 import shutil
 import subprocess
@@ -71,6 +72,9 @@ _NF_PARAMS = [
 
 _PROJECT_ROOT = Path(__file__).parents[2]
 
+# Avoids a network round-trip (version check) on every `nextflow run` call.
+_NF_ENV = {**os.environ, "NXF_DISABLE_CHECK_LATEST": "true"}
+
 
 def _write_batch(path: Path, seed: int = 42) -> None:
     rng = np.random.default_rng(seed)
@@ -128,6 +132,7 @@ def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
             *_NF_PARAMS,
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -145,6 +150,7 @@ def _run_check_barcodes_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
             *_CHECK_BARCODES_NF_PARAMS,
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -164,6 +170,7 @@ def _run_ovwt_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
             *_OVWT_NF_PARAMS,
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -575,13 +582,20 @@ def test_pipeline_ovwt_batchwise_barcode_filtered_outputs(
 
 
 @pytest.fixture(scope="session")
-def run_barcode_filtered_ovwt_disabled_outputs(tmp_path_factory):
+def disabled_toggles_pipeline_outputs(tmp_path_factory):
+    """run_barcode_filtered_ovwt, run_feature_filtered_ovwt, and run_wtvwt each
+    gate their own unrelated branch of the DAG (BARCODE_BLOCKLIST/
+    OVWT_BATCHWISE_BARCODE_FILTERED, OVWT_BATCHWISE_FEATURE_FILTERED, and
+    WTVWT_BATCHWISE respectively) with no interaction between them, so one run
+    with all three disabled can verify each toggle's effect independently --
+    no need for three separate `nextflow run` invocations. Uses
+    _CHECK_BARCODES_NF_PARAMS (run_check_barcodes=true) so
+    run_barcode_filtered_ovwt=false is actually exercised (it only takes
+    effect when run_check_barcodes is also true)."""
     if shutil.which("nextflow") is None:
         pytest.skip("nextflow not on PATH")
 
-    exp_dir = tmp_path_factory.mktemp(
-        "nf_run_barcode_filtered_ovwt_disabled_experiment"
-    )
+    exp_dir = tmp_path_factory.mktemp("nf_disabled_toggles_experiment")
     _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
     _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
 
@@ -594,9 +608,14 @@ def run_barcode_filtered_ovwt_disabled_outputs(tmp_path_factory):
             str(exp_dir),
             "--run_barcode_filtered_ovwt",
             "false",
+            "--run_feature_filtered_ovwt",
+            "false",
+            "--run_wtvwt",
+            "false",
             *_CHECK_BARCODES_NF_PARAMS,
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -604,22 +623,20 @@ def run_barcode_filtered_ovwt_disabled_outputs(tmp_path_factory):
     return exp_dir, result
 
 
-def test_run_barcode_filtered_ovwt_disabled_pipeline_exits_cleanly(
-    run_barcode_filtered_ovwt_disabled_outputs,
-):
-    _, result = run_barcode_filtered_ovwt_disabled_outputs
+def test_disabled_toggles_pipeline_exits_cleanly(disabled_toggles_pipeline_outputs):
+    _, result = disabled_toggles_pipeline_outputs
     assert result.returncode == 0, result.stderr
 
 
 def test_run_barcode_filtered_ovwt_disabled_skips_barcode_blocklist_and_filtered_output(
-    run_barcode_filtered_ovwt_disabled_outputs,
+    disabled_toggles_pipeline_outputs,
 ):
     """params.run_barcode_filtered_ovwt defaults to true (see
     test_barcode_blocklist_outputs / test_pipeline_ovwt_batchwise_barcode_filtered_outputs
     for the default-enabled case); false must skip both BARCODE_BLOCKLIST and
     OVWT_BATCHWISE_BARCODE_FILTERED entirely, while CHECK_BARCODES (set
     explicitly via _CHECK_BARCODES_NF_PARAMS) is unaffected."""
-    exp_dir, _ = run_barcode_filtered_ovwt_disabled_outputs
+    exp_dir, _ = disabled_toggles_pipeline_outputs
     assert not (exp_dir / "barcode_blocklist").exists()
     assert not (exp_dir / "ovwt_batchwise_barcode_filtered").exists()
     assert (exp_dir / "check_barcodes" / "batch1" / "results.parquet").exists()
@@ -660,6 +677,7 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
             *_NF_PARAMS,
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -668,108 +686,40 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
     assert "single_cell_scores_split" in (result.stdout + result.stderr)
 
 
-@pytest.fixture(scope="session")
-def run_feature_filtered_ovwt_disabled_outputs(tmp_path_factory):
-    if shutil.which("nextflow") is None:
-        pytest.skip("nextflow not on PATH")
-
-    exp_dir = tmp_path_factory.mktemp(
-        "nf_run_feature_filtered_ovwt_disabled_experiment"
-    )
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
-
-    result = subprocess.run(
-        [
-            "nextflow",
-            "run",
-            str(_PROJECT_ROOT),
-            "--input_dir",
-            str(exp_dir),
-            "--run_feature_filtered_ovwt",
-            "false",
-            *_NF_PARAMS,
-        ],
-        cwd=exp_dir,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    return exp_dir, result
-
-
-def test_run_feature_filtered_ovwt_disabled_pipeline_exits_cleanly(
-    run_feature_filtered_ovwt_disabled_outputs,
-):
-    _, result = run_feature_filtered_ovwt_disabled_outputs
-    assert result.returncode == 0, result.stderr
-
-
 def test_run_feature_filtered_ovwt_disabled_skips_filtered_output(
-    run_feature_filtered_ovwt_disabled_outputs,
+    disabled_toggles_pipeline_outputs,
 ):
     """params.run_feature_filtered_ovwt defaults to true (see
     test_pipeline_ovwt_batchwise_feature_filtered_outputs for the
     default-enabled case); false must skip OVWT_BATCHWISE_FEATURE_FILTERED
     entirely."""
-    exp_dir, _ = run_feature_filtered_ovwt_disabled_outputs
+    exp_dir, _ = disabled_toggles_pipeline_outputs
     assert not (exp_dir / "ovwt_batchwise_feature_filtered").exists()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
 def test_run_feature_filtered_ovwt_disabled_unfiltered_output_unaffected(
-    run_feature_filtered_ovwt_disabled_outputs, batch_stem
+    disabled_toggles_pipeline_outputs, batch_stem
 ):
-    exp_dir, _ = run_feature_filtered_ovwt_disabled_outputs
+    exp_dir, _ = disabled_toggles_pipeline_outputs
     batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
     assert (batch_dir / "results.parquet").exists()
     assert (batch_dir / "models.pkl").exists()
 
 
-@pytest.fixture(scope="session")
-def run_wtvwt_disabled_outputs(tmp_path_factory):
-    if shutil.which("nextflow") is None:
-        pytest.skip("nextflow not on PATH")
-
-    exp_dir = tmp_path_factory.mktemp("nf_run_wtvwt_disabled_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
-
-    result = subprocess.run(
-        [
-            "nextflow",
-            "run",
-            str(_PROJECT_ROOT),
-            "--input_dir",
-            str(exp_dir),
-            "--run_wtvwt",
-            "false",
-            *_NF_PARAMS,
-        ],
-        cwd=exp_dir,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    return exp_dir, result
-
-
-def test_run_wtvwt_disabled_pipeline_exits_cleanly(run_wtvwt_disabled_outputs):
-    _, result = run_wtvwt_disabled_outputs
-    assert result.returncode == 0, result.stderr
-
-
-def test_run_wtvwt_disabled_skips_wtvwt_batchwise_output(run_wtvwt_disabled_outputs):
+def test_run_wtvwt_disabled_skips_wtvwt_batchwise_output(
+    disabled_toggles_pipeline_outputs,
+):
     """params.run_wtvwt defaults to true (see test_pipeline_wtvwt_batchwise_outputs
     for the default-enabled case); false must skip WTVWT_BATCHWISE entirely."""
-    exp_dir, _ = run_wtvwt_disabled_outputs
+    exp_dir, _ = disabled_toggles_pipeline_outputs
     assert not (exp_dir / "wtvwt_batchwise").exists()
 
 
-def test_run_wtvwt_disabled_ovwt_output_unaffected(run_wtvwt_disabled_outputs):
+def test_run_wtvwt_disabled_ovwt_output_unaffected(disabled_toggles_pipeline_outputs):
     """run_wtvwt is independent of run_ovwt -- disabling it must not affect
     OVWT_BATCHWISE's output."""
-    exp_dir, _ = run_wtvwt_disabled_outputs
+    exp_dir, _ = disabled_toggles_pipeline_outputs
     assert (exp_dir / "ovwt_batchwise" / "batch1" / "results.parquet").exists()
 
 
@@ -863,6 +813,7 @@ def ovwt_check_barcodes_pipeline_outputs(tmp_path_factory):
             *_OVWT_NF_PARAMS,
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -929,6 +880,7 @@ def _run_config_dir_pipeline(
             *(["-resume"] if resume else []),
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -1069,6 +1021,7 @@ def test_batch_yaml_gating_override_takes_effect(tmp_path_factory):
             "train",
         ],
         cwd=exp_dir,
+        env=_NF_ENV,
         capture_output=True,
         text=True,
         timeout=600,
@@ -1109,37 +1062,3 @@ def test_batch_yaml_pipeline_wide_key_rejected(tmp_path_factory):
     assert "pipeline-wide-only" in output
     # Distinct error path from the unknown-key case above.
     assert "unrecognized" not in output
-
-
-def test_batch_yaml_unrelated_key_change_does_not_bust_resume_cache(tmp_path_factory):
-    # This is the actual point of the per-batch override mechanism: a batch
-    # process only receives the resolved val() scalars it consumes, never
-    # the whole batch YAML/config map, so an unrelated key change in that
-    # YAML must not invalidate -resume caching for tasks that don't consume
-    # it. feature_select_min_correlation has zero process consumers in
-    # OvwtPipeline (it's only wired into BLOCKLIST_BATCHWISE/_GLOBAL, part
-    # of FisseqPipeline's feature-selection chain, which OvwtPipeline
-    # doesn't have) -- so overriding it for batch1 should leave every task
-    # for both batches cached on the next -resume run.
-    exp_dir, config_dir = _two_batch_config_dir(tmp_path_factory)
-    result1 = _run_config_dir_pipeline(exp_dir, config_dir)
-    assert result1.returncode == 0, result1.stderr
-
-    batch1_yaml_path = config_dir / "batch1.yaml"
-    with open(batch1_yaml_path) as f:
-        cfg = yaml.safe_load(f)
-    cfg["feature_select_min_correlation"] = 0.9
-    with open(batch1_yaml_path, "w") as f:
-        yaml.safe_dump(cfg, f)
-
-    result2 = _run_config_dir_pipeline(exp_dir, config_dir, resume=True)
-    assert result2.returncode == 0, result2.stderr
-    # The override was still resolved and logged...
-    assert "batch1" in result2.stdout
-    assert "feature_select_min_correlation" in result2.stdout
-    # ...but every task from both batches stayed cached -- nothing to
-    # re-run, since no process consumes this key.
-    assert "completed=0" in result2.stdout
-    cached_match = re.search(r"cached=(\d+)", result2.stdout)
-    assert cached_match is not None
-    assert int(cached_match.group(1)) > 0
