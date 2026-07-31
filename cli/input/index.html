@@ -1462,9 +1462,13 @@
 <h1 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h1>
 <p><code>python -m fisseq_data_pipeline.input</code> (Nextflow process <code>INPUT</code>, optional — gated by <code>params.yaml_config_dir</code>)
 reads a hand-authored YAML config describing one or more raw cell-score files
-(CSV or Parquet), classifies each row's variant, and restricts to a fixed set of
-variant classes plus the most common missense variants. Writes a single
-<code>input/</code>-ready cell-level Parquet file.</p>
+(CSV or Parquet) and merges them into a single <code>input/</code>-ready cell-level
+Parquet file.</p>
+<p>Variant-class/count-based restriction (previously done here via
+<code>top_n_missense</code>) now happens downstream, in <code>QC_FILTER</code>'s <code>n_variants</code> /
+<code>variant_downsample_classes</code> / <code>variant_downsample_mode</code> (see
+<a href="../qcfilter/">CLI Reference: qcfilter</a>), so it applies uniformly to every
+batch rather than only to batches routed through this optional stage.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends the common <code>output_dir</code> / <code>output_root</code> / <code>log_level</code> fields (see
 <a href="#common-config-fields">Common config fields</a> below).</p>
@@ -1486,21 +1490,14 @@ variant classes plus the most common missense variants. Writes a single
 </table>
 <h3 id="config_path-yaml-schema"><code>config_path</code> YAML schema<a class="headerlink" href="#config_path-yaml-schema" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/path/to/file1.parquet</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">/path/to/file2.csv</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">top_n_missense</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">              </span><span class="c1"># optional, default null (keep all Single Missense variants)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">convert_first</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">              </span><span class="c1"># optional, default false (see below)</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">temp_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">                    </span><span class="c1"># optional, default $TMPDIR or the system temp dir</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
 </code></pre></div>
 <ul>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.
   <strong>Required, and batch-YAML-only</strong> — there is no pipeline-wide default for a
   per-batch list of raw data files (see
   <a href="../../nextflow/#per-batch-parameter-overrides">Per-batch parameter overrides</a>).</li>
-<li><code>top_n_missense</code> — if set, the number of Single Missense variants (by cell
-  count) to keep, alongside Synonymous, WT, and Frameshift variants. Omit or
-  set to <code>null</code> (the default) to keep all Single Missense variants without
-  any top-N restriction.</li>
 <li><code>feature_allowlist_file</code> / <code>feature_blocklist_file</code> — optional paths to plain
   text files, one fnmatch-style glob pattern per line (e.g.
   <code>Cells_AreaShape_*</code>), matched against feature column names. If an allowlist
@@ -1508,19 +1505,9 @@ variant classes plus the most common missense variants. Writes a single
   kept; if a blocklist is also given, matching columns are then dropped from
   what remains (allowlist is applied first). Identity columns (<code>upBarcode</code>,
   <code>editDistance</code>, <code>aaChanges</code>) and metadata columns are unaffected.</li>
-<li><code>convert_first</code> — set to <code>true</code> to merge all <code>input_paths</code> into a single
-  Parquet file up front (written to <code>temp_dir</code>, deleted once the run
-  finishes) before variant classification, instead of re-scanning/
-  re-concatenating the original files on every downstream pass. Only takes
-  effect when <code>top_n_missense</code> is also set (that's what causes the extra
-  pass it optimizes for); otherwise this is a no-op even if <code>true</code>.</li>
-<li><code>temp_dir</code> — where <code>convert_first</code>'s merged file is written. Defaults to
-  <code>$TMPDIR</code> if set, otherwise the system temp directory. Never read when
-  <code>convert_first</code> is false (or a no-op per above).</li>
 </ul>
 <p>Except for <code>input_paths</code>, every field above is also a plain <code>nextflow.config</code>
-pipeline-wide default (<code>params.top_n_missense</code>, <code>params.convert_first</code>,
-<code>params.temp_dir</code>, <code>params.feature_allowlist_file</code>,
+pipeline-wide default (<code>params.feature_allowlist_file</code>,
 <code>params.feature_blocklist_file</code>) — set one on the command line or in
 <code>nextflow.config</code> to apply it to every batch, and/or override it for a
 specific batch in that batch's YAML. See

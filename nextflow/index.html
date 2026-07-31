@@ -1988,9 +1988,8 @@ the glob and the generated channel), rather than aborting the whole pipeline.</p
 batch's YAML is parsed and merged with the pipeline-wide defaults once, at
 workflow-construction time (see
 <a href="#per-batch-parameter-overrides">Per-batch parameter overrides</a> below), and
-<code>INPUT</code> instead receives the resolved <code>input_paths</code> /<code>top_n_missense</code> /
-<code>convert_first</code> / <code>temp_dir</code> / <code>feature_allowlist_file</code> /
-<code>feature_blocklist_file</code> values as individual process inputs. The process
+<code>INPUT</code> instead receives the resolved <code>input_paths</code> / <code>feature_allowlist_file</code>
+/ <code>feature_blocklist_file</code> values as individual process inputs. The process
 script rebuilds a minimal YAML from those values before invoking
 <code>python -m fisseq_data_pipeline.input</code> — see the resume-caching rationale
 below for why.</p>
@@ -2103,21 +2102,6 @@ below for why.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>--top_n_missense</code></td>
-<td><code>null</code></td>
-<td>Number of Single Missense variants (by cell count) <code>INPUT</code> keeps, alongside Synonymous, WT, and Frameshift. <code>null</code> keeps all of them.</td>
-</tr>
-<tr>
-<td><code>--convert_first</code></td>
-<td><code>false</code></td>
-<td><code>INPUT</code>: merge all of a batch's <code>input_paths</code> into one Parquet file up front. Only takes effect when <code>top_n_missense</code> is also set.</td>
-</tr>
-<tr>
-<td><code>--temp_dir</code></td>
-<td><code>null</code></td>
-<td>Where <code>convert_first</code>'s merged file is written; <code>null</code> falls back to <code>$TMPDIR</code>/the system temp dir.</td>
-</tr>
-<tr>
 <td><code>--feature_allowlist_file</code></td>
 <td><code>null</code></td>
 <td><code>INPUT</code>: optional path to a glob-pattern feature allowlist file.</td>
@@ -2159,14 +2143,34 @@ overridable per batch exactly like every other parameter here — see
 <td>Maximum allowed edit distance (QC filter).</td>
 </tr>
 <tr>
-<td><code>--qc_downsample_fraction</code></td>
+<td><code>--qc_n_variants</code></td>
 <td><code>null</code></td>
-<td>Optional QC-filter pseudo-variant downsampling fraction <code>(0, 1]</code>; drawn from cells that already passed QC. <code>null</code> disables it.</td>
+<td>Optional: restricts <code>qc_variant_downsample_classes</code> to at most this many distinct variants, before QC thresholding. <code>null</code> disables it.</td>
+</tr>
+<tr>
+<td><code>--qc_variant_downsample_classes</code></td>
+<td><code>['Single Missense']</code></td>
+<td>Classes eligible for the <code>qc_n_variants</code> restriction.</td>
+</tr>
+<tr>
+<td><code>--qc_variant_downsample_mode</code></td>
+<td><code>'top'</code></td>
+<td><code>'top'</code> keeps the highest-cell-count variants; <code>'random'</code> keeps a seeded random sample.</td>
+</tr>
+<tr>
+<td><code>--qc_downsample_amounts</code></td>
+<td><code>null</code></td>
+<td>Optional single float <code>(0, 1]</code>/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). <code>null</code> disables it. A genuine multi-element <em>list</em> is only settable via a batch YAML override or by editing the Groovy list literal in <code>nextflow.config</code> directly — a bare <code>--qc_downsample_amounts</code> CLI flag only supports a single scalar.</td>
+</tr>
+<tr>
+<td><code>--qc_downsample_classes</code></td>
+<td><code>['Synonymous', 'Single Missense']</code></td>
+<td>Classes eligible for <code>qc_downsample_amounts</code> pseudo-variant generation.</td>
 </tr>
 <tr>
 <td><code>--qc_downsample_seed</code></td>
 <td><code>0</code></td>
-<td>Seed for the deterministic downsample selection.</td>
+<td>Seed for the deterministic downsample selection, shared by <code>qc_downsample_amounts</code> and <code>qc_variant_downsample_mode="random"</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2387,7 +2391,7 @@ config-resolution time rather than silently proceeding with no data.</p>
 <h3 id="why-resolved-scalars-not-the-whole-config-are-passed-to-processes">Why resolved scalars, not the whole config, are passed to processes<a class="headerlink" href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" title="Permanent link">&para;</a></h3>
 <p>Every process that consumes a per-batch-overridable value receives it as an
 individual <code>val()</code> input (e.g. <code>QC_FILTER</code> takes
-<code>barcode_count_threshold</code>/<code>variant_barcode_count_threshold</code>/... as five
+<code>barcode_count_threshold</code>/<code>variant_barcode_count_threshold</code>/... as nine
 separate <code>val()</code>s), never a whole config map or the raw YAML file. Nextflow's
 <code>-resume</code> cache key for a task is derived from its declared inputs — if a
 whole file or map were passed, changing <em>any</em> key in it (even one that
