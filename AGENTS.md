@@ -27,6 +27,10 @@ QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode
       ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │
+      ├──► WTVWT_BATCHWISE      (per batch; skipped if params.run_wtvwt = false; wildtype
+      │           cells only, one binary XGBoost classifier per pair of wildtype barcodes;
+      │           independent of the ANOVA_BLOCKLIST/OvWT chain below)
+      │
       ├──► ANOVA (normalized)   (global — waits for all batches; always runs)
       │           │
       │           ▼
@@ -98,6 +102,15 @@ its block-list from that batch's own `CHECK_BARCODES` output, aggregating
 each barcode's `p_adj` values (pooled across both the `barcode` and
 `comparison_barcode` columns, since a barcode's pairwise comparisons are
 scattered across both depending on alphabetical order) via median.
+`WTVWT_BATCHWISE` (per batch) is a single process (`modules/local/wtvwt_batchwise.nf`,
+wrapping `python -m fisseq_data_pipeline.wtvwt`) invoked once, not aliased —
+unlike `OVWT_BATCHWISE` it has no feature-filtered/barcode-filtered variants
+and no global counterpart. It restricts to wildtype-labeled cells, computes a
+single 80/10/10 split stratified by barcode (so every wildtype barcode's rows
+span all three splits), then trains one binary XGBoost classifier per pair of
+wildtype barcodes (`itertools.combinations` over the surviving barcodes).
+Gated per batch by `params.run_wtvwt` (default `true`), independent of every
+other gate — it only depends on `NORMALIZE`'s output, not `ANOVA_BLOCKLIST`.
 
 **Main components:**
 - `src/fisseq_data_pipeline/` — Python package with one module per pipeline step
@@ -308,6 +321,7 @@ fisseq-data-pipeline/
 │   ├── checkbarcodes.py           # Per-variant pairwise Tukey HSD across barcodes
 │   ├── barcodeblocklist.py        # CHECK_BARCODES-derived barcode block-list entry point
 │   ├── batchvsbatch.py            # Per-variant multiclass batch classifier; OvR AUC + Mann-Whitney p-value
+│   ├── wtvwt.py                   # Wildtype-only pairwise-barcode XGBoost classifier + entry point
 │   ├── anova.py                   # Per-feature one-way ANOVA entry point
 │   └── anovablocklist.py          # ANOVA-derived feature block-list entry point
 ├── modules/local/
@@ -320,6 +334,7 @@ fisseq-data-pipeline/
 │   ├── ovwt_batchwise.nf
 │   ├── ovwt_global.nf
 │   ├── ovwt_cellscores_batchwise.nf
+│   ├── wtvwt_batchwise.nf
 │   ├── check_barcodes.nf
 │   ├── barcode_blocklist.nf
 │   ├── aggregate_feature_type.nf
@@ -362,7 +377,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`BaseAggregator`** (`aggregate.py`) — abstract base for 7 concrete aggregation strategies (mean, median, MAD, std, KS, QQ, AUROC). There is no multi-aggregator wrapper; combining feature types happens in Nextflow — `aggregate.feature_type_main` runs once per `params.feature_select_types` entry, and `features.main` (the final feature-selection stage) joins the per-feature-type outputs on the label column.
 
-**`utils/xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, and `batchvsbatch.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here.
+**`utils/xgbparams.py`** — shared XGBoost infrastructure imported by `ovwt.py`, `ovwtcellscores.py`, `batchvsbatch.py`, and `wtvwt.py`. Contains: `XGBoostParams` and `XGBoostConfig` dataclasses; `get_feature_cols` (CellProfiler column detection); `get_dmatrix` (binary DMatrix builder); `get_dmatrix_multiclass` (multiclass DMatrix with sorted integer encoding); `split_indices_stratified` (80/10/10 stratified split on any label array). Do not add XGBoost-specific infrastructure to individual modules — put it here. `wtvwt.py` reuses `get_dmatrix`/`get_feature_cols`/`split_indices_stratified` directly (calling `get_dmatrix` with `barcode_column`/one barcode of a pair in place of `label_column`/`wt_label` — the function is already fully generic), rather than adding a barcode-specific DMatrix helper.
 
 **`load_batches`** (`utils/batches.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
@@ -397,6 +412,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 | `python -m fisseq_data_pipeline.anova` | Per-feature one-way ANOVA |
 | `python -m fisseq_data_pipeline.anovablocklist` | Feature block-list derived from ANOVA p-values |
 | `python -m fisseq_data_pipeline.batchvsbatch` | Per-variant multiclass batch classifier (OvR AUC + Mann-Whitney p per batch) |
+| `python -m fisseq_data_pipeline.wtvwt` | Wildtype-only: one binary XGBoost classifier per pair of wildtype barcodes |
 
 All share base Hydra fields: `output_dir` (required), `output_root` (optional prefix), `log_level` (default `"info"`).
 
@@ -439,6 +455,10 @@ All outputs land under `<input_dir>` alongside the `input/` folder:
   ovwt_global/                  # always filtered against anova_blocklist/anova_blocklist.parquet
     results.parquet
     models.pkl
+  wtvwt_batchwise/<batch>/      # wildtype cells only; optional: params.run_wtvwt
+    results.parquet             # one row per unordered barcode pair; columns: barcode_a, barcode_b,
+                                 # train/val/test_auroc, train/val/test_accuracy, n_cells_a, n_cells_b
+    models.pkl                  # dict[(barcode_a, barcode_b) -> xgb.Booster]
   ovwt_cellscores_batchwise/<batch>/  # optional: params.run_single_cell_scores (always on in OvwtPipeline)
     cell_scores.parquet         # one column per variant model, plus meta_* columns
   check_barcodes/<batch>/       # optional: params.run_check_barcodes (implies run_single_cell_scores)

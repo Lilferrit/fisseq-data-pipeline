@@ -19,6 +19,7 @@ nav:
       - Check Barcodes: cli/checkbarcodes.md
       - Barcode Block-list: cli/barcodeblocklist.md
       - Batch vs. Batch: cli/batchvsbatch.md
+      - Wildtype vs. Wildtype: cli/wtvwt.md
   - API Reference:
       - input: api/input.md
       - qcfilter: api/qcfilter.md
@@ -33,6 +34,7 @@ nav:
       - checkbarcodes: api/checkbarcodes.md
       - barcodeblocklist: api/barcodeblocklist.md
       - batchvsbatch: api/batchvsbatch.md
+      - wtvwt: api/wtvwt.md
       - config: api/config.md
       - utils: api/utils.md
   - Walkthrough: walkthrough.md

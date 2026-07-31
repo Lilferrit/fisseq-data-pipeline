@@ -5,7 +5,10 @@ nextflow.enable.dsl = 2
 // (pre unfiltered / post filtered) -> OVWT (batchwise unfiltered + feature-
 // filtered + barcode-filtered, global feature-filtered only) -> bootstrap
 // feature selection (batchwise/global, gated by params.run_feature_selection)
-// -> BATCH_CORRECT_FIT/TRANSFORM -> ANOVA (batch-corrected).
+// -> BATCH_CORRECT_FIT/TRANSFORM -> ANOVA (batch-corrected). WTVWT_BATCHWISE
+// (per batch, wildtype cells only, one binary classifier per pair of
+// wildtype barcodes) branches off NORMALIZE independently, gated per batch
+// by params.run_wtvwt (default true).
 // BATCHVSBATCH, OVWT_GLOBAL, and the global feature-selection branch are
 // gated by params.run_global (default true); ANOVA, ANOVA_BLOCKLIST, and
 // BATCH_CORRECT_FIT/TRANSFORM always run regardless.
@@ -38,6 +41,7 @@ include { OVWT_BATCHWISE as OVWT_BATCHWISE_FEATURE_FILTERED } from '../modules/l
 include { OVWT_BATCHWISE as OVWT_BATCHWISE_BARCODE_FILTERED } from '../modules/local/ovwt_batchwise'
 include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
 include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'
+include { WTVWT_BATCHWISE           } from '../modules/local/wtvwt_batchwise'
 include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 include { BARCODE_BLOCKLIST         } from '../modules/local/barcode_blocklist'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
@@ -87,6 +91,7 @@ workflow FisseqPipeline {
         ovwt_downsample_wt                : params.ovwt_downsample_wt,
         max_cells_per_barcode_wt          : params.max_cells_per_barcode_wt,
         max_cells_per_barcode_variant     : params.max_cells_per_barcode_variant,
+        wtvwt_min_cells_per_barcode       : params.wtvwt_min_cells_per_barcode,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
         barcode_check_min_cells           : params.barcode_check_min_cells,
@@ -98,6 +103,7 @@ workflow FisseqPipeline {
         run_check_barcodes                : params.run_check_barcodes.toString().toBoolean(),
         run_barcode_filtered_ovwt         : params.run_barcode_filtered_ovwt.toString().toBoolean(),
         run_feature_selection             : params.run_feature_selection.toString().toBoolean(),
+        run_wtvwt                         : params.run_wtvwt.toString().toBoolean(),
         feature_allowlist_file            : params.feature_allowlist_file,
         feature_blocklist_file            : params.feature_blocklist_file,
     ]
@@ -166,6 +172,7 @@ workflow FisseqPipeline {
             run_barcode_filtered_ovwt: cfg.run_barcode_filtered_ovwt.toString().toBoolean() && runCheckBarcodes,
             run_feature_filtered_ovwt: cfg.run_feature_filtered_ovwt.toString().toBoolean(),
             run_feature_selection    : cfg.run_feature_selection.toString().toBoolean(),
+            run_wtvwt                : cfg.run_wtvwt.toString().toBoolean(),
         ]
     }
 
@@ -227,6 +234,16 @@ workflow FisseqPipeline {
     // Single-element signal that fires once all NORMALIZE batches are done.
     global_signal = norm_ch.map { stem, p -> stem }.collect()
         .map { _stems -> input_dir_abs }
+
+    // Step 2b: WTVWT — batchwise, wildtype-only pairwise barcode classification.
+    // Restricted to wildtype cells; trains one binary classifier per pair of
+    // wildtype barcodes. Per-batch gated on run_wtvwt (default true), like
+    // run_ovwt/run_feature_selection. Independent of the ANOVA/OvWT/
+    // feature-selection chains below, so it only needs norm_ch.
+    wtvwt_input_ch = norm_ch
+        .filter { stem, p -> batchGates.call(stem).run_wtvwt }
+        .map { stem, p -> tuple(stem, p, resolvedBatchConfigs[stem].wtvwt_min_cells_per_barcode) }
+    WTVWT_BATCHWISE(wtvwt_input_ch)
 
     // ANOVA (normalized) — moved up from its previous "Step 9" position so
     // its output channel can feed ANOVA_BLOCKLIST here. Always runs,

@@ -14,14 +14,20 @@ import yaml
 # Synthetic data
 # ---------------------------------------------------------------------------
 
-# 10 WT barcodes × 6 cells = 60 WT cells
+# 10 WT barcodes × 20 cells = 200 WT cells
 # 5 A1A barcodes × 6 cells = 30 Synonymous cells  (A→A at position 1)
 # 5 M1K barcodes × 6 cells = 30 Single Missense cells
 # 5 M1K:downsampled-half barcodes x 6 cells = 30 tagged Single Missense cells,
 # which must pool with the untagged M1K rows under meta_aa_changes == "M1K"
 # once qcfilter.py's filter_columns strips the ":downsampled-half" tag.
+# WT gets more cells/barcode than the other variants: wtvwt.py stratifies
+# its 80/10/10 split on individual barcode (finer-grained than ovwt.py's
+# per-variant stratification), and sklearn's stratified split requires at
+# least 2 members per class in every split -- 6 cells/barcode reliably
+# triggers "least populated class has only 1 member" once carved into a 10%
+# slice, while 20 does not.
 _VARIANTS = {
-    "WT": ("bc_wt_{i:02d}", 10, 6),
+    "WT": ("bc_wt_{i:02d}", 10, 20),
     "A1A": ("bc_syn_{i:02d}", 5, 6),
     "M1K": ("bc_mis_{i:02d}", 5, 6),
     "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 6),
@@ -59,6 +65,8 @@ _NF_PARAMS = [
     "3",
     "--anova_blocklist_pvalue_threshold",
     "0.5",
+    "--wtvwt_min_cells_per_barcode",
+    "10",
 ]
 
 _PROJECT_ROOT = Path(__file__).parents[2]
@@ -264,6 +272,14 @@ def test_pipeline_ovwt_global_outputs(pipeline_outputs):
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_wtvwt_batchwise_outputs(pipeline_outputs, batch_stem):
+    exp_dir, _ = pipeline_outputs
+    batch_dir = exp_dir / "wtvwt_batchwise" / batch_stem
+    assert (batch_dir / "results.parquet").exists()
+    assert (batch_dir / "models.pkl").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
 def test_pipeline_feature_select_batchwise_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     batch_dir = exp_dir / "feature_select_batchwise" / batch_stem
@@ -336,6 +352,24 @@ def test_ovwt_results_have_auroc_columns(pipeline_outputs, batch_stem):
     df = pl.read_parquet(exp_dir / "ovwt_batchwise" / batch_stem / "results.parquet")
     for col in ("train_auroc", "val_auroc", "test_auroc"):
         assert col in df.columns
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_wtvwt_results_have_expected_columns(pipeline_outputs, batch_stem):
+    exp_dir, _ = pipeline_outputs
+    df = pl.read_parquet(exp_dir / "wtvwt_batchwise" / batch_stem / "results.parquet")
+    expected = {
+        "barcode_a",
+        "barcode_b",
+        "train_auroc",
+        "val_auroc",
+        "test_auroc",
+        "n_cells_a",
+        "n_cells_b",
+    }
+    assert expected.issubset(set(df.columns))
+    # 10 WT barcodes -> C(10, 2) = 45 pairs, all above wtvwt_min_cells_per_barcode
+    assert len(df) == 45
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
@@ -692,6 +726,53 @@ def test_run_feature_filtered_ovwt_disabled_unfiltered_output_unaffected(
     assert (batch_dir / "models.pkl").exists()
 
 
+@pytest.fixture(scope="session")
+def run_wtvwt_disabled_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_run_wtvwt_disabled_experiment")
+    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "--input_dir",
+            str(exp_dir),
+            "--run_wtvwt",
+            "false",
+            *_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    return exp_dir, result
+
+
+def test_run_wtvwt_disabled_pipeline_exits_cleanly(run_wtvwt_disabled_outputs):
+    _, result = run_wtvwt_disabled_outputs
+    assert result.returncode == 0, result.stderr
+
+
+def test_run_wtvwt_disabled_skips_wtvwt_batchwise_output(run_wtvwt_disabled_outputs):
+    """params.run_wtvwt defaults to true (see test_pipeline_wtvwt_batchwise_outputs
+    for the default-enabled case); false must skip WTVWT_BATCHWISE entirely."""
+    exp_dir, _ = run_wtvwt_disabled_outputs
+    assert not (exp_dir / "wtvwt_batchwise").exists()
+
+
+def test_run_wtvwt_disabled_ovwt_output_unaffected(run_wtvwt_disabled_outputs):
+    """run_wtvwt is independent of run_ovwt -- disabling it must not affect
+    OVWT_BATCHWISE's output."""
+    exp_dir, _ = run_wtvwt_disabled_outputs
+    assert (exp_dir / "ovwt_batchwise" / "batch1" / "results.parquet").exists()
+
+
 # ---------------------------------------------------------------------------
 # OvwtPipeline (ovwt.nf) — session fixture and tests
 # ---------------------------------------------------------------------------
@@ -827,6 +908,17 @@ def _run_config_dir_pipeline(
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
+            # -ansi-log false forces Nextflow's plain-text per-process summary
+            # (".../CHECK_BARCODES ... cached: N" style lines) instead of the
+            # redrawing ANSI dashboard renderer. Nextflow's choice between the
+            # two isn't a reliable function of stdout being a pipe (non-tty)
+            # under subprocess capture -- it can still pick the ANSI renderer
+            # depending on inherited TERM/environment -- and
+            # test_batch_yaml_unrelated_key_change_does_not_bust_resume_cache
+            # greps result.stdout for the literal "completed=0"/"cached=N"
+            # text, which only exists in plain-text mode.
+            "-ansi-log",
+            "false",
             "--pipeline_mode",
             "ovwt",
             "--input_dir",

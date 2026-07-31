@@ -23,6 +23,9 @@ QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode
      ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │
+     ├──► WTVWT_BATCHWISE  (per batch; skipped if params.run_wtvwt = false; wildtype
+     │           cells only, one binary classifier per pair of wildtype barcodes)
+     │
      ├──► ANOVA (normalized)  (global — waits for all batches; always runs)
      │           │
      │           ▼
@@ -125,6 +128,13 @@ values (pooled across both the `barcode` and `comparison_barcode` columns) is
 strictly less than `params.barcode_blocklist_pvalue_threshold` (default
 `0.05`).
 
+`WTVWT_BATCHWISE` (see [Wildtype vs. Wildtype](cli/wtvwt.md)) is a single,
+non-aliased per-batch process that restricts to wildtype-labeled cells and
+trains one binary XGBoost classifier per pair of wildtype barcodes. It has no
+feature-filtered/barcode-filtered variants and no global counterpart, and
+depends only on `NORMALIZE`'s output (not `ANOVA_BLOCKLIST`). Gated by
+`params.run_wtvwt` (default `true`), independent of every other gate.
+
 Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection
 branch, `ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`) read published output
 files from disk via glob patterns (or, for `ANOVA_BLOCKLIST`, consume a real
@@ -144,6 +154,7 @@ than consuming Nextflow channel outputs directly in the general case.
 | Normalization | `normalize.py` | `NORMALIZE` | normalized cells + `normalizer.parquet` |
 | Batch-effect check (post) | `batchvsbatch.py` | `BATCHVSBATCH` (post) | `results.parquet` |
 | One-vs-WT classification | `ovwt.py` | `OVWT_BATCHWISE` (unfiltered + feature-filtered + barcode-filtered), `OVWT_GLOBAL` (feature-filtered) | `results.parquet`, `models.pkl` |
+| Wildtype-vs-wildtype barcode classification | `wtvwt.py` | `WTVWT_BATCHWISE` | `results.parquet`, `models.pkl` |
 | OvWT cell scoring | `ovwtcellscores.py` | `OVWT_CELLSCORES_BATCHWISE` | `cell_scores.parquet` |
 | Barcode-outlier check | `checkbarcodes.py` | `CHECK_BARCODES` | `results.parquet` (per-variant pairwise Tukey HSD across barcodes) |
 | Barcode block-list | `barcodeblocklist.py` | `BARCODE_BLOCKLIST` | `barcode_blocklist.parquet` (per batch) |
@@ -234,6 +245,10 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
   ovwt_global/                # always filtered against anova_blocklist/anova_blocklist.parquet
     results.parquet
     models.pkl
+  wtvwt_batchwise/<batch>/    # wildtype cells only; optional: params.run_wtvwt
+    results.parquet           # columns: barcode_a, barcode_b, train/val/test_auroc,
+                               # train/val/test_accuracy, n_cells_a, n_cells_b
+    models.pkl                # dict[(barcode_a, barcode_b) -> xgb.Booster]
   ovwt_cellscores_batchwise/<batch>/   # optional: params.run_single_cell_scores (always on in OvwtPipeline)
     cell_scores.parquet
   check_barcodes/<batch>/     # optional: params.run_check_barcodes (implies run_single_cell_scores)

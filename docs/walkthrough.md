@@ -43,12 +43,14 @@ This runs the default `FisseqPipeline`, which chains every stage described in
 4. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (global, if
    `params.run_global`).
 5. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification.
-6. Bootstrap feature selection (batchwise and, if `params.run_global`, global) —
+6. `WTVWT_BATCHWISE` — wildtype-only pairwise barcode classification (per
+   batch, if `params.run_wtvwt`).
+7. Bootstrap feature selection (batchwise and, if `params.run_global`, global) —
    see [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
    six-stage breakdown.
-7. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
+8. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
    (always runs, regardless of `params.run_global`).
-8. `ANOVA` — batch-effect assessment, run once on normalized cells and once
+9. `ANOVA` — batch-effect assessment, run once on normalized cells and once
    on batch-corrected cells (always runs).
 
 Override any [parameter](nextflow.md#parameters) on the command line, e.g. to
