@@ -28,7 +28,11 @@ workflow OvwtPipeline {
         barcode_count_threshold           : params.barcode_count_threshold,
         variant_barcode_count_threshold   : params.variant_barcode_count_threshold,
         edit_distance_threshold           : params.edit_distance_threshold,
-        qc_downsample_fraction            : params.qc_downsample_fraction,
+        qc_n_variants                     : params.qc_n_variants,
+        qc_variant_downsample_classes     : params.qc_variant_downsample_classes,
+        qc_variant_downsample_mode        : params.qc_variant_downsample_mode,
+        qc_downsample_amounts             : params.qc_downsample_amounts,
+        qc_downsample_classes             : params.qc_downsample_classes,
         qc_downsample_seed                : params.qc_downsample_seed,
         barcode_blocklist_pvalue_threshold: params.barcode_blocklist_pvalue_threshold,
         ovwt_min_cells                    : params.ovwt_min_cells,
@@ -46,9 +50,6 @@ workflow OvwtPipeline {
         run_check_barcodes                : params.run_check_barcodes.toString().toBoolean(),
         run_barcode_filtered_ovwt         : params.run_barcode_filtered_ovwt.toString().toBoolean(),
         run_feature_selection             : params.run_feature_selection.toString().toBoolean(),
-        top_n_missense                    : params.top_n_missense,
-        convert_first                     : params.convert_first.toString().toBoolean(),
-        temp_dir                          : params.temp_dir,
         feature_allowlist_file            : params.feature_allowlist_file,
         feature_blocklist_file            : params.feature_blocklist_file,
     ]
@@ -105,8 +106,7 @@ workflow OvwtPipeline {
         config_ch = Channel.fromList(config_files).map { f ->
             def stem = f.baseName
             def cfg = resolvedBatchConfigs[stem]
-            tuple(stem, cfg.input_paths, cfg.top_n_missense, cfg.convert_first,
-                  cfg.temp_dir, cfg.feature_allowlist_file, cfg.feature_blocklist_file)
+            tuple(stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file)
         }
         generated_ch = INPUT(config_ch)
         input_ch = glob_input_ch.mix(generated_ch)
@@ -118,7 +118,9 @@ workflow OvwtPipeline {
     qc_input_ch = input_ch.map { stem, f ->
         def cfg = resolvedBatchConfigs[stem]
         tuple(stem, f, cfg.barcode_count_threshold, cfg.variant_barcode_count_threshold,
-              cfg.edit_distance_threshold, cfg.qc_downsample_fraction, cfg.qc_downsample_seed)
+              cfg.edit_distance_threshold, cfg.qc_n_variants, cfg.qc_variant_downsample_classes,
+              cfg.qc_variant_downsample_mode, cfg.qc_downsample_amounts, cfg.qc_downsample_classes,
+              cfg.qc_downsample_seed)
     }
     qc_ch = QC_FILTER(qc_input_ch).qc_outputs
 

@@ -2,9 +2,12 @@ nextflow.enable.dsl = 2
 
 // INPUT: wraps python -m fisseq_data_pipeline.input. Runs once per YAML config file in
 // params.yaml_config_dir (optional upstream stage), producing one input/-ready
-// cell-level Parquet file from a variant-selection spec instead of a
-// pre-staged raw batch file. Publishes into the same input/ directory
-// pre-staged batches live in, so QC_FILTER treats both origins identically.
+// cell-level Parquet file by loading and merging a batch's input_paths.
+// Publishes into the same input/ directory pre-staged batches live in, so
+// QC_FILTER treats both origins identically. Variant-class/count-based
+// restriction (formerly done here) now happens in QC_FILTER itself (see
+// modules/local/qc_filter.nf's qc_n_variants), so it applies uniformly to
+// every batch, not just ones routed through this optional stage.
 //
 // Takes the resolved per-batch scalars (see lib/BatchParams.groovy and
 // workflows/fisseq.nf's/ovwt.nf's resolvedBatchConfigs) as individual val()
@@ -21,25 +24,19 @@ process INPUT {
     publishDir { "${params.input_dir}/input" }, mode: 'copy'
 
     input:
-    tuple val(name), val(input_paths), val(top_n_missense), val(convert_first), \
-          val(temp_dir), val(feature_allowlist_file), val(feature_blocklist_file)
+    tuple val(name), val(input_paths), val(feature_allowlist_file), val(feature_blocklist_file)
 
     output:
     tuple val(name), path("${name}.parquet")
 
     script:
     def inputPathsYaml = input_paths.collect { "'${it}'" }.join(', ')
-    def topNMissenseYaml = (top_n_missense == null) ? 'null' : "${top_n_missense}"
-    def tempDirYaml = (temp_dir == null) ? 'null' : "'${temp_dir}'"
     def allowlistYaml = (feature_allowlist_file == null) ? 'null' : "'${feature_allowlist_file}'"
     def blocklistYaml = (feature_blocklist_file == null) ? 'null' : "'${feature_blocklist_file}'"
     """
     echo "Starting INPUT for ${name}"
     cat > resolved_config.yaml <<'EOF'
 input_paths: [${inputPathsYaml}]
-top_n_missense: ${topNMissenseYaml}
-convert_first: ${convert_first}
-temp_dir: ${tempDirYaml}
 feature_allowlist_file: ${allowlistYaml}
 feature_blocklist_file: ${blocklistYaml}
 EOF

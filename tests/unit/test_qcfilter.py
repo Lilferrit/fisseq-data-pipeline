@@ -17,6 +17,7 @@ from fisseq_data_pipeline.qcfilter import (
     get_barcode_counts,
     get_barcodes_per_variant,
     read_file,
+    select_variants,
 )
 
 # get_barcode_counts and get_barcodes_per_variant expect data that has
@@ -378,26 +379,48 @@ class TestAddDownsampledPseudoVariants:
             df.lazy(),
             cfg,
             downsample_classes=("Synonymous",),
-            downsample_fraction=1.0,
+            downsample_amount=1.0,
             seed=0,
         ).collect()
 
         assert result.shape[0] == 10
         # The tag is baked directly into the label, giving pseudo-variant
         # rows their own distinct group rather than pooling with "A1A".
-        assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}").all()
+        assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}-1.0").all()
 
-    def test_zero_fraction_keeps_none(self, cfg):
+    def test_zero_fraction_raises(self, cfg):
         df = _make_downsample_df(["A1A"] * 10, cfg)
-        result = add_downsampled_pseudo_variants(
-            df.lazy(),
-            cfg,
-            downsample_classes=("Synonymous",),
-            downsample_fraction=0.0,
-            seed=0,
-        ).collect()
+        with pytest.raises(ValueError):
+            add_downsampled_pseudo_variants(
+                df.lazy(),
+                cfg,
+                downsample_classes=("Synonymous",),
+                downsample_amount=0.0,
+                seed=0,
+            )
 
-        assert result.shape[0] == 0
+    def test_out_of_range_fraction_raises(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        with pytest.raises(ValueError):
+            add_downsampled_pseudo_variants(
+                df.lazy(),
+                cfg,
+                downsample_classes=("Synonymous",),
+                downsample_amount=1.5,
+                seed=0,
+            )
+
+    def test_non_positive_int_raises(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        for amount in (0, -5):
+            with pytest.raises(ValueError):
+                add_downsampled_pseudo_variants(
+                    df.lazy(),
+                    cfg,
+                    downsample_classes=("Synonymous",),
+                    downsample_amount=amount,
+                    seed=0,
+                )
 
     def test_partial_fraction_is_deterministic_across_calls(self, cfg):
         df = _make_downsample_df(["A1A"] * 10, cfg)
@@ -405,14 +428,14 @@ class TestAddDownsampledPseudoVariants:
             df.lazy(),
             cfg,
             downsample_classes=("Synonymous",),
-            downsample_fraction=0.5,
+            downsample_amount=0.5,
             seed=7,
         ).collect()
         result2 = add_downsampled_pseudo_variants(
             df.lazy(),
             cfg,
             downsample_classes=("Synonymous",),
-            downsample_fraction=0.5,
+            downsample_amount=0.5,
             seed=7,
         ).collect()
 
@@ -428,14 +451,14 @@ class TestAddDownsampledPseudoVariants:
             df.lazy(),
             cfg,
             downsample_classes=("Synonymous",),
-            downsample_fraction=0.5,
+            downsample_amount=0.5,
             seed=0,
         ).collect()
         result_b = add_downsampled_pseudo_variants(
             df.lazy(),
             cfg,
             downsample_classes=("Synonymous",),
-            downsample_fraction=0.5,
+            downsample_amount=0.5,
             seed=1,
         ).collect()
 
@@ -448,15 +471,179 @@ class TestAddDownsampledPseudoVariants:
             df.lazy(),
             cfg,
             downsample_classes=("Synonymous",),
-            downsample_fraction=1.0,
+            downsample_amount=1.0,
             seed=0,
         ).collect()
 
         assert result.shape[0] == 0
 
+    def test_int_amount_keeps_exact_count(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10, cfg)
+        result = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_amount=6,
+            seed=0,
+        ).collect()
+
+        assert result.shape[0] == 6
+        assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}-6").all()
+
+    def test_int_amount_skips_group_below_threshold(self, cfg):
+        df = _make_downsample_df(["A1A"] * 5, cfg)
+        result = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_amount=10,
+            seed=0,
+        ).collect()
+
+        assert result.shape[0] == 0
+
+    def test_int_amount_mixed_groups_partial_skip(self, cfg):
+        df = _make_downsample_df(["A1A"] * 10 + ["A2A"] * 3, cfg)
+        result = add_downsampled_pseudo_variants(
+            df.lazy(),
+            cfg,
+            downsample_classes=("Synonymous",),
+            downsample_amount=5,
+            seed=0,
+        ).collect()
+
+        # Only the 10-row A1A group meets the int amount; the 3-row A2A
+        # group is skipped entirely (not clamped to its own size).
+        assert result.shape[0] == 5
+        assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}-5").all()
+
 
 # ---------------------------------------------------------------------------
-# main() — downsample_fraction
+# select_variants
+# ---------------------------------------------------------------------------
+
+
+class TestSelectVariants:
+    def test_top_mode_keeps_highest_count_variants(self, cfg):
+        df = _make_filtered_df(
+            [f"bc{i}" for i in range(9)],
+            ["M1K"] * 3 + ["M2L"] * 5 + ["M3Q"] * 1,
+            cfg=cfg,
+        )
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=2,
+            mode="top",
+            seed=0,
+        ).collect()
+
+        assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M2L"}
+        assert result.shape[0] == 8
+
+    def test_top_mode_tie_break_is_alphabetical(self, cfg):
+        df = _make_filtered_df(["bc1", "bc2"], ["M2L", "M1K"], cfg=cfg)
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=1,
+            mode="top",
+            seed=0,
+        ).collect()
+
+        assert result["meta_aa_changes"].to_list() == ["M1K"]
+
+    def test_non_eligible_classes_always_kept(self, cfg):
+        df = _make_filtered_df(
+            [f"bc{i}" for i in range(7)],
+            ["A1A"] * 5 + ["M1K"] + ["M2L"],
+            cfg=cfg,
+        )
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=1,
+            mode="top",
+            seed=0,
+        ).collect()
+
+        # All 5 Synonymous rows survive regardless of n_variants; only one
+        # of the two single-row Missense variants is kept.
+        assert (result["meta_aa_changes"] == "A1A").sum() == 5
+        assert result.shape[0] == 6
+
+    def test_random_mode_is_deterministic_across_calls(self, cfg):
+        df = _make_filtered_df(
+            [f"bc{i}" for i in range(5)],
+            ["M1K", "M2L", "M3Q", "M4R", "M5S"],
+            cfg=cfg,
+        )
+        result1 = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=2,
+            mode="random",
+            seed=7,
+        ).collect()
+        result2 = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=2,
+            mode="random",
+            seed=7,
+        ).collect()
+
+        assert set(result1["meta_aa_changes"].to_list()) == set(
+            result2["meta_aa_changes"].to_list()
+        )
+        assert result1.shape[0] == 2
+
+    def test_random_mode_different_seed_can_change_selection(self, cfg):
+        df = _make_filtered_df(
+            [f"bc{i}" for i in range(5)],
+            ["M1K", "M2L", "M3Q", "M4R", "M5S"],
+            cfg=cfg,
+        )
+        result_a = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=2,
+            mode="random",
+            seed=0,
+        ).collect()
+        result_b = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=2,
+            mode="random",
+            seed=1,
+        ).collect()
+
+        # Same count either way, but not guaranteed to be the identical subset.
+        assert result_a.shape[0] == result_b.shape[0] == 2
+
+    def test_invalid_mode_raises(self, cfg):
+        df = _make_filtered_df(["bc1"], ["M1K"], cfg=cfg)
+        with pytest.raises(ValueError):
+            select_variants(
+                df.lazy(),
+                cfg,
+                variant_downsample_classes=("Single Missense",),
+                n_variants=1,
+                mode="bogus",
+                seed=0,
+            ).collect()
+
+
+# ---------------------------------------------------------------------------
+# main() — downsample_amounts / n_variants
 # ---------------------------------------------------------------------------
 
 
@@ -484,7 +671,7 @@ def _make_qc_cfg(tmp_path, cell_files, output_root=None, **overrides):
     )
 
 
-def test_main_downsample_fraction_none_matches_no_downsampling(tmp_path):
+def test_main_downsample_amounts_none_matches_no_downsampling(tmp_path):
     source = tmp_path / "cells.parquet"
     _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
 
@@ -519,7 +706,7 @@ def test_main_downsample_pseudo_rows_only_from_qc_survivors(tmp_path):
         bc_threshold=1,
         variant_bc_threshold=1,
         edit_distance_threshold=1,
-        downsample_fraction=1.0,
+        downsample_amounts=1.0,
         downsample_seed=0,
     )
 
@@ -530,7 +717,91 @@ def test_main_downsample_pseudo_rows_only_from_qc_survivors(tmp_path):
     assert "bc_fail" not in result["meta_barcode"].to_list()
     # 10 QC survivors, downsampled at fraction=1.0 -> 10 originals + 10 pseudo
     assert result.shape[0] == 20
-    assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}").sum() == 10
+    assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}-1.0").sum() == 10
+
+
+def test_main_downsample_amounts_single_scalar_equivalent_to_singleton_list(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
+
+    qc_cfg_scalar = _make_qc_cfg(
+        tmp_path / "run_scalar",
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_amounts=0.5,
+        downsample_seed=7,
+    )
+    qc_cfg_list = _make_qc_cfg(
+        tmp_path / "run_list",
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_amounts=[0.5],
+        downsample_seed=7,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg_scalar)
+        m.main.__wrapped__(qc_cfg_list)
+
+    result_scalar = pl.read_parquet(
+        tmp_path / "run_scalar" / "out" / "filtered_cells.parquet"
+    )
+    result_list = pl.read_parquet(
+        tmp_path / "run_list" / "out" / "filtered_cells.parquet"
+    )
+
+    sort_key = ["meta_source_file", "meta_source_file_idx", "meta_aa_changes"]
+    assert_frame_equal(result_scalar.sort(sort_key), result_list.sort(sort_key))
+
+
+def test_main_downsample_amounts_mixed_float_and_int(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_amounts=[0.5, 5],
+        downsample_seed=0,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert result.shape[0] == 20  # 10 originals + 5 (float) + 5 (int)
+    assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}-0.5").sum() == 5
+    assert (result["meta_aa_changes"] == f"A1A:{DOWNSAMPLE_TAG}-5").sum() == 5
+
+
+def test_main_downsample_classes_configurable(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["WT"] * 10)
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        downsample_amounts=1.0,
+        downsample_classes=["WT"],
+        downsample_seed=0,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert result.shape[0] == 20
+    assert (result["meta_aa_changes"] == f"WT:{DOWNSAMPLE_TAG}-1.0").sum() == 10
 
 
 def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
@@ -543,7 +814,7 @@ def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
         bc_threshold=1,
         variant_bc_threshold=1,
         edit_distance_threshold=1,
-        downsample_fraction=0.5,
+        downsample_amounts=0.5,
         downsample_seed=7,
     )
     qc_cfg_b = _make_qc_cfg(
@@ -552,7 +823,7 @@ def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
         bc_threshold=1,
         variant_bc_threshold=1,
         edit_distance_threshold=1,
-        downsample_fraction=0.5,
+        downsample_amounts=0.5,
         downsample_seed=7,
     )
 
@@ -579,7 +850,7 @@ def test_main_downsample_barcode_counts_and_variants_per_barcode_exclude_pseudo_
         bc_threshold=1,
         variant_bc_threshold=1,
         edit_distance_threshold=1,
-        downsample_fraction=1.0,
+        downsample_amounts=1.0,
         downsample_seed=0,
     )
     qc_cfg_without = _make_qc_cfg(
@@ -603,3 +874,87 @@ def test_main_downsample_barcode_counts_and_variants_per_barcode_exclude_pseudo_
             result_with.sort(result_with.columns),
             result_without.sort(result_without.columns),
         )
+
+
+def test_main_n_variants_none_matches_no_restriction(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(
+        source,
+        [f"bc{i}" for i in range(6)],
+        ["M1K"] * 3 + ["M2L"] * 3,
+    )
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M2L"}
+
+
+def test_main_n_variants_restricts_before_qc_thresholds(tmp_path):
+    source = tmp_path / "cells.parquet"
+    # M2L has 3 barcodes (passes variant_bc_threshold=2); M1K has only 1
+    # barcode so it would fail variant_bc_threshold on its own -- but
+    # n_variants=1 in "top" mode should drop M1K (fewer cells) before QC
+    # thresholding even runs, so barcode_counts/variants_per_barcode never
+    # see it either.
+    _write_cells(
+        source,
+        ["bc0"] + ["bc1", "bc2", "bc3"],
+        ["M1K"] + ["M2L"] * 3,
+    )
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=2,
+        edit_distance_threshold=1,
+        n_variants=1,
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert set(result["meta_aa_changes"].to_list()) == {"M2L"}
+
+    variants_per_barcode = pl.read_parquet(
+        tmp_path / "out" / "variants_per_barcode.parquet"
+    )
+    assert "M1K" not in variants_per_barcode["meta_aa_changes"].to_list()
+
+
+def test_main_variant_downsample_classes_configurable(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(
+        source,
+        [f"bc{i}" for i in range(6)],
+        ["A1A"] * 3 + ["A2A"] * 3,
+    )
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        n_variants=1,
+        variant_downsample_classes=["Synonymous"],
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    # Both A1A/A2A are Synonymous and tied at 3 cells each; alphabetical
+    # tie-break keeps A1A only.
+    assert set(result["meta_aa_changes"].to_list()) == {"A1A"}

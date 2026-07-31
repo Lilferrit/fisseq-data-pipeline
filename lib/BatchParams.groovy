@@ -19,7 +19,11 @@ class BatchParams {
         'barcode_count_threshold',
         'variant_barcode_count_threshold',
         'edit_distance_threshold',
-        'qc_downsample_fraction',
+        'qc_n_variants',
+        'qc_variant_downsample_classes',
+        'qc_variant_downsample_mode',
+        'qc_downsample_amounts',
+        'qc_downsample_classes',
         'qc_downsample_seed',
         // BARCODE_BLOCKLIST
         'barcode_blocklist_pvalue_threshold',
@@ -49,9 +53,6 @@ class BatchParams {
         // INPUT-stage tunables — naturally global, only ever settable
         // per-batch before this refactor; now also plain nextflow.config
         // pipeline-wide defaults (see nextflow.config)
-        'top_n_missense',
-        'convert_first',
-        'temp_dir',
         'feature_allowlist_file',
         'feature_blocklist_file',
     ] as List<String>

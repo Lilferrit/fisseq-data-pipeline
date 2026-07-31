@@ -11,15 +11,25 @@ sequential filters:
 3. **Variant barcode count** — drops variants supported by fewer than
    `variant_bc_threshold` distinct barcodes.
 
-If `downsample_fraction` is set, `filtered_cells.parquet` is additionally
-augmented with reproducibly-downsampled "pseudo variant" rows for
-QC/calibration purposes, built from the Synonymous and Single Missense cells
-that already survived the three filters above — not the raw pre-QC
-population, so the pseudo-variants are a valid calibration of the analysis
-population that actually proceeds downstream. `barcode_counts.parquet` and
-`variants_per_barcode.parquet` are computed before this step runs, so they
-never include pseudo-variant rows, whether or not `downsample_fraction` is
-set.
+If `n_variants` is set, variants whose classified label is in
+`variant_downsample_classes` (default `["Single Missense"]`) are first
+restricted to at most `n_variants` distinct variants — either the
+highest-cell-count variants (`variant_downsample_mode: "top"`, the default)
+or a seeded random sample (`"random"`) — before the three filters above run.
+Every other class passes through untouched.
+
+If `downsample_amounts` is set (a single float/int, or a list of them),
+`filtered_cells.parquet` is additionally augmented with reproducibly-
+downsampled "pseudo variant" rows for QC/calibration purposes, built from
+cells whose classified label is in `downsample_classes` (default
+`["Synonymous", "Single Missense"]`) that already survived the three filters
+above — not the raw pre-QC population, so the pseudo-variants are a valid
+calibration of the analysis population that actually proceeds downstream.
+Each amount produces its own distinctly-tagged group (`meta_variant_tag =
+"downsample-{amount}"`, e.g. `"downsample-0.5"` or `"downsample-500"`).
+`barcode_counts.parquet` and `variants_per_barcode.parquet` are computed
+before this step runs, so they never include pseudo-variant rows, whether or
+not `downsample_amounts` is set.
 
 ## Config fields
 
@@ -36,8 +46,12 @@ Extends the common `output_dir` / `output_root` / `log_level` fields (see
 | `aa_changes_col_name` | `"aaChanges"` | Input column name for amino-acid change labels. |
 | `edit_distance_col_name` | `"editDistance"` | Input column name for edit distances. |
 | `label_column` | `"meta_aa_changes"` | Output column name for the variant label. |
-| `downsample_fraction` | `null` | Optional: if set to a value in `(0, 1]`, generates reproducibly downsampled "pseudo variant" rows (tagged via `meta_variant_tag = "downsampled-half"`) from the Synonymous and Single Missense cells that already survived QC filtering. `null` (default) disables this. |
-| `downsample_seed` | `0` | Seed for the deterministic downsample selection; only used when `downsample_fraction` is set. |
+| `n_variants` | `null` | Optional: restricts `variant_downsample_classes` to at most this many distinct variants, before QC thresholding. `null` (default) disables this. |
+| `variant_downsample_classes` | `["Single Missense"]` | Classes eligible for the `n_variants` restriction. |
+| `variant_downsample_mode` | `"top"` | `"top"` keeps the highest-cell-count variants; `"random"` keeps a seeded random sample. |
+| `downsample_amounts` | `null` | Optional: a single float/int, or a list of floats/ints. A float in `(0, 1]` keeps that fraction of each eligible variant's cells as a pseudo-variant group; an int keeps that many cells (skipping variants with fewer cells than that). Each amount gets its own `meta_variant_tag = "downsample-{amount}"`. `null` (default) disables this. |
+| `downsample_classes` | `["Synonymous", "Single Missense"]` | Classes eligible for `downsample_amounts` pseudo-variant generation. |
+| `downsample_seed` | `0` | Seed for deterministic selection, shared by `downsample_amounts` and `variant_downsample_mode="random"`. |
 
 ## Output files
 

@@ -114,9 +114,8 @@ the glob and the generated channel), rather than aborting the whole pipeline.
 batch's YAML is parsed and merged with the pipeline-wide defaults once, at
 workflow-construction time (see
 [Per-batch parameter overrides](#per-batch-parameter-overrides) below), and
-`INPUT` instead receives the resolved `input_paths` /`top_n_missense` /
-`convert_first` / `temp_dir` / `feature_allowlist_file` /
-`feature_blocklist_file` values as individual process inputs. The process
+`INPUT` instead receives the resolved `input_paths` / `feature_allowlist_file`
+/ `feature_blocklist_file` values as individual process inputs. The process
 script rebuilds a minimal YAML from those values before invoking
 `python -m fisseq_data_pipeline.input` — see the resume-caching rationale
 below for why.
@@ -172,9 +171,6 @@ Defaults live in `nextflow.config` at the repo root:
 
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
-| `--top_n_missense` | `null` | Number of Single Missense variants (by cell count) `INPUT` keeps, alongside Synonymous, WT, and Frameshift. `null` keeps all of them. |
-| `--convert_first` | `false` | `INPUT`: merge all of a batch's `input_paths` into one Parquet file up front. Only takes effect when `top_n_missense` is also set. |
-| `--temp_dir` | `null` | Where `convert_first`'s merged file is written; `null` falls back to `$TMPDIR`/the system temp dir. |
 | `--feature_allowlist_file` | `null` | `INPUT`: optional path to a glob-pattern feature allowlist file. |
 | `--feature_blocklist_file` | `null` | `INPUT`: optional path to a glob-pattern feature blocklist file. |
 
@@ -190,8 +186,12 @@ overridable per batch exactly like every other parameter here — see
 | `--barcode_count_threshold` | `10` | Minimum cells per barcode (QC filter). |
 | `--variant_barcode_count_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
 | `--edit_distance_threshold` | `1` | Maximum allowed edit distance (QC filter). |
-| `--qc_downsample_fraction` | `null` | Optional QC-filter pseudo-variant downsampling fraction `(0, 1]`; drawn from cells that already passed QC. `null` disables it. |
-| `--qc_downsample_seed` | `0` | Seed for the deterministic downsample selection. |
+| `--qc_n_variants` | `null` | Optional: restricts `qc_variant_downsample_classes` to at most this many distinct variants, before QC thresholding. `null` disables it. |
+| `--qc_variant_downsample_classes` | `['Single Missense']` | Classes eligible for the `qc_n_variants` restriction. |
+| `--qc_variant_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count variants; `'random'` keeps a seeded random sample. |
+| `--qc_downsample_amounts` | `null` | Optional single float `(0, 1]`/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). `null` disables it. A genuine multi-element *list* is only settable via a batch YAML override or by editing the Groovy list literal in `nextflow.config` directly — a bare `--qc_downsample_amounts` CLI flag only supports a single scalar. |
+| `--qc_downsample_classes` | `['Synonymous', 'Single Missense']` | Classes eligible for `qc_downsample_amounts` pseudo-variant generation. |
+| `--qc_downsample_seed` | `0` | Seed for the deterministic downsample selection, shared by `qc_downsample_amounts` and `qc_variant_downsample_mode="random"`. |
 
 ### Batch-effect detection (`ANOVA_BLOCKLIST`)
 
@@ -318,7 +318,7 @@ config-resolution time rather than silently proceeding with no data.
 
 Every process that consumes a per-batch-overridable value receives it as an
 individual `val()` input (e.g. `QC_FILTER` takes
-`barcode_count_threshold`/`variant_barcode_count_threshold`/... as five
+`barcode_count_threshold`/`variant_barcode_count_threshold`/... as nine
 separate `val()`s), never a whole config map or the raw YAML file. Nextflow's
 `-resume` cache key for a task is derived from its declared inputs — if a
 whole file or map were passed, changing *any* key in it (even one that
