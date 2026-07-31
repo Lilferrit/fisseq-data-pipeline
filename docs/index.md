@@ -18,7 +18,8 @@ population differs from wildtype (WT) controls using morphological features.
   together, and how to run the pipeline (params, profiles).
 - **CLI Reference** — one page per Python entry point (QC filter, normalize,
   aggregate, feature selection, batch correction, ANOVA, OvWT, OvWT cell
-  scores, batch-vs-batch), each with its config fields and a runnable example.
+  scores, batch-vs-batch, wildtype-vs-wildtype), each with its config fields
+  and a runnable example.
 - **API Reference** — full function/class-level documentation for every module,
   generated from source docstrings.
 - **[Walkthrough](walkthrough.md)** — a complete end-to-end run, from raw
@@ -39,6 +40,7 @@ NORMALIZE   (per batch)
      ├──► BATCHVSBATCH (post)       (global, optional — params.run_global)
      ├──► OVWT_BATCHWISE             (per batch)
      ├──► OVWT_GLOBAL                (global, optional — params.run_global)
+     ├──► WTVWT_BATCHWISE            (per batch, optional — params.run_wtvwt)
      ├──► Feature selection          (batchwise always; global optional)
      └──► ANOVA (normalized)         (global — always runs)
 
