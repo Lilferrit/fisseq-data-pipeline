@@ -17,6 +17,7 @@ wheels/
 .ruff_cache/
 .pytest_cache/
 .claude/
+.codegraph/
 
 # Generated docs output
 site/
