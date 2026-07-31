@@ -1000,7 +1000,7 @@ def test_batch_yaml_missing_input_paths_rejected(tmp_path_factory):
     config_dir = exp_dir / "configs"
     config_dir.mkdir()
     with open(config_dir / "batch1.yaml", "w") as f:
-        yaml.safe_dump({"top_n_missense": 5}, f)
+        yaml.safe_dump({"qc_n_variants": 5}, f)
 
     result = _run_config_dir_pipeline(exp_dir, config_dir)
     assert result.returncode != 0

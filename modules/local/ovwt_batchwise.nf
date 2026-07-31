@@ -15,8 +15,8 @@ nextflow.enable.dsl = 2
 // Both block-list fields are vals (not staged paths) so a Groovy null can be
 // passed through directly -- python -m fisseq_data_pipeline.ovwt's feature_block_list_file=null /
 // barcode_block_list_file=null CLI args parse as Python None via
-// Hydra/OmegaConf, the same trick used for qc_downsample_fraction in
-// qc_filter.nf.
+// Hydra/OmegaConf, the same trick used for qc_downsample_amounts/qc_n_variants
+// in qc_filter.nf.
 // Publishes results.parquet, models.pkl, test_index.parquet, and
 // train_index.parquet (consumed by OVWT_CELLSCORES_BATCHWISE, selected via
 // params.single_cell_scores_split) under <publish_subdir>/<batch_stem>/.
