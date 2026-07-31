@@ -18,9 +18,11 @@ single-file path.
 
 ## Aggregators
 
-Seven strategies are available via the `aggregator` field — there is **no**
+Eight strategies are available via the `aggregator` field — there is **no**
 `"multi"`/combined option; combining feature types happens in Nextflow by running
-`AGGREGATE_FEATURE_TYPE` once per `params.feature_select_types` entry.
+`AGGREGATE_FEATURE_TYPE` once per `params.feature_select_types` entry. Note that
+`signedKS` is not included in the default `params.feature_select_types` list (see
+[Parameters](../configuration.md#parameters)) — it must be opted into explicitly.
 
 | Value | Description |
 | ----- | ----------- |
@@ -29,6 +31,7 @@ Seven strategies are available via the `aggregator` field — there is **no**
 | `MAD` | Per-variant median absolute deviation |
 | `std` | Per-variant standard deviation |
 | `KS` | Kolmogorov-Smirnov statistic vs. WT/control distribution |
+| `signedKS` | Same magnitude as `KS`, but signed by which empirical CDF is larger at the maximizing point: positive when the variant group's CDF exceeds the reference's there (group skews lower), negative when the reference's CDF is larger (group skews higher). |
 | `QQ` | Q-Q Pearson correlation vs. WT/control distribution |
 | `AUROC` | AUROC vs. WT/control distribution. Directional: `0.5` means identical distributions, `1.0` means the variant is consistently higher than the reference, `0.0` means consistently lower (not symmetrized to `[0.5, 1]`). |
 
@@ -41,7 +44,7 @@ Extends `LabeledInputConfig` (adds `input_file`, `label_column`) plus the
 | ----- | ------- | ----------- |
 | `input_file` | **required** | Glob pattern or path to cell-level data. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
-| `aggregator` | **required** | One of the seven aggregators above. |
+| `aggregator` | **required** | One of the eight aggregators above. |
 | `save_normalizer` | `true` | Write the synonymous-baseline normalizer. |
 | `block_list_file` | `null` | Parquet with `feature` and `feature_ok` columns; blocked features are skipped. |
 | `compute_impact_score` | `true` | Append an impact score column derived from variant classification. |
@@ -65,7 +68,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | ----- | ------- | ----------- |
 | `input_file` | **required** | Glob pattern or path to cell-level data. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
-| `aggregator` | **required** | One of the seven aggregators above. |
+| `aggregator` | **required** | One of the eight aggregators above. |
 | `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `python -m fisseq_data_pipeline.generatesplit`) restricting aggregation to a pseudo-replicate half. |
 | `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
 | `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |

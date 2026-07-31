@@ -168,6 +168,54 @@ def test_ks_aggregator_matches_scipy(native_stats_df: pl.DataFrame, label: str) 
     assert row["f1_KS"] == pytest.approx(expected, abs=1e-9)
 
 
+def _signed_ks_stat(group: list[float], ref: list[float]) -> float:
+    """Independent numpy reference for the signed KS statistic: same
+    combined-sort/signed-weight construction as SignedKSAggregator, kept
+    separate so it's a genuine cross-check rather than a restatement."""
+    group_arr = np.asarray(group, dtype=float)
+    ref_arr = np.asarray(ref, dtype=float)
+    n1, n2 = len(group_arr), len(ref_arr)
+    combined = np.concatenate([group_arr, ref_arr])
+    weights = np.concatenate([np.full(n1, 1.0 / n1), np.full(n2, -1.0 / n2)])
+    order = np.argsort(combined, kind="stable")
+    val_sorted = combined[order]
+    w_sorted = weights[order]
+    cumsum = np.cumsum(w_sorted)
+    is_last = np.ones(len(val_sorted), dtype=bool)
+    is_last[:-1] = val_sorted[:-1] != val_sorted[1:]
+    magnitude = np.where(is_last, np.abs(cumsum), -np.inf)
+    return cumsum[np.argmax(magnitude)]
+
+
+def test_signed_ks_aggregator_returns_expected_columns(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    result = m.SignedKSAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert {"meta_aa_changes", "f1_signedKS", "f2_signedKS"}.issubset(
+        set(result.columns)
+    )
+
+
+def test_signed_ks_aggregator_excludes_control_rows(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    result = m.SignedKSAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert "WT" not in result["meta_aa_changes"].to_list()
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES", "SINGLE"])
+def test_signed_ks_aggregator_matches_manual_signed_stat(
+    native_stats_df: pl.DataFrame, label: str
+) -> None:
+    result = m.SignedKSAggregator().aggregate(native_stats_df.lazy()).collect()
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    expected_magnitude = scipy.stats.ks_2samp(group, ref).statistic
+    expected_signed = _signed_ks_stat(group, ref)
+    assert abs(row["f1_signedKS"]) == pytest.approx(expected_magnitude, abs=1e-9)
+    assert row["f1_signedKS"] == pytest.approx(expected_signed, abs=1e-9)
+
+
 def test_auroc_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
     result = m.AUROCAggregator().aggregate(toy_norm_df.lazy()).collect()
     assert {"meta_aa_changes", "f1_AUROC", "f2_AUROC"}.issubset(set(result.columns))
@@ -513,7 +561,12 @@ def test_reference_pool_not_collected_for_native_aggregators(
 def test_reference_pool_still_collected_for_reference_based_aggregators(
     toy_norm_df: pl.DataFrame,
 ) -> None:
-    for agg_cls in (m.KSAggregator, m.QQCorrelationAggregator, m.AUROCAggregator):
+    for agg_cls in (
+        m.KSAggregator,
+        m.SignedKSAggregator,
+        m.QQCorrelationAggregator,
+        m.AUROCAggregator,
+    ):
         with patch.object(
             m.ReferenceBasedAggregator,
             "_reference_lf",
@@ -796,6 +849,52 @@ def test_ks_aggregator_all_null_reference_returns_null() -> None:
     assert row["f1_KS"] is None
 
 
+def test_signed_ks_aggregator_ignores_nulls_in_variant() -> None:
+    full = _ref_based_null_df()
+    row = (
+        m.SignedKSAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    expected = _signed_ks_stat([10.0, 30.0], [1.0, 3.0])
+    assert row["f1_signedKS"] == pytest.approx(expected)
+
+
+def test_signed_ks_aggregator_all_null_variant_returns_null() -> None:
+    full = _ref_based_null_df()
+    row = (
+        m.SignedKSAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f2_signedKS"] is None
+
+
+def test_signed_ks_aggregator_all_null_reference_returns_null() -> None:
+    full = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
+            "meta_is_control": [True, True, False, False],
+            "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
+        }
+    )
+    row = (
+        m.SignedKSAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f1_signedKS"] is None
+
+
 def test_qq_aggregator_ignores_nulls_in_variant() -> None:
     full = _ref_based_null_df()
     row = (
@@ -998,7 +1097,7 @@ def test_aggregate_unknown_feature_in_block_list_ignored(
     assert {"f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
-@pytest.mark.parametrize("aggregator_name", ["KS", "QQ", "AUROC"])
+@pytest.mark.parametrize("aggregator_name", ["KS", "signedKS", "QQ", "AUROC"])
 def test_aggregate_block_list_with_reference_based_aggregator(
     toy_norm_df: pl.DataFrame, aggregator_name: str
 ) -> None:

@@ -38,8 +38,8 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
     ----------
     aggregator : str
         A concrete key in ``fisseq_data_pipeline.aggregate._AGGREGATORS``
-        (``mean``, ``median``, ``MAD``, ``std``, ``KS``, ``QQ``, ``AUROC``).
-        Required.
+        (``mean``, ``median``, ``MAD``, ``std``, ``KS``, ``signedKS``, ``QQ``,
+        ``AUROC``). Required.
     index_file : str or None
         Optional path to a single-column ``TMP_IDX_COL`` parquet file (as
         written by :func:`fisseq_data_pipeline.generatesplit.main`)
