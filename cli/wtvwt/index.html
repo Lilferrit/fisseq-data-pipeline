@@ -9,10 +9,10 @@
       
       
       
-        <link rel="prev" href="../aggregate/">
+        <link rel="prev" href="../batchvsbatch/">
       
       
-        <link rel="next" href="../batchcorrect/">
+        <link rel="next" href="../../api/input/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -20,7 +20,7 @@
     
     
       
-        <title>Feature Selection - Fisseq Data Pipeline</title>
+        <title>Wildtype vs. Wildtype - Fisseq Data Pipeline</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#feature-selection" class="md-skip">
+        <a href="#wildtype-vs-wildtype" class="md-skip">
           Skip to content
         </a>
       
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Feature Selection
+              Wildtype vs. Wildtype
             
           </span>
         </div>
@@ -646,32 +646,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Feature Selection
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../features/" class="md-nav__link">
         
   
   
@@ -682,71 +660,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. python -m fisseq_data_pipeline.generatesplit (GENERATE_SPLIT)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. python -m fisseq_data_pipeline.correlatefeatures (CORRELATE_FEATURES)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. python -m fisseq_data_pipeline.blocklist (BLOCKLIST)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. python -m fisseq_data_pipeline.combineblocklists (COMBINE_BLOCKLISTS)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. python -m fisseq_data_pipeline.featureselect (FINALIZE_FEATURE_SELECT)
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -940,10 +853,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../wtvwt/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Wildtype vs. Wildtype
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -954,6 +889,53 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#config-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Config fields
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output files
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1433,45 +1415,27 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" class="md-nav__link">
+  <a href="#config-fields" class="md-nav__link">
     <span class="md-ellipsis">
-      1. python -m fisseq_data_pipeline.generatesplit (GENERATE_SPLIT)
+      Config fields
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" class="md-nav__link">
+  <a href="#output-files" class="md-nav__link">
     <span class="md-ellipsis">
-      2. python -m fisseq_data_pipeline.correlatefeatures (CORRELATE_FEATURES)
+      Output files
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" class="md-nav__link">
+  <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
-      3. python -m fisseq_data_pipeline.blocklist (BLOCKLIST)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. python -m fisseq_data_pipeline.combineblocklists (COMBINE_BLOCKLISTS)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. python -m fisseq_data_pipeline.featureselect (FINALIZE_FEATURE_SELECT)
+      Example
     </span>
   </a>
   
@@ -1493,19 +1457,21 @@
 
 
 
-<h1 id="feature-selection">Feature Selection<a class="headerlink" href="#feature-selection" title="Permanent link">&para;</a></h1>
-<p>The bootstrap pseudo-replicate feature-selection pipeline is implemented as five
-Hydra entry points, one per module, each a Nextflow process (see
-<a href="../../nextflow/">Nextflow Workflow</a>). Cells are split into stratified 50/50
-pseudo-replicate halves across <code>params.feature_select_bootstrap_reps</code> replicates; each half is
-aggregated per feature type (via <a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>),
-correlated against its partner half, and a per-feature blocklist is derived from
-the median correlation across all bootstrap replicates. The final stage joins the
-per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
-selection.</p>
-<p>All configs extend the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
-<h2 id="1-python-m-fisseq_data_pipelinegeneratesplit-generate_split">1. <code>python -m fisseq_data_pipeline.generatesplit</code> (<code>GENERATE_SPLIT</code>)<a class="headerlink" href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" title="Permanent link">&para;</a></h2>
-<p>Generates one stratified 50/50 pseudo-replicate split.</p>
+<h1 id="wildtype-vs-wildtype">Wildtype vs. Wildtype<a class="headerlink" href="#wildtype-vs-wildtype" title="Permanent link">&para;</a></h1>
+<p><code>python -m fisseq_data_pipeline.wtvwt</code> (Nextflow process <code>WTVWT_BATCHWISE</code>, per batch)
+restricts to wildtype-labeled cells only and trains a separate XGBoost binary
+classifier for each pair of wildtype barcodes, treating the task as "this
+barcode vs. that barcode." This serves as a barcode-level noise floor / control
+check: if two wildtype barcodes are trivially separable, that points at
+batch/technical variation independent of any real variant effect.</p>
+<p>An 80/10/10 train/test/val split (stratified by barcode, so every barcode's
+rows span all three splits) is computed once across all wildtype cells and
+then subset per pair. Results (per-pair AUROC and accuracy on train/val/test
+splits) and all trained models are serialized to disk. <code>feature_block_list_file</code>
+(see <a href="../anovablocklist/">ANOVA Block-list</a>) optionally excludes features
+(columns) with a significant batch effect before splitting/training.</p>
+<h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
+<p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
 <thead>
 <tr>
@@ -1518,168 +1484,86 @@ selection.</p>
 <tr>
 <td><code>input_file</code></td>
 <td><strong>required</strong></td>
-<td>Glob pattern or path to cell-level data.</td>
+<td>Path to feature-selected or normalized cell-level parquet.</td>
 </tr>
 <tr>
 <td><code>label_column</code></td>
 <td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
+<td>Column identifying variant labels; used only to restrict to wildtype cells.</td>
+</tr>
+<tr>
+<td><code>wt_label</code></td>
+<td><code>"WT"</code></td>
+<td>Label string identifying wildtype cells; only rows with this label are used.</td>
+</tr>
+<tr>
+<td><code>barcode_column</code></td>
+<td><code>"meta_barcode"</code></td>
+<td>Column identifying each cell's barcode; every pair of distinct values (after filtering) gets its own classifier.</td>
 </tr>
 <tr>
 <td><code>random_state</code></td>
-<td><strong>required</strong></td>
-<td>Seed for the stratified split — set to the bootstrap-loop index in Nextflow, so each replicate is distinct and reproducible.</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: <code>half1.parquet</code>, <code>half2.parquet</code> (single-column row-index files).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.generatesplit<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>data/normalized.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">random_state</span><span class="o">=</span><span class="m">3</span>
-</code></pre></div>
-<h2 id="2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features">2. <code>python -m fisseq_data_pipeline.correlatefeatures</code> (<code>CORRELATE_FEATURES</code>)<a class="headerlink" href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" title="Permanent link">&para;</a></h2>
-<p>Computes per-feature Pearson correlation between two aggregate halves for the same
-feature type.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>half1_file</code></td>
-<td><strong>required</strong></td>
-<td>First half's per-feature-type aggregate parquet.</td>
+<td><code>42</code></td>
+<td>Seed for train/test/val splitting.</td>
 </tr>
 <tr>
-<td><code>half2_file</code></td>
-<td><strong>required</strong></td>
-<td>Second half's per-feature-type aggregate parquet.</td>
+<td><code>feature_cols</code></td>
+<td><code>null</code></td>
+<td>Explicit list of feature column names; auto-detected if <code>null</code>.</td>
 </tr>
 <tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: <code>correlations.parquet</code> (columns: <code>feature</code>, <code>r</code>, <code>r_squared</code>, <code>p_value</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.correlatefeatures<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nv">half1_file</span><span class="o">=</span>out/half1.mean.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">half2_file</span><span class="o">=</span>out/half2.mean.parquet
-</code></pre></div>
-<h2 id="3-python-m-fisseq_data_pipelineblocklist-blocklist">3. <code>python -m fisseq_data_pipeline.blocklist</code> (<code>BLOCKLIST</code>)<a class="headerlink" href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" title="Permanent link">&para;</a></h2>
-<p>The one intentional cross-bootstrap synchronization point: gathers every bootstrap
-replicate's correlation table for one feature type and computes each feature's
-median <code>r</code> across replicates.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>correlation_files</code></td>
-<td><strong>required</strong></td>
-<td>Glob pattern matching all bootstrap-replicate correlation parquet files for one feature type.</td>
+<td><code>min_cells_per_barcode</code></td>
+<td><code>100</code></td>
+<td>Drop barcodes with fewer than this many wildtype cells before pairing (overridden to <code>100</code> via <code>--wtvwt_min_cells_per_barcode</code> in the Nextflow pipeline — same value, see <a href="../../nextflow/#parameters">Nextflow Workflow</a>).</td>
 </tr>
 <tr>
-<td><code>minimum_correlation</code></td>
-<td><code>0.5</code></td>
-<td>Minimum median Pearson <code>r</code> required for a feature to pass.</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: <code>blocklist.parquet</code> (columns: <code>feature</code>, <code>median_r</code>, <code>feature_ok</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.blocklist<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="s1">&#39;correlation_files=out/correlations/mean/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nv">minimum_correlation</span><span class="o">=</span><span class="m">0</span>.5
-</code></pre></div>
-<h2 id="4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists">4. <code>python -m fisseq_data_pipeline.combineblocklists</code> (<code>COMBINE_BLOCKLISTS</code>)<a class="headerlink" href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" title="Permanent link">&para;</a></h2>
-<p>Concatenates every feature type's blocklist into one combined blocklist (a plain
-concat is correct — stat-suffixed feature names never collide across feature
-types).</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>blocklist_files</code></td>
-<td><strong>required</strong></td>
-<td>Glob pattern matching all per-feature-type blocklist parquet files.</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: <code>blocklist.parquet</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.combineblocklists<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="s1">&#39;blocklist_files=out/blocklists/*.parquet&#39;</span>
-</code></pre></div>
-<h2 id="5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select">5. <code>python -m fisseq_data_pipeline.featureselect</code> (<code>FINALIZE_FEATURE_SELECT</code>)<a class="headerlink" href="#5-python-m-fisseq_data_pipelinefeatureselect-finalize_feature_select" title="Permanent link">&para;</a></h2>
-<p>The final stage: joins every feature type's full aggregate (from
-<a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>) on <code>label_column</code>, drops blocked
-feature columns, and runs <code>pycytominer.feature_select</code> (variance threshold,
-built-in blocklist, correlation threshold).</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>input_file</code></td>
-<td><strong>required</strong></td>
-<td>Raw/normalized cell-level input — used only to derive per-variant metadata.</td>
+<td><code>feature_block_list_file</code></td>
+<td><code>null</code></td>
+<td>Optional path to a parquet file with <code>feature</code> (str) and <code>feature_ok</code> (bool) columns (e.g. <code>python -m fisseq_data_pipeline.anovablocklist</code>'s output). Features where <code>feature_ok</code> is <code>false</code> are excluded (dropped as columns) before splitting/training.</td>
 </tr>
 <tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
+<td><code>xgboost.num_boost_round</code></td>
+<td><code>100</code></td>
+<td>Maximum boosting rounds.</td>
 </tr>
 <tr>
-<td><code>feature_type_files</code></td>
-<td><strong>required</strong></td>
-<td>Glob pattern matching per-feature-type full aggregate parquet files.</td>
+<td><code>xgboost.early_stopping_rounds</code></td>
+<td><code>5</code></td>
+<td>Stop early if the eval metric does not improve.</td>
 </tr>
 <tr>
-<td><code>block_list_file</code></td>
-<td><strong>required</strong></td>
-<td>Combined blocklist parquet, with <code>feature</code> and <code>feature_ok</code> columns.</td>
-</tr>
-<tr>
-<td><code>compute_impact_score</code></td>
+<td><code>xgboost.weigh_samples</code></td>
 <td><code>true</code></td>
-<td>Compute per-variant impact score (cosine distance vs. synonymous baseline) after feature selection.</td>
+<td>Use balanced sample weights to handle class imbalance.</td>
+</tr>
+<tr>
+<td><code>xgboost.params.max_depth</code></td>
+<td><code>3</code></td>
+<td>Maximum tree depth.</td>
+</tr>
+<tr>
+<td><code>xgboost.params.subsample</code></td>
+<td><code>0.5</code></td>
+<td>Fraction of rows sampled per tree.</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
-single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.featureselect<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="s1">&#39;feature_type_files=out/aggregates/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nv">block_list_file</span><span class="o">=</span>out/blocklist.parquet
+<h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>{output_dir}/results.parquet</code> — one row per unordered barcode pair with
+  columns <code>barcode_a</code>, <code>barcode_b</code>, <code>train_auroc</code>, <code>val_auroc</code>, <code>test_auroc</code>,
+  <code>train_accuracy</code>, <code>val_accuracy</code>, <code>test_accuracy</code>, <code>n_cells_a</code>, <code>n_cells_b</code></li>
+<li><code>{output_dir}/models.pkl</code> — dictionary of trained <code>xgb.Booster</code> objects keyed
+  by <code>(barcode_a, barcode_b)</code> tuple</li>
+</ul>
+<h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.wtvwt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/features.parquet<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">wt_label</span><span class="o">=</span>WT<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nv">min_cells_per_barcode</span><span class="o">=</span><span class="m">100</span>
 </code></pre></div>
-<p>See <a href="../../api/features/">API Reference: features</a> for full function
-documentation, including <code>pyc_feature_select</code> and <code>compute_feature_correlations</code>.</p>
+<p>See <a href="../../api/wtvwt/">API Reference: wtvwt</a> for full function documentation.</p>
 
 
 

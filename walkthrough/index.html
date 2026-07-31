@@ -842,6 +842,29 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/wtvwt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Wildtype vs. Wildtype
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1198,6 +1221,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/wtvwt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    wtvwt
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/config/" class="md-nav__link">
         
   
@@ -1472,6 +1518,8 @@ in its own Parquet file under <code>&lt;input_dir&gt;/input/</code>:</p>
 <li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global, if
    <code>params.run_global</code>).</li>
 <li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification.</li>
+<li><code>WTVWT_BATCHWISE</code> — wildtype-only pairwise barcode classification (per
+   batch, if <code>params.run_wtvwt</code>).</li>
 <li>Bootstrap feature selection (batchwise and, if <code>params.run_global</code>, global) —
    see <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
    six-stage breakdown.</li>

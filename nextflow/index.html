@@ -670,6 +670,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wildtype-vs-wildtype pairwise barcode classification (WTVWT_BATCHWISE)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
     <span class="md-ellipsis">
       Feature selection (bootstrap + aggregation + correlation)
@@ -1093,6 +1102,29 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/wtvwt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Wildtype vs. Wildtype
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1449,6 +1481,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/wtvwt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    wtvwt
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/config/" class="md-nav__link">
         
   
@@ -1677,6 +1732,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wildtype-vs-wildtype pairwise barcode classification (WTVWT_BATCHWISE)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
     <span class="md-ellipsis">
       Feature selection (bootstrap + aggregation + correlation)
@@ -1869,6 +1933,12 @@ may not exist yet on a first config-driven run.</p>
 <td><code>ovwt_global.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.ovwt</code></td>
 <td>global, optional (<code>params.run_global</code>); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
+</tr>
+<tr>
+<td><code>WTVWT_BATCHWISE</code></td>
+<td><code>wtvwt_batchwise.nf</code></td>
+<td><code>python -m fisseq_data_pipeline.wtvwt</code></td>
+<td>per batch, optional (<code>params.run_wtvwt</code>); restricted to wildtype cells, trains one binary classifier per pair of wildtype barcodes; independent of the <code>ANOVA_BLOCKLIST</code>/OvWT chain</td>
 </tr>
 <tr>
 <td><code>OVWT_CELLSCORES_BATCHWISE</code></td>
@@ -2089,6 +2159,11 @@ below for why.</p>
 <td><code>true</code></td>
 <td>Run <code>OVWT_BATCHWISE_BARCODE_FILTERED</code> (per-batch OvWT filtered against <code>barcode_blocklist/&lt;batch&gt;/barcode_blocklist.parquet</code>). Only takes effect when <code>--run_check_barcodes true</code> is also set (default <code>false</code>) -- does NOT force it on, so the default pipeline output is unaffected.</td>
 </tr>
+<tr>
+<td><code>--run_wtvwt</code></td>
+<td><code>true</code></td>
+<td><code>FisseqPipeline</code> only: run <code>WTVWT_BATCHWISE</code> (per-batch, wildtype-only pairwise barcode classification) for that batch. Independent of <code>--run_ovwt</code> and every other gate.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="input-stage-tunables">INPUT stage tunables<a class="headerlink" href="#input-stage-tunables" title="Permanent link">&para;</a></h3>
@@ -2262,6 +2337,23 @@ overridable per batch exactly like every other parameter here — see
 </tr>
 </tbody>
 </table>
+<h3 id="wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise">Wildtype-vs-wildtype pairwise barcode classification (<code>WTVWT_BATCHWISE</code>)<a class="headerlink" href="#wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--wtvwt_min_cells_per_barcode</code></td>
+<td><code>100</code></td>
+<td>Minimum wildtype cells a barcode must have to be included in pairwise classification.</td>
+</tr>
+</tbody>
+</table>
 <h3 id="feature-selection-bootstrap-aggregation-correlation">Feature selection (bootstrap + aggregation + correlation)<a class="headerlink" href="#feature-selection-bootstrap-aggregation-correlation" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2360,8 +2452,10 @@ unrecognized key). Two kinds of parameters fall in this bucket:</p>
 </ul>
 <p>Every other <code>nextflow.config</code> parameter — including the gating booleans
 <code>--run_ovwt</code>, <code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
-<code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, and the <em>batchwise</em>
-effect of <code>--run_feature_selection</code> — is genuinely per-batch overridable.
+<code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the
+<em>batchwise</em> effect of <code>--run_feature_selection</code> — is genuinely per-batch
+overridable. <code>--wtvwt_min_cells_per_barcode</code> is likewise per-batch
+overridable, same bucket as <code>--ovwt_min_cells</code>.
 Each of these gates only a per-batch-only process or chain, so
 <code>workflows/fisseq.nf</code> implements them as a per-batch channel <code>.filter()</code>
 (via a <code>batchGates()</code> helper that also encodes the "<code>run_check_barcodes</code>
