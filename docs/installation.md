@@ -68,7 +68,7 @@ To run on a cluster:
 3. Pass it at run time:
 
    ```bash
-   nextflow run . -c your.config -profile sge --input_dir /path/to/experiment
+   nextflow run . -c your.config -profile sge --pipeline_dir /path/to/experiment
    ```
 
-See [Nextflow Workflow](nextflow.md) for the full parameter reference.
+See [Configuration](configuration.md) for the full parameter reference.

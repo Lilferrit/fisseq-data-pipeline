@@ -26,7 +26,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `barcode_column` | `"meta_barcode"` | Column identifying each cell's barcode; every pair of distinct values (after filtering) gets its own classifier. |
 | `random_state` | `42` | Seed for train/test/val splitting. |
 | `feature_cols` | `null` | Explicit list of feature column names; auto-detected if `null`. |
-| `min_cells_per_barcode` | `100` | Drop barcodes with fewer than this many wildtype cells before pairing (overridden to `100` via `--wtvwt_min_cells_per_barcode` in the Nextflow pipeline — same value, see [Nextflow Workflow](../nextflow.md#parameters)). |
+| `min_cells_per_barcode` | `100` | Drop barcodes with fewer than this many wildtype cells before pairing (overridden to `100` via `--wtvwt_min_cells_per_barcode` in the Nextflow pipeline — same value, see [Configuration](../configuration.md#parameters)). |
 | `feature_block_list_file` | `null` | Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.anovablocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |

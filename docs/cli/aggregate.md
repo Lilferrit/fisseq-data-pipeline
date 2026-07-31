@@ -84,7 +84,7 @@ uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
 ```
 
 In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_select_downsample_wt`
-(see [Parameters](../nextflow.md#parameters)) — `AGGREGATE_HALF` derives a distinct seed per
+(see [Parameters](../configuration.md#parameters)) — `AGGREGATE_HALF` derives a distinct seed per
 `(bootstrap_idx, half_num)` so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. `AGGREGATE_FEATURE_TYPE`

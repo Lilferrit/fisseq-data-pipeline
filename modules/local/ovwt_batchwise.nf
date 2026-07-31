@@ -22,7 +22,7 @@ nextflow.enable.dsl = 2
 // params.single_cell_scores_split) under <publish_subdir>/<batch_stem>/.
 process OVWT_BATCHWISE {
     errorStrategy 'ignore'
-    publishDir { "${params.input_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
 
     input:
     tuple val(batch_stem), path(normalized_parquet), val(feature_block_list_file), val(barcode_block_list_file), val(publish_subdir), val(ovwt_min_cells), val(ovwt_downsample_wt), val(max_cells_per_barcode_wt), val(max_cells_per_barcode_variant)

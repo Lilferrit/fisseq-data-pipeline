@@ -3,7 +3,8 @@
 The fastest path from a fresh checkout to a first pipeline run, including
 setting up a cluster config. For more depth, see
 [Installation](installation.md) (full environment setup),
-[Nextflow Workflow](nextflow.md) (every parameter and profile), and
+[Configuration](configuration.md) (every parameter, the `pipeline_dir` layout,
+and global groups), and
 [Walkthrough](walkthrough.md) (stage-by-stage detail on what each part of the
 pipeline does).
 
@@ -80,22 +81,24 @@ Run the full pipeline directly from GitHub, no local clone required:
 nextflow run Lilferrit/fisseq-data-pipeline \
     -c your.config \
     -profile my_sge \
-    --input_dir /path/to/experiment
+    --pipeline_dir /path/to/experiment
 ```
 
 Or from a local clone:
 
 ```bash
-nextflow run . -c your.config -profile my_sge --input_dir /path/to/experiment
+nextflow run . -c your.config -profile my_sge --pipeline_dir /path/to/experiment
 ```
 
 Resume a previously interrupted run instead of starting over:
 
 ```bash
-nextflow run . -c your.config -profile my_sge --input_dir /path/to/experiment -resume
+nextflow run . -c your.config -profile my_sge --pipeline_dir /path/to/experiment -resume
 ```
 
-See [Nextflow Workflow: Parameters](nextflow.md#parameters) for every
+`--pipeline_dir` must contain a `configs/` subdirectory of per-batch YAML
+config files — see [Configuration](configuration.md#pipeline-directory-layout).
+See [Configuration: Parameters](configuration.md#parameters) for every
 `--param` the pipeline accepts.
 
 ### Running a single step directly
@@ -154,7 +157,7 @@ nextflow pull Lilferrit/fisseq-data-pipeline -r main
 nextflow run Lilferrit/fisseq-data-pipeline \
     -c "${SCRIPT_DIR}/your.config" \
     -profile my_sge \
-    --input_dir "${SCRIPT_DIR}" \
+    --pipeline_dir "${SCRIPT_DIR}" \
     ${RESUME_FLAG} \
     "$@"
 ```
@@ -162,12 +165,16 @@ nextflow run Lilferrit/fisseq-data-pipeline \
 Set `CLEAN=true` before running it to force a fresh run instead of resuming
 (e.g. `CLEAN=true ./run.sh`). Any extra arguments passed to the script (`"$@"`)
 are forwarded straight to `nextflow run`, so you can override any pipeline
-parameter without editing the script, e.g. `./run.sh --run_global false`.
+parameter without editing the script, e.g. `./run.sh --barcode_count_threshold 15`
+(list-valued params like `--global_groups` need a `-c`/`-params-file` override
+instead — see [Configuration: Global groups](configuration.md#global-groups)).
 
 ## Next steps
 
 - [Walkthrough](walkthrough.md) — a complete end-to-end run, stage by stage.
-- [Nextflow Workflow](nextflow.md) — every process, parameter, and profile.
+- [Nextflow Workflow](nextflow.md) — every process and profile.
+- [Configuration](configuration.md) — every parameter, the `pipeline_dir`
+  layout, and global groups.
 - [Architecture](architecture.md) — the full pipeline DAG and output layout.
 - [CLI Reference](cli/qcfilter.md) — config fields and examples for every
   standalone Python tool.

@@ -15,78 +15,87 @@ See [Installation](installation.md) for details, including cluster/HPC setup.
 
 ## 2. Lay out your input data
 
-Each batch's CellProfiler feature matrix (with barcode/variant annotations) goes
-in its own Parquet file under `<input_dir>/input/`:
+Every batch is declared by a YAML config file under `<pipeline_dir>/configs/`
+naming its raw CellProfiler feature matrix (or matrices) — there is no mode
+where the pipeline scans a directory of pre-staged Parquet files directly.
+See [Configuration](configuration.md#pipeline-directory-layout) for the full
+layout and [CLI Reference: Input](cli/input.md#config_path-yaml-schema) for
+the config schema:
 
 ```text
-<input_dir>/
-  input/
-    batch1.parquet
-    batch2.parquet
+<pipeline_dir>/
+  configs/
+    batch1.yaml   # input_paths: [/path/to/batch1_raw.parquet]
+    batch2.yaml   # input_paths: [/path/to/batch2_raw.parquet]
     ...
 ```
 
 ## 3. Run the pipeline
 
 ```bash
-nextflow run . --input_dir /path/to/experiment
+nextflow run . --pipeline_dir /path/to/experiment
 ```
 
 This runs the default `FisseqPipeline`, which chains every stage described in
 [Architecture](architecture.md):
 
-1. `QC_FILTER` — edit-distance, barcode-count, and variant-barcode-count filtering
+1. `INPUT` — converts each batch's config into an `input/*.parquet` file
+   (always runs, once per config).
+2. `QC_FILTER` — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).
-2. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (global, if
-   `params.run_global`).
-3. `NORMALIZE` — z-score normalization fit on WT control cells (per batch).
-4. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (global, if
-   `params.run_global`).
-5. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification.
-6. `WTVWT_BATCHWISE` — wildtype-only pairwise barcode classification (per
+3. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (once per
+   active group in `params.global_groups`; none by default).
+4. `NORMALIZE` — z-score normalization fit on WT control cells (per batch).
+5. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (once per
+   active group).
+6. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification
+   (`OVWT_GLOBAL` once per active group).
+7. `WTVWT_BATCHWISE` — wildtype-only pairwise barcode classification (per
    batch, if `params.run_wtvwt`).
-7. Bootstrap feature selection (batchwise and, if `params.run_global`, global) —
-   see [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
+8. Bootstrap feature selection (batchwise always; global sub-branch once per
+   active group) — see
+   [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
    six-stage breakdown.
-8. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
-   (always runs, regardless of `params.run_global`).
-9. `ANOVA` — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells (always runs).
+9. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
+   (always runs, over every batch).
+10. `ANOVA` — batch-effect assessment, run once on normalized cells and once
+    on batch-corrected cells (always runs).
 
-Override any [parameter](nextflow.md#parameters) on the command line, e.g. to
-adjust QC thresholds or skip the global-only processes (`OVWT_GLOBAL`, the global
-feature-selection branch, and `BATCHVSBATCH`):
+Override any [parameter](configuration.md#parameters) on the command line,
+e.g. to adjust QC thresholds. Global processes (`OVWT_GLOBAL`, the global
+feature-selection branch, and `BATCHVSBATCH`) don't run at all unless you tag
+batches into a group and activate it — see
+[Configuration: Global groups](configuration.md#global-groups):
 
 ```bash
 nextflow run . \
-    --input_dir /path/to/experiment \
-    --barcode_count_threshold 15 \
-    --run_global false
+    --pipeline_dir /path/to/experiment \
+    --barcode_count_threshold 15
 ```
 
 To run on a cluster, supply your own config:
 
 ```bash
-nextflow run . -c your.config -profile sge --input_dir /path/to/experiment
+nextflow run . -c your.config -profile sge --pipeline_dir /path/to/experiment
 ```
 
 If a run is interrupted, resume from the last completed task:
 
 ```bash
-nextflow run . --input_dir /path/to/experiment -resume
+nextflow run . --pipeline_dir /path/to/experiment -resume
 ```
 
 ## 4. Inspect the results
 
-All outputs land under `<input_dir>`, alongside `input/` — see
+All outputs land under `<pipeline_dir>`, alongside `configs/`/`input/` — see
 [Architecture: Output layout](architecture.md#output-layout) for the full tree.
 The two results most analyses care about:
 
-- `<input_dir>/feature_select_batchwise/<batch>/output.parquet` (and
-  `feature_select_global/output.parquet`, if `params.run_global`) — final
-  per-variant, feature-selected profiles.
-- `<input_dir>/anova/anova.parquet` and
-  `<input_dir>/batch_correction/anova/anova.parquet` — per-feature
+- `<pipeline_dir>/feature_select_batchwise/<batch>/output.parquet` (and, if a
+  global group is active, `global/<group>/feature_select/output.parquet`) —
+  final per-variant, feature-selected profiles.
+- `<pipeline_dir>/anova/anova.parquet` and
+  `<pipeline_dir>/batch_correction/anova/anova.parquet` — per-feature
   batch-effect ANOVA results, before and after batch correction.
 
 ## 5. Running individual steps

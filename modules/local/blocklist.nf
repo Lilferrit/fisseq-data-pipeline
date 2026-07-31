@@ -7,7 +7,7 @@ nextflow.enable.dsl = 2
 process BLOCKLIST {
     errorStrategy 'ignore'
     label 'process_low'
-    publishDir { "${params.input_dir}/${publish_subdir}/blocklists" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}/blocklists" }, mode: 'copy'
 
     input:
     tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir), val(minimum_correlation)

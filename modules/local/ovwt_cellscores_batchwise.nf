@@ -5,7 +5,7 @@ nextflow.enable.dsl = 2
 // the trained one-vs-wildtype models produced by OVWT_BATCHWISE for that batch.
 process OVWT_CELLSCORES_BATCHWISE {
     errorStrategy 'ignore'
-    publishDir { "${params.input_dir}/ovwt_cellscores_batchwise/${batch_stem}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/ovwt_cellscores_batchwise/${batch_stem}" }, mode: 'copy'
 
     input:
     tuple val(batch_stem), path(normalized_parquet), path(models_pkl)

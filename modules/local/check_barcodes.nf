@@ -11,7 +11,7 @@ nextflow.enable.dsl = 2
 process CHECK_BARCODES {
     errorStrategy 'ignore'
     label 'process_medium'
-    publishDir { "${params.input_dir}/check_barcodes/${batch_stem}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/check_barcodes/${batch_stem}" }, mode: 'copy'
 
     input:
     tuple val(batch_stem), path(scores_file), val(barcode_check_min_cells), val(barcode_check_alpha)

@@ -15,7 +15,9 @@ population differs from wildtype (WT) controls using morphological features.
 - **[Installation](installation.md)** — environment setup, including cluster/HPC
   configuration.
 - **[Nextflow Workflow](nextflow.md)** — the Nextflow processes, how they're wired
-  together, and how to run the pipeline (params, profiles).
+  together, and how to run the pipeline (profiles).
+- **[Configuration](configuration.md)** — every parameter, the `pipeline_dir`
+  layout, per-batch YAML overrides, and global groups.
 - **CLI Reference** — one page per Python entry point (QC filter, normalize,
   aggregate, feature selection, batch correction, ANOVA, OvWT, OvWT cell
   scores, batch-vs-batch, wildtype-vs-wildtype), each with its config fields
@@ -28,20 +30,20 @@ population differs from wildtype (WT) controls using morphological features.
 ## Pipeline at a glance
 
 ```text
-input/*.parquet  (one file per batch)
+configs/*.yaml  (mandatory, one file per batch) ──► INPUT ──► input/*.parquet
      │
      ▼
 QC_FILTER   (per batch)
      │
-     ├──► BATCHVSBATCH (pre)        (global, optional — params.run_global)
+     ├──► BATCHVSBATCH (pre)        (once per active group — params.global_groups)
      ▼
 NORMALIZE   (per batch)
      │
-     ├──► BATCHVSBATCH (post)       (global, optional — params.run_global)
+     ├──► BATCHVSBATCH (post)       (once per active group)
      ├──► OVWT_BATCHWISE             (per batch)
-     ├──► OVWT_GLOBAL                (global, optional — params.run_global)
+     ├──► OVWT_GLOBAL                (once per active group)
      ├──► WTVWT_BATCHWISE            (per batch, optional — params.run_wtvwt)
-     ├──► Feature selection          (batchwise always; global optional)
+     ├──► Feature selection          (batchwise always; global sub-branch once per active group)
      └──► ANOVA (normalized)         (global — always runs)
 
 QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► ANOVA (batch-corrected)  (always runs)

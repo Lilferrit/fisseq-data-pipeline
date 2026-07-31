@@ -5,6 +5,7 @@ nav:
   - Architecture: architecture.md
   - Installation: installation.md
   - Nextflow Workflow: nextflow.md
+  - Configuration: configuration.md
   - CLI Reference:
       - Input: cli/input.md
       - QC Filter: cli/qcfilter.md

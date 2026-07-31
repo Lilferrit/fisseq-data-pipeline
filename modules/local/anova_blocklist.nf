@@ -4,12 +4,12 @@ nextflow.enable.dsl = 2
 // anova.parquet and marks each feature ok/blocked based on whether its
 // ANOVA p-value indicates a statistically significant batch effect
 // (p_value < params.anova_blocklist_pvalue_threshold => blocked). Always
-// runs -- not gated by params.run_global or params.run_feature_selection --
+// runs -- not gated by any global group or params.run_feature_selection --
 // since OVWT_BATCHWISE_FEATURE_FILTERED needs it unconditionally. Publishes
 // anova_blocklist.parquet under anova_blocklist/.
 process ANOVA_BLOCKLIST {
     errorStrategy 'ignore'
-    publishDir "${params.input_dir}/anova_blocklist", mode: 'copy'
+    publishDir "${params.pipeline_dir}/anova_blocklist", mode: 'copy'
 
     input:
     path(anova_file)

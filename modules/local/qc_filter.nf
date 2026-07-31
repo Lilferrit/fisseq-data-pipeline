@@ -15,7 +15,7 @@ nextflow.enable.dsl = 2
 // variants_per_barcode.parquet under qc_filter/<batch_stem>/.
 process QC_FILTER {
     errorStrategy 'ignore'
-    publishDir { "${params.input_dir}/qc_filter/${batch_stem}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/qc_filter/${batch_stem}" }, mode: 'copy'
 
     input:
     tuple val(batch_stem), path(input_file), val(barcode_count_threshold), \

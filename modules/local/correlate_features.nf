@@ -7,7 +7,7 @@ nextflow.enable.dsl = 2
 process CORRELATE_FEATURES {
     errorStrategy 'ignore'
     label 'process_low'
-    publishDir { "${params.input_dir}/${publish_subdir}/correlations/${feature_type}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}/correlations/${feature_type}" }, mode: 'copy'
 
     input:
     tuple val(batch_key), val(bootstrap_idx), val(feature_type), path(half1_agg), path(half2_agg), val(publish_subdir)

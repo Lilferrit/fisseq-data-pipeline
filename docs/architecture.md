@@ -8,10 +8,10 @@ default `FisseqPipeline`; see [Nextflow Workflow](nextflow.md) for the lighter
 documented in the [CLI Reference](cli/qcfilter.md).
 
 ```text
-config/*.yaml  (optional, one file per batch — variant selection spec)
+configs/*.yaml  (mandatory, one file per batch — variant selection spec)
      │
      ▼
-   INPUT       (per config, optional — gated by params.yaml_config_dir)
+   INPUT       (per config, always runs)
      │
      ▼
 input/*.parquet  (one file per batch, CellProfiler morphological features + barcode annotations)
@@ -19,7 +19,8 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
      ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
      │
-     ├──► BATCHVSBATCH (pre, unfiltered)  (global — waits for all QC_FILTER; skipped if params.run_global = false)
+     ├──► BATCHVSBATCH (pre, unfiltered)  (per active global group in params.global_groups;
+     │           default null = none run — see Configuration: Global groups)
      ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │
@@ -31,9 +32,9 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │           ▼
      │      ANOVA_BLOCKLIST  (global; always runs — marks feature_ok from ANOVA p-values)
      │           │
-     │           ├──► BATCHVSBATCH (post, filtered)   (global; skipped if params.run_global = false)
+     │           ├──► BATCHVSBATCH (post, filtered)   (per active global group)
      │           ├──► OVWT_BATCHWISE (feature-filtered) (per batch; skipped if params.run_feature_filtered_ovwt = false)
-     │           └──► OVWT_GLOBAL (filtered)            (global; skipped if params.run_global = false)
+     │           └──► OVWT_GLOBAL (filtered)            (per active global group)
      │
      ├──► OVWT_BATCHWISE (unfiltered)     (per batch — no dependency on ANOVA_BLOCKLIST)
      │           └──► OVWT_CELLSCORES_BATCHWISE  (per batch; optional, params.run_single_cell_scores)
@@ -44,7 +45,8 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │                                         params.run_barcode_filtered_ovwt true --
      │                                         the latter does NOT force the former on)
      │                                         └──► OVWT_BATCHWISE (barcode-filtered)  (per batch)
-     └──► Feature selection (batchwise always runs; global waits for all batches, skipped if params.run_global = false):
+     └──► Feature selection (batchwise always runs; global sub-branch runs once per active
+                              global group instead):
             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
             GENERATE_SPLIT              (per bootstrap replicate)    │
               └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
@@ -117,7 +119,7 @@ normalized cells, never batch-corrected ones). A feature is blocked
 (`feature_ok = false`) when its ANOVA `p_value` is strictly less than
 `params.anova_blocklist_pvalue_threshold` (default `0.05`), i.e. when a statistically
 significant batch effect was detected. It always runs, unconditionally — not
-gated by `params.run_global`/`params.run_feature_selection` — since
+gated by any global group or `params.run_feature_selection` — since
 `OVWT_BATCHWISE_FEATURE_FILTERED` (when enabled), `BATCHVSBATCH_POST`, and
 `OVWT_GLOBAL` all need it.
 
@@ -140,9 +142,12 @@ branch, `ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`) read published output
 files from disk via glob patterns (or, for `ANOVA_BLOCKLIST`, consume a real
 Nextflow channel output) after all upstream per-batch processes finish, rather
 than consuming Nextflow channel outputs directly in the general case.
-`params.run_global` (default `true`) gates `BATCHVSBATCH`, `OVWT_GLOBAL`, and the
-`*_GLOBAL` feature-selection branch — `ANOVA`, `ANOVA_BLOCKLIST`,
-`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` always run.
+`BATCHVSBATCH` and `OVWT_GLOBAL`, plus the `*_GLOBAL` feature-selection branch,
+run once per named group listed in `params.global_groups` (default `null` —
+none run at all), each scoped to only the batches whose YAML `global_group`
+key names that group — see [Configuration: Global groups](configuration.md#global-groups).
+`ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`
+always run, over every batch regardless of group.
 
 ## Stages
 
@@ -209,10 +214,12 @@ Used by nearly every entry point whose `input_file` accepts a glob.
 
 ## Output layout
 
-All outputs land under `<input_dir>`, alongside the `input/` folder:
+All outputs land under `<pipeline_dir>`, alongside the mandatory `configs/`
+and `input/` folders:
 
 ```text
-<input_dir>/
+<pipeline_dir>/
+  configs/*.yaml               # mandatory, one per batch
   qc_filter/<batch>/
     filtered_cells.parquet
     barcode_counts.parquet
@@ -220,9 +227,6 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
   normalization/
     cells/<batch>.parquet
     normalizers/<batch>.normalizer.parquet
-  batchvsbatch/
-    pre/results.parquet         # pre batch correction (QC-filtered cells), unfiltered
-    post/results.parquet        # post batch correction (normalized cells), filtered against anova_blocklist
   ovwt_batchwise/<batch>/     # unfiltered — full feature set
     results.parquet
     models.pkl
@@ -242,9 +246,6 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
     models.pkl
     test_index.parquet
     train_index.parquet
-  ovwt_global/                # always filtered against anova_blocklist/anova_blocklist.parquet
-    results.parquet
-    models.pkl
   wtvwt_batchwise/<batch>/    # wildtype cells only; optional: params.run_wtvwt
     results.parquet           # columns: barcode_a, barcode_b, train/val/test_auroc,
                                # train/val/test_accuracy, n_cells_a, n_cells_b
@@ -264,8 +265,6 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
     blocklists/<feature_type>.parquet                                     # stage 2d
     blocklist.parquet                                                    # stage 3 (combined)
     output.parquet                                                       # stage 4 (final)
-  feature_select_global/
-    (same layout, no <batch> nesting — only present if params.run_global = true)
   batch_correction/
     fit/stats_vb.parquet
     fit/centroids.parquet
@@ -275,4 +274,17 @@ All outputs land under `<input_dir>`, alongside the `input/` folder:
     anova.parquet                # from normalized cells
   anova_blocklist/
     anova_blocklist.parquet      # derived from anova/anova.parquet
+  global/<group>/                # one subtree per group in params.global_groups
+                                  # (default null -- none); only that group's member
+                                  # batches (per-batch YAML global_group) contribute
+    qc_filter_cells/<batch>.parquet        # staged copy for BATCHVSBATCH_PRE
+    normalization_cells/<batch>.parquet    # staged copy for BATCHVSBATCH_POST/OVWT_GLOBAL/feature_select
+    batchvsbatch/
+      pre/results.parquet        # pre batch correction (QC-filtered cells), unfiltered
+      post/results.parquet       # post batch correction (normalized cells), filtered against anova_blocklist
+    ovwt_global/                 # always filtered against anova_blocklist/anova_blocklist.parquet
+      results.parquet
+      models.pkl
+    feature_select/
+      (same layout as feature_select_batchwise/<batch>/ above, no <batch> nesting)
 ```

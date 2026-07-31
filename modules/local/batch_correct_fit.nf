@@ -6,10 +6,10 @@ nextflow.enable.dsl = 2
 // stats_vb.parquet and centroids.parquet, consumed by BATCH_CORRECT_TRANSFORM.
 process BATCH_CORRECT_FIT {
     errorStrategy 'ignore'
-    publishDir "${params.input_dir}/batch_correction/fit", mode: 'copy'
+    publishDir "${params.pipeline_dir}/batch_correction/fit", mode: 'copy'
 
     input:
-    val(input_dir)
+    val(pipeline_dir)
 
     output:
     tuple path("stats_vb.parquet"), path("centroids.parquet"), emit: fit_outputs
@@ -19,7 +19,7 @@ process BATCH_CORRECT_FIT {
     echo "Starting BATCH_CORRECT_FIT for global"
     python -m fisseq_data_pipeline.batchcorrect \\
         output_dir=. \\
-        "input_file=${input_dir}/qc_filter/*/filtered_cells.parquet" \\
+        "input_file=${pipeline_dir}/qc_filter/*/filtered_cells.parquet" \\
         use_parent_name=true \\
         wt_label=WT
     """

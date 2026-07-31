@@ -7,7 +7,7 @@ nextflow.enable.dsl = 2
 process GENERATE_SPLIT {
     errorStrategy 'ignore'
     label 'process_low'
-    publishDir { "${params.input_dir}/${publish_subdir}/splits/bootstrap_${bootstrap_idx}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}/splits/bootstrap_${bootstrap_idx}" }, mode: 'copy'
 
     input:
     tuple val(batch_key), val(cells_glob), val(bootstrap_idx), val(publish_subdir)

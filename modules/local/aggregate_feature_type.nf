@@ -10,7 +10,7 @@ nextflow.enable.dsl = 2
 process AGGREGATE_FEATURE_TYPE {
     errorStrategy 'ignore'
     label 'process_medium'
-    publishDir { "${params.input_dir}/${publish_subdir}/aggregates" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}/aggregates" }, mode: 'copy'
 
     input:
     tuple val(batch_key), val(cells_glob), val(feature_type), val(publish_subdir), val(downsample_wt)

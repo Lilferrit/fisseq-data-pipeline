@@ -4,7 +4,7 @@ nextflow.enable.dsl = 2
 process FINALIZE_FEATURE_SELECT {
     errorStrategy 'ignore'
     label 'process_medium'
-    publishDir { "${params.input_dir}/${publish_subdir}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
     tuple val(batch_key), path(feature_type_files), val(cells_glob), path(block_list_file), val(publish_subdir)

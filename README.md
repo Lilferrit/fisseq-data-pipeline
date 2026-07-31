@@ -34,7 +34,7 @@ pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
 Run the full pipeline end to end with [Nextflow](https://www.nextflow.io/) (≥ 23.10):
 
 ```bash
-nextflow run Lilferrit/fisseq-data-pipeline -c your.config --input_dir /path/to/experiment
+nextflow run Lilferrit/fisseq-data-pipeline -c your.config --pipeline_dir /path/to/experiment
 ```
 
 ## Documentation

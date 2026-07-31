@@ -8,7 +8,7 @@ nextflow.enable.dsl = 2
 // models.pkl under wtvwt_batchwise/<batch_stem>/.
 process WTVWT_BATCHWISE {
     errorStrategy 'ignore'
-    publishDir { "${params.input_dir}/wtvwt_batchwise/${batch_stem}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/wtvwt_batchwise/${batch_stem}" }, mode: 'copy'
 
     input:
     tuple val(batch_stem), path(normalized_parquet), val(wtvwt_min_cells_per_barcode)
