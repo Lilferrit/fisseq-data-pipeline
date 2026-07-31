@@ -6,10 +6,10 @@ nextflow.enable.dsl = 2
 // cells, once against batch-corrected cells.
 process ANOVA {
     errorStrategy 'ignore'
-    publishDir { "${params.input_dir}/${publish_subdir}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
-    tuple val(input_dir), val(cells_glob), val(publish_subdir)
+    tuple val(pipeline_dir), val(cells_glob), val(publish_subdir)
 
     output:
     path("anova.parquet")

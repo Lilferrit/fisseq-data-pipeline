@@ -6,7 +6,7 @@ nextflow.enable.dsl = 2
 // corrected batch under batch_correction/cells/.
 process BATCH_CORRECT_TRANSFORM {
     errorStrategy 'ignore'
-    publishDir "${params.input_dir}/batch_correction/cells", mode: 'copy'
+    publishDir "${params.pipeline_dir}/batch_correction/cells", mode: 'copy'
 
     input:
     tuple val(batch_stem), path(filtered_cells), path(stats_vb), path(centroids)

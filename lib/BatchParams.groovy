@@ -1,6 +1,6 @@
 // lib/BatchParams.groovy — per-batch YAML parameter override resolution.
-// See docs/nextflow.md's "Per-batch parameter overrides" section for the
-// full mechanism description and rationale.
+// See docs/configuration.md's "Per-batch parameter overrides" and "Global
+// groups" sections for the full mechanism description and rationale.
 //
 // This class is pure and side-effect-free (no log.info, no file I/O, no
 // dependency on a live Nextflow session or `log` binding) so it can be
@@ -64,15 +64,14 @@ class BatchParams {
     // YAML: either they gate/consume ALL batches uniformly (global-only
     // consumer, e.g. anova_blocklist_pvalue_threshold) or they're
     // meta/bootstrap params resolved before any batch config exists
-    // (pipeline_mode/input_dir/yaml_config_dir). Kept as an explicit list
-    // (rather than "anything not in OVERRIDABLE_KEYS") purely so resolve()
-    // can give a clearer, more specific error for this case than for a
-    // genuine typo — see resolve() below.
+    // (pipeline_mode/pipeline_dir). Kept as an explicit list (rather than
+    // "anything not in OVERRIDABLE_KEYS") purely so resolve() can give a
+    // clearer, more specific error for this case than for a genuine typo —
+    // see resolve() below.
     static final List<String> PIPELINE_WIDE_ONLY_KEYS = [
         'pipeline_mode',
-        'input_dir',
-        'yaml_config_dir',
-        'run_global',
+        'pipeline_dir',
+        'global_groups',
         'feature_select_types',
         'feature_select_bootstrap_reps',
         'anova_blocklist_pvalue_threshold',
@@ -80,9 +79,13 @@ class BatchParams {
         'batchvsbatch_min_batches',
     ] as List<String>
 
-    // The one batch-YAML-only key: required, no nextflow.config default,
-    // excluded from the general override-symmetry mechanism.
+    // The two batch-YAML-only keys, excluded from the general
+    // override-symmetry mechanism (OVERRIDABLE_KEYS/PIPELINE_WIDE_ONLY_KEYS):
+    // input_paths (required, no nextflow.config default -- see its handling
+    // below) and global_group (optional, also no nextflow.config default --
+    // a batch not naming any group simply never contributes to a global run).
     static final String INPUT_PATHS_KEY = 'input_paths'
+    static final String GLOBAL_GROUP_KEY = 'global_group'
 
     /**
      * Resolve one batch's fully-merged config.
@@ -121,13 +124,34 @@ class BatchParams {
             )
         }
 
+        // 1b. global_group: optional, batch-YAML-only. A bare string or a
+        // list of strings, normalized to a list (empty if omitted). Names
+        // which global_groups (see nextflow.config's params.global_groups)
+        // this batch contributes to -- a batch naming no group is simply
+        // excluded from every global run.
+        def rawGroup = batchYaml.get(GLOBAL_GROUP_KEY)
+        def globalGroup
+        if (rawGroup == null) {
+            globalGroup = []
+        } else if (rawGroup instanceof String) {
+            globalGroup = [rawGroup]
+        } else if (rawGroup instanceof List && rawGroup.every { it instanceof String }) {
+            globalGroup = rawGroup
+        } else {
+            throw new IllegalArgumentException(
+                "Batch '${batchName}': '${GLOBAL_GROUP_KEY}' must be a string or a list " +
+                "of strings (got: ${rawGroup})"
+            )
+        }
+
         // 2. Validate every other key and build the resolved map + override log.
         def overrides = []
         def resolved = new LinkedHashMap<String, Object>(defaults)
         resolved[INPUT_PATHS_KEY] = inputPaths
+        resolved[GLOBAL_GROUP_KEY] = globalGroup
 
         batchYaml.each { key, value ->
-            if (key == INPUT_PATHS_KEY) {
+            if (key == INPUT_PATHS_KEY || key == GLOBAL_GROUP_KEY) {
                 return // handled above
             }
             if (key in PIPELINE_WIDE_ONLY_KEYS) {

@@ -1,7 +1,7 @@
 """Load and merge raw input files from a YAML spec.
 
-Hydra entry point (``python -m fisseq_data_pipeline.input``) / Nextflow process ``INPUT`` (optional upstream
-stage, gated by ``params.yaml_config_dir``). Reads a hand-authored YAML config
+Hydra entry point (``python -m fisseq_data_pipeline.input``) / Nextflow process ``INPUT`` (runs once per
+mandatory batch config file in ``<pipeline_dir>/configs/``). Reads a hand-authored YAML config
 (``config_path``, parsed separately from the Hydra CLI config) describing one or
 more input cell-score files (CSV or Parquet), and merges them into a single
 ``input/``-ready cell-level Parquet file.
@@ -22,8 +22,7 @@ Variant-class/count-based restriction (previously done here via
 ``top_n_missense``) now happens downstream, in
 :func:`fisseq_data_pipeline.qcfilter.select_variants` (``n_variants``/
 ``variant_downsample_classes``/``variant_downsample_mode``), so it applies
-uniformly to every batch rather than only to batches routed through this
-optional stage.
+uniformly to every batch.
 
 Config file
 -----------

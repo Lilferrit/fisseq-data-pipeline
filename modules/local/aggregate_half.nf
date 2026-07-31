@@ -13,7 +13,7 @@ nextflow.enable.dsl = 2
 process AGGREGATE_HALF {
     errorStrategy 'ignore'
     label 'process_medium'
-    publishDir { "${params.input_dir}/${publish_subdir}/half_aggregates/bootstrap_${bootstrap_idx}/${feature_type}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/${publish_subdir}/half_aggregates/bootstrap_${bootstrap_idx}/${feature_type}" }, mode: 'copy'
 
     input:
     tuple val(batch_key), val(bootstrap_idx), val(half_num), path(index_file), val(feature_type), val(cells_glob), val(publish_subdir), val(downsample_wt)

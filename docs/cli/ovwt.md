@@ -26,7 +26,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `wt_label` | `"WT"` | Label string identifying wildtype cells. |
 | `random_state` | `42` | Seed for train/test/val splitting and WT downsampling. |
 | `feature_cols` | `null` | Explicit list of feature column names; auto-detected if `null`. |
-| `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Nextflow Workflow](../nextflow.md#parameters). |
+| `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Configuration](../configuration.md#parameters). |
 | `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
 | `max_cells_per_barcode_wt` | `null` | Cap cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count, independently of every other barcode. `null` disables the cap. Applied before `min_cells` and `downsample_wt`. |
 | `max_cells_per_barcode_variant` | `null` | Cap cells per non-wildtype barcode, analogous to `max_cells_per_barcode_wt`. `null` disables the cap. |

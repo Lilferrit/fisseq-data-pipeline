@@ -6,16 +6,17 @@ nextflow.enable.dsl = 2
  *
  * DAG:
  *
- *   input/*.parquet
+ *   configs/*.yaml (mandatory, one per batch) ──► INPUT ──► input/*.parquet
  *        │
  *        ▼
  *   QC_FILTER  (per batch) ──────────────────────────────────────────────┐
  *        │                                                                │ barcode_counts
- *        ├──► BATCHVSBATCH (pre)      (global, waits for all QC_FILTER)  │
+ *        ├──► BATCHVSBATCH (pre)      (per active global group, scoped   │
+ *        │                             to that group's batches)          │
  *        ▼                                                                │
  *   NORMALIZE  (per batch)                                                │
  *        │                                                                │
- *        ├──► BATCHVSBATCH (post)     (global, waits for all NORMALIZE)  │
+ *        ├──► BATCHVSBATCH (post)     (per active global group)          │
  *        ├──► OVWT_BATCHWISE          (per batch: unfiltered,            │
  *        │        │                    feature-filtered against          │
  *        │        │                    ANOVA_BLOCKLIST, and              │
@@ -32,26 +33,36 @@ nextflow.enable.dsl = 2
  *        │                                   run_check_barcodes)         │
  *        │                                   └──► OVWT_BATCHWISE          │
  *        │                                        (barcode-filtered pass)│
- *        ├──► OVWT_GLOBAL             (global, waits for all NORMALIZE)  │
+ *        ├──► OVWT_GLOBAL             (per active global group)          │
  *        ├──► FEATURE_SELECT_BATCHWISE (per batch) ◄─────────────────────┘
- *        └──► FEATURE_SELECT_GLOBAL   (global, waits for all NORMALIZE)
+ *        └──► FEATURE_SELECT_GLOBAL   (per active global group)
+ *
+ * Batches join a global group via that batch's YAML `global_group` key
+ * (string or list of strings); a batch naming no group never contributes to
+ * any global run. params.global_groups (default null) lists which named
+ * groups actually run -- each gets its own BATCHVSBATCH/OVWT_GLOBAL/
+ * FEATURE_SELECT_GLOBAL, scoped to only that group's batches. See
+ * docs/configuration.md.
  *
  * Output layout:
- *   {input_dir}/
+ *   {pipeline_dir}/
+ *     configs/                         *.yaml, one per batch (mandatory input)
+ *     input/                           {batch_stem}.parquet (INPUT output)
  *     qc_filter/{batch_stem}/          filtered_cells, barcode_counts, summary TSV
  *     normalization/cells/             {batch_stem}.parquet
  *     normalization/normalizers/       {batch_stem}.normalizer.parquet
- *     batchvsbatch/pre/                results.parquet  (pre batch correction)
- *     batchvsbatch/post/               results.parquet  (post batch correction)
  *     ovwt_batchwise/{batch_stem}/     results.csv (enriched), models.pkl  (unfiltered)
  *     ovwt_batchwise_feature_filtered/{batch_stem}/  same, filtered against ANOVA_BLOCKLIST
  *     ovwt_batchwise_barcode_filtered/{batch_stem}/  same, filtered against BARCODE_BLOCKLIST
- *     ovwt_global/                     results.csv, models.pkl
  *     ovwt_cellscores_batchwise/{batch_stem}/  cell_scores.parquet
  *     check_barcodes/{batch_stem}/     results.parquet  (per-variant Tukey HSD across barcodes)
  *     barcode_blocklist/{batch_stem}/  barcode_blocklist.parquet  (per-barcode median p_adj + barcode_ok)
  *     feature_select_batchwise/{batch_stem}/  {batch_stem}.parquet, feature_correlations
- *     feature_select_global/           global.parquet, feature_correlations, redundancy-filtered
+ *     global/{group}/
+ *       qc_filter_cells/, normalization_cells/   per-group staged cell copies
+ *       batchvsbatch/{pre,post}/         results.parquet
+ *       ovwt_global/                     results.csv, models.pkl
+ *       feature_select/                  global.parquet, feature_correlations, redundancy-filtered
  */
 
 // ── Entry point ──────────────────────────────────────────────────────────────

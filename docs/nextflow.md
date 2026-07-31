@@ -19,12 +19,12 @@ workflow {
 | `fisseq` (default) | `FisseqPipeline` | `workflows/fisseq.nf` | Full end-to-end analysis (QC → normalize → batch-effect checks → OvWT → feature selection → batch correction → ANOVA) |
 | `ovwt` | `OvwtPipeline` | `workflows/ovwt.nf` | OvWT classification only: `QC_FILTER` → `OVWT_BATCHWISE` → `OVWT_CELLSCORES_BATCHWISE` → `CHECK_BARCODES` (optional, `params.run_check_barcodes`), no normalization, batch correction, or feature selection |
 
-Both workflows validate that `--input_dir` is set and that `<input_dir>/input/`
-exists and contains at least one `.parquet` file, then build a per-batch channel
-from `<input_dir>/input/*.parquet` (one tuple per file, keyed by filename stem).
-If `--yaml_config_dir` is also set, that non-empty-check is relaxed (see
-[Optional INPUT stage](#optional-input-stage) below) since `<input_dir>/input/`
-may not exist yet on a first config-driven run.
+Both workflows validate that `--pipeline_dir` is set and that
+`<pipeline_dir>/configs/` exists and contains at least one `*.yaml` file --
+every batch is declared by a YAML config there (see
+[Configuration](configuration.md#pipeline-directory-layout)); there is no
+mode where the pipeline scans a directory of pre-staged parquet files
+directly.
 
 ## Quickstart
 
@@ -33,20 +33,20 @@ Run directly from GitHub — no cloning required:
 ```bash
 nextflow run Lilferrit/fisseq-data-pipeline \
     -c your.config \
-    --input_dir /path/to/experiment
+    --pipeline_dir /path/to/experiment
 ```
 
 Use `-r` to pin to a branch or release tag; Nextflow caches the pulled revision in
 `~/.nextflow/assets` (pass `-latest` to force a refresh). Or, from a local clone:
 
 ```bash
-nextflow run . --input_dir /path/to/experiment
+nextflow run . --pipeline_dir /path/to/experiment
 ```
 
 Resume after an interruption using Nextflow's task-level caching:
 
 ```bash
-nextflow run . --input_dir /path/to/experiment -resume
+nextflow run . --pipeline_dir /path/to/experiment -resume
 ```
 
 ## Processes
@@ -57,23 +57,24 @@ Every process wraps one `python -m fisseq_data_pipeline.<module>` invocation (se
 
 | Process | `modules/local/*.nf` | Wraps | Cadence |
 | ------- | --------------------- | ----- | ------- |
-| `INPUT` | `input.nf` | `python -m fisseq_data_pipeline.input` | per config file, optional (`params.yaml_config_dir`) |
+| `INPUT` | `input.nf` | `python -m fisseq_data_pipeline.input` | per config file, always (`<pipeline_dir>/configs/` is mandatory) |
 | `QC_FILTER` | `qc_filter.nf` | `python -m fisseq_data_pipeline.qcfilter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `python -m fisseq_data_pipeline.normalize` | per batch |
-| `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `python -m fisseq_data_pipeline.batchvsbatch` | global, twice, optional (`params.run_global`); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
+| `STAGE_GROUP_CELLS` (aliased `_QC` / `_NORM`) | `stage_group.nf` | (no Python wrapper — republishes a staged file) | per (active global group × member batch); stages that batch's `QC_FILTER`/`NORMALIZE` output into `global/<group>/{qc_filter_cells,normalization_cells}/` so the global processes below can glob a group-scoped directory |
+| `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `python -m fisseq_data_pipeline.batchvsbatch` | per active global group, twice (`params.global_groups`, default none run); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
 | `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_FEATURE_FILTERED` / `_BARCODE_FILTERED`) | `ovwt_batchwise.nf` | `python -m fisseq_data_pipeline.ovwt` | per batch, three times (`FisseqPipeline`); `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`/`BARCODE_BLOCKLIST` and is optional (`params.run_ovwt`), `_FEATURE_FILTERED` depends on `ANOVA_BLOCKLIST` and is optional (`params.run_feature_filtered_ovwt`), `_BARCODE_FILTERED` depends on that batch's `BARCODE_BLOCKLIST` output and is optional (`params.run_barcode_filtered_ovwt`) |
-| `OVWT_GLOBAL` | `ovwt_global.nf` | `python -m fisseq_data_pipeline.ovwt` | global, optional (`params.run_global`); always feature-filtered against `ANOVA_BLOCKLIST` |
+| `OVWT_GLOBAL` | `ovwt_global.nf` | `python -m fisseq_data_pipeline.ovwt` | per active global group (`params.global_groups`, default none run); always feature-filtered against `ANOVA_BLOCKLIST` |
 | `WTVWT_BATCHWISE` | `wtvwt_batchwise.nf` | `python -m fisseq_data_pipeline.wtvwt` | per batch, optional (`params.run_wtvwt`); restricted to wildtype cells, trains one binary classifier per pair of wildtype barcodes; independent of the `ANOVA_BLOCKLIST`/OvWT chain |
 | `OVWT_CELLSCORES_BATCHWISE` | `ovwt_cellscores_batchwise.nf` | `python -m fisseq_data_pipeline.ovwtcellscores` | per batch; optional in `FisseqPipeline` (`params.run_single_cell_scores`), always runs in `OvwtPipeline` |
 | `CHECK_BARCODES` | `check_barcodes.nf` | `python -m fisseq_data_pipeline.checkbarcodes` | per batch, optional (`params.run_check_barcodes`, which also forces `run_single_cell_scores` on) |
 | `BARCODE_BLOCKLIST` | `barcode_blocklist.nf` | `python -m fisseq_data_pipeline.barcodeblocklist` | per batch, requires both `params.run_check_barcodes` and `params.run_barcode_filtered_ovwt` true (the latter does not force the former on); consumes that batch's `CHECK_BARCODES` output; `FisseqPipeline` only |
-| `AGGREGATE_FEATURE_TYPE` (aliased `_BATCHWISE` / `_GLOBAL`) | `aggregate_feature_type.nf` | `python -m fisseq_data_pipeline.aggregatefeaturetype` | per (batch or global) × feature type |
-| `GENERATE_SPLIT` (aliased) | `generate_split.nf` | `python -m fisseq_data_pipeline.generatesplit` | per (batch or global) × bootstrap replicate |
-| `AGGREGATE_HALF` (aliased) | `aggregate_half.nf` | `python -m fisseq_data_pipeline.aggregatefeaturetype` (with `index_file`) | per (batch or global) × bootstrap × feature type × half |
-| `CORRELATE_FEATURES` (aliased) | `correlate_features.nf` | `python -m fisseq_data_pipeline.correlatefeatures` | per (batch or global) × bootstrap × feature type |
-| `BLOCKLIST` (aliased) | `blocklist.nf` | `python -m fisseq_data_pipeline.blocklist` | per (batch or global) × feature type — gathers all bootstrap replicates |
-| `COMBINE_BLOCKLISTS` (aliased) | `combine_blocklists.nf` | `python -m fisseq_data_pipeline.combineblocklists` | per (batch or global) — gathers all feature types |
-| `FINALIZE_FEATURE_SELECT` (aliased) | `finalize_feature_select.nf` | `python -m fisseq_data_pipeline.featureselect` | per (batch or global) |
+| `AGGREGATE_FEATURE_TYPE` (aliased `_BATCHWISE` / `_GLOBAL`) | `aggregate_feature_type.nf` | `python -m fisseq_data_pipeline.aggregatefeaturetype` | per (batch or active global group) × feature type |
+| `GENERATE_SPLIT` (aliased) | `generate_split.nf` | `python -m fisseq_data_pipeline.generatesplit` | per (batch or active global group) × bootstrap replicate |
+| `AGGREGATE_HALF` (aliased) | `aggregate_half.nf` | `python -m fisseq_data_pipeline.aggregatefeaturetype` (with `index_file`) | per (batch or active global group) × bootstrap × feature type × half |
+| `CORRELATE_FEATURES` (aliased) | `correlate_features.nf` | `python -m fisseq_data_pipeline.correlatefeatures` | per (batch or active global group) × bootstrap × feature type |
+| `BLOCKLIST` (aliased) | `blocklist.nf` | `python -m fisseq_data_pipeline.blocklist` | per (batch or active global group) × feature type — gathers all bootstrap replicates |
+| `COMBINE_BLOCKLISTS` (aliased) | `combine_blocklists.nf` | `python -m fisseq_data_pipeline.combineblocklists` | per (batch or active global group) — gathers all feature types |
+| `FINALIZE_FEATURE_SELECT` (aliased) | `finalize_feature_select.nf` | `python -m fisseq_data_pipeline.featureselect` | per (batch or active global group) |
 | `BATCH_CORRECT_FIT` | `batch_correct_fit.nf` | `python -m fisseq_data_pipeline.batchcorrect` | global, waits for all `QC_FILTER` |
 | `BATCH_CORRECT_TRANSFORM` | `batch_correct_transform.nf` | `python -m fisseq_data_pipeline.batchcorrecttransform` | per batch |
 | `ANOVA` (aliased `_NORMALIZED` / `_BATCH_CORRECTED`) | `anova.nf` | `python -m fisseq_data_pipeline.anova` | global, twice, always runs |
@@ -84,42 +85,26 @@ Every process wraps one `python -m fisseq_data_pipeline.<module>` invocation (se
 in a single workflow) — see [Architecture](architecture.md) for what each aliased
 invocation does differently (which cells glob, which `publishDir` subpath).
 
-### Optional `INPUT` stage
+### `INPUT` stage
 
-When `--yaml_config_dir` is set, `INPUT` runs once per `*.yaml` file found there
-(`python -m fisseq_data_pipeline.input`, see [CLI Reference: Input](cli/input.md)) and publishes its output
-into `<input_dir>/input/`, the same directory pre-staged batch files live in. Both
-`workflows/fisseq.nf` and `workflows/ovwt.nf` merge this generated channel with the
-pre-existing `Channel.fromPath("<input_dir>/input/*.parquet")` glob channel via
-`.mix()`, so `QC_FILTER` sees one unified stream regardless of which code path
-produced a given batch.
-
-Two subtleties worth knowing:
-
-- **Double-processing guard.** `Channel.fromPath(glob)` is evaluated once, at
-  workflow-construction time — it does not wait for `INPUT` to finish. On a re-run
-  where `<input_dir>/input/` already contains a file `INPUT` previously published
-  there, the glob channel would match it independently of `INPUT`'s live output for
-  this run, feeding the same batch into `QC_FILTER` twice. Both workflows avoid this
-  by eagerly listing `yaml_config_dir`'s `*.yaml` basenames up front and filtering those
-  names out of the glob channel before `.mix()`-ing in `INPUT`'s real output.
-- **Precedence.** If a batch name exists both as a pre-staged file in `input/` and as
-  a `yaml_config_dir/*.yaml`, the config-derived version silently wins — the pre-staged
-  file is excluded from the glob channel by the same filter.
-
-Like every other process, `INPUT` uses `errorStrategy 'ignore'`: a failed conversion
-for one config file simply drops that batch from the run (it is excluded from both
-the glob and the generated channel), rather than aborting the whole pipeline.
+`INPUT` runs once per mandatory `*.yaml` config file in
+`<pipeline_dir>/configs/` (`python -m fisseq_data_pipeline.input`, see
+[CLI Reference: Input](cli/input.md)) and publishes its output into
+`<pipeline_dir>/input/`. Every batch goes through this stage -- there is no
+pre-staged-parquet mode. Like every other process, `INPUT` uses
+`errorStrategy 'ignore'`: a failed conversion for one config file simply
+drops that batch from the run, rather than aborting the whole pipeline.
 
 `INPUT` does not receive the batch's hand-authored YAML file directly. Each
 batch's YAML is parsed and merged with the pipeline-wide defaults once, at
 workflow-construction time (see
-[Per-batch parameter overrides](#per-batch-parameter-overrides) below), and
-`INPUT` instead receives the resolved `input_paths` / `feature_allowlist_file`
+[Configuration: Per-batch parameter overrides](configuration.md#per-batch-parameter-overrides)),
+and `INPUT` instead receives the resolved `input_paths` / `feature_allowlist_file`
 / `feature_blocklist_file` values as individual process inputs. The process
 script rebuilds a minimal YAML from those values before invoking
-`python -m fisseq_data_pipeline.input` — see the resume-caching rationale
-below for why.
+`python -m fisseq_data_pipeline.input` — see
+[Configuration: Why resolved scalars, not the whole config, are passed to processes](configuration.md#why-resolved-scalars-not-the-whole-config-are-passed-to-processes)
+for why.
 
 ### Feature-selection channel wiring
 
@@ -138,209 +123,18 @@ The feature-selection branch (`AGGREGATE_FEATURE_TYPE` → `GENERATE_SPLIT` →
   cross-bootstrap synchronization point — it gathers all `params.feature_select_bootstrap_reps`
   correlation replicates for one feature type before computing a median-`r`
   threshold.
-- The batchwise branch always runs; the global branch (constant `global_key =
-  "global"` standing in for `batch_stem`) is gated behind
-  `params.run_global.toString().toBoolean()` (an explicit string-to-boolean parse,
-  since Nextflow CLI overrides like `--run_global false` arrive as the truthy Groovy
-  string `"false"`).
+- The batchwise branch always runs; the global branch runs once per active
+  group in `params.global_groups` (default `null` = none active) instead of
+  a single constant `global_key`, each scoped to that group's member
+  batches -- see [Configuration: Global groups](configuration.md#global-groups).
 
-## Parameters
+## Parameters, pipeline directory layout, and per-batch overrides
 
-Defaults live in `nextflow.config` at the repo root:
-
-### Pipeline selection
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--pipeline_mode` | `"fisseq"` | Which workflow to run: `"fisseq"` or `"ovwt"`. |
-| `--input_dir` | `null` (**required**) | Root directory containing `input/*.parquet` batch files. |
-| `--yaml_config_dir` | `null` | Optional directory of YAML configs; each generates one `input/*.parquet` via `INPUT`, merged with any pre-staged files in `input/`. See [Optional INPUT stage](#optional-input-stage). |
-
-### Branch toggles
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--run_global` | `true` | Whether to run `OVWT_GLOBAL`, `BATCHVSBATCH`, and the global feature-selection branch. |
-| `--run_feature_selection` | `true` | Whether to run the feature-selection branch (batchwise + global) at all. |
-| `--run_ovwt` | `true` | `FisseqPipeline` only: run `OVWT_BATCHWISE_UNFILTERED` (the normal/unfiltered per-batch OvWT pass) for that batch. Setting `false` also disables `run_single_cell_scores`/`run_check_barcodes`/`run_barcode_filtered_ovwt` for that batch regardless of their own settings, since all three consume this pass's output. No effect in `OvwtPipeline` (its entire purpose is this pass, so it always runs there). |
-| `--run_feature_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_FEATURE_FILTERED` (per-batch OvWT filtered against `anova_blocklist/anova_blocklist.parquet`). Set `false` to skip it and keep only the unfiltered pass. (Renamed from `--run_filtered_ovwt`.) |
-| `--run_single_cell_scores` | `false` | `FisseqPipeline` only: run `OVWT_CELLSCORES_BATCHWISE` per batch after `OVWT_BATCHWISE_UNFILTERED`. Always on in `OvwtPipeline`. Forced on if `--run_check_barcodes true`. |
-| `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--run_single_cell_scores true`. |
-| `--run_barcode_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_BARCODE_FILTERED` (per-batch OvWT filtered against `barcode_blocklist/<batch>/barcode_blocklist.parquet`). Only takes effect when `--run_check_barcodes true` is also set (default `false`) -- does NOT force it on, so the default pipeline output is unaffected. |
-| `--run_wtvwt` | `true` | `FisseqPipeline` only: run `WTVWT_BATCHWISE` (per-batch, wildtype-only pairwise barcode classification) for that batch. Independent of `--run_ovwt` and every other gate. |
-
-### INPUT stage tunables
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--feature_allowlist_file` | `null` | `INPUT`: optional path to a glob-pattern feature allowlist file. |
-| `--feature_blocklist_file` | `null` | `INPUT`: optional path to a glob-pattern feature blocklist file. |
-
-These mirror `INPUT`'s per-batch YAML `config_path` schema (see
-[CLI Reference: Input](cli/input.md#config_path-yaml-schema)) and are
-overridable per batch exactly like every other parameter here — see
-[Per-batch parameter overrides](#per-batch-parameter-overrides).
-
-### QC filtering (`QC_FILTER`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--barcode_count_threshold` | `10` | Minimum cells per barcode (QC filter). |
-| `--variant_barcode_count_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
-| `--edit_distance_threshold` | `1` | Maximum allowed edit distance (QC filter). |
-| `--qc_n_variants` | `null` | Optional: restricts `qc_variant_downsample_classes` to at most this many distinct variants, before QC thresholding. `null` disables it. |
-| `--qc_variant_downsample_classes` | `['Single Missense']` | Classes eligible for the `qc_n_variants` restriction. |
-| `--qc_variant_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count variants; `'random'` keeps a seeded random sample. |
-| `--qc_downsample_amounts` | `null` | Optional single float `(0, 1]`/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). `null` disables it. A genuine multi-element *list* is only settable via a batch YAML override or by editing the Groovy list literal in `nextflow.config` directly — a bare `--qc_downsample_amounts` CLI flag only supports a single scalar. |
-| `--qc_downsample_classes` | `['Synonymous', 'Single Missense']` | Classes eligible for `qc_downsample_amounts` pseudo-variant generation. |
-| `--qc_downsample_seed` | `0` | Seed for the deterministic downsample selection, shared by `qc_downsample_amounts` and `qc_variant_downsample_mode="random"`. |
-
-### Batch-effect detection (`ANOVA_BLOCKLIST`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--anova_blocklist_pvalue_threshold` | `0.05` | A feature is blocked (`feature_ok = false`) when its `ANOVA_NORMALIZED` p-value is strictly less than this threshold (a statistically significant batch effect was detected). |
-
-### Barcode-level blocklist (`BARCODE_BLOCKLIST`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--barcode_blocklist_pvalue_threshold` | `0.05` | A barcode is blocked (`barcode_ok = false`) when the median of its `CHECK_BARCODES` `p_adj` values is strictly less than this threshold. |
-
-### Batch-vs-batch comparison (`BATCHVSBATCH`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--batchvsbatch_min_cells` | `50` | Minimum total cells for a variant to be profiled in batch-vs-batch. |
-| `--batchvsbatch_min_batches` | `2` | Minimum unique batches a variant must appear in for batch-vs-batch. |
-
-### One-vs-wildtype classification (`OVWT_GLOBAL` / `OVWT_BATCHWISE`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
-| `--ovwt_downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
-| `--max_cells_per_barcode_wt` | `null` | Optional cap on cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count. `null` disables the cap. |
-| `--max_cells_per_barcode_variant` | `null` | Optional cap on cells per non-wildtype barcode, analogous to `--max_cells_per_barcode_wt`. `null` disables the cap. |
-
-### Wildtype-vs-wildtype pairwise barcode classification (`WTVWT_BATCHWISE`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--wtvwt_min_cells_per_barcode` | `100` | Minimum wildtype cells a barcode must have to be included in pairwise classification. |
-
-### Feature selection (bootstrap + aggregation + correlation)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--feature_select_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (all 7 of `aggregate.py`'s aggregators). |
-| `--feature_select_bootstrap_reps` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
-| `--feature_select_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields). |
-| `--feature_select_min_correlation` | `0.5` | Minimum median Pearson `r` required for a feature to pass `BLOCKLIST`. |
-
-### Single-cell scoring & barcode QC (`OVWT_CELLSCORES_BATCHWISE` / `CHECK_BARCODES`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--single_cell_scores_split` | `"test"` | Which `OVWT_BATCHWISE` split to score: `"test"` or `"train"`. Any other value fails fast with a clear error. |
-| `--barcode_check_min_cells` | `10` | `CHECK_BARCODES`: minimum cells required per barcode (within a variant) to include it in the comparison. |
-| `--barcode_check_alpha` | `0.05` | `CHECK_BARCODES`: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this. |
-
-## Per-batch parameter overrides
-
-Any batch YAML in `--yaml_config_dir` may set additional keys beyond
-`input_paths` to override that batch's own value for a `nextflow.config`
-parameter — without affecting any other batch. This is resolved once per
-batch, in Groovy, at workflow-construction time, by
-[`lib/BatchParams.groovy`](https://github.com/Lilferrit/fisseq-data-pipeline/blob/main/lib/BatchParams.groovy)'s
-`resolve()` function: it merges that batch's YAML on top of the pipeline-wide
-defaults, validates every key, and returns the merged result plus a list of
-which keys were actually overridden. Both `workflows/fisseq.nf` and
-`workflows/ovwt.nf` call this once per batch YAML file and log each override
-via `log.info` — e.g.:
-
-```text
-Batch 'batch3': overriding barcode_count_threshold (default=10) -> 3
-```
-
-### Not every parameter is batch-overridable
-
-Some `nextflow.config` parameters are **pipeline-wide-only** and cannot be
-set from a batch YAML — a batch YAML that tries gets a clear rejection error
-at config-resolution time, distinct from the error for a genuine typo (an
-unrecognized key). Two kinds of parameters fall in this bucket:
-
-- **Meta/bootstrap parameters** needed just to find and validate batch
-  YAMLs in the first place — `--pipeline_mode`, `--input_dir`,
-  `--yaml_config_dir`. There's a chicken-and-egg problem: these have to be
-  resolved before any batch config can even be located.
-- **Parameters with no per-batch consumer.** Several processes run once
-  across *all* batches rather than per batch — `BATCHVSBATCH`, `OVWT_GLOBAL`,
-  `ANOVA_BLOCKLIST` (derived from `ANOVA_NORMALIZED`, which globs the entire
-  `input_dir`, not one batch), and the `_GLOBAL`-suffixed feature-selection
-  chain. Params consumed only by those processes — `--run_global`,
-  `--batchvsbatch_min_cells`, `--batchvsbatch_min_batches`,
-  `--anova_blocklist_pvalue_threshold`, `--feature_select_types`,
-  `--feature_select_bootstrap_reps` — have no batch to attach a per-batch
-  override to, so they stay pipeline-wide-only. (`--feature_select_types`
-  and `--feature_select_bootstrap_reps` specifically determine shared
-  fan-out *cardinality* — how many feature-type/bootstrap tasks exist at
-  all — not a per-batch scalar value, so letting them vary per batch would
-  require a much larger restructuring than a simple value override.)
-
-Every other `nextflow.config` parameter — including the gating booleans
-`--run_ovwt`, `--run_feature_filtered_ovwt`, `--run_single_cell_scores`,
-`--run_check_barcodes`, `--run_barcode_filtered_ovwt`, `--run_wtvwt`, and the
-*batchwise* effect of `--run_feature_selection` — is genuinely per-batch
-overridable. `--wtvwt_min_cells_per_barcode` is likewise per-batch
-overridable, same bucket as `--ovwt_min_cells`.
-Each of these gates only a per-batch-only process or chain, so
-`workflows/fisseq.nf` implements them as a per-batch channel `.filter()`
-(via a `batchGates()` helper that also encodes the "`run_check_barcodes`
-implies `run_single_cell_scores`" / "`run_barcode_filtered_ovwt` only takes
-effect once `run_check_barcodes` is true" rules) rather than a workflow-scope
-`if`. `--run_feature_selection`'s *global* sub-branch (the `_GLOBAL`
-feature-selection chain) remains pipeline-wide-only, gated on
-`params.run_global && params.run_feature_selection` together, since that
-chain has no per-batch identity either.
-
-Parameters shared between a per-batch process and a global-only process
-(`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--feature_select_downsample_wt`,
-`--feature_select_min_correlation`) are overridable per batch for their
-batchwise consumer only (`OVWT_BATCHWISE`, `AGGREGATE_FEATURE_TYPE_BATCHWISE`
-/ `AGGREGATE_HALF_BATCHWISE`, `BLOCKLIST_BATCHWISE`) — their global
-counterpart (`OVWT_GLOBAL`, the `_GLOBAL` feature-selection processes)
-always uses the plain pipeline-wide value directly, regardless of any
-batch's override.
-
-### `input_paths`: the one exception in the other direction
-
-`input_paths` (the list of raw cell-score file paths for a batch) is
-**required in every batch YAML and has no `nextflow.config` default at
-all** — it is intentionally excluded from the override-symmetry described
-above. There is no sensible pipeline-wide default for a per-batch list of
-data files: unlike a threshold or a boolean gate, a default `input_paths`
-would look like something batches inherit, when in practice every batch
-must supply its own. A batch YAML that omits it fails clearly at
-config-resolution time rather than silently proceeding with no data.
-
-### Why resolved scalars, not the whole config, are passed to processes
-
-Every process that consumes a per-batch-overridable value receives it as an
-individual `val()` input (e.g. `QC_FILTER` takes
-`barcode_count_threshold`/`variant_barcode_count_threshold`/... as nine
-separate `val()`s), never a whole config map or the raw YAML file. Nextflow's
-`-resume` cache key for a task is derived from its declared inputs — if a
-whole file or map were passed, changing *any* key in it (even one that
-process doesn't consume) would bust the cache for every task built from it.
-Passing only the specific scalars a process actually reads means an
-unrelated key change in one batch's YAML — or a non-semantic edit to it —
-does not invalidate that batch's tasks on the next `-resume` run. This is
-also why `INPUT` no longer receives the batch's YAML file directly (see
-[Optional INPUT stage](#optional-input-stage) above): it now takes the
-resolved scalars as `val()` inputs and rebuilds a minimal YAML from them
-inside the process script, so only those scalars — not the original file's
-bytes — determine its cache key.
+See [Configuration](configuration.md) for the full parameter reference, the
+`<pipeline_dir>` directory layout (including the mandatory `configs/`
+subdirectory and the `global/<group>/` output tree), how a batch YAML can
+override most parameters for just that batch, and how named global groups
+scope `BATCHVSBATCH`/`OVWT_GLOBAL`/the global feature-selection branch.
 
 ## Profiles
 

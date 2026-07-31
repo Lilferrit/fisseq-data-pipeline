@@ -372,11 +372,9 @@ def add_downsampled_pseudo_variants(
     and concatenate the results — see :func:`main`.
 
     Selection is deterministic given `seed`: each row gets a seeded hash of
-    its (`meta_source_file`, `meta_source_file_idx`) identity — present on
-    every row regardless of whether it arrived via the optional INPUT stage
-    or as a raw pre-staged file — rows are ranked by that hash within their
-    `cfg.label_column` group, and the lowest-ranked rows up to the target
-    are kept.
+    its (`meta_source_file`, `meta_source_file_idx`) identity, rows are
+    ranked by that hash within their `cfg.label_column` group, and the
+    lowest-ranked rows up to the target are kept.
 
     Raises
     ------

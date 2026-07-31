@@ -10,7 +10,7 @@ nextflow.enable.dsl = 2
 // run_check_barcodes on) -- see workflows/fisseq.nf.
 process BARCODE_BLOCKLIST {
     errorStrategy 'ignore'
-    publishDir { "${params.input_dir}/barcode_blocklist/${batch_stem}" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/barcode_blocklist/${batch_stem}" }, mode: 'copy'
 
     input:
     tuple val(batch_stem), path(results_file), val(barcode_blocklist_pvalue_threshold)

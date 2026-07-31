@@ -1,13 +1,12 @@
 nextflow.enable.dsl = 2
 
-// INPUT: wraps python -m fisseq_data_pipeline.input. Runs once per YAML config file in
-// params.yaml_config_dir (optional upstream stage), producing one input/-ready
+// INPUT: wraps python -m fisseq_data_pipeline.input. Runs once per mandatory
+// YAML config file in <pipeline_dir>/configs/, producing one input/-ready
 // cell-level Parquet file by loading and merging a batch's input_paths.
-// Publishes into the same input/ directory pre-staged batches live in, so
-// QC_FILTER treats both origins identically. Variant-class/count-based
-// restriction (formerly done here) now happens in QC_FILTER itself (see
-// modules/local/qc_filter.nf's qc_n_variants), so it applies uniformly to
-// every batch, not just ones routed through this optional stage.
+// Every batch must have a config file -- there is no pre-staged-parquet
+// mode. Variant-class/count-based restriction (formerly done here) now
+// happens in QC_FILTER itself (see modules/local/qc_filter.nf's
+// qc_n_variants), so it applies uniformly to every batch.
 //
 // Takes the resolved per-batch scalars (see lib/BatchParams.groovy and
 // workflows/fisseq.nf's/ovwt.nf's resolvedBatchConfigs) as individual val()
@@ -21,7 +20,7 @@ nextflow.enable.dsl = 2
 process INPUT {
     errorStrategy 'ignore'
     label 'process_low'
-    publishDir { "${params.input_dir}/input" }, mode: 'copy'
+    publishDir { "${params.pipeline_dir}/input" }, mode: 'copy'
 
     input:
     tuple val(name), val(input_paths), val(feature_allowlist_file), val(feature_blocklist_file)

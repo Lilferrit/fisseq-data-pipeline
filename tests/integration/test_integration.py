@@ -1,7 +1,7 @@
 """Integration tests for the FISSEQ Nextflow pipeline."""
 
+import json
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -70,31 +70,6 @@ _NF_PARAMS = [
     "10",
 ]
 
-_PROJECT_ROOT = Path(__file__).parents[2]
-
-# Avoids a network round-trip (version check) on every `nextflow run` call.
-_NF_ENV = {**os.environ, "NXF_DISABLE_CHECK_LATEST": "true"}
-
-
-def _write_batch(path: Path, seed: int = 42) -> None:
-    rng = np.random.default_rng(seed)
-    rows = []
-    for variant, (bc_fmt, n_barcodes, cells_per_bc) in _VARIANTS.items():
-        for i in range(n_barcodes):
-            bc = bc_fmt.format(i=i)
-            for _ in range(cells_per_bc):
-                row: dict = {
-                    "upBarcode": bc,
-                    "aaChanges": variant,
-                    "editDistance": 0,
-                }
-                for col in _FEATURE_COLS:
-                    row[col] = float(rng.normal())
-                rows.append(row)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pl.DataFrame(rows).write_parquet(path)
-
-
 _OVWT_NF_PARAMS = [
     "--barcode_count_threshold",
     "3",
@@ -120,15 +95,76 @@ _CHECK_BARCODES_NF_PARAMS = _NF_PARAMS + [
     "2",
 ]
 
+_PROJECT_ROOT = Path(__file__).parents[2]
 
-def _run_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
+# Avoids a network round-trip (version check) on every `nextflow run` call.
+_NF_ENV = {**os.environ, "NXF_DISABLE_CHECK_LATEST": "true"}
+
+
+def _write_batch(path: Path, seed: int = 42) -> None:
+    rng = np.random.default_rng(seed)
+    rows = []
+    for variant, (bc_fmt, n_barcodes, cells_per_bc) in _VARIANTS.items():
+        for i in range(n_barcodes):
+            bc = bc_fmt.format(i=i)
+            for _ in range(cells_per_bc):
+                row: dict = {
+                    "upBarcode": bc,
+                    "aaChanges": variant,
+                    "editDistance": 0,
+                }
+                for col in _FEATURE_COLS:
+                    row[col] = float(rng.normal())
+                rows.append(row)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows).write_parquet(path)
+
+
+def _write_input_config(path: Path, source_path: Path, **overrides) -> None:
+    cfg = {"input_paths": [str(source_path)]}
+    cfg.update(overrides)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        yaml.safe_dump(cfg, f)
+
+
+def _stage_batch(
+    exp_dir: Path, raw_dir: Path, name: str, seed: int, **overrides
+) -> None:
+    """Write a raw batch parquet under raw_dir and its mandatory YAML config
+    under exp_dir/configs/ -- YAML configs are the only way to declare a
+    batch now that direct input-directory scanning has been removed."""
+    source = raw_dir / f"{name}_source.parquet"
+    _write_batch(source, seed=seed)
+    _write_input_config(exp_dir / "configs" / f"{name}.yaml", source, **overrides)
+
+
+def _params_file_args(exp_dir: Path, global_groups) -> list:
+    """List-valued params (e.g. global_groups) can't be expressed as a bare
+    CLI flag -- `--global_groups foo,bar` arrives as the single String
+    "foo,bar", and Groovy's `as List<String>` on a String splits it into
+    individual characters, not comma-separated elements (see
+    docs/configuration.md). A `-params-file` JSON document is parsed
+    properly instead."""
+    if global_groups is None:
+        return []
+    params_path = exp_dir / "_test_params.json"
+    with open(params_path, "w") as f:
+        json.dump({"global_groups": list(global_groups)}, f)
+    return ["-params-file", str(params_path)]
+
+
+def _run_pipeline(exp_dir: Path, global_groups=None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--input_dir",
+            "-ansi-log",
+            "false",
+            "--pipeline_dir",
             str(exp_dir),
+            *_params_file_args(exp_dir, global_groups),
             *_NF_PARAMS,
         ],
         cwd=exp_dir,
@@ -145,7 +181,9 @@ def _run_check_barcodes_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--input_dir",
+            "-ansi-log",
+            "false",
+            "--pipeline_dir",
             str(exp_dir),
             *_CHECK_BARCODES_NF_PARAMS,
         ],
@@ -157,17 +195,26 @@ def _run_check_barcodes_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
     )
 
 
-def _run_ovwt_pipeline(exp_dir: Path) -> subprocess.CompletedProcess:
+def _run_ovwt_pipeline(
+    exp_dir: Path, resume: bool = False
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
+            # -ansi-log false forces Nextflow's plain-text per-process summary
+            # instead of the redrawing ANSI dashboard renderer, which the
+            # per-batch-override tests below rely on when grepping stdout for
+            # override log lines / "cached=" resume summaries.
+            "-ansi-log",
+            "false",
             "--pipeline_mode",
             "ovwt",
-            "--input_dir",
+            "--pipeline_dir",
             str(exp_dir),
             *_OVWT_NF_PARAMS,
+            *(["-resume"] if resume else []),
         ],
         cwd=exp_dir,
         env=_NF_ENV,
@@ -188,8 +235,9 @@ def pipeline_outputs(tmp_path_factory):
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+    raw_dir = tmp_path_factory.mktemp("nf_experiment_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=99)
 
     result = _run_pipeline(exp_dir)
     return exp_dir, result
@@ -203,6 +251,14 @@ def pipeline_outputs(tmp_path_factory):
 def test_pipeline_exits_cleanly(pipeline_outputs):
     _, result = pipeline_outputs
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_input_stage_outputs(pipeline_outputs, batch_stem):
+    """Every batch is declared via a mandatory YAML config now -- INPUT
+    always runs, unconditionally, for every batch."""
+    exp_dir, _ = pipeline_outputs
+    assert (exp_dir / "input" / f"{batch_stem}.parquet").exists()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
@@ -241,10 +297,11 @@ def test_pipeline_normalization_outputs(pipeline_outputs, batch_stem):
     ).exists()
 
 
-def test_pipeline_batchvsbatch_outputs(pipeline_outputs):
+def test_pipeline_no_global_dir_by_default(pipeline_outputs):
+    """params.global_groups defaults to null -- no global processes run and
+    no global/ directory is produced at all unless a group is active."""
     exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "batchvsbatch" / "pre" / "results.parquet").exists()
-    assert (exp_dir / "batchvsbatch" / "post" / "results.parquet").exists()
+    assert not (exp_dir / "global").exists()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
@@ -272,12 +329,6 @@ def test_pipeline_ovwt_batchwise_test_index_columns(pipeline_outputs, batch_stem
     assert set(df.columns) == {"row_idx", "origin_file"}
 
 
-def test_pipeline_ovwt_global_outputs(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "ovwt_global" / "results.parquet").exists()
-    assert (exp_dir / "ovwt_global" / "models.pkl").exists()
-
-
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
 def test_pipeline_wtvwt_batchwise_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
@@ -292,12 +343,6 @@ def test_pipeline_feature_select_batchwise_outputs(pipeline_outputs, batch_stem)
     batch_dir = exp_dir / "feature_select_batchwise" / batch_stem
     assert (batch_dir / "output.parquet").exists()
     assert (batch_dir / "blocklist.parquet").exists()
-
-
-def test_pipeline_feature_select_global_outputs(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "feature_select_global" / "output.parquet").exists()
-    assert (exp_dir / "feature_select_global" / "blocklist.parquet").exists()
 
 
 def test_pipeline_anova_outputs(pipeline_outputs):
@@ -344,15 +389,6 @@ def test_normalized_cells_wt_mean_near_zero(pipeline_outputs, batch_stem):
         )
 
 
-@pytest.mark.parametrize("stage", ["pre", "post"])
-def test_batchvsbatch_has_expected_columns(pipeline_outputs, stage):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "batchvsbatch" / stage / "results.parquet")
-    expected = {"variant", "batch", "auroc", "mw_pvalue", "n_batch_cells", "n_cells"}
-    assert expected.issubset(set(df.columns))
-    assert len(df) > 0
-
-
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
 def test_ovwt_results_have_auroc_columns(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
@@ -386,18 +422,6 @@ def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_ste
         exp_dir / "feature_select_batchwise" / batch_stem / "blocklist.parquet"
     )
     assert "feature_ok" in df.columns
-
-
-def test_ovwt_global_uses_both_batches(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "ovwt_global" / "results.parquet")
-    assert (df["meta_batch_num_unique"] == 2).all()
-
-
-def test_feature_select_global_uses_both_batches(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "feature_select_global" / "output.parquet")
-    assert (df["meta_batch_num_unique"] == 2).all()
 
 
 def test_anova_has_expected_columns(pipeline_outputs):
@@ -470,6 +494,148 @@ def test_batch_correction_wt_means_converge_across_batches(pipeline_outputs):
 
 
 # ---------------------------------------------------------------------------
+# Global groups (params.global_groups / each batch's YAML global_group key).
+# Four batches: batch1 in group "siteA" only, batch2 in both "siteA" and
+# "siteB", batch3 in "siteB" only, batch4 in no group at all -- exercises
+# per-group scoping (overlapping and non-overlapping membership) and
+# exclusion of ungrouped batches, all in one run.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def grouped_global_pipeline_outputs(tmp_path_factory):
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_grouped_experiment")
+    raw_dir = tmp_path_factory.mktemp("nf_grouped_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=1, global_group="siteA")
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=2, global_group=["siteA", "siteB"])
+    _stage_batch(exp_dir, raw_dir, "batch3", seed=3, global_group="siteB")
+    _stage_batch(exp_dir, raw_dir, "batch4", seed=4)  # no global_group at all
+
+    result = _run_pipeline(exp_dir, global_groups=["siteA", "siteB"])
+    return exp_dir, result
+
+
+def test_grouped_pipeline_exits_cleanly(grouped_global_pipeline_outputs):
+    _, result = grouped_global_pipeline_outputs
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("group", ["siteA", "siteB"])
+def test_grouped_batchvsbatch_outputs(grouped_global_pipeline_outputs, group):
+    exp_dir, _ = grouped_global_pipeline_outputs
+    assert (
+        exp_dir / "global" / group / "batchvsbatch" / "pre" / "results.parquet"
+    ).exists()
+    assert (
+        exp_dir / "global" / group / "batchvsbatch" / "post" / "results.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize("stage", ["pre", "post"])
+def test_batchvsbatch_has_expected_columns(grouped_global_pipeline_outputs, stage):
+    exp_dir, _ = grouped_global_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / "siteA" / "batchvsbatch" / stage / "results.parquet"
+    )
+    expected = {"variant", "batch", "auroc", "mw_pvalue", "n_batch_cells", "n_cells"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+@pytest.mark.parametrize("group", ["siteA", "siteB"])
+def test_grouped_ovwt_global_outputs(grouped_global_pipeline_outputs, group):
+    exp_dir, _ = grouped_global_pipeline_outputs
+    assert (exp_dir / "global" / group / "ovwt_global" / "results.parquet").exists()
+    assert (exp_dir / "global" / group / "ovwt_global" / "models.pkl").exists()
+
+
+@pytest.mark.parametrize("group", ["siteA", "siteB"])
+def test_grouped_feature_select_global_outputs(grouped_global_pipeline_outputs, group):
+    exp_dir, _ = grouped_global_pipeline_outputs
+    assert (exp_dir / "global" / group / "feature_select" / "output.parquet").exists()
+    assert (
+        exp_dir / "global" / group / "feature_select" / "blocklist.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize(
+    "group,expected_batches",
+    [("siteA", {"batch1", "batch2"}), ("siteB", {"batch2", "batch3"})],
+)
+def test_grouped_batchvsbatch_scoped_to_group_membership(
+    grouped_global_pipeline_outputs, group, expected_batches
+):
+    exp_dir, _ = grouped_global_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / group / "batchvsbatch" / "post" / "results.parquet"
+    )
+    assert set(df["batch"].unique().to_list()) == expected_batches
+
+
+@pytest.mark.parametrize("group", ["siteA", "siteB"])
+def test_grouped_ovwt_global_scoped_to_group_membership(
+    grouped_global_pipeline_outputs, group
+):
+    """Each group has exactly 2 member batches -- meta_batch_num_unique must
+    reflect only that group's batches, not all 4 batches in the run."""
+    exp_dir, _ = grouped_global_pipeline_outputs
+    df = pl.read_parquet(exp_dir / "global" / group / "ovwt_global" / "results.parquet")
+    assert (df["meta_batch_num_unique"] == 2).all()
+
+
+@pytest.mark.parametrize("group", ["siteA", "siteB"])
+def test_grouped_feature_select_global_scoped_to_group_membership(
+    grouped_global_pipeline_outputs, group
+):
+    exp_dir, _ = grouped_global_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / group / "feature_select" / "output.parquet"
+    )
+    assert (df["meta_batch_num_unique"] == 2).all()
+
+
+def test_grouped_stage_group_normalization_cells_scoped(
+    grouped_global_pipeline_outputs,
+):
+    """Regression test for the STAGE_GROUP_CELLS staging mechanism itself:
+    each group's normalization_cells/ directory must contain exactly that
+    group's member batches, nothing more."""
+    exp_dir, _ = grouped_global_pipeline_outputs
+    site_a = {
+        p.stem
+        for p in (exp_dir / "global" / "siteA" / "normalization_cells").glob(
+            "*.parquet"
+        )
+    }
+    site_b = {
+        p.stem
+        for p in (exp_dir / "global" / "siteB" / "normalization_cells").glob(
+            "*.parquet"
+        )
+    }
+    assert site_a == {"batch1", "batch2"}
+    assert site_b == {"batch2", "batch3"}
+
+
+def test_grouped_batch_with_no_group_excluded_from_global_only(
+    grouped_global_pipeline_outputs,
+):
+    """batch4 has no global_group key -- it must never appear in any group's
+    global output, even though params.global_groups is non-empty, but it is
+    still fully processed batchwise like every other batch."""
+    exp_dir, _ = grouped_global_pipeline_outputs
+    assert (exp_dir / "qc_filter" / "batch4" / "filtered_cells.parquet").exists()
+    for group in ("siteA", "siteB"):
+        df = pl.read_parquet(
+            exp_dir / "global" / group / "batchvsbatch" / "post" / "results.parquet"
+        )
+        assert "batch4" not in df["batch"].unique().to_list()
+
+
+# ---------------------------------------------------------------------------
 # run_single_cell_scores / run_check_barcodes — session fixture and tests
 # (FisseqPipeline, params.run_check_barcodes=true implying run_single_cell_scores)
 # ---------------------------------------------------------------------------
@@ -481,8 +647,9 @@ def check_barcodes_pipeline_outputs(tmp_path_factory):
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_check_barcodes_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+    raw_dir = tmp_path_factory.mktemp("nf_check_barcodes_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=99)
 
     result = _run_check_barcodes_pipeline(exp_dir)
     return exp_dir, result
@@ -591,20 +758,25 @@ def disabled_toggles_pipeline_outputs(tmp_path_factory):
     no need for three separate `nextflow run` invocations. Uses
     _CHECK_BARCODES_NF_PARAMS (run_check_barcodes=true) so
     run_barcode_filtered_ovwt=false is actually exercised (it only takes
-    effect when run_check_barcodes is also true)."""
+    effect when run_check_barcodes is also true). Also leaves
+    params.global_groups unset (the default), so this doubles as the
+    "no groups active" case for the no-global-dir assertion below."""
     if shutil.which("nextflow") is None:
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_disabled_toggles_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+    raw_dir = tmp_path_factory.mktemp("nf_disabled_toggles_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=99)
 
     result = subprocess.run(
         [
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--input_dir",
+            "-ansi-log",
+            "false",
+            "--pipeline_dir",
             str(exp_dir),
             "--run_barcode_filtered_ovwt",
             "false",
@@ -661,14 +833,15 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_invalid_source_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
+    raw_dir = tmp_path_factory.mktemp("nf_invalid_source_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
 
     result = subprocess.run(
         [
             "nextflow",
             "run",
             str(_PROJECT_ROOT),
-            "--input_dir",
+            "--pipeline_dir",
             str(exp_dir),
             "--run_single_cell_scores",
             "true",
@@ -723,6 +896,14 @@ def test_run_wtvwt_disabled_ovwt_output_unaffected(disabled_toggles_pipeline_out
     assert (exp_dir / "ovwt_batchwise" / "batch1" / "results.parquet").exists()
 
 
+def test_disabled_toggles_pipeline_no_global_dir(disabled_toggles_pipeline_outputs):
+    """params.global_groups is left unset here (the default) -- no global/
+    directory should exist even on a run that otherwise exercises many
+    other toggles."""
+    exp_dir, _ = disabled_toggles_pipeline_outputs
+    assert not (exp_dir / "global").exists()
+
+
 # ---------------------------------------------------------------------------
 # OvwtPipeline (ovwt.nf) — session fixture and tests
 # ---------------------------------------------------------------------------
@@ -734,8 +915,9 @@ def ovwt_pipeline_outputs(tmp_path_factory):
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_ovwt_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+    raw_dir = tmp_path_factory.mktemp("nf_ovwt_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=99)
 
     result = _run_ovwt_pipeline(exp_dir)
     return exp_dir, result
@@ -792,8 +974,9 @@ def ovwt_check_barcodes_pipeline_outputs(tmp_path_factory):
         pytest.skip("nextflow not on PATH")
 
     exp_dir = tmp_path_factory.mktemp("nf_ovwt_check_barcodes_experiment")
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-    _write_batch(exp_dir / "input" / "batch2.parquet", seed=99)
+    raw_dir = tmp_path_factory.mktemp("nf_ovwt_check_barcodes_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=99)
 
     result = subprocess.run(
         [
@@ -802,7 +985,7 @@ def ovwt_check_barcodes_pipeline_outputs(tmp_path_factory):
             str(_PROJECT_ROOT),
             "--pipeline_mode",
             "ovwt",
-            "--input_dir",
+            "--pipeline_dir",
             str(exp_dir),
             "--run_check_barcodes",
             "true",
@@ -837,135 +1020,20 @@ def test_ovwt_check_barcodes_results_outputs(
 
 
 # ---------------------------------------------------------------------------
-# params.yaml_config_dir — optional INPUT stage (workflows/fisseq.nf,
-# workflows/ovwt.nf). Uses the lighter OvwtPipeline so this test isn't
-# bottlenecked by the full feature-selection DAG; the thing under test is the
-# INPUT -> QC_FILTER channel wiring, not downstream analysis.
-# ---------------------------------------------------------------------------
-
-
-def _write_input_config(path: Path, source_path: Path, **overrides) -> None:
-    cfg = {"input_paths": [str(source_path)]}
-    cfg.update(overrides)
-    with open(path, "w") as f:
-        yaml.safe_dump(cfg, f)
-
-
-def _run_config_dir_pipeline(
-    exp_dir: Path, config_dir: Path, resume: bool = False
-) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [
-            "nextflow",
-            "run",
-            str(_PROJECT_ROOT),
-            # -ansi-log false forces Nextflow's plain-text per-process summary
-            # (".../CHECK_BARCODES ... cached: N" style lines) instead of the
-            # redrawing ANSI dashboard renderer. Nextflow's choice between the
-            # two isn't a reliable function of stdout being a pipe (non-tty)
-            # under subprocess capture -- it can still pick the ANSI renderer
-            # depending on inherited TERM/environment -- and
-            # test_batch_yaml_unrelated_key_change_does_not_bust_resume_cache
-            # greps result.stdout for the literal "completed=0"/"cached=N"
-            # text, which only exists in plain-text mode.
-            "-ansi-log",
-            "false",
-            "--pipeline_mode",
-            "ovwt",
-            "--input_dir",
-            str(exp_dir),
-            "--yaml_config_dir",
-            str(config_dir),
-            *_OVWT_NF_PARAMS,
-            *(["-resume"] if resume else []),
-        ],
-        cwd=exp_dir,
-        env=_NF_ENV,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-
-
-@pytest.fixture(scope="session")
-def config_dir_pipeline_outputs(tmp_path_factory):
-    if shutil.which("nextflow") is None:
-        pytest.skip("nextflow not on PATH")
-
-    exp_dir = tmp_path_factory.mktemp("nf_config_dir_experiment")
-    # One pre-staged batch, directly under input/, to exercise both code
-    # paths (pre-staged glob + config-driven INPUT) feeding the same run.
-    _write_batch(exp_dir / "input" / "batch1.parquet", seed=42)
-
-    # One config-driven batch: raw source data lives outside input/, and a
-    # YAML config in config_dir points INPUT at it.
-    raw_dir = tmp_path_factory.mktemp("nf_config_dir_raw")
-    _write_batch(raw_dir / "batch2_source.parquet", seed=99)
-    config_dir = exp_dir / "configs"
-    config_dir.mkdir()
-    _write_input_config(config_dir / "batch2.yaml", raw_dir / "batch2_source.parquet")
-
-    result = _run_config_dir_pipeline(exp_dir, config_dir)
-    return exp_dir, result
-
-
-def test_config_dir_pipeline_exits_cleanly(config_dir_pipeline_outputs):
-    _, result = config_dir_pipeline_outputs
-    assert result.returncode == 0, result.stderr
-
-
-def test_config_dir_generates_input_parquet(config_dir_pipeline_outputs):
-    exp_dir, _ = config_dir_pipeline_outputs
-    assert (exp_dir / "input" / "batch2.parquet").exists()
-
-
-def test_config_dir_pre_staged_batch_still_processed(config_dir_pipeline_outputs):
-    exp_dir, _ = config_dir_pipeline_outputs
-    assert (exp_dir / "qc_filter" / "batch1").exists()
-
-
-def test_config_dir_batch_not_double_processed(config_dir_pipeline_outputs):
-    """Regression test for the glob/channel dedup in workflows/ovwt.nf: the
-    config-derived batch2 must be QC-filtered exactly once, not twice (once
-    from INPUT's live channel output, once from a stale glob re-match of the
-    file INPUT published to disk)."""
-    exp_dir, _ = config_dir_pipeline_outputs
-    qc_dir = exp_dir / "qc_filter" / "batch2"
-    assert qc_dir.exists()
-
-    df = pl.read_parquet(qc_dir / "filtered_cells.parquet")
-    # Same variant/barcode/cell-count shape as _write_batch produces for any
-    # single batch (60 WT + 30 Synonymous + 30 Missense + 30 tagged-Missense
-    # cells, all passing the loose _OVWT_NF_PARAMS QC thresholds) — a doubled
-    # channel would produce exactly 2x this row count.
-    expected_cells = sum(n * c for _, n, c in _VARIANTS.values())
-    assert df.shape[0] == expected_cells
-
-
-# ---------------------------------------------------------------------------
 # Per-batch YAML parameter overrides (lib/BatchParams.groovy). Two
-# config-driven batches per test, so both are YAML-controllable, using
-# OvwtPipeline for the same "not bottlenecked by the full DAG" reason as the
-# yaml_config_dir tests above.
+# config-driven batches per test, using OvwtPipeline since it isn't
+# bottlenecked by the full feature-selection DAG.
 # ---------------------------------------------------------------------------
 
 
-def _two_batch_config_dir(tmp_path_factory, **batch1_overrides):
+def _two_batch_config_dir(tmp_path_factory, **batch1_overrides) -> Path:
     """Set up an experiment dir with two config-driven batches; batch1 gets
     `**batch1_overrides` merged into its YAML, batch2 has no overrides."""
     exp_dir = tmp_path_factory.mktemp("nf_batch_override_experiment")
     raw_dir = tmp_path_factory.mktemp("nf_batch_override_raw")
-    _write_batch(raw_dir / "batch1_source.parquet", seed=1)
-    _write_batch(raw_dir / "batch2_source.parquet", seed=2)
-    config_dir = exp_dir / "configs"
-    config_dir.mkdir()
-    _write_input_config(
-        config_dir / "batch1.yaml",
-        raw_dir / "batch1_source.parquet",
-        **batch1_overrides,
-    )
-    _write_input_config(config_dir / "batch2.yaml", raw_dir / "batch2_source.parquet")
-    return exp_dir, config_dir
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=1, **batch1_overrides)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=2)
+    return exp_dir
 
 
 def test_batch_yaml_numeric_override_takes_effect(tmp_path_factory):
@@ -973,10 +1041,8 @@ def test_batch_yaml_numeric_override_takes_effect(tmp_path_factory):
     # cell count (6), so its filtered_cells.parquet ends up empty; batch2
     # keeps the pipeline-wide default (3, from _OVWT_NF_PARAMS), which every
     # barcode clears, keeping the full synthetic dataset.
-    exp_dir, config_dir = _two_batch_config_dir(
-        tmp_path_factory, barcode_count_threshold=1000
-    )
-    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    exp_dir = _two_batch_config_dir(tmp_path_factory, barcode_count_threshold=1000)
+    result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode == 0, result.stderr
 
     batch1_df = pl.read_parquet(
@@ -1000,9 +1066,7 @@ def test_batch_yaml_gating_override_takes_effect(tmp_path_factory):
     # single_cell_scores_split come from the CLI defaults below (shared by
     # both batches) so CHECK_BARCODES has enough per-barcode samples to
     # compare, matching _CHECK_BARCODES_NF_PARAMS's rationale above.
-    exp_dir, config_dir = _two_batch_config_dir(
-        tmp_path_factory, run_check_barcodes=True
-    )
+    exp_dir = _two_batch_config_dir(tmp_path_factory, run_check_barcodes=True)
     result = subprocess.run(
         [
             "nextflow",
@@ -1010,10 +1074,8 @@ def test_batch_yaml_gating_override_takes_effect(tmp_path_factory):
             str(_PROJECT_ROOT),
             "--pipeline_mode",
             "ovwt",
-            "--input_dir",
+            "--pipeline_dir",
             str(exp_dir),
-            "--yaml_config_dir",
-            str(config_dir),
             *_OVWT_NF_PARAMS,
             "--barcode_check_min_cells",
             "2",
@@ -1032,8 +1094,8 @@ def test_batch_yaml_gating_override_takes_effect(tmp_path_factory):
 
 
 def test_batch_yaml_unknown_key_rejected(tmp_path_factory):
-    exp_dir, config_dir = _two_batch_config_dir(tmp_path_factory, totally_bogus_param=1)
-    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    exp_dir = _two_batch_config_dir(tmp_path_factory, totally_bogus_param=1)
+    result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode != 0
     output = result.stdout + result.stderr
     assert "unrecognized" in output
@@ -1047,7 +1109,7 @@ def test_batch_yaml_missing_input_paths_rejected(tmp_path_factory):
     with open(config_dir / "batch1.yaml", "w") as f:
         yaml.safe_dump({"qc_n_variants": 5}, f)
 
-    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode != 0
     output = result.stdout + result.stderr
     assert "input_paths" in output
@@ -1055,10 +1117,32 @@ def test_batch_yaml_missing_input_paths_rejected(tmp_path_factory):
 
 
 def test_batch_yaml_pipeline_wide_key_rejected(tmp_path_factory):
-    exp_dir, config_dir = _two_batch_config_dir(tmp_path_factory, run_global=False)
-    result = _run_config_dir_pipeline(exp_dir, config_dir)
+    """global_groups (like the old run_global before it) is pipeline-wide-only
+    -- a batch YAML that tries to set it gets a clear rejection, distinct
+    from the unrecognized-key case below."""
+    exp_dir = _two_batch_config_dir(tmp_path_factory, global_groups=["siteA"])
+    result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode != 0
     output = result.stdout + result.stderr
     assert "pipeline-wide-only" in output
     # Distinct error path from the unknown-key case above.
     assert "unrecognized" not in output
+
+
+def test_batch_yaml_global_group_accepted(tmp_path_factory):
+    """Unlike global_groups (pipeline-wide-only, plural), global_group
+    (singular, batch-YAML-only) must be accepted -- not rejected as
+    unrecognized or pipeline-wide-only."""
+    exp_dir = _two_batch_config_dir(tmp_path_factory, global_group="siteA")
+    result = _run_ovwt_pipeline(exp_dir)
+    assert result.returncode == 0, result.stderr
+    output = result.stdout + result.stderr
+    assert "unrecognized" not in output
+    assert "pipeline-wide-only" not in output
+
+
+def test_batch_yaml_global_group_list_accepted(tmp_path_factory):
+    """global_group may also be a list of strings."""
+    exp_dir = _two_batch_config_dir(tmp_path_factory, global_group=["siteA", "siteB"])
+    result = _run_ovwt_pipeline(exp_dir)
+    assert result.returncode == 0, result.stderr

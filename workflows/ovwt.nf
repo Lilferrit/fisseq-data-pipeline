@@ -13,8 +13,8 @@ include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_bat
 include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 
 workflow OvwtPipeline {
-    if (params.input_dir == null) {
-        error "ERROR: --input_dir is required.\n  Usage: nextflow run fisseq.nf -entry OvwtPipeline --input_dir /path/to/data"
+    if (params.pipeline_dir == null) {
+        error "ERROR: --pipeline_dir is required.\n  Usage: nextflow run fisseq.nf -entry OvwtPipeline --pipeline_dir /path/to/data"
     }
 
     // Pipeline-wide defaults for every batch-overridable key -- see
@@ -23,7 +23,10 @@ workflow OvwtPipeline {
     // feature-selection ones), but BatchParams.resolve() expects a complete
     // defaults map for the full OVERRIDABLE_KEYS set so a batch YAML
     // setting one of those keys is still validated/logged consistently
-    // (it just has no process to wire into in this pipeline_mode).
+    // (it just has no process to wire into in this pipeline_mode). Likewise,
+    // global_group is validated/normalized by BatchParams.resolve()
+    // independently of this map (same as input_paths) -- OvwtPipeline has no
+    // global processes to gate, so it's accepted but never read here.
     def batchParamDefaults = [
         barcode_count_threshold           : params.barcode_count_threshold,
         variant_barcode_count_threshold   : params.variant_barcode_count_threshold,
@@ -57,24 +60,20 @@ workflow OvwtPipeline {
         error "ERROR: --single_cell_scores_split must be 'test' or 'train', got '${batchParamDefaults.single_cell_scores_split}'"
     }
 
-    // See workflows/fisseq.nf for the full rationale behind this block
-    // (relaxed validation + dedup against config-derived files).
-    def config_files = []
-    if (params.yaml_config_dir != null) {
-        def configSubdir = file(params.yaml_config_dir)
-        if (!configSubdir.isDirectory()) {
-            error "ERROR: ${params.yaml_config_dir} does not exist or is not a directory"
-        }
-        config_files = configSubdir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
-        if (config_files.size() == 0) {
-            error "ERROR: No .yaml files found in ${params.yaml_config_dir}"
-        }
+    // Mandatory YAML configs -- see workflows/fisseq.nf for the full
+    // rationale (identical block).
+    def configsDir = file("${params.pipeline_dir}/configs")
+    if (!configsDir.isDirectory()) {
+        error "ERROR: ${params.pipeline_dir}/configs does not exist or is not a directory"
     }
-    def config_names = config_files.collect { it.baseName } as Set
+    def config_files = configsDir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
+    if (config_files.size() == 0) {
+        error "ERROR: No .yaml files found in ${params.pipeline_dir}/configs"
+    }
 
     // Resolve every batch YAML's overrides once -- see workflows/fisseq.nf
     // and lib/BatchParams.groovy for the full rationale.
-    def resolvedBatchConfigs = [:].withDefault { batchParamDefaults }
+    def resolvedBatchConfigs = [:]
     config_files.each { f ->
         def stem = f.baseName
         def yamlMap = (new org.yaml.snakeyaml.Yaml().load(f.text) ?: [:]) as Map
@@ -93,26 +92,12 @@ workflow OvwtPipeline {
         resolvedBatchConfigs[stem] = resolution.resolved
     }
 
-    def inputSubdir = file("${params.input_dir}/input")
-    if (!inputSubdir.isDirectory() && params.yaml_config_dir == null) {
-        error "ERROR: ${params.input_dir}/input does not exist or is not a directory"
+    config_ch = Channel.fromList(config_files).map { f ->
+        def stem = f.baseName
+        def cfg = resolvedBatchConfigs[stem]
+        tuple(stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file)
     }
-
-    glob_input_ch = Channel.fromPath("${params.input_dir}/input/*.parquet")
-        .map { f -> [f.baseName, f] }
-        .filter { name, f -> !(name in config_names) }
-
-    if (params.yaml_config_dir != null) {
-        config_ch = Channel.fromList(config_files).map { f ->
-            def stem = f.baseName
-            def cfg = resolvedBatchConfigs[stem]
-            tuple(stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file)
-        }
-        generated_ch = INPUT(config_ch)
-        input_ch = glob_input_ch.mix(generated_ch)
-    } else {
-        input_ch = glob_input_ch
-    }
+    input_ch = INPUT(config_ch)
 
     // Step 1: QC filter (per batch)
     qc_input_ch = input_ch.map { stem, f ->
