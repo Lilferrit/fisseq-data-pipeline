@@ -301,6 +301,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -506,6 +525,28 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -520,10 +561,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -536,8 +577,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
           </label>
@@ -892,10 +933,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -908,8 +949,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             API Reference
           </label>
@@ -1496,62 +1537,71 @@ CellProfiler output to final feature-selected results.</p>
 </code></pre></div>
 <p>See <a href="../installation/">Installation</a> for details, including cluster/HPC setup.</p>
 <h2 id="2-lay-out-your-input-data">2. Lay out your input data<a class="headerlink" href="#2-lay-out-your-input-data" title="Permanent link">&para;</a></h2>
-<p>Each batch's CellProfiler feature matrix (with barcode/variant annotations) goes
-in its own Parquet file under <code>&lt;input_dir&gt;/input/</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;input_dir&gt;/
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  input/
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    batch1.parquet
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    batch2.parquet
+<p>Every batch is declared by a YAML config file under <code>&lt;pipeline_dir&gt;/configs/</code>
+naming its raw CellProfiler feature matrix (or matrices) — there is no mode
+where the pipeline scans a directory of pre-staged Parquet files directly.
+See <a href="../configuration/#pipeline-directory-layout">Configuration</a> for the full
+layout and <a href="../cli/input/#config_path-yaml-schema">CLI Reference: Input</a> for
+the config schema:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;pipeline_dir&gt;/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  configs/
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    batch1.yaml   # input_paths: [/path/to/batch1_raw.parquet]
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    batch2.yaml   # input_paths: [/path/to/batch2_raw.parquet]
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    ...
 </code></pre></div>
 <h2 id="3-run-the-pipeline">3. Run the pipeline<a class="headerlink" href="#3-run-the-pipeline" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
 <p>This runs the default <code>FisseqPipeline</code>, which chains every stage described in
 <a href="../architecture/">Architecture</a>:</p>
 <ol>
+<li><code>INPUT</code> — converts each batch's config into an <code>input/*.parquet</code> file
+   (always runs, once per config).</li>
 <li><code>QC_FILTER</code> — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).</li>
-<li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (global, if
-   <code>params.run_global</code>).</li>
+<li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (once per
+   active group in <code>params.global_groups</code>; none by default).</li>
 <li><code>NORMALIZE</code> — z-score normalization fit on WT control cells (per batch).</li>
-<li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (global, if
-   <code>params.run_global</code>).</li>
-<li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification.</li>
+<li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (once per
+   active group).</li>
+<li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification
+   (<code>OVWT_GLOBAL</code> once per active group).</li>
 <li><code>WTVWT_BATCHWISE</code> — wildtype-only pairwise barcode classification (per
    batch, if <code>params.run_wtvwt</code>).</li>
-<li>Bootstrap feature selection (batchwise and, if <code>params.run_global</code>, global) —
-   see <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
+<li>Bootstrap feature selection (batchwise always; global sub-branch once per
+   active group) — see
+   <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
    six-stage breakdown.</li>
 <li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction
-   (always runs, regardless of <code>params.run_global</code>).</li>
+   (always runs, over every batch).</li>
 <li><code>ANOVA</code> — batch-effect assessment, run once on normalized cells and once
-   on batch-corrected cells (always runs).</li>
+    on batch-corrected cells (always runs).</li>
 </ol>
-<p>Override any <a href="../nextflow/#parameters">parameter</a> on the command line, e.g. to
-adjust QC thresholds or skip the global-only processes (<code>OVWT_GLOBAL</code>, the global
-feature-selection branch, and <code>BATCHVSBATCH</code>):</p>
+<p>Override any <a href="../configuration/#parameters">parameter</a> on the command line,
+e.g. to adjust QC thresholds. Global processes (<code>OVWT_GLOBAL</code>, the global
+feature-selection branch, and <code>BATCHVSBATCH</code>) don't run at all unless you tag
+batches into a group and activate it — see
+<a href="../configuration/#global-groups">Configuration: Global groups</a>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--barcode_count_threshold<span class="w"> </span><span class="m">15</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span>--run_global<span class="w"> </span><span class="nb">false</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--pipeline_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--barcode_count_threshold<span class="w"> </span><span class="m">15</span>
 </code></pre></div>
 <p>To run on a cluster, supply your own config:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>sge<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
 <p>If a run is interrupted, resume from the last completed task:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
 </code></pre></div>
 <h2 id="4-inspect-the-results">4. Inspect the results<a class="headerlink" href="#4-inspect-the-results" title="Permanent link">&para;</a></h2>
-<p>All outputs land under <code>&lt;input_dir&gt;</code>, alongside <code>input/</code> — see
+<p>All outputs land under <code>&lt;pipeline_dir&gt;</code>, alongside <code>configs/</code>/<code>input/</code> — see
 <a href="../architecture/#output-layout">Architecture: Output layout</a> for the full tree.
 The two results most analyses care about:</p>
 <ul>
-<li><code>&lt;input_dir&gt;/feature_select_batchwise/&lt;batch&gt;/output.parquet</code> (and
-  <code>feature_select_global/output.parquet</code>, if <code>params.run_global</code>) — final
-  per-variant, feature-selected profiles.</li>
-<li><code>&lt;input_dir&gt;/anova/anova.parquet</code> and
-  <code>&lt;input_dir&gt;/batch_correction/anova/anova.parquet</code> — per-feature
+<li><code>&lt;pipeline_dir&gt;/feature_select_batchwise/&lt;batch&gt;/output.parquet</code> (and, if a
+  global group is active, <code>global/&lt;group&gt;/feature_select/output.parquet</code>) —
+  final per-variant, feature-selected profiles.</li>
+<li><code>&lt;pipeline_dir&gt;/anova/anova.parquet</code> and
+  <code>&lt;pipeline_dir&gt;/batch_correction/anova/anova.parquet</code> — per-feature
   batch-effect ANOVA results, before and after batch correction.</li>
 </ul>
 <h2 id="5-running-individual-steps">5. Running individual steps<a class="headerlink" href="#5-running-individual-steps" title="Permanent link">&para;</a></h2>

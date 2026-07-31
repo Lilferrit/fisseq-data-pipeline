@@ -302,6 +302,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -506,6 +525,28 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -527,10 +568,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   
@@ -543,8 +584,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
           </label>
@@ -968,10 +1009,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -984,8 +1025,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             API Reference
           </label>
@@ -1621,7 +1662,7 @@ single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">seed</span><span class="o">=</span><span class="m">1</span>
 </code></pre></div>
 <p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>seed</code> are driven by <code>params.feature_select_downsample_wt</code>
-(see <a href="../../nextflow/#parameters">Parameters</a>) — <code>AGGREGATE_HALF</code> derives a distinct seed per
+(see <a href="../../configuration/#parameters">Parameters</a>) — <code>AGGREGATE_HALF</code> derives a distinct seed per
 <code>(bootstrap_idx, half_num)</code> so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. <code>AGGREGATE_FEATURE_TYPE</code>

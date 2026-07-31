@@ -305,6 +305,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -625,6 +644,28 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -639,10 +680,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -655,8 +696,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
           </label>
@@ -1011,10 +1052,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -1027,8 +1068,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             API Reference
           </label>
@@ -1552,7 +1593,8 @@
 <p>The fastest path from a fresh checkout to a first pipeline run, including
 setting up a cluster config. For more depth, see
 <a href="../installation/">Installation</a> (full environment setup),
-<a href="../nextflow/">Nextflow Workflow</a> (every parameter and profile), and
+<a href="../configuration/">Configuration</a> (every parameter, the <code>pipeline_dir</code> layout,
+and global groups), and
 <a href="../walkthrough/">Walkthrough</a> (stage-by-stage detail on what each part of the
 pipeline does).</p>
 <h2 id="1-install">1. Install<a class="headerlink" href="#1-install" title="Permanent link">&para;</a></h2>
@@ -1611,15 +1653,17 @@ the same file. To add one:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>Lilferrit/fisseq-data-pipeline<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>-c<span class="w"> </span>your.config<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>-profile<span class="w"> </span>my_sge<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--pipeline_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
 <p>Or from a local clone:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>my_sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>my_sge<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
 <p>Resume a previously interrupted run instead of starting over:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>my_sge<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>-c<span class="w"> </span>your.config<span class="w"> </span>-profile<span class="w"> </span>my_sge<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
 </code></pre></div>
-<p>See <a href="../nextflow/#parameters">Nextflow Workflow: Parameters</a> for every
+<p><code>--pipeline_dir</code> must contain a <code>configs/</code> subdirectory of per-batch YAML
+config files — see <a href="../configuration/#pipeline-directory-layout">Configuration</a>.
+See <a href="../configuration/#parameters">Configuration: Parameters</a> for every
 <code>--param</code> the pipeline accepts.</p>
 <h3 id="running-a-single-step-directly">Running a single step directly<a class="headerlink" href="#running-a-single-step-directly" title="Permanent link">&para;</a></h3>
 <p>Every pipeline stage is also runnable on its own as a Python CLI, without
@@ -1669,18 +1713,22 @@ the run's working files and <code>.nextflow</code> cache in, adjust <code>SCRIPT
 <a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>nextflow<span class="w"> </span>run<span class="w"> </span>Lilferrit/fisseq-data-pipeline<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a><span class="w">    </span>-c<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">/your.config&quot;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a><span class="w">    </span>-profile<span class="w"> </span>my_sge<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="w">    </span>--input_dir<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="w">    </span>--pipeline_dir<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SCRIPT_DIR</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a><span class="w">    </span><span class="si">${</span><span class="nv">RESUME_FLAG</span><span class="si">}</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$@</span><span class="s2">&quot;</span>
 </code></pre></div>
 <p>Set <code>CLEAN=true</code> before running it to force a fresh run instead of resuming
 (e.g. <code>CLEAN=true ./run.sh</code>). Any extra arguments passed to the script (<code>"$@"</code>)
 are forwarded straight to <code>nextflow run</code>, so you can override any pipeline
-parameter without editing the script, e.g. <code>./run.sh --run_global false</code>.</p>
+parameter without editing the script, e.g. <code>./run.sh --barcode_count_threshold 15</code>
+(list-valued params like <code>--global_groups</code> need a <code>-c</code>/<code>-params-file</code> override
+instead — see <a href="../configuration/#global-groups">Configuration: Global groups</a>).</p>
 <h2 id="next-steps">Next steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../walkthrough/">Walkthrough</a> — a complete end-to-end run, stage by stage.</li>
-<li><a href="../nextflow/">Nextflow Workflow</a> — every process, parameter, and profile.</li>
+<li><a href="../nextflow/">Nextflow Workflow</a> — every process and profile.</li>
+<li><a href="../configuration/">Configuration</a> — every parameter, the <code>pipeline_dir</code>
+  layout, and global groups.</li>
 <li><a href="../architecture/">Architecture</a> — the full pipeline DAG and output layout.</li>
 <li><a href="../cli/qcfilter/">CLI Reference</a> — config fields and examples for every
   standalone Python tool.</li>

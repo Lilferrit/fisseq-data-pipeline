@@ -9,7 +9,7 @@
       
       
       
-        <link rel="prev" href="../../nextflow/">
+        <link rel="prev" href="../../configuration/">
       
       
         <link rel="next" href="../qcfilter/">
@@ -302,6 +302,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -506,6 +525,28 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -527,10 +568,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   
@@ -543,8 +584,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
           </label>
@@ -992,10 +1033,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -1008,8 +1049,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             API Reference
           </label>
@@ -1506,7 +1547,9 @@
 
 
 <h1 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h1>
-<p><code>python -m fisseq_data_pipeline.input</code> (Nextflow process <code>INPUT</code>, optional — gated by <code>params.yaml_config_dir</code>)
+<p><code>python -m fisseq_data_pipeline.input</code> (Nextflow process <code>INPUT</code>, runs once per
+mandatory config file in <code>&lt;pipeline_dir&gt;/configs/</code> — see
+<a href="../../configuration/#pipeline-directory-layout">Configuration</a>)
 reads a hand-authored YAML config describing one or more raw cell-score files
 (CSV or Parquet) and merges them into a single <code>input/</code>-ready cell-level
 Parquet file.</p>
@@ -1538,12 +1581,13 @@ batch rather than only to batches routed through this optional stage.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/path/to/file1.parquet</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">/path/to/file2.csv</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">global_group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">                </span><span class="c1"># optional, string or list of strings (see below)</span>
 </code></pre></div>
 <ul>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.
   <strong>Required, and batch-YAML-only</strong> — there is no pipeline-wide default for a
   per-batch list of raw data files (see
-  <a href="../../nextflow/#per-batch-parameter-overrides">Per-batch parameter overrides</a>).</li>
+  <a href="../../configuration/#per-batch-parameter-overrides">Per-batch parameter overrides</a>).</li>
 <li><code>feature_allowlist_file</code> / <code>feature_blocklist_file</code> — optional paths to plain
   text files, one fnmatch-style glob pattern per line (e.g.
   <code>Cells_AreaShape_*</code>), matched against feature column names. If an allowlist
@@ -1551,19 +1595,26 @@ batch rather than only to batches routed through this optional stage.</p>
   kept; if a blocklist is also given, matching columns are then dropped from
   what remains (allowlist is applied first). Identity columns (<code>upBarcode</code>,
   <code>editDistance</code>, <code>aaChanges</code>) and metadata columns are unaffected.</li>
+<li><code>global_group</code> — optional, a string or list of strings naming which named
+  group(s) this batch belongs to for the purpose of <code>--global_groups</code>
+  scoping. <strong>Validated and consumed by the Nextflow workflow layer
+  (<code>lib/BatchParams.groovy</code>), not by this CLI</strong> — it has no effect on
+  <code>python -m fisseq_data_pipeline.input</code>'s own behavior, but lives in the
+  same batch YAML file, so it's documented here alongside <code>input_paths</code>. See
+  <a href="../../configuration/#global-groups">Configuration: Global groups</a>.</li>
 </ul>
-<p>Except for <code>input_paths</code>, every field above is also a plain <code>nextflow.config</code>
-pipeline-wide default (<code>params.feature_allowlist_file</code>,
+<p>Except for <code>input_paths</code> and <code>global_group</code>, every field above is also a
+plain <code>nextflow.config</code> pipeline-wide default (<code>params.feature_allowlist_file</code>,
 <code>params.feature_blocklist_file</code>) — set one on the command line or in
 <code>nextflow.config</code> to apply it to every batch, and/or override it for a
 specific batch in that batch's YAML. See
-<a href="../../nextflow/#per-batch-parameter-overrides">Per-batch parameter overrides</a>
+<a href="../../configuration/#per-batch-parameter-overrides">Per-batch parameter overrides</a>
 for the full mechanism.</p>
 <h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <p>Written to <code>output_dir</code>, prefixed <code>{output_root}.</code> when <code>output_root</code> is set:</p>
 <ul>
 <li><code>output.parquet</code> — the selected/filtered cells, ready to be placed in
-  <code>&lt;input_dir&gt;/input/</code></li>
+  <code>&lt;pipeline_dir&gt;/input/</code></li>
 </ul>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.input<span class="w"> </span><span class="se">\</span>

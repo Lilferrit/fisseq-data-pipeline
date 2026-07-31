@@ -303,6 +303,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -566,6 +585,28 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -580,10 +621,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -596,8 +637,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
           </label>
@@ -952,10 +993,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -968,8 +1009,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             API Reference
           </label>
@@ -1447,7 +1488,9 @@ population differs from wildtype (WT) controls using morphological features.</p>
 <li><strong><a href="installation/">Installation</a></strong> — environment setup, including cluster/HPC
   configuration.</li>
 <li><strong><a href="nextflow/">Nextflow Workflow</a></strong> — the Nextflow processes, how they're wired
-  together, and how to run the pipeline (params, profiles).</li>
+  together, and how to run the pipeline (profiles).</li>
+<li><strong><a href="configuration/">Configuration</a></strong> — every parameter, the <code>pipeline_dir</code>
+  layout, per-batch YAML overrides, and global groups.</li>
 <li><strong>CLI Reference</strong> — one page per Python entry point (QC filter, normalize,
   aggregate, feature selection, batch correction, ANOVA, OvWT, OvWT cell
   scores, batch-vs-batch, wildtype-vs-wildtype), each with its config fields
@@ -1458,20 +1501,20 @@ population differs from wildtype (WT) controls using morphological features.</p>
   CellProfiler output to final feature-selected results.</li>
 </ul>
 <h2 id="pipeline-at-a-glance">Pipeline at a glance<a class="headerlink" href="#pipeline-at-a-glance" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>input/*.parquet  (one file per batch)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>configs/*.yaml  (mandatory, one file per batch) ──► INPUT ──► input/*.parquet
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>     │
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>     ▼
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>QC_FILTER   (per batch)
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>     │
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>     ├──► BATCHVSBATCH (pre)        (global, optional — params.run_global)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>     ├──► BATCHVSBATCH (pre)        (once per active group — params.global_groups)
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>     ▼
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>NORMALIZE   (per batch)
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>     │
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>     ├──► BATCHVSBATCH (post)       (global, optional — params.run_global)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>     ├──► BATCHVSBATCH (post)       (once per active group)
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>     ├──► OVWT_BATCHWISE             (per batch)
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>     ├──► OVWT_GLOBAL                (global, optional — params.run_global)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>     ├──► OVWT_GLOBAL                (once per active group)
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>     ├──► WTVWT_BATCHWISE            (per batch, optional — params.run_wtvwt)
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>     ├──► Feature selection          (batchwise always; global optional)
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>     ├──► Feature selection          (batchwise always; global sub-branch once per active group)
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>     └──► ANOVA (normalized)         (global — always runs)
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>QC_FILTER ──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► ANOVA (batch-corrected)  (always runs)

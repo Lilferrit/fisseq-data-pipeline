@@ -12,7 +12,7 @@
         <link rel="prev" href="../installation/">
       
       
-        <link rel="next" href="../cli/input/">
+        <link rel="next" href="../configuration/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -305,6 +305,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -565,9 +584,9 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#optional-input-stage" class="md-nav__link">
+  <a href="#input-stage" class="md-nav__link">
     <span class="md-ellipsis">
-      Optional INPUT stage
+      INPUT stage
     </span>
   </a>
   
@@ -588,158 +607,11 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
+  <a href="#parameters-pipeline-directory-layout-and-per-batch-overrides" class="md-nav__link">
     <span class="md-ellipsis">
-      Parameters
+      Parameters, pipeline directory layout, and per-batch overrides
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Parameters">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#pipeline-selection" class="md-nav__link">
-    <span class="md-ellipsis">
-      Pipeline selection
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#branch-toggles" class="md-nav__link">
-    <span class="md-ellipsis">
-      Branch toggles
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#input-stage-tunables" class="md-nav__link">
-    <span class="md-ellipsis">
-      INPUT stage tunables
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#qc-filtering-qc_filter" class="md-nav__link">
-    <span class="md-ellipsis">
-      QC filtering (QC_FILTER)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#batch-effect-detection-anova_blocklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      Batch-effect detection (ANOVA_BLOCKLIST)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#barcode-level-blocklist-barcode_blocklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      Barcode-level blocklist (BARCODE_BLOCKLIST)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#batch-vs-batch-comparison-batchvsbatch" class="md-nav__link">
-    <span class="md-ellipsis">
-      Batch-vs-batch comparison (BATCHVSBATCH)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#one-vs-wildtype-classification-ovwt_global-ovwt_batchwise" class="md-nav__link">
-    <span class="md-ellipsis">
-      One-vs-wildtype classification (OVWT_GLOBAL / OVWT_BATCHWISE)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise" class="md-nav__link">
-    <span class="md-ellipsis">
-      Wildtype-vs-wildtype pairwise barcode classification (WTVWT_BATCHWISE)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Feature selection (bootstrap + aggregation + correlation)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
-    <span class="md-ellipsis">
-      Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#per-batch-parameter-overrides" class="md-nav__link">
-    <span class="md-ellipsis">
-      Per-batch parameter overrides
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Per-batch parameter overrides">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#not-every-parameter-is-batch-overridable" class="md-nav__link">
-    <span class="md-ellipsis">
-      Not every parameter is batch-overridable
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#input_paths-the-one-exception-in-the-other-direction" class="md-nav__link">
-    <span class="md-ellipsis">
-      input_paths: the one exception in the other direction
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" class="md-nav__link">
-    <span class="md-ellipsis">
-      Why resolved scalars, not the whole config, are passed to processes
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -766,6 +638,28 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -780,10 +674,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -796,8 +690,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             CLI Reference
           </label>
@@ -1152,10 +1046,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -1168,8 +1062,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             API Reference
           </label>
@@ -1627,9 +1521,9 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#optional-input-stage" class="md-nav__link">
+  <a href="#input-stage" class="md-nav__link">
     <span class="md-ellipsis">
-      Optional INPUT stage
+      INPUT stage
     </span>
   </a>
   
@@ -1650,158 +1544,11 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
+  <a href="#parameters-pipeline-directory-layout-and-per-batch-overrides" class="md-nav__link">
     <span class="md-ellipsis">
-      Parameters
+      Parameters, pipeline directory layout, and per-batch overrides
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Parameters">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#pipeline-selection" class="md-nav__link">
-    <span class="md-ellipsis">
-      Pipeline selection
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#branch-toggles" class="md-nav__link">
-    <span class="md-ellipsis">
-      Branch toggles
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#input-stage-tunables" class="md-nav__link">
-    <span class="md-ellipsis">
-      INPUT stage tunables
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#qc-filtering-qc_filter" class="md-nav__link">
-    <span class="md-ellipsis">
-      QC filtering (QC_FILTER)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#batch-effect-detection-anova_blocklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      Batch-effect detection (ANOVA_BLOCKLIST)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#barcode-level-blocklist-barcode_blocklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      Barcode-level blocklist (BARCODE_BLOCKLIST)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#batch-vs-batch-comparison-batchvsbatch" class="md-nav__link">
-    <span class="md-ellipsis">
-      Batch-vs-batch comparison (BATCHVSBATCH)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#one-vs-wildtype-classification-ovwt_global-ovwt_batchwise" class="md-nav__link">
-    <span class="md-ellipsis">
-      One-vs-wildtype classification (OVWT_GLOBAL / OVWT_BATCHWISE)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise" class="md-nav__link">
-    <span class="md-ellipsis">
-      Wildtype-vs-wildtype pairwise barcode classification (WTVWT_BATCHWISE)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Feature selection (bootstrap + aggregation + correlation)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
-    <span class="md-ellipsis">
-      Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#per-batch-parameter-overrides" class="md-nav__link">
-    <span class="md-ellipsis">
-      Per-batch parameter overrides
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Per-batch parameter overrides">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#not-every-parameter-is-batch-overridable" class="md-nav__link">
-    <span class="md-ellipsis">
-      Not every parameter is batch-overridable
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#input_paths-the-one-exception-in-the-other-direction" class="md-nav__link">
-    <span class="md-ellipsis">
-      input_paths: the one exception in the other direction
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" class="md-nav__link">
-    <span class="md-ellipsis">
-      Why resolved scalars, not the whole config, are passed to processes
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -1865,24 +1612,24 @@
 </tr>
 </tbody>
 </table>
-<p>Both workflows validate that <code>--input_dir</code> is set and that <code>&lt;input_dir&gt;/input/</code>
-exists and contains at least one <code>.parquet</code> file, then build a per-batch channel
-from <code>&lt;input_dir&gt;/input/*.parquet</code> (one tuple per file, keyed by filename stem).
-If <code>--yaml_config_dir</code> is also set, that non-empty-check is relaxed (see
-<a href="#optional-input-stage">Optional INPUT stage</a> below) since <code>&lt;input_dir&gt;/input/</code>
-may not exist yet on a first config-driven run.</p>
+<p>Both workflows validate that <code>--pipeline_dir</code> is set and that
+<code>&lt;pipeline_dir&gt;/configs/</code> exists and contains at least one <code>*.yaml</code> file --
+every batch is declared by a YAML config there (see
+<a href="../configuration/#pipeline-directory-layout">Configuration</a>); there is no
+mode where the pipeline scans a directory of pre-staged parquet files
+directly.</p>
 <h2 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h2>
 <p>Run directly from GitHub — no cloning required:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>Lilferrit/fisseq-data-pipeline<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span>-c<span class="w"> </span>your.config<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>--input_dir<span class="w"> </span>/path/to/experiment
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>--pipeline_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
 <p>Use <code>-r</code> to pin to a branch or release tag; Nextflow caches the pulled revision in
 <code>~/.nextflow/assets</code> (pass <code>-latest</code> to force a refresh). Or, from a local clone:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment
 </code></pre></div>
 <p>Resume after an interruption using Nextflow's task-level caching:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--input_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span>--pipeline_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span>-resume
 </code></pre></div>
 <h2 id="processes">Processes<a class="headerlink" href="#processes" title="Permanent link">&para;</a></h2>
 <p>Every process wraps one <code>python -m fisseq_data_pipeline.&lt;module&gt;</code> invocation (see
@@ -1902,7 +1649,7 @@ may not exist yet on a first config-driven run.</p>
 <td><code>INPUT</code></td>
 <td><code>input.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.input</code></td>
-<td>per config file, optional (<code>params.yaml_config_dir</code>)</td>
+<td>per config file, always (<code>&lt;pipeline_dir&gt;/configs/</code> is mandatory)</td>
 </tr>
 <tr>
 <td><code>QC_FILTER</code></td>
@@ -1917,10 +1664,16 @@ may not exist yet on a first config-driven run.</p>
 <td>per batch</td>
 </tr>
 <tr>
+<td><code>STAGE_GROUP_CELLS</code> (aliased <code>_QC</code> / <code>_NORM</code>)</td>
+<td><code>stage_group.nf</code></td>
+<td>(no Python wrapper — republishes a staged file)</td>
+<td>per (active global group × member batch); stages that batch's <code>QC_FILTER</code>/<code>NORMALIZE</code> output into <code>global/&lt;group&gt;/{qc_filter_cells,normalization_cells}/</code> so the global processes below can glob a group-scoped directory</td>
+</tr>
+<tr>
 <td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
 <td><code>batchvsbatch.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.batchvsbatch</code></td>
-<td>global, twice, optional (<code>params.run_global</code>); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>per active global group, twice (<code>params.global_groups</code>, default none run); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FEATURE_FILTERED</code> / <code>_BARCODE_FILTERED</code>)</td>
@@ -1932,7 +1685,7 @@ may not exist yet on a first config-driven run.</p>
 <td><code>OVWT_GLOBAL</code></td>
 <td><code>ovwt_global.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.ovwt</code></td>
-<td>global, optional (<code>params.run_global</code>); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>per active global group (<code>params.global_groups</code>, default none run); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>WTVWT_BATCHWISE</code></td>
@@ -1962,43 +1715,43 @@ may not exist yet on a first config-driven run.</p>
 <td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
 <td><code>aggregate_feature_type.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></td>
-<td>per (batch or global) × feature type</td>
+<td>per (batch or active global group) × feature type</td>
 </tr>
 <tr>
 <td><code>GENERATE_SPLIT</code> (aliased)</td>
 <td><code>generate_split.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.generatesplit</code></td>
-<td>per (batch or global) × bootstrap replicate</td>
+<td>per (batch or active global group) × bootstrap replicate</td>
 </tr>
 <tr>
 <td><code>AGGREGATE_HALF</code> (aliased)</td>
 <td><code>aggregate_half.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code> (with <code>index_file</code>)</td>
-<td>per (batch or global) × bootstrap × feature type × half</td>
+<td>per (batch or active global group) × bootstrap × feature type × half</td>
 </tr>
 <tr>
 <td><code>CORRELATE_FEATURES</code> (aliased)</td>
 <td><code>correlate_features.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.correlatefeatures</code></td>
-<td>per (batch or global) × bootstrap × feature type</td>
+<td>per (batch or active global group) × bootstrap × feature type</td>
 </tr>
 <tr>
 <td><code>BLOCKLIST</code> (aliased)</td>
 <td><code>blocklist.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.blocklist</code></td>
-<td>per (batch or global) × feature type — gathers all bootstrap replicates</td>
+<td>per (batch or active global group) × feature type — gathers all bootstrap replicates</td>
 </tr>
 <tr>
 <td><code>COMBINE_BLOCKLISTS</code> (aliased)</td>
 <td><code>combine_blocklists.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.combineblocklists</code></td>
-<td>per (batch or global) — gathers all feature types</td>
+<td>per (batch or active global group) — gathers all feature types</td>
 </tr>
 <tr>
 <td><code>FINALIZE_FEATURE_SELECT</code> (aliased)</td>
 <td><code>finalize_feature_select.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.featureselect</code></td>
-<td>per (batch or global)</td>
+<td>per (batch or active global group)</td>
 </tr>
 <tr>
 <td><code>BATCH_CORRECT_FIT</code></td>
@@ -2030,39 +1783,24 @@ may not exist yet on a first config-driven run.</p>
 <code>include { X as Y }</code> (Nextflow forbids calling one process twice under its own name
 in a single workflow) — see <a href="../architecture/">Architecture</a> for what each aliased
 invocation does differently (which cells glob, which <code>publishDir</code> subpath).</p>
-<h3 id="optional-input-stage">Optional <code>INPUT</code> stage<a class="headerlink" href="#optional-input-stage" title="Permanent link">&para;</a></h3>
-<p>When <code>--yaml_config_dir</code> is set, <code>INPUT</code> runs once per <code>*.yaml</code> file found there
-(<code>python -m fisseq_data_pipeline.input</code>, see <a href="../cli/input/">CLI Reference: Input</a>) and publishes its output
-into <code>&lt;input_dir&gt;/input/</code>, the same directory pre-staged batch files live in. Both
-<code>workflows/fisseq.nf</code> and <code>workflows/ovwt.nf</code> merge this generated channel with the
-pre-existing <code>Channel.fromPath("&lt;input_dir&gt;/input/*.parquet")</code> glob channel via
-<code>.mix()</code>, so <code>QC_FILTER</code> sees one unified stream regardless of which code path
-produced a given batch.</p>
-<p>Two subtleties worth knowing:</p>
-<ul>
-<li><strong>Double-processing guard.</strong> <code>Channel.fromPath(glob)</code> is evaluated once, at
-  workflow-construction time — it does not wait for <code>INPUT</code> to finish. On a re-run
-  where <code>&lt;input_dir&gt;/input/</code> already contains a file <code>INPUT</code> previously published
-  there, the glob channel would match it independently of <code>INPUT</code>'s live output for
-  this run, feeding the same batch into <code>QC_FILTER</code> twice. Both workflows avoid this
-  by eagerly listing <code>yaml_config_dir</code>'s <code>*.yaml</code> basenames up front and filtering those
-  names out of the glob channel before <code>.mix()</code>-ing in <code>INPUT</code>'s real output.</li>
-<li><strong>Precedence.</strong> If a batch name exists both as a pre-staged file in <code>input/</code> and as
-  a <code>yaml_config_dir/*.yaml</code>, the config-derived version silently wins — the pre-staged
-  file is excluded from the glob channel by the same filter.</li>
-</ul>
-<p>Like every other process, <code>INPUT</code> uses <code>errorStrategy 'ignore'</code>: a failed conversion
-for one config file simply drops that batch from the run (it is excluded from both
-the glob and the generated channel), rather than aborting the whole pipeline.</p>
+<h3 id="input-stage"><code>INPUT</code> stage<a class="headerlink" href="#input-stage" title="Permanent link">&para;</a></h3>
+<p><code>INPUT</code> runs once per mandatory <code>*.yaml</code> config file in
+<code>&lt;pipeline_dir&gt;/configs/</code> (<code>python -m fisseq_data_pipeline.input</code>, see
+<a href="../cli/input/">CLI Reference: Input</a>) and publishes its output into
+<code>&lt;pipeline_dir&gt;/input/</code>. Every batch goes through this stage -- there is no
+pre-staged-parquet mode. Like every other process, <code>INPUT</code> uses
+<code>errorStrategy 'ignore'</code>: a failed conversion for one config file simply
+drops that batch from the run, rather than aborting the whole pipeline.</p>
 <p><code>INPUT</code> does not receive the batch's hand-authored YAML file directly. Each
 batch's YAML is parsed and merged with the pipeline-wide defaults once, at
 workflow-construction time (see
-<a href="#per-batch-parameter-overrides">Per-batch parameter overrides</a> below), and
-<code>INPUT</code> instead receives the resolved <code>input_paths</code> / <code>feature_allowlist_file</code>
+<a href="../configuration/#per-batch-parameter-overrides">Configuration: Per-batch parameter overrides</a>),
+and <code>INPUT</code> instead receives the resolved <code>input_paths</code> / <code>feature_allowlist_file</code>
 / <code>feature_blocklist_file</code> values as individual process inputs. The process
 script rebuilds a minimal YAML from those values before invoking
-<code>python -m fisseq_data_pipeline.input</code> — see the resume-caching rationale
-below for why.</p>
+<code>python -m fisseq_data_pipeline.input</code> — see
+<a href="../configuration/#why-resolved-scalars-not-the-whole-config-are-passed-to-processes">Configuration: Why resolved scalars, not the whole config, are passed to processes</a>
+for why.</p>
 <h3 id="feature-selection-channel-wiring">Feature-selection channel wiring<a class="headerlink" href="#feature-selection-channel-wiring" title="Permanent link">&para;</a></h3>
 <p>The feature-selection branch (<code>AGGREGATE_FEATURE_TYPE</code> → <code>GENERATE_SPLIT</code> →
 <code>AGGREGATE_HALF</code> → <code>CORRELATE_FEATURES</code> → <code>BLOCKLIST</code> → <code>COMBINE_BLOCKLISTS</code> →
@@ -2079,425 +1817,17 @@ below for why.</p>
   cross-bootstrap synchronization point — it gathers all <code>params.feature_select_bootstrap_reps</code>
   correlation replicates for one feature type before computing a median-<code>r</code>
   threshold.</li>
-<li>The batchwise branch always runs; the global branch (constant <code>global_key =
-  "global"</code> standing in for <code>batch_stem</code>) is gated behind
-  <code>params.run_global.toString().toBoolean()</code> (an explicit string-to-boolean parse,
-  since Nextflow CLI overrides like <code>--run_global false</code> arrive as the truthy Groovy
-  string <code>"false"</code>).</li>
+<li>The batchwise branch always runs; the global branch runs once per active
+  group in <code>params.global_groups</code> (default <code>null</code> = none active) instead of
+  a single constant <code>global_key</code>, each scoped to that group's member
+  batches -- see <a href="../configuration/#global-groups">Configuration: Global groups</a>.</li>
 </ul>
-<h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
-<p>Defaults live in <code>nextflow.config</code> at the repo root:</p>
-<h3 id="pipeline-selection">Pipeline selection<a class="headerlink" href="#pipeline-selection" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--pipeline_mode</code></td>
-<td><code>"fisseq"</code></td>
-<td>Which workflow to run: <code>"fisseq"</code> or <code>"ovwt"</code>.</td>
-</tr>
-<tr>
-<td><code>--input_dir</code></td>
-<td><code>null</code> (<strong>required</strong>)</td>
-<td>Root directory containing <code>input/*.parquet</code> batch files.</td>
-</tr>
-<tr>
-<td><code>--yaml_config_dir</code></td>
-<td><code>null</code></td>
-<td>Optional directory of YAML configs; each generates one <code>input/*.parquet</code> via <code>INPUT</code>, merged with any pre-staged files in <code>input/</code>. See <a href="#optional-input-stage">Optional INPUT stage</a>.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="branch-toggles">Branch toggles<a class="headerlink" href="#branch-toggles" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--run_global</code></td>
-<td><code>true</code></td>
-<td>Whether to run <code>OVWT_GLOBAL</code>, <code>BATCHVSBATCH</code>, and the global feature-selection branch.</td>
-</tr>
-<tr>
-<td><code>--run_feature_selection</code></td>
-<td><code>true</code></td>
-<td>Whether to run the feature-selection branch (batchwise + global) at all.</td>
-</tr>
-<tr>
-<td><code>--run_ovwt</code></td>
-<td><code>true</code></td>
-<td><code>FisseqPipeline</code> only: run <code>OVWT_BATCHWISE_UNFILTERED</code> (the normal/unfiltered per-batch OvWT pass) for that batch. Setting <code>false</code> also disables <code>run_single_cell_scores</code>/<code>run_check_barcodes</code>/<code>run_barcode_filtered_ovwt</code> for that batch regardless of their own settings, since all three consume this pass's output. No effect in <code>OvwtPipeline</code> (its entire purpose is this pass, so it always runs there).</td>
-</tr>
-<tr>
-<td><code>--run_feature_filtered_ovwt</code></td>
-<td><code>true</code></td>
-<td>Run <code>OVWT_BATCHWISE_FEATURE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass. (Renamed from <code>--run_filtered_ovwt</code>.)</td>
-</tr>
-<tr>
-<td><code>--run_single_cell_scores</code></td>
-<td><code>false</code></td>
-<td><code>FisseqPipeline</code> only: run <code>OVWT_CELLSCORES_BATCHWISE</code> per batch after <code>OVWT_BATCHWISE_UNFILTERED</code>. Always on in <code>OvwtPipeline</code>. Forced on if <code>--run_check_barcodes true</code>.</td>
-</tr>
-<tr>
-<td><code>--run_check_barcodes</code></td>
-<td><code>false</code></td>
-<td>Run <code>CHECK_BARCODES</code> (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies <code>--run_single_cell_scores true</code>.</td>
-</tr>
-<tr>
-<td><code>--run_barcode_filtered_ovwt</code></td>
-<td><code>true</code></td>
-<td>Run <code>OVWT_BATCHWISE_BARCODE_FILTERED</code> (per-batch OvWT filtered against <code>barcode_blocklist/&lt;batch&gt;/barcode_blocklist.parquet</code>). Only takes effect when <code>--run_check_barcodes true</code> is also set (default <code>false</code>) -- does NOT force it on, so the default pipeline output is unaffected.</td>
-</tr>
-<tr>
-<td><code>--run_wtvwt</code></td>
-<td><code>true</code></td>
-<td><code>FisseqPipeline</code> only: run <code>WTVWT_BATCHWISE</code> (per-batch, wildtype-only pairwise barcode classification) for that batch. Independent of <code>--run_ovwt</code> and every other gate.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="input-stage-tunables">INPUT stage tunables<a class="headerlink" href="#input-stage-tunables" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--feature_allowlist_file</code></td>
-<td><code>null</code></td>
-<td><code>INPUT</code>: optional path to a glob-pattern feature allowlist file.</td>
-</tr>
-<tr>
-<td><code>--feature_blocklist_file</code></td>
-<td><code>null</code></td>
-<td><code>INPUT</code>: optional path to a glob-pattern feature blocklist file.</td>
-</tr>
-</tbody>
-</table>
-<p>These mirror <code>INPUT</code>'s per-batch YAML <code>config_path</code> schema (see
-<a href="../cli/input/#config_path-yaml-schema">CLI Reference: Input</a>) and are
-overridable per batch exactly like every other parameter here — see
-<a href="#per-batch-parameter-overrides">Per-batch parameter overrides</a>.</p>
-<h3 id="qc-filtering-qc_filter">QC filtering (<code>QC_FILTER</code>)<a class="headerlink" href="#qc-filtering-qc_filter" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--barcode_count_threshold</code></td>
-<td><code>10</code></td>
-<td>Minimum cells per barcode (QC filter).</td>
-</tr>
-<tr>
-<td><code>--variant_barcode_count_threshold</code></td>
-<td><code>4</code></td>
-<td>Minimum distinct barcodes per variant (QC filter).</td>
-</tr>
-<tr>
-<td><code>--edit_distance_threshold</code></td>
-<td><code>1</code></td>
-<td>Maximum allowed edit distance (QC filter).</td>
-</tr>
-<tr>
-<td><code>--qc_n_variants</code></td>
-<td><code>null</code></td>
-<td>Optional: restricts <code>qc_variant_downsample_classes</code> to at most this many distinct variants, before QC thresholding. <code>null</code> disables it.</td>
-</tr>
-<tr>
-<td><code>--qc_variant_downsample_classes</code></td>
-<td><code>['Single Missense']</code></td>
-<td>Classes eligible for the <code>qc_n_variants</code> restriction.</td>
-</tr>
-<tr>
-<td><code>--qc_variant_downsample_mode</code></td>
-<td><code>'top'</code></td>
-<td><code>'top'</code> keeps the highest-cell-count variants; <code>'random'</code> keeps a seeded random sample.</td>
-</tr>
-<tr>
-<td><code>--qc_downsample_amounts</code></td>
-<td><code>null</code></td>
-<td>Optional single float <code>(0, 1]</code>/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). <code>null</code> disables it. A genuine multi-element <em>list</em> is only settable via a batch YAML override or by editing the Groovy list literal in <code>nextflow.config</code> directly — a bare <code>--qc_downsample_amounts</code> CLI flag only supports a single scalar.</td>
-</tr>
-<tr>
-<td><code>--qc_downsample_classes</code></td>
-<td><code>['Synonymous', 'Single Missense']</code></td>
-<td>Classes eligible for <code>qc_downsample_amounts</code> pseudo-variant generation.</td>
-</tr>
-<tr>
-<td><code>--qc_downsample_seed</code></td>
-<td><code>0</code></td>
-<td>Seed for the deterministic downsample selection, shared by <code>qc_downsample_amounts</code> and <code>qc_variant_downsample_mode="random"</code>.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="batch-effect-detection-anova_blocklist">Batch-effect detection (<code>ANOVA_BLOCKLIST</code>)<a class="headerlink" href="#batch-effect-detection-anova_blocklist" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--anova_blocklist_pvalue_threshold</code></td>
-<td><code>0.05</code></td>
-<td>A feature is blocked (<code>feature_ok = false</code>) when its <code>ANOVA_NORMALIZED</code> p-value is strictly less than this threshold (a statistically significant batch effect was detected).</td>
-</tr>
-</tbody>
-</table>
-<h3 id="barcode-level-blocklist-barcode_blocklist">Barcode-level blocklist (<code>BARCODE_BLOCKLIST</code>)<a class="headerlink" href="#barcode-level-blocklist-barcode_blocklist" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--barcode_blocklist_pvalue_threshold</code></td>
-<td><code>0.05</code></td>
-<td>A barcode is blocked (<code>barcode_ok = false</code>) when the median of its <code>CHECK_BARCODES</code> <code>p_adj</code> values is strictly less than this threshold.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="batch-vs-batch-comparison-batchvsbatch">Batch-vs-batch comparison (<code>BATCHVSBATCH</code>)<a class="headerlink" href="#batch-vs-batch-comparison-batchvsbatch" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--batchvsbatch_min_cells</code></td>
-<td><code>50</code></td>
-<td>Minimum total cells for a variant to be profiled in batch-vs-batch.</td>
-</tr>
-<tr>
-<td><code>--batchvsbatch_min_batches</code></td>
-<td><code>2</code></td>
-<td>Minimum unique batches a variant must appear in for batch-vs-batch.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="one-vs-wildtype-classification-ovwt_global-ovwt_batchwise">One-vs-wildtype classification (<code>OVWT_GLOBAL</code> / <code>OVWT_BATCHWISE</code>)<a class="headerlink" href="#one-vs-wildtype-classification-ovwt_global-ovwt_batchwise" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--ovwt_min_cells</code></td>
-<td><code>100</code></td>
-<td>Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of <code>250</code>).</td>
-</tr>
-<tr>
-<td><code>--ovwt_downsample_wt</code></td>
-<td><code>5000</code></td>
-<td>Wildtype downsample target for OvWT classification.</td>
-</tr>
-<tr>
-<td><code>--max_cells_per_barcode_wt</code></td>
-<td><code>null</code></td>
-<td>Optional cap on cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count. <code>null</code> disables the cap.</td>
-</tr>
-<tr>
-<td><code>--max_cells_per_barcode_variant</code></td>
-<td><code>null</code></td>
-<td>Optional cap on cells per non-wildtype barcode, analogous to <code>--max_cells_per_barcode_wt</code>. <code>null</code> disables the cap.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise">Wildtype-vs-wildtype pairwise barcode classification (<code>WTVWT_BATCHWISE</code>)<a class="headerlink" href="#wildtype-vs-wildtype-pairwise-barcode-classification-wtvwt_batchwise" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--wtvwt_min_cells_per_barcode</code></td>
-<td><code>100</code></td>
-<td>Minimum wildtype cells a barcode must have to be included in pairwise classification.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="feature-selection-bootstrap-aggregation-correlation">Feature selection (bootstrap + aggregation + correlation)<a class="headerlink" href="#feature-selection-bootstrap-aggregation-correlation" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--feature_select_types</code></td>
-<td><code>["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]</code></td>
-<td>Aggregators used in feature selection (all 7 of <code>aggregate.py</code>'s aggregators).</td>
-</tr>
-<tr>
-<td><code>--feature_select_bootstrap_reps</code></td>
-<td><code>10</code></td>
-<td>Number of pseudo-replicate bootstrap splits for feature selection.</td>
-</tr>
-<tr>
-<td><code>--feature_select_downsample_wt</code></td>
-<td><code>null</code></td>
-<td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields">CLI Reference: aggregate</a>.</td>
-</tr>
-<tr>
-<td><code>--feature_select_min_correlation</code></td>
-<td><code>0.5</code></td>
-<td>Minimum median Pearson <code>r</code> required for a feature to pass <code>BLOCKLIST</code>.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes">Single-cell scoring &amp; barcode QC (<code>OVWT_CELLSCORES_BATCHWISE</code> / <code>CHECK_BARCODES</code>)<a class="headerlink" href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--single_cell_scores_split</code></td>
-<td><code>"test"</code></td>
-<td>Which <code>OVWT_BATCHWISE</code> split to score: <code>"test"</code> or <code>"train"</code>. Any other value fails fast with a clear error.</td>
-</tr>
-<tr>
-<td><code>--barcode_check_min_cells</code></td>
-<td><code>10</code></td>
-<td><code>CHECK_BARCODES</code>: minimum cells required per barcode (within a variant) to include it in the comparison.</td>
-</tr>
-<tr>
-<td><code>--barcode_check_alpha</code></td>
-<td><code>0.05</code></td>
-<td><code>CHECK_BARCODES</code>: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="per-batch-parameter-overrides">Per-batch parameter overrides<a class="headerlink" href="#per-batch-parameter-overrides" title="Permanent link">&para;</a></h2>
-<p>Any batch YAML in <code>--yaml_config_dir</code> may set additional keys beyond
-<code>input_paths</code> to override that batch's own value for a <code>nextflow.config</code>
-parameter — without affecting any other batch. This is resolved once per
-batch, in Groovy, at workflow-construction time, by
-<a href="https://github.com/Lilferrit/fisseq-data-pipeline/blob/main/lib/BatchParams.groovy"><code>lib/BatchParams.groovy</code></a>'s
-<code>resolve()</code> function: it merges that batch's YAML on top of the pipeline-wide
-defaults, validates every key, and returns the merged result plus a list of
-which keys were actually overridden. Both <code>workflows/fisseq.nf</code> and
-<code>workflows/ovwt.nf</code> call this once per batch YAML file and log each override
-via <code>log.info</code> — e.g.:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Batch &#39;batch3&#39;: overriding barcode_count_threshold (default=10) -&gt; 3
-</code></pre></div>
-<h3 id="not-every-parameter-is-batch-overridable">Not every parameter is batch-overridable<a class="headerlink" href="#not-every-parameter-is-batch-overridable" title="Permanent link">&para;</a></h3>
-<p>Some <code>nextflow.config</code> parameters are <strong>pipeline-wide-only</strong> and cannot be
-set from a batch YAML — a batch YAML that tries gets a clear rejection error
-at config-resolution time, distinct from the error for a genuine typo (an
-unrecognized key). Two kinds of parameters fall in this bucket:</p>
-<ul>
-<li><strong>Meta/bootstrap parameters</strong> needed just to find and validate batch
-  YAMLs in the first place — <code>--pipeline_mode</code>, <code>--input_dir</code>,
-  <code>--yaml_config_dir</code>. There's a chicken-and-egg problem: these have to be
-  resolved before any batch config can even be located.</li>
-<li><strong>Parameters with no per-batch consumer.</strong> Several processes run once
-  across <em>all</em> batches rather than per batch — <code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>,
-  <code>ANOVA_BLOCKLIST</code> (derived from <code>ANOVA_NORMALIZED</code>, which globs the entire
-  <code>input_dir</code>, not one batch), and the <code>_GLOBAL</code>-suffixed feature-selection
-  chain. Params consumed only by those processes — <code>--run_global</code>,
-  <code>--batchvsbatch_min_cells</code>, <code>--batchvsbatch_min_batches</code>,
-  <code>--anova_blocklist_pvalue_threshold</code>, <code>--feature_select_types</code>,
-  <code>--feature_select_bootstrap_reps</code> — have no batch to attach a per-batch
-  override to, so they stay pipeline-wide-only. (<code>--feature_select_types</code>
-  and <code>--feature_select_bootstrap_reps</code> specifically determine shared
-  fan-out <em>cardinality</em> — how many feature-type/bootstrap tasks exist at
-  all — not a per-batch scalar value, so letting them vary per batch would
-  require a much larger restructuring than a simple value override.)</li>
-</ul>
-<p>Every other <code>nextflow.config</code> parameter — including the gating booleans
-<code>--run_ovwt</code>, <code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
-<code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the
-<em>batchwise</em> effect of <code>--run_feature_selection</code> — is genuinely per-batch
-overridable. <code>--wtvwt_min_cells_per_barcode</code> is likewise per-batch
-overridable, same bucket as <code>--ovwt_min_cells</code>.
-Each of these gates only a per-batch-only process or chain, so
-<code>workflows/fisseq.nf</code> implements them as a per-batch channel <code>.filter()</code>
-(via a <code>batchGates()</code> helper that also encodes the "<code>run_check_barcodes</code>
-implies <code>run_single_cell_scores</code>" / "<code>run_barcode_filtered_ovwt</code> only takes
-effect once <code>run_check_barcodes</code> is true" rules) rather than a workflow-scope
-<code>if</code>. <code>--run_feature_selection</code>'s <em>global</em> sub-branch (the <code>_GLOBAL</code>
-feature-selection chain) remains pipeline-wide-only, gated on
-<code>params.run_global &amp;&amp; params.run_feature_selection</code> together, since that
-chain has no per-batch identity either.</p>
-<p>Parameters shared between a per-batch process and a global-only process
-(<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
-<code>--feature_select_min_correlation</code>) are overridable per batch for their
-batchwise consumer only (<code>OVWT_BATCHWISE</code>, <code>AGGREGATE_FEATURE_TYPE_BATCHWISE</code>
-/ <code>AGGREGATE_HALF_BATCHWISE</code>, <code>BLOCKLIST_BATCHWISE</code>) — their global
-counterpart (<code>OVWT_GLOBAL</code>, the <code>_GLOBAL</code> feature-selection processes)
-always uses the plain pipeline-wide value directly, regardless of any
-batch's override.</p>
-<h3 id="input_paths-the-one-exception-in-the-other-direction"><code>input_paths</code>: the one exception in the other direction<a class="headerlink" href="#input_paths-the-one-exception-in-the-other-direction" title="Permanent link">&para;</a></h3>
-<p><code>input_paths</code> (the list of raw cell-score file paths for a batch) is
-<strong>required in every batch YAML and has no <code>nextflow.config</code> default at
-all</strong> — it is intentionally excluded from the override-symmetry described
-above. There is no sensible pipeline-wide default for a per-batch list of
-data files: unlike a threshold or a boolean gate, a default <code>input_paths</code>
-would look like something batches inherit, when in practice every batch
-must supply its own. A batch YAML that omits it fails clearly at
-config-resolution time rather than silently proceeding with no data.</p>
-<h3 id="why-resolved-scalars-not-the-whole-config-are-passed-to-processes">Why resolved scalars, not the whole config, are passed to processes<a class="headerlink" href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" title="Permanent link">&para;</a></h3>
-<p>Every process that consumes a per-batch-overridable value receives it as an
-individual <code>val()</code> input (e.g. <code>QC_FILTER</code> takes
-<code>barcode_count_threshold</code>/<code>variant_barcode_count_threshold</code>/... as nine
-separate <code>val()</code>s), never a whole config map or the raw YAML file. Nextflow's
-<code>-resume</code> cache key for a task is derived from its declared inputs — if a
-whole file or map were passed, changing <em>any</em> key in it (even one that
-process doesn't consume) would bust the cache for every task built from it.
-Passing only the specific scalars a process actually reads means an
-unrelated key change in one batch's YAML — or a non-semantic edit to it —
-does not invalidate that batch's tasks on the next <code>-resume</code> run. This is
-also why <code>INPUT</code> no longer receives the batch's YAML file directly (see
-<a href="#optional-input-stage">Optional INPUT stage</a> above): it now takes the
-resolved scalars as <code>val()</code> inputs and rebuilds a minimal YAML from them
-inside the process script, so only those scalars — not the original file's
-bytes — determine its cache key.</p>
+<h2 id="parameters-pipeline-directory-layout-and-per-batch-overrides">Parameters, pipeline directory layout, and per-batch overrides<a class="headerlink" href="#parameters-pipeline-directory-layout-and-per-batch-overrides" title="Permanent link">&para;</a></h2>
+<p>See <a href="../configuration/">Configuration</a> for the full parameter reference, the
+<code>&lt;pipeline_dir&gt;</code> directory layout (including the mandatory <code>configs/</code>
+subdirectory and the <code>global/&lt;group&gt;/</code> output tree), how a batch YAML can
+override most parameters for just that batch, and how named global groups
+scope <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/the global feature-selection branch.</p>
 <h2 id="profiles">Profiles<a class="headerlink" href="#profiles" title="Permanent link">&para;</a></h2>
 <p><code>nextflow.config</code> also ships commented-out profile stubs for <code>venv</code>, <code>conda</code>,
 <code>singularity</code>, and <code>sge</code> executors — see <a href="../installation/#cluster-hpc">Installation</a>
