@@ -74,6 +74,7 @@ class BatchParams {
         'global_groups',
         'feature_select_types',
         'feature_select_bootstrap_reps',
+        'global_feature_select_min_batches_ok',
         'anova_blocklist_pvalue_threshold',
         'batchvsbatch_min_cells',
         'batchvsbatch_min_batches',

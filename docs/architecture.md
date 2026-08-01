@@ -45,8 +45,8 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │                                         params.run_barcode_filtered_ovwt true --
      │                                         the latter does NOT force the former on)
      │                                         └──► OVWT_BATCHWISE (barcode-filtered)  (per batch)
-     └──► Feature selection (batchwise always runs; global sub-branch runs once per active
-                              global group instead):
+     └──► Feature selection, batchwise (per batch; always runs unless
+                              params.run_feature_selection = false for that batch):
             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
             GENERATE_SPLIT              (per bootstrap replicate)    │
               └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
@@ -54,6 +54,11 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
                           └─► BLOCKLIST  (gathers all bootstrap replicates per feature type — the one sync point)
                                 └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
                                       └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
+                                            │
+                                            ▼
+                                     GLOBAL_FEATURE_SELECT (once per active global group;
+                                       reuses member batches' aggregates/blocklist above --
+                                       no cell-level recomputation)
 
 QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
                     │
@@ -137,15 +142,18 @@ feature-filtered/barcode-filtered variants and no global counterpart, and
 depends only on `NORMALIZE`'s output (not `ANOVA_BLOCKLIST`). Gated by
 `params.run_wtvwt` (default `true`), independent of every other gate.
 
-Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, the `*_GLOBAL` feature-selection
-branch, `ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`) read published output
+Global processes (`BATCHVSBATCH`, `OVWT_GLOBAL`, `GLOBAL_FEATURE_SELECT`,
+`ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`) read published output
 files from disk via glob patterns (or, for `ANOVA_BLOCKLIST`, consume a real
 Nextflow channel output) after all upstream per-batch processes finish, rather
 than consuming Nextflow channel outputs directly in the general case.
-`BATCHVSBATCH` and `OVWT_GLOBAL`, plus the `*_GLOBAL` feature-selection branch,
+`BATCHVSBATCH`, `OVWT_GLOBAL`, and `GLOBAL_FEATURE_SELECT` each
 run once per named group listed in `params.global_groups` (default `null` —
 none run at all), each scoped to only the batches whose YAML `global_group`
 key names that group — see [Configuration: Global groups](configuration.md#global-groups).
+`GLOBAL_FEATURE_SELECT` additionally only reads a member batch's
+`feature_select_batchwise/` output if that batch's own `run_feature_selection`
+is enabled.
 `ANOVA`, `ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`
 always run, over every batch regardless of group.
 
@@ -163,7 +171,8 @@ always run, over every batch regardless of group.
 | OvWT cell scoring | `ovwtcellscores.py` | `OVWT_CELLSCORES_BATCHWISE` | `cell_scores.parquet` |
 | Barcode-outlier check | `checkbarcodes.py` | `CHECK_BARCODES` | `results.parquet` (per-variant pairwise Tukey HSD across barcodes) |
 | Barcode block-list | `barcodeblocklist.py` | `BARCODE_BLOCKLIST` | `barcode_blocklist.parquet` (per batch) |
-| Feature selection | `aggregate.py`, `features.py` | `AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-variant aggregate) |
+| Feature selection (batchwise) | `aggregate.py`, `featureselect.py` | `AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-batch per-variant aggregate) |
+| Feature selection (global) | `globalfeatureselect.py` | `GLOBAL_FEATURE_SELECT` | `aggregate.parquet` (cross-batch median aggregate, pycytominer-selected), `blocklist.parquet` (combined global blocklist) |
 | Batch correction | `batchcorrect.py` | `BATCH_CORRECT_FIT`, `BATCH_CORRECT_TRANSFORM` | `stats_vb.parquet`, `centroids.parquet`, corrected cells |
 | Batch-effect assessment | `anova.py` | `ANOVA` (normalized and batch-corrected) | `anova.parquet` |
 | ANOVA feature block-list | `anovablocklist.py` | `ANOVA_BLOCKLIST` | `anova_blocklist.parquet` |
@@ -278,7 +287,7 @@ and `input/` folders:
                                   # (default null -- none); only that group's member
                                   # batches (per-batch YAML global_group) contribute
     qc_filter_cells/<batch>.parquet        # staged copy for BATCHVSBATCH_PRE
-    normalization_cells/<batch>.parquet    # staged copy for BATCHVSBATCH_POST/OVWT_GLOBAL/feature_select
+    normalization_cells/<batch>.parquet    # staged copy for BATCHVSBATCH_POST/OVWT_GLOBAL
     batchvsbatch/
       pre/results.parquet        # pre batch correction (QC-filtered cells), unfiltered
       post/results.parquet       # post batch correction (normalized cells), filtered against anova_blocklist
@@ -286,5 +295,13 @@ and `input/` folders:
       results.parquet
       models.pkl
     feature_select/
-      (same layout as feature_select_batchwise/<batch>/ above, no <batch> nesting)
+      aggregate.parquet          # cross-batch median aggregate, pycytominer-selected
+      blocklist.parquet          # combined blocklist (agreement threshold across member
+                                  # batches' feature_select_batchwise/<batch>/blocklist.parquet)
 ```
+
+`global/<group>/feature_select/` reuses each member batch's already-published
+`feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly — it
+does not glob `normalization_cells/` and has no `splits/`, `half_aggregates/`,
+`correlations/`, or `blocklists/` subtree of its own (those only exist per
+batch, under `feature_select_batchwise/<batch>/`, above).

@@ -555,7 +555,9 @@ def test_grouped_ovwt_global_outputs(grouped_global_pipeline_outputs, group):
 @pytest.mark.parametrize("group", ["siteA", "siteB"])
 def test_grouped_feature_select_global_outputs(grouped_global_pipeline_outputs, group):
     exp_dir, _ = grouped_global_pipeline_outputs
-    assert (exp_dir / "global" / group / "feature_select" / "output.parquet").exists()
+    assert (
+        exp_dir / "global" / group / "feature_select" / "aggregate.parquet"
+    ).exists()
     assert (
         exp_dir / "global" / group / "feature_select" / "blocklist.parquet"
     ).exists()
@@ -590,11 +592,16 @@ def test_grouped_ovwt_global_scoped_to_group_membership(
 def test_grouped_feature_select_global_scoped_to_group_membership(
     grouped_global_pipeline_outputs, group
 ):
+    """GLOBAL_FEATURE_SELECT's aggregate has no per-variant batch metadata
+    (unlike the BATCHWISE finalize output) -- verify scoping instead via the
+    blocklist's n_batches column, which counts how many member batches'
+    blocklists contributed to each feature's global decision. Each group has
+    exactly 2 member batches."""
     exp_dir, _ = grouped_global_pipeline_outputs
     df = pl.read_parquet(
-        exp_dir / "global" / group / "feature_select" / "output.parquet"
+        exp_dir / "global" / group / "feature_select" / "blocklist.parquet"
     )
-    assert (df["meta_batch_num_unique"] == 2).all()
+    assert (df["n_batches"] == 2).all()
 
 
 def test_grouped_stage_group_normalization_cells_scoped(
