@@ -183,8 +183,9 @@ def _signed_ks_stat(group: list[float], ref: list[float]) -> float:
     cumsum = np.cumsum(w_sorted)
     is_last = np.ones(len(val_sorted), dtype=bool)
     is_last[:-1] = val_sorted[:-1] != val_sorted[1:]
-    magnitude = np.where(is_last, np.abs(cumsum), -np.inf)
-    return cumsum[np.argmax(magnitude)]
+    masked = np.where(is_last, cumsum, np.nan)
+    pos_max, neg_min = np.nanmax(masked), np.nanmin(masked)
+    return pos_max if abs(pos_max) >= abs(neg_min) else neg_min
 
 
 def test_signed_ks_aggregator_returns_expected_columns(
@@ -214,6 +215,27 @@ def test_signed_ks_aggregator_matches_manual_signed_stat(
     expected_signed = _signed_ks_stat(group, ref)
     assert abs(row["f1_signedKS"]) == pytest.approx(expected_magnitude, abs=1e-9)
     assert row["f1_signedKS"] == pytest.approx(expected_signed, abs=1e-9)
+
+
+def test_signed_ks_aggregator_tie_break_prefers_positive_on_exact_magnitude_tie() -> (
+    None
+):
+    """ref=[1.0, 4.0], group=[2.0, 3.0]: sorted order is
+    1(ref,-0.5) -> 2(grp,+0.5) -> 3(grp,+0.5) -> 4(ref,-0.5), giving
+    cumsum=[-0.5, 0.0, 0.5, 0.0]. No value ties, so every position is a
+    'last' position. Max |cumsum|=0.5 is achieved at both position 0
+    (-0.5) and position 2 (+0.5) -- the documented tie-break (positive
+    wins) must return +0.5, not the old arg_max first-occurrence -0.5.
+    """
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "TIE", "TIE"],
+            "meta_is_control": [True, True, False, False],
+            "f1": [1.0, 4.0, 2.0, 3.0],
+        }
+    )
+    row = _get_row(m.SignedKSAggregator().aggregate(df.lazy()).collect(), "TIE")
+    assert row["f1_signedKS"] == pytest.approx(0.5, abs=1e-9)
 
 
 def test_auroc_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
