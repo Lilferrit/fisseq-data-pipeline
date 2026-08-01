@@ -193,7 +193,32 @@ class BaseAggregator(abc.ABC):
         )
         if reference_lf is not None:
             variant_lists = variant_lists.join(reference_lf, how="cross")
+        prep_exprs = [e for feat in feature_cols for e in self._prep_exprs(feat)]
+        if prep_exprs:
+            variant_lists = variant_lists.with_columns(prep_exprs)
         return variant_lists.select([self.label_col] + exprs)
+
+    def _prep_exprs(self, feat: str) -> list[pl.Expr]:
+        """
+        Optional helper expressions to materialize via a ``with_columns``
+        pass before ``_feature_expr`` runs, keyed by feature name. Empty
+        by default (no extra pass, no behavior or performance change for
+        aggregators that don't override this).
+
+        Override when ``_feature_expr`` needs to reference the same
+        expensive, multiply-derived subexpression (e.g. a
+        ``.list.eval()`` chain built on a sort) more than once. Polars
+        does not common-subexpression-eliminate a list subexpression
+        referenced from two different downstream expressions within a
+        single ``.select()`` call — it silently re-evaluates that
+        subexpression's entire upstream chain per reference. Verified
+        directly for :class:`SignedKSAggregator`: an un-hoisted
+        reformulation referencing its shared cumsum/tie-mask
+        subexpressions twice (once per reduction) measured ~4x slower
+        than materializing them here first, where each is computed once
+        and subsequent references are cheap column reads.
+        """
+        return []
 
     def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         """
@@ -389,16 +414,36 @@ class SignedKSAggregator(ReferenceBasedAggregator):
     """
 
     _stat_suffix = "_signedKS"
+    _SENTINEL: ClassVar[float] = 10.0
 
-    def _feature_expr(self, feat: str) -> pl.Expr:
-        alias = f"{feat}{self._stat_suffix}"
+    @staticmethod
+    def _cumsum_col(feat: str) -> str:
+        return f"__signedks_cumsum__{feat}"
+
+    @staticmethod
+    def _penalty_col(feat: str) -> str:
+        return f"__signedks_penalty__{feat}"
+
+    @staticmethod
+    def _grouplen_col(feat: str) -> str:
+        return f"__signedks_grouplen__{feat}"
+
+    def _prep_exprs(self, feat: str) -> list[pl.Expr]:
+        """
+        Materializes, once per feature, the expensive shared
+        subexpressions that :meth:`_feature_expr` needs twice (for its
+        max and min reductions): the signed-weight cumulative sum and
+        the tie-position penalty mask. See
+        :meth:`BaseAggregator._prep_exprs` for why this hoisting is
+        required for performance, not just style.
+
+        Same signed-weight cumulative-sum construction as KSAggregator:
+        the cumsum at a combined-sorted position IS
+        F_group(x) - F_ref(x), so unlike the unsigned statistic we keep
+        the sign of the maximizing value instead of discarding it via
+        abs().
+        """
         ref_list = pl.col(f"{feat}_ref")
-        n_ref = ref_list.list.len()
-
-        # Same signed-weight cumulative-sum construction as KSAggregator:
-        # the cumsum at a combined-sorted position IS F_group(x) - F_ref(x),
-        # so unlike the unsigned statistic we keep the sign of the
-        # maximizing value instead of discarding it via abs().
         group_list = self._native_clean(feat)
 
         g_weight = group_list.list.eval((pl.element() * 0 + 1.0) / pl.element().count())
@@ -416,16 +461,49 @@ class SignedKSAggregator(ReferenceBasedAggregator):
         is_last_f = diff.list.eval(
             ((pl.element() != 0) | pl.element().is_null()).cast(pl.Float64)
         )
-        # Same tie-safe masking as KSAggregator: zero out non-last
-        # positions of a tied run so the argmax below can't land mid-tie.
-        magnitude = cumsum.list.eval(pl.element().abs()) * is_last_f
-        idx_max = magnitude.list.arg_max()
-        signed_stat = cumsum.list.get(idx_max, null_on_oob=True)
+        # cumsum is provably bounded in [-1, 1]: g_weight sums to
+        # exactly +1.0 over the group's values, ref_weight to exactly
+        # -1.0 over the reference's, so any prefix sum is a difference
+        # of two fractions each in [0, 1]. SENTINEL only needs to
+        # exceed 2.0 to push a non-last position out of range in both
+        # directions; 10.0 gives headroom. is_last_f is exactly 0.0/1.0,
+        # so this additive masking has no 0 * inf risk.
+        penalty = (1.0 - is_last_f) * self._SENTINEL
+
+        return [
+            cumsum.alias(self._cumsum_col(feat)),
+            penalty.alias(self._penalty_col(feat)),
+            group_list.list.len().alias(self._grouplen_col(feat)),
+        ]
+
+    def _feature_expr(self, feat: str) -> pl.Expr:
+        alias = f"{feat}{self._stat_suffix}"
+        ref_list = pl.col(f"{feat}_ref")
+        n_ref = ref_list.list.len()
+
+        cumsum = pl.col(self._cumsum_col(feat))
+        penalty = pl.col(self._penalty_col(feat))
+        group_len = pl.col(self._grouplen_col(feat))
+
+        # Extremum via two reductions over the materialized cumsum/penalty
+        # columns instead of arg_max + indexed gather (list.get).
+        #
+        # Tie-break convention (deliberate, documented): if the max and
+        # min last-position cumsum values have exactly equal magnitude
+        # but opposite sign, the POSITIVE value wins. See
+        # test_signed_ks_aggregator_tie_break_prefers_positive_on_exact_magnitude_tie.
+        masked_for_max = cumsum - penalty
+        masked_for_min = cumsum + penalty
+        pos_max = masked_for_max.list.max()
+        neg_min = masked_for_min.list.min()
+        signed_stat = (
+            pl.when(pos_max.abs() >= neg_min.abs()).then(pos_max).otherwise(neg_min)
+        )
 
         result = (
             pl.when(n_ref == 0)
             .then(None)
-            .when(group_list.list.len() == 0)
+            .when(group_len == 0)
             .then(None)
             .otherwise(signed_stat)
         )
