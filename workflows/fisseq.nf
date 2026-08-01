@@ -90,6 +90,8 @@ workflow FisseqPipeline {
         max_cells_per_barcode_wt          : params.max_cells_per_barcode_wt,
         max_cells_per_barcode_variant     : params.max_cells_per_barcode_variant,
         wtvwt_min_cells_per_barcode       : params.wtvwt_min_cells_per_barcode,
+        wtvwt_max_barcodes                : params.wtvwt_max_barcodes,
+        wtvwt_barcode_downsample_mode     : params.wtvwt_barcode_downsample_mode,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
         barcode_check_min_cells           : params.barcode_check_min_cells,
@@ -250,7 +252,9 @@ workflow FisseqPipeline {
     // feature-selection chains below, so it only needs norm_ch.
     wtvwt_input_ch = norm_ch
         .filter { stem, p -> batchGates.call(stem).run_wtvwt }
-        .map { stem, p -> tuple(stem, p, resolvedBatchConfigs[stem].wtvwt_min_cells_per_barcode) }
+        .map { stem, p -> tuple(stem, p, resolvedBatchConfigs[stem].wtvwt_min_cells_per_barcode,
+                                 resolvedBatchConfigs[stem].wtvwt_max_barcodes,
+                                 resolvedBatchConfigs[stem].wtvwt_barcode_downsample_mode) }
     WTVWT_BATCHWISE(wtvwt_input_ch)
 
     // ANOVA (normalized) — moved up from its previous "Step 9" position so

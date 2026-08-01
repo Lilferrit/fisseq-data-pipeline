@@ -131,6 +131,8 @@ overridable per batch exactly like every other parameter here — see
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
 | `--wtvwt_min_cells_per_barcode` | `100` | Minimum wildtype cells a barcode must have to be included in pairwise classification. |
+| `--wtvwt_max_barcodes` | `null` | Optional: after `--wtvwt_min_cells_per_barcode` filtering, caps the number of wildtype barcodes profiled to at most this many. `null` disables it. |
+| `--wtvwt_barcode_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count barcodes; `'random'` keeps a seeded random sample (using `random_state`). |
 
 ### Feature selection (bootstrap + aggregation + correlation)
 
@@ -294,8 +296,9 @@ Every other `nextflow.config` parameter — including the gating booleans
 `--run_ovwt`, `--run_feature_filtered_ovwt`, `--run_single_cell_scores`,
 `--run_check_barcodes`, `--run_barcode_filtered_ovwt`, `--run_wtvwt`, and the
 *batchwise* effect of `--run_feature_selection` — is genuinely per-batch
-overridable. `--wtvwt_min_cells_per_barcode` is likewise per-batch
-overridable, same bucket as `--ovwt_min_cells`. Each of these gates only a
+overridable. `--wtvwt_min_cells_per_barcode`, `--wtvwt_max_barcodes`, and
+`--wtvwt_barcode_downsample_mode` are likewise per-batch overridable, same
+bucket as `--ovwt_min_cells`. Each of these gates only a
 per-batch-only process or chain, so `workflows/fisseq.nf` implements them as
 a per-batch channel `.filter()` (via a `batchGates()` helper that also
 encodes the "`run_check_barcodes` implies `run_single_cell_scores`" /

@@ -36,6 +36,8 @@ class BatchParams {
         'max_cells_per_barcode_variant',
         // WTVWT_BATCHWISE
         'wtvwt_min_cells_per_barcode',
+        'wtvwt_max_barcodes',
+        'wtvwt_barcode_downsample_mode',
         // feature-selection batchwise chain (shared names with the global
         // chain, which always uses the plain params.X default)
         'feature_select_downsample_wt',
