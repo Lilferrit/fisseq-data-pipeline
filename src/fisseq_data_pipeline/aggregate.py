@@ -1,7 +1,8 @@
 """Per-variant cell-level feature aggregation strategies.
 
-Defines 7 concrete :class:`BaseAggregator` implementations (mean, median, MAD, std,
-KS, QQ, AUROC) and the Hydra entry point backing standalone per-variant aggregation
+Defines 8 concrete :class:`BaseAggregator` implementations (mean, median, MAD, std,
+KS, signedKS, QQ, AUROC) and the Hydra entry point backing standalone per-variant
+aggregation
 (normalizes to synonymous baseline and attaches metadata). The lean
 per-feature-type aggregation entry point used by the feature-selection branch
 (Nextflow processes ``AGGREGATE_FEATURE_TYPE`` and ``AGGREGATE_HALF``), including
@@ -41,7 +42,7 @@ class AggregateConfig(LabeledInputConfig):
     ----------
     aggregator : str
         Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,
-        ``KS``, ``QQ``, ``AUROC``. Required.
+        ``KS``, ``signedKS``, ``QQ``, ``AUROC``. Required.
     save_normalizer : bool
         If ``True``, persist the fitted :class:`.normalize.Normalizer` alongside
         the output. Defaults to ``True``.
@@ -375,6 +376,62 @@ class KSAggregator(ReferenceBasedAggregator):
         return result.alias(alias)
 
 
+class SignedKSAggregator(ReferenceBasedAggregator):
+    """
+    Computes per-group signed Kolmogorov-Smirnov statistics against the
+    reference distribution for each feature column.
+
+    Same magnitude as :class:`KSAggregator`, but signed by which empirical
+    CDF is larger at the maximizing point: positive when the variant
+    group's CDF exceeds the reference's there (group values skew lower
+    than reference), negative when the reference's CDF is larger (group
+    values skew higher than reference).
+    """
+
+    _stat_suffix = "_signedKS"
+
+    def _feature_expr(self, feat: str) -> pl.Expr:
+        alias = f"{feat}{self._stat_suffix}"
+        ref_list = pl.col(f"{feat}_ref")
+        n_ref = ref_list.list.len()
+
+        # Same signed-weight cumulative-sum construction as KSAggregator:
+        # the cumsum at a combined-sorted position IS F_group(x) - F_ref(x),
+        # so unlike the unsigned statistic we keep the sign of the
+        # maximizing value instead of discarding it via abs().
+        group_list = self._native_clean(feat)
+
+        g_weight = group_list.list.eval((pl.element() * 0 + 1.0) / pl.element().count())
+        ref_weight = ref_list.list.eval((pl.element() * 0 - 1.0) / pl.element().count())
+        combined_val = pl.concat_list([group_list, ref_list])
+        combined_w = pl.concat_list([g_weight, ref_weight])
+
+        order = combined_val.list.eval(pl.element().arg_sort())
+        val_sorted = combined_val.list.gather(order)
+        w_sorted = combined_w.list.gather(order)
+
+        cumsum = w_sorted.list.eval(pl.element().cum_sum())
+        next_val = val_sorted.list.shift(-1)
+        diff = val_sorted - next_val
+        is_last_f = diff.list.eval(
+            ((pl.element() != 0) | pl.element().is_null()).cast(pl.Float64)
+        )
+        # Same tie-safe masking as KSAggregator: zero out non-last
+        # positions of a tied run so the argmax below can't land mid-tie.
+        magnitude = cumsum.list.eval(pl.element().abs()) * is_last_f
+        idx_max = magnitude.list.arg_max()
+        signed_stat = cumsum.list.get(idx_max, null_on_oob=True)
+
+        result = (
+            pl.when(n_ref == 0)
+            .then(None)
+            .when(group_list.list.len() == 0)
+            .then(None)
+            .otherwise(signed_stat)
+        )
+        return result.alias(alias)
+
+
 class QQCorrelationAggregator(ReferenceBasedAggregator):
     """
     Computes per-group Q-Q correlation against the reference distribution for
@@ -603,6 +660,7 @@ _AGGREGATORS: dict[str, type[BaseAggregator]] = {
     "MAD": MADAggregator,
     "std": StdAggregator,
     "KS": KSAggregator,
+    "signedKS": SignedKSAggregator,
     "QQ": QQCorrelationAggregator,
     "AUROC": AUROCAggregator,
 }
@@ -628,7 +686,7 @@ def aggregate(
         Name of the column identifying variant labels.
     aggregator_name : str
         Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,
-        ``KS``, ``QQ``, ``AUROC``.
+        ``KS``, ``signedKS``, ``QQ``, ``AUROC``.
     block_list : set[str] or None
         Aggregated output column names to skip (e.g. ``"f1_KS"``). Blocked
         statistics are not computed and do not appear in the output. Names
