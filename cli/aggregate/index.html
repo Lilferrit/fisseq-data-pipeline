@@ -1515,9 +1515,11 @@
 <p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
 single-file path.</p>
 <h2 id="aggregators">Aggregators<a class="headerlink" href="#aggregators" title="Permanent link">&para;</a></h2>
-<p>Seven strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
+<p>Eight strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
 <code>"multi"</code>/combined option; combining feature types happens in Nextflow by running
-<code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_select_types</code> entry.</p>
+<code>AGGREGATE_FEATURE_TYPE</code> once per <code>params.feature_select_types</code> entry. Note that
+<code>signedKS</code> is not included in the default <code>params.feature_select_types</code> list (see
+<a href="../../configuration/#parameters">Parameters</a>) — it must be opted into explicitly.</p>
 <table>
 <thead>
 <tr>
@@ -1545,6 +1547,10 @@ single-file path.</p>
 <tr>
 <td><code>KS</code></td>
 <td>Kolmogorov-Smirnov statistic vs. WT/control distribution</td>
+</tr>
+<tr>
+<td><code>signedKS</code></td>
+<td>Same magnitude as <code>KS</code>, but signed by which empirical CDF is larger at the maximizing point: positive when the variant group's CDF exceeds the reference's there (group skews lower), negative when the reference's CDF is larger (group skews higher).</td>
 </tr>
 <tr>
 <td><code>QQ</code></td>
@@ -1581,7 +1587,7 @@ single-file path.</p>
 <tr>
 <td><code>aggregator</code></td>
 <td><strong>required</strong></td>
-<td>One of the seven aggregators above.</td>
+<td>One of the eight aggregators above.</td>
 </tr>
 <tr>
 <td><code>save_normalizer</code></td>
@@ -1632,7 +1638,7 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <tr>
 <td><code>aggregator</code></td>
 <td><strong>required</strong></td>
-<td>One of the seven aggregators above.</td>
+<td>One of the eight aggregators above.</td>
 </tr>
 <tr>
 <td><code>index_file</code></td>
