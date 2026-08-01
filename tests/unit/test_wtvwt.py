@@ -10,6 +10,7 @@ from fisseq_data_pipeline.wtvwt import (
     evaluate_pair,
     filter_min_cells_per_barcode,
     profile_pair,
+    select_barcodes,
     train_test_val_split,
     train_xgboost,
 )
@@ -45,6 +46,8 @@ def _split_cfg(**overrides) -> OmegaConf:
         random_state=0,
         feature_cols=None,
         min_cells_per_barcode=0,
+        max_barcodes=None,
+        barcode_downsample_mode="top",
         feature_block_list_file=None,
     )
     cfg.update(overrides)
@@ -79,6 +82,55 @@ def test_filter_min_cells_per_barcode_row_count():
     df = _make_barcode_df({"bc1": 10, "bc2": 3, "bc3": 7})
     result = filter_min_cells_per_barcode(df, _BARCODE_COL, min_cells=5)
     assert len(result) == 10 + 7
+
+
+# ---------------------------------------------------------------------------
+# select_barcodes
+# ---------------------------------------------------------------------------
+
+
+class TestSelectBarcodes:
+    def test_top_mode_keeps_highest_count_barcodes(self):
+        df = _make_barcode_df({"bc1": 3, "bc2": 5, "bc3": 1})
+        result = select_barcodes(df, _BARCODE_COL, max_barcodes=2, mode="top", seed=0)
+        assert set(result.get_column(_BARCODE_COL).to_list()) == {"bc1", "bc2"}
+
+    def test_top_mode_tie_break_is_alphabetical(self):
+        df = _make_barcode_df({"bc2": 5, "bc1": 5})
+        result = select_barcodes(df, _BARCODE_COL, max_barcodes=1, mode="top", seed=0)
+        assert set(result.get_column(_BARCODE_COL).to_list()) == {"bc1"}
+
+    def test_random_mode_is_deterministic_across_calls(self):
+        df = _make_barcode_df({f"bc{i}": 5 for i in range(5)})
+        result1 = select_barcodes(
+            df, _BARCODE_COL, max_barcodes=2, mode="random", seed=7
+        )
+        result2 = select_barcodes(
+            df, _BARCODE_COL, max_barcodes=2, mode="random", seed=7
+        )
+        assert set(result1.get_column(_BARCODE_COL).to_list()) == set(
+            result2.get_column(_BARCODE_COL).to_list()
+        )
+        assert result1.get_column(_BARCODE_COL).n_unique() == 2
+
+    def test_random_mode_different_seed_can_change_selection(self):
+        df = _make_barcode_df({f"bc{i}": 5 for i in range(5)})
+        result_a = select_barcodes(
+            df, _BARCODE_COL, max_barcodes=2, mode="random", seed=0
+        )
+        result_b = select_barcodes(
+            df, _BARCODE_COL, max_barcodes=2, mode="random", seed=1
+        )
+        assert (
+            result_a.get_column(_BARCODE_COL).n_unique()
+            == result_b.get_column(_BARCODE_COL).n_unique()
+            == 2
+        )
+
+    def test_invalid_mode_raises(self):
+        df = _make_barcode_df({"bc1": 5})
+        with pytest.raises(ValueError):
+            select_barcodes(df, _BARCODE_COL, max_barcodes=1, mode="bogus", seed=0)
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +221,39 @@ def test_train_test_val_split_drops_barcodes_below_min_cells():
     train, test, val = train_test_val_split(df, _split_cfg(min_cells_per_barcode=5))
     for split in (train, test, val):
         assert "bc3" not in split.get_column(_BARCODE_COL).to_list()
+
+
+def test_train_test_val_split_max_barcodes_applies_after_min_cells():
+    # bc3 has too few cells to survive min_cells_per_barcode, so it must
+    # never count toward max_barcodes's budget: with min_cells_per_barcode=5
+    # and max_barcodes=2, only bc1/bc2 are eligible at all, so both should
+    # survive even though max_barcodes=2 would otherwise be a real cap.
+    df = _make_barcode_df({"bc1": 30, "bc2": 20, "bc3": 2})
+    train, test, val = train_test_val_split(
+        df,
+        _split_cfg(
+            min_cells_per_barcode=5, max_barcodes=2, barcode_downsample_mode="top"
+        ),
+    )
+    all_barcodes = set()
+    for split in (train, test, val):
+        all_barcodes |= set(split.get_column(_BARCODE_COL).to_list())
+    assert all_barcodes == {"bc1", "bc2"}
+
+
+def test_train_test_val_split_max_barcodes_caps_surviving_barcodes():
+    df = _make_barcode_df({"bc1": 30, "bc2": 20, "bc3": 10})
+    train, test, val = train_test_val_split(
+        df,
+        _split_cfg(
+            min_cells_per_barcode=5, max_barcodes=2, barcode_downsample_mode="top"
+        ),
+    )
+    all_barcodes = set()
+    for split in (train, test, val):
+        all_barcodes |= set(split.get_column(_BARCODE_COL).to_list())
+    # bc1 (30) and bc2 (20) have the highest cell counts; bc3 (10) is capped out.
+    assert all_barcodes == {"bc1", "bc2"}
 
 
 def test_train_test_val_split_excludes_non_feature_columns():

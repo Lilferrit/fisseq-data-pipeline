@@ -34,6 +34,8 @@ from .utils.xgbparams import (
     split_indices_stratified,
 )
 
+BARCODE_DOWNSAMPLE_MODES = ("top", "random")
+
 
 @dataclasses.dataclass
 class WtvwtConfig(LabeledInputConfig):
@@ -52,7 +54,8 @@ class WtvwtConfig(LabeledInputConfig):
         Name of the column in ``input_file`` identifying each cell's barcode.
         Defaults to :data:`.utils.constants.META_BARCODE_COL` (``"meta_barcode"``).
     random_state : int
-        Random seed for train/test/val splitting. Defaults to ``42``.
+        Random seed for train/test/val splitting, and for
+        ``barcode_downsample_mode="random"``. Defaults to ``42``.
     feature_cols : list or None
         Explicit list of feature column names. If ``None``, columns are
         auto-detected by :func:`.xgbparams.get_feature_cols`. Defaults to
@@ -61,6 +64,16 @@ class WtvwtConfig(LabeledInputConfig):
         Minimum number of wildtype cells required for a barcode to be
         included in pairing. Barcodes with fewer cells are dropped before
         splitting. Defaults to ``100``.
+    max_barcodes : int or None
+        If set, caps the number of wildtype barcodes profiled to at most this
+        many, selected via :func:`select_barcodes` (mode controlled by
+        ``barcode_downsample_mode``). Applied after ``min_cells_per_barcode``
+        filtering. Defaults to ``None`` (disabled).
+    barcode_downsample_mode : str
+        ``"top"`` keeps the ``max_barcodes`` barcodes with the highest cell
+        count (ties broken alphabetically); ``"random"`` keeps a seeded
+        random sample (using ``random_state``) of ``max_barcodes`` barcodes.
+        Defaults to ``"top"``.
     feature_block_list_file : str or None
         Optional path to a parquet file with at least ``feature`` (str) and
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
@@ -75,6 +88,8 @@ class WtvwtConfig(LabeledInputConfig):
     random_state: int = 42
     feature_cols: Optional[list] = None
     min_cells_per_barcode: int = 100
+    max_barcodes: Optional[int] = None
+    barcode_downsample_mode: str = "top"
     feature_block_list_file: Optional[str] = None
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
@@ -141,6 +156,73 @@ def filter_min_cells_per_barcode(
     return data_df.filter(pl.col(barcode_column).is_in(keep_barcodes))
 
 
+def select_barcodes(
+    data_df: pl.DataFrame,
+    barcode_column: str,
+    max_barcodes: int,
+    mode: str,
+    seed: int,
+) -> pl.DataFrame:
+    """
+    Restrict `data_df` to at most `max_barcodes` distinct barcodes.
+
+    `mode` is one of:
+
+    - ``"top"``: keep the `max_barcodes` barcodes with the highest cell
+      count, ties broken alphabetically ascending on `barcode_column`. Fully
+      deterministic.
+    - ``"random"``: keep a seeded-random sample of `max_barcodes` distinct
+      barcodes. Deterministic given `seed`.
+
+    Parameters
+    ----------
+    data_df : pl.DataFrame
+        DataFrame to restrict, containing `barcode_column`.
+    barcode_column : str
+        Name of the column identifying each cell's barcode.
+    max_barcodes : int
+        Maximum number of distinct barcodes to keep.
+    mode : str
+        One of :data:`BARCODE_DOWNSAMPLE_MODES`.
+    seed : int
+        Seed used when `mode` is ``"random"``.
+
+    Returns
+    -------
+    pl.DataFrame
+        `data_df` restricted to rows whose barcode is among the selected set.
+
+    Raises
+    ------
+    ValueError
+        If `mode` is not one of :data:`BARCODE_DOWNSAMPLE_MODES`.
+    """
+    if mode not in BARCODE_DOWNSAMPLE_MODES:
+        raise ValueError(
+            f"barcode_downsample_mode must be one of {BARCODE_DOWNSAMPLE_MODES}, "
+            f"got {mode!r}"
+        )
+
+    counts = data_df.group_by(barcode_column).len()
+    if mode == "top":
+        selected = (
+            counts.sort(["len", barcode_column], descending=[True, False])
+            .head(max_barcodes)
+            .get_column(barcode_column)
+            .to_list()
+        )
+    else:
+        selected = (
+            counts.with_columns(pl.col(barcode_column).hash(seed=seed).alias("_rand"))
+            .sort("_rand")
+            .head(max_barcodes)
+            .get_column(barcode_column)
+            .to_list()
+        )
+
+    return data_df.filter(pl.col(barcode_column).is_in(selected))
+
+
 def train_test_val_split(
     data_df: pl.DataFrame,
     cfg: DictConfig,
@@ -149,9 +231,11 @@ def train_test_val_split(
     Split wildtype cells into train, test, and validation sets.
 
     Restricts ``data_df`` to wildtype rows (``label_column == wt_label``),
-    drops barcodes with fewer than ``min_cells_per_barcode`` cells, and
-    produces an 80/10/10 split stratified by ``barcode_column`` so every
-    surviving barcode's rows span all three splits.
+    drops barcodes with fewer than ``min_cells_per_barcode`` cells, then (if
+    ``max_barcodes`` is set) caps the surviving barcodes to at most that many
+    via :func:`select_barcodes`, and produces an 80/10/10 split stratified by
+    ``barcode_column`` so every surviving barcode's rows span all three
+    splits.
 
     Parameters
     ----------
@@ -161,7 +245,7 @@ def train_test_val_split(
     cfg : DictConfig
         Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
         ``feature_block_list_file``, ``barcode_column``, ``min_cells_per_barcode``,
-        and ``random_state``.
+        ``max_barcodes``, ``barcode_downsample_mode``, and ``random_state``.
 
     Returns
     -------
@@ -183,6 +267,14 @@ def train_test_val_split(
     data_df = filter_min_cells_per_barcode(
         data_df, barcode_col, cfg.min_cells_per_barcode
     )
+    if cfg.max_barcodes is not None:
+        data_df = select_barcodes(
+            data_df,
+            barcode_col,
+            cfg.max_barcodes,
+            cfg.barcode_downsample_mode,
+            cfg.random_state,
+        )
 
     data_df = data_df.with_row_index("__idx__")
     barcodes = data_df.get_column(barcode_col).to_numpy()

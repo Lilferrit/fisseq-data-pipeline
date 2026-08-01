@@ -14,6 +14,12 @@ splits) and all trained models are serialized to disk. `feature_block_list_file`
 (see [ANOVA Block-list](anovablocklist.md)) optionally excludes features
 (columns) with a significant batch effect before splitting/training.
 
+If `max_barcodes` is set, once `min_cells_per_barcode` filtering has run, the
+surviving barcodes are further capped to at most `max_barcodes` — either the
+highest-cell-count barcodes (`barcode_downsample_mode: "top"`, the default)
+or a seeded random sample (`"random"`, using `random_state`) — before the
+train/test/val split and pairwise classification run. Disabled by default.
+
 ## Config fields
 
 Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-config-fields).
@@ -27,6 +33,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `random_state` | `42` | Seed for train/test/val splitting. |
 | `feature_cols` | `null` | Explicit list of feature column names; auto-detected if `null`. |
 | `min_cells_per_barcode` | `100` | Drop barcodes with fewer than this many wildtype cells before pairing (overridden to `100` via `--wtvwt_min_cells_per_barcode` in the Nextflow pipeline — same value, see [Configuration](../configuration.md#parameters)). |
+| `max_barcodes` | `null` | Optional: after `min_cells_per_barcode` filtering, cap the number of wildtype barcodes profiled to at most this many (see `barcode_downsample_mode`). `null` disables it. (`--wtvwt_max_barcodes` in the Nextflow pipeline.) |
+| `barcode_downsample_mode` | `"top"` | `"top"` keeps the highest-cell-count barcodes (ties broken alphabetically); `"random"` keeps a seeded random sample using `random_state`. (`--wtvwt_barcode_downsample_mode` in the Nextflow pipeline.) |
 | `feature_block_list_file` | `null` | Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.anovablocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
