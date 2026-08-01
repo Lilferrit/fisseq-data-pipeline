@@ -1511,6 +1511,11 @@ then subset per pair. Results (per-pair AUROC and accuracy on train/val/test
 splits) and all trained models are serialized to disk. <code>feature_block_list_file</code>
 (see <a href="../anovablocklist/">ANOVA Block-list</a>) optionally excludes features
 (columns) with a significant batch effect before splitting/training.</p>
+<p>If <code>max_barcodes</code> is set, once <code>min_cells_per_barcode</code> filtering has run, the
+surviving barcodes are further capped to at most <code>max_barcodes</code> — either the
+highest-cell-count barcodes (<code>barcode_downsample_mode: "top"</code>, the default)
+or a seeded random sample (<code>"random"</code>, using <code>random_state</code>) — before the
+train/test/val split and pairwise classification run. Disabled by default.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
@@ -1556,6 +1561,16 @@ splits) and all trained models are serialized to disk. <code>feature_block_list_
 <td><code>min_cells_per_barcode</code></td>
 <td><code>100</code></td>
 <td>Drop barcodes with fewer than this many wildtype cells before pairing (overridden to <code>100</code> via <code>--wtvwt_min_cells_per_barcode</code> in the Nextflow pipeline — same value, see <a href="../../configuration/#parameters">Configuration</a>).</td>
+</tr>
+<tr>
+<td><code>max_barcodes</code></td>
+<td><code>null</code></td>
+<td>Optional: after <code>min_cells_per_barcode</code> filtering, cap the number of wildtype barcodes profiled to at most this many (see <code>barcode_downsample_mode</code>). <code>null</code> disables it. (<code>--wtvwt_max_barcodes</code> in the Nextflow pipeline.)</td>
+</tr>
+<tr>
+<td><code>barcode_downsample_mode</code></td>
+<td><code>"top"</code></td>
+<td><code>"top"</code> keeps the highest-cell-count barcodes (ties broken alphabetically); <code>"random"</code> keeps a seeded random sample using <code>random_state</code>. (<code>--wtvwt_barcode_downsample_mode</code> in the Nextflow pipeline.)</td>
 </tr>
 <tr>
 <td><code>feature_block_list_file</code></td>

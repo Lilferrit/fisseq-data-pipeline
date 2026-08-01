@@ -2193,6 +2193,16 @@ overridable per batch exactly like every other parameter here — see
 <td><code>100</code></td>
 <td>Minimum wildtype cells a barcode must have to be included in pairwise classification.</td>
 </tr>
+<tr>
+<td><code>--wtvwt_max_barcodes</code></td>
+<td><code>null</code></td>
+<td>Optional: after <code>--wtvwt_min_cells_per_barcode</code> filtering, caps the number of wildtype barcodes profiled to at most this many. <code>null</code> disables it.</td>
+</tr>
+<tr>
+<td><code>--wtvwt_barcode_downsample_mode</code></td>
+<td><code>'top'</code></td>
+<td><code>'top'</code> keeps the highest-cell-count barcodes; <code>'random'</code> keeps a seeded random sample (using <code>random_state</code>).</td>
+</tr>
 </tbody>
 </table>
 <h3 id="feature-selection-bootstrap-aggregation-correlation">Feature selection (bootstrap + aggregation + correlation)<a class="headerlink" href="#feature-selection-bootstrap-aggregation-correlation" title="Permanent link">&para;</a></h3>
@@ -2378,8 +2388,9 @@ all.)</p>
 <code>--run_ovwt</code>, <code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
 <code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the
 <em>batchwise</em> effect of <code>--run_feature_selection</code> — is genuinely per-batch
-overridable. <code>--wtvwt_min_cells_per_barcode</code> is likewise per-batch
-overridable, same bucket as <code>--ovwt_min_cells</code>. Each of these gates only a
+overridable. <code>--wtvwt_min_cells_per_barcode</code>, <code>--wtvwt_max_barcodes</code>, and
+<code>--wtvwt_barcode_downsample_mode</code> are likewise per-batch overridable, same
+bucket as <code>--ovwt_min_cells</code>. Each of these gates only a
 per-batch-only process or chain, so <code>workflows/fisseq.nf</code> implements them as
 a per-batch channel <code>.filter()</code> (via a <code>batchGates()</code> helper that also
 encodes the "<code>run_check_barcodes</code> implies <code>run_single_cell_scores</code>" /
