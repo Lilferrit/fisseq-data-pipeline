@@ -26,6 +26,10 @@ Shared, non-CLI internals used across multiple pipeline modules.
 
 ::: fisseq_data_pipeline.utils.splits
 
+## featuretypes
+
+::: fisseq_data_pipeline.utils.featuretypes
+
 ## vectors
 
 ::: fisseq_data_pipeline.utils.vectors

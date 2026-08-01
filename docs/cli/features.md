@@ -1,14 +1,19 @@
 # Feature Selection
 
-The bootstrap pseudo-replicate feature-selection pipeline is implemented as five
-Hydra entry points, one per module, each a Nextflow process (see
-[Nextflow Workflow](../nextflow.md)). Cells are split into stratified 50/50
-pseudo-replicate halves across `params.feature_select_bootstrap_reps` replicates; each half is
+The BATCHWISE bootstrap pseudo-replicate feature-selection pipeline (run once
+per batch) is implemented as five Hydra entry points, one per module, each a
+Nextflow process (see [Nextflow Workflow](../nextflow.md)). Cells are split
+into stratified 50/50 pseudo-replicate halves across
+`params.feature_select_bootstrap_reps` replicates; each half is
 aggregated per feature type (via [`python -m fisseq_data_pipeline.aggregatefeaturetype`](aggregate.md)),
 correlated against its partner half, and a per-feature blocklist is derived from
 the median correlation across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.
+
+A separate, much simpler GLOBAL entry point (§6 below) runs once per active
+global group, reusing this BATCHWISE pipeline's already-computed per-batch
+outputs rather than recomputing anything from cells.
 
 All configs extend the [common config fields](qcfilter.md#common-config-fields).
 
@@ -113,6 +118,44 @@ uv run python -m fisseq_data_pipeline.featureselect \
     input_file=out/normalized.parquet \
     'feature_type_files=out/aggregates/*.parquet' \
     block_list_file=out/blocklist.parquet
+```
+
+## 6. `python -m fisseq_data_pipeline.globalfeatureselect` (`GLOBAL_FEATURE_SELECT`)
+
+Runs once per active global group (see
+[Configuration: Global groups](../configuration.md#global-groups)). Reuses the
+group's member batches' already-published BATCHWISE feature-selection
+artifacts directly — no cell-level recomputation:
+
+1. For each member batch, joins that batch's own per-feature-type aggregate
+   files (`feature_select_batchwise/<batch>/aggregates/*.parquet`) and
+   normalizes the joined table to that batch's own synonymous baseline (this
+   serves as both batch correction and normalization).
+2. Concatenates every member batch's normalized table and takes the
+   per-feature median, grouped by `label_column` (a variant can appear in
+   more than one batch).
+3. Combines each member batch's own combined blocklist
+   (`feature_select_batchwise/<batch>/blocklist.parquet`) using an agreement
+   threshold across batches.
+4. Drops columns blocked by step 3 and runs `pyc_feature_select` (the same
+   function `FINALIZE_FEATURE_SELECT` uses).
+
+| Field | Default | Description |
+| ----- | ------- | ----------- |
+| `pipeline_dir` | **required** | Absolute path to the pipeline's root output directory. |
+| `batch_stems` | **required** | List of the active group's member batch stems (only those with `run_feature_selection` enabled). |
+| `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
+| `min_batches_ok` | `null` | Minimum number of member batches that must mark a feature ok for it to be globally ok. `null` requires unanimity across batches that report on it. |
+
+**Output**: `aggregate.parquet` (the selected, cross-batch median aggregate
+table) and `blocklist.parquet` (the combined global blocklist, columns
+`feature`, `n_batches`, `n_ok`, `feature_ok`).
+
+```bash
+uv run python -m fisseq_data_pipeline.globalfeatureselect \
+    output_dir=./out \
+    pipeline_dir=/path/to/experiment \
+    'batch_stems=[batch1,batch2]'
 ```
 
 See [API Reference: features](../api/features.md) for full function

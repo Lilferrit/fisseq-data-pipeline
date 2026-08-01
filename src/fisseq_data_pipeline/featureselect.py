@@ -23,6 +23,7 @@ from .config import LabeledInputConfig
 from .normalize import Normalizer
 from .utils.batches import load_batches
 from .utils.constants import FEATURE_SELECTOR
+from .utils.featuretypes import join_feature_type_files
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
 from .utils.vectors import compute_impact_score
@@ -154,9 +155,7 @@ def main(cfg: DictConfig) -> None:
         raise ValueError(
             f"No files matched glob pattern: {feat_cfg.feature_type_files!r}"
         )
-    agg_df = pl.read_parquet(ft_paths[0])
-    for p in ft_paths[1:]:
-        agg_df = agg_df.join(pl.read_parquet(p), on=feat_cfg.label_column)
+    agg_df = join_feature_type_files(ft_paths, feat_cfg.label_column)
 
     logging.info("Loading block list from %s", feat_cfg.block_list_file)
     bl_df = pl.read_parquet(feat_cfg.block_list_file)

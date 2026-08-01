@@ -50,19 +50,13 @@ include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 include { BARCODE_BLOCKLIST         } from '../modules/local/barcode_blocklist'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_BATCHWISE } from '../modules/local/aggregate_feature_type'
-include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_GLOBAL    } from '../modules/local/aggregate_feature_type'
 include { GENERATE_SPLIT        as GENERATE_SPLIT_BATCHWISE          } from '../modules/local/generate_split'
-include { GENERATE_SPLIT        as GENERATE_SPLIT_GLOBAL             } from '../modules/local/generate_split'
 include { AGGREGATE_HALF        as AGGREGATE_HALF_BATCHWISE          } from '../modules/local/aggregate_half'
-include { AGGREGATE_HALF        as AGGREGATE_HALF_GLOBAL             } from '../modules/local/aggregate_half'
 include { CORRELATE_FEATURES    as CORRELATE_FEATURES_BATCHWISE      } from '../modules/local/correlate_features'
-include { CORRELATE_FEATURES    as CORRELATE_FEATURES_GLOBAL         } from '../modules/local/correlate_features'
 include { BLOCKLIST              as BLOCKLIST_BATCHWISE              } from '../modules/local/blocklist'
-include { BLOCKLIST              as BLOCKLIST_GLOBAL                 } from '../modules/local/blocklist'
 include { COMBINE_BLOCKLISTS     as COMBINE_BLOCKLISTS_BATCHWISE     } from '../modules/local/combine_blocklists'
-include { COMBINE_BLOCKLISTS     as COMBINE_BLOCKLISTS_GLOBAL        } from '../modules/local/combine_blocklists'
 include { FINALIZE_FEATURE_SELECT as FINALIZE_FEATURE_SELECT_BATCHWISE } from '../modules/local/finalize_feature_select'
-include { FINALIZE_FEATURE_SELECT as FINALIZE_FEATURE_SELECT_GLOBAL    } from '../modules/local/finalize_feature_select'
+include { GLOBAL_FEATURE_SELECT     } from '../modules/local/global_feature_select'
 include { ANOVA as ANOVA_NORMALIZED     } from '../modules/local/anova'
 include { ANOVA as ANOVA_BATCH_CORRECTED } from '../modules/local/anova'
 include { BATCH_CORRECT_FIT         } from '../modules/local/batch_correct_fit'
@@ -512,88 +506,45 @@ workflow FisseqPipeline {
 
     // --- Global (once per active global group, gated on
     // params.run_feature_selection) ---
-    // Same shape as batchwise, minus the per-batch dimension: the real group
-    // name stands in for batch_stem for tuple-shape/grouping purposes, and
-    // the "which cells" glob is derived from group_norm_signal_ch (the
-    // per-group directory STAGE_GROUP_NORM published) instead of norm_ch
-    // (exactly like today's global processes glob published output, just
-    // scoped per group -- see AGENTS.md's "global processes glob published
-    // files" gotcha).
+    // Unlike the old bootstrap-recompute global chain this replaces, no
+    // per-group cell staging is needed here: GLOBAL_FEATURE_SELECT reuses
+    // each member batch's already-computed BATCHWISE feature-selection
+    // artifacts (feature_select_batchwise/<batch>/{aggregates,blocklist.parquet})
+    // directly off pipeline_dir, looping over batch_stems in Python -- see
+    // modules/local/global_feature_select.nf and
+    // fisseq_data_pipeline.globalfeatureselect.
     if (params.run_feature_selection.toString().toBoolean()) {
-        agg_global_input_ch = group_norm_signal_ch
-            .combine(feature_types_ch)
-            .map { group, d, feature_type ->
-                tuple(group, "${d}/*.parquet", feature_type, "global/${group}/feature_select",
-                      params.feature_select_downsample_wt)
-            }
-        AGGREGATE_FEATURE_TYPE_GLOBAL(agg_global_input_ch)
-        agg_global_ch = AGGREGATE_FEATURE_TYPE_GLOBAL.out  // (group, feature_type, agg_file)
-
-        split_global_input_ch = group_norm_signal_ch
-            .combine(bootstrap_ch)
-            .map { group, d, bootstrap_idx ->
-                tuple(group, "${d}/*.parquet", bootstrap_idx, "global/${group}/feature_select")
-            }
-        GENERATE_SPLIT_GLOBAL(split_global_input_ch)
-        split_global_ch = GENERATE_SPLIT_GLOBAL.out  // (group, bootstrap_idx, half1_file, half2_file)
-
-        half_global_ch = split_global_ch.flatMap { key, bootstrap_idx, half1, half2 ->
-            [
-                tuple(key, bootstrap_idx, 1, half1),
-                tuple(key, bootstrap_idx, 2, half2),
-            ]
+        // Batch -> group membership is resolved once, synchronously, in
+        // Groovy (same "resolved at workflow-construction time" pattern as
+        // resolvedBatchConfigs itself) -- only batches with
+        // run_feature_selection enabled are included, since only those have
+        // feature_select_batchwise/<batch>/{aggregates,blocklist.parquet} on
+        // disk for GLOBAL_FEATURE_SELECT to read.
+        def batchesByGroup = activeGroups.collectEntries { group ->
+            [group, resolvedBatchConfigs.findAll { stem, cfg ->
+                (cfg.global_group ?: []).contains(group) && cfg.run_feature_selection.toString().toBoolean()
+            }.keySet() as List]
         }
-        agg_half_global_input_ch = half_global_ch
-            .combine(feature_types_ch)
-            // (group, bootstrap_idx, half_num, index_file, feature_type)
-            .combine(group_norm_signal_ch, by: 0)
-            // (group, bootstrap_idx, half_num, index_file, feature_type, d)
-            .map { key, bootstrap_idx, half_num, index_file, feature_type, d ->
-                tuple(key, bootstrap_idx, half_num, index_file, feature_type,
-                      "${d}/*.parquet", "global/${key}/feature_select",
-                      params.feature_select_downsample_wt)
+        batchesByGroup.each { group, stems ->
+            if (stems.isEmpty()) {
+                log.warn "Global group '${group}' has no member batches with " +
+                    "run_feature_selection enabled -- GLOBAL_FEATURE_SELECT will " +
+                    "have nothing to read for this group."
             }
-        AGGREGATE_HALF_GLOBAL(agg_half_global_input_ch)
-        half_agg_global_ch = AGGREGATE_HALF_GLOBAL.out
-        // (group, bootstrap_idx, feature_type, half_num, half_agg_file)
+        }
 
-        corr_global_input_ch = half_agg_global_ch
-            .groupTuple(by: [0, 1, 2])
-            .map { key, bootstrap_idx, feature_type, half_nums, half_files ->
-                def pairs = [half_nums, half_files].transpose().sort { it[0] }
-                tuple(key, bootstrap_idx, feature_type, pairs[0][1], pairs[1][1], "global/${key}/feature_select")
-            }
-        CORRELATE_FEATURES_GLOBAL(corr_global_input_ch)
-        corr_global_ch = CORRELATE_FEATURES_GLOBAL.out  // (group, feature_type, bootstrap_idx, correlation_file)
+        // Single-element signal that fires once every batch's BATCHWISE
+        // feature selection (aggregates + blocklist) has been published --
+        // same "collect -> map to pipeline_dir_abs" idiom as
+        // qc_signal/global_signal above, just gated on combined_bl_ch (the
+        // last batchwise feature-select artifact) instead of qc_ch/norm_ch.
+        feature_select_ready_signal = combined_bl_ch.map { stem, _bl -> stem }.collect()
+            .map { _stems -> pipeline_dir_abs }
 
-        blocklist_global_input_ch = corr_global_ch
-            .map { key, feature_type, bootstrap_idx, correlation_file ->
-                tuple(key, feature_type, correlation_file)
-            }
-            .groupTuple(by: [0, 1])
-            .map { key, feature_type, correlation_files ->
-                tuple(key, feature_type, correlation_files, "global/${key}/feature_select", params.feature_select_min_correlation)
-            }
-        BLOCKLIST_GLOBAL(blocklist_global_input_ch)
-        bl_global_ch = BLOCKLIST_GLOBAL.out  // (group, feature_type, blocklist_file)
-
-        combine_bl_global_input_ch = bl_global_ch
-            .map { key, feature_type, blocklist_file -> tuple(key, blocklist_file) }
-            .groupTuple(by: 0)
-            .map { key, blocklist_files -> tuple(key, blocklist_files, "global/${key}/feature_select") }
-        COMBINE_BLOCKLISTS_GLOBAL(combine_bl_global_input_ch)
-        combined_bl_global_ch = COMBINE_BLOCKLISTS_GLOBAL.out  // (group, combined_blocklist_file)
-
-        finalize_global_input_ch = agg_global_ch
-            .map { key, feature_type, agg_file -> tuple(key, agg_file) }
-            .groupTuple(by: 0)
-            .join(group_norm_signal_ch)
-            .join(combined_bl_global_ch)
-            .map { key, agg_files, d, combined_bl_file ->
-                tuple(key, agg_files, "${d}/*.parquet",
-                      combined_bl_file, "global/${key}/feature_select")
-            }
-        FINALIZE_FEATURE_SELECT_GLOBAL(finalize_global_input_ch)
+        global_fs_input_ch = groups_ch
+            .combine(feature_select_ready_signal)
+            .map { group, d -> tuple(group, batchesByGroup[group], d, "global/${group}/feature_select", params.global_feature_select_min_batches_ok) }
+        GLOBAL_FEATURE_SELECT(global_fs_input_ch)
     }
 
     // ANOVA (normalized) now runs earlier, right after global_signal is
