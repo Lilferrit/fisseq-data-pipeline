@@ -1712,46 +1712,52 @@ directly.</p>
 <td>per batch, requires both <code>params.run_check_barcodes</code> and <code>params.run_barcode_filtered_ovwt</code> true (the latter does not force the former on); consumes that batch's <code>CHECK_BARCODES</code> output; <code>FisseqPipeline</code> only</td>
 </tr>
 <tr>
-<td><code>AGGREGATE_FEATURE_TYPE</code> (aliased <code>_BATCHWISE</code> / <code>_GLOBAL</code>)</td>
+<td><code>AGGREGATE_FEATURE_TYPE</code> (<code>_BATCHWISE</code>)</td>
 <td><code>aggregate_feature_type.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></td>
-<td>per (batch or active global group) × feature type</td>
+<td>per batch × feature type</td>
 </tr>
 <tr>
-<td><code>GENERATE_SPLIT</code> (aliased)</td>
+<td><code>GENERATE_SPLIT</code> (<code>_BATCHWISE</code>)</td>
 <td><code>generate_split.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.generatesplit</code></td>
-<td>per (batch or active global group) × bootstrap replicate</td>
+<td>per batch × bootstrap replicate</td>
 </tr>
 <tr>
-<td><code>AGGREGATE_HALF</code> (aliased)</td>
+<td><code>AGGREGATE_HALF</code> (<code>_BATCHWISE</code>)</td>
 <td><code>aggregate_half.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code> (with <code>index_file</code>)</td>
-<td>per (batch or active global group) × bootstrap × feature type × half</td>
+<td>per batch × bootstrap × feature type × half</td>
 </tr>
 <tr>
-<td><code>CORRELATE_FEATURES</code> (aliased)</td>
+<td><code>CORRELATE_FEATURES</code> (<code>_BATCHWISE</code>)</td>
 <td><code>correlate_features.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.correlatefeatures</code></td>
-<td>per (batch or active global group) × bootstrap × feature type</td>
+<td>per batch × bootstrap × feature type</td>
 </tr>
 <tr>
-<td><code>BLOCKLIST</code> (aliased)</td>
+<td><code>BLOCKLIST</code> (<code>_BATCHWISE</code>)</td>
 <td><code>blocklist.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.blocklist</code></td>
-<td>per (batch or active global group) × feature type — gathers all bootstrap replicates</td>
+<td>per batch × feature type — gathers all bootstrap replicates</td>
 </tr>
 <tr>
-<td><code>COMBINE_BLOCKLISTS</code> (aliased)</td>
+<td><code>COMBINE_BLOCKLISTS</code> (<code>_BATCHWISE</code>)</td>
 <td><code>combine_blocklists.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.combineblocklists</code></td>
-<td>per (batch or active global group) — gathers all feature types</td>
+<td>per batch — gathers all feature types</td>
 </tr>
 <tr>
-<td><code>FINALIZE_FEATURE_SELECT</code> (aliased)</td>
+<td><code>FINALIZE_FEATURE_SELECT</code> (<code>_BATCHWISE</code>)</td>
 <td><code>finalize_feature_select.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.featureselect</code></td>
-<td>per (batch or active global group)</td>
+<td>per batch</td>
+</tr>
+<tr>
+<td><code>GLOBAL_FEATURE_SELECT</code></td>
+<td><code>global_feature_select.nf</code></td>
+<td><code>python -m fisseq_data_pipeline.globalfeatureselect</code></td>
+<td>per active global group (<code>params.global_groups</code>, default none run); reuses each member batch's <code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>-chain aggregates/blocklist directly, no cell-level recomputation</td>
 </tr>
 <tr>
 <td><code>BATCH_CORRECT_FIT</code></td>
@@ -1802,9 +1808,11 @@ script rebuilds a minimal YAML from those values before invoking
 <a href="../configuration/#why-resolved-scalars-not-the-whole-config-are-passed-to-processes">Configuration: Why resolved scalars, not the whole config, are passed to processes</a>
 for why.</p>
 <h3 id="feature-selection-channel-wiring">Feature-selection channel wiring<a class="headerlink" href="#feature-selection-channel-wiring" title="Permanent link">&para;</a></h3>
-<p>The feature-selection branch (<code>AGGREGATE_FEATURE_TYPE</code> → <code>GENERATE_SPLIT</code> →
-<code>AGGREGATE_HALF</code> → <code>CORRELATE_FEATURES</code> → <code>BLOCKLIST</code> → <code>COMBINE_BLOCKLISTS</code> →
-<code>FINALIZE_FEATURE_SELECT</code>) is the most complex part of the DAG. In
+<p>The BATCHWISE feature-selection branch (<code>AGGREGATE_FEATURE_TYPE</code> →
+<code>GENERATE_SPLIT</code> → <code>AGGREGATE_HALF</code> → <code>CORRELATE_FEATURES</code> → <code>BLOCKLIST</code> →
+<code>COMBINE_BLOCKLISTS</code> → <code>FINALIZE_FEATURE_SELECT</code>, all per batch) is the most
+complex part of the DAG — a bootstrap-correlation pipeline that determines,
+per batch, which features are reproducible enough to keep. In
 <code>workflows/fisseq.nf</code>:</p>
 <ul>
 <li><code>feature_types_ch</code> (<code>Channel.fromList(params.feature_select_types)</code>) and <code>bootstrap_ch</code>
@@ -1812,16 +1820,27 @@ for why.</p>
   task per (feature type, bootstrap replicate).</li>
 <li>Each <code>GENERATE_SPLIT</code> output is expanded into two per-half tuples via
   <code>.flatMap()</code>, then re-paired after <code>AGGREGATE_HALF</code> via
-  <code>.groupTuple(by: [batch_key, bootstrap_idx, feature_type])</code> before correlation.</li>
-<li><code>BLOCKLIST</code>'s <code>.groupTuple(by: [batch_key, feature_type])</code> is the pipeline's only
+  <code>.groupTuple(by: [batch_stem, bootstrap_idx, feature_type])</code> before correlation.</li>
+<li><code>BLOCKLIST</code>'s <code>.groupTuple(by: [batch_stem, feature_type])</code> is the pipeline's only
   cross-bootstrap synchronization point — it gathers all <code>params.feature_select_bootstrap_reps</code>
   correlation replicates for one feature type before computing a median-<code>r</code>
   threshold.</li>
-<li>The batchwise branch always runs; the global branch runs once per active
-  group in <code>params.global_groups</code> (default <code>null</code> = none active) instead of
-  a single constant <code>global_key</code>, each scoped to that group's member
-  batches -- see <a href="../configuration/#global-groups">Configuration: Global groups</a>.</li>
+<li>This whole branch is per-batch gated on that batch's resolved
+  <code>run_feature_selection</code>; it does not depend on <code>params.global_groups</code> at all.</li>
 </ul>
+<p><code>GLOBAL_FEATURE_SELECT</code> is a separate, much simpler branch, run once per
+active group in <code>params.global_groups</code> (default <code>null</code> = none active). Unlike
+the batchwise branch, it does no bootstrap recomputation from cells: it reuses
+each member batch's already-published <code>feature_select_batchwise/&lt;batch&gt;/</code>
+aggregates and blocklist directly off <code>pipeline_dir</code>, so it needs no
+Nextflow-level fan-out — the whole "join per-feature-type files, normalize to
+that batch's synonymous baseline, take the cross-batch median, combine
+blocklists by batch-agreement threshold, run pycytominer selection" sequence
+runs as one Python invocation per group. Batch → group membership (only
+batches with <code>run_feature_selection</code> enabled) is resolved once in Groovy from
+<code>resolvedBatchConfigs</code>, the same way <code>resolvedBatchConfigs</code> itself is built —
+see <a href="../configuration/#global-groups">Configuration: Global groups</a> for the
+parameter reference and output layout.</p>
 <h2 id="parameters-pipeline-directory-layout-and-per-batch-overrides">Parameters, pipeline directory layout, and per-batch overrides<a class="headerlink" href="#parameters-pipeline-directory-layout-and-per-batch-overrides" title="Permanent link">&para;</a></h2>
 <p>See <a href="../configuration/">Configuration</a> for the full parameter reference, the
 <code>&lt;pipeline_dir&gt;</code> directory layout (including the mandatory <code>configs/</code>

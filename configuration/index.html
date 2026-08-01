@@ -1921,7 +1921,7 @@ for the process DAG itself.</p>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>      normalization_cells/&lt;batch_stem&gt;.parquet    # per-group staged copy
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>      batchvsbatch/{pre,post}/results.parquet
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>      ovwt_global/{results.parquet,models.pkl}
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      feature_select/{aggregates,splits,half_aggregates,blocklists,blocklist.parquet,output.parquet}
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      feature_select/{aggregate.parquet,blocklist.parquet}
 </code></pre></div>
 <p><code>configs/</code> is <strong>mandatory</strong> -- every batch is declared by a YAML config file
 there; there is no mode where the pipeline scans a directory of pre-staged
@@ -1968,7 +1968,7 @@ producing that batch's <code>input/&lt;batch_stem&gt;.parquet</code>.</p>
 <tr>
 <td><code>--global_groups</code></td>
 <td><code>null</code></td>
-<td>List of named groups to run <code>OVWT_GLOBAL</code>, <code>BATCHVSBATCH</code>, and the global feature-selection branch for -- once per group, scoped to only the batches whose YAML <code>global_group</code> key names that group. <code>null</code> or <code>[]</code> (the default): no global processes run at all. See <a href="#global-groups">Global groups</a>.</td>
+<td>List of named groups to run <code>OVWT_GLOBAL</code>, <code>BATCHVSBATCH</code>, and <code>GLOBAL_FEATURE_SELECT</code> for -- once per group, scoped to only the batches whose YAML <code>global_group</code> key names that group. <code>null</code> or <code>[]</code> (the default): no global processes run at all. See <a href="#global-groups">Global groups</a>.</td>
 </tr>
 <tr>
 <td><code>--run_feature_selection</code></td>
@@ -2225,6 +2225,11 @@ overridable per batch exactly like every other parameter here — see
 <td><code>0.5</code></td>
 <td>Minimum median Pearson <code>r</code> required for a feature to pass <code>BLOCKLIST</code>.</td>
 </tr>
+<tr>
+<td><code>--global_feature_select_min_batches_ok</code></td>
+<td><code>null</code></td>
+<td><code>GLOBAL_FEATURE_SELECT</code> only: minimum number of a global group's member batches that must mark a feature ok (in their own <code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>-chain blocklist) for it to be globally ok. <code>null</code> (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes">Single-cell scoring &amp; barcode QC (<code>OVWT_CELLSCORES_BATCHWISE</code> / <code>CHECK_BARCODES</code>)<a class="headerlink" href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" title="Permanent link">&para;</a></h3>
@@ -2256,8 +2261,7 @@ overridable per batch exactly like every other parameter here — see
 </table>
 <h2 id="global-groups">Global groups<a class="headerlink" href="#global-groups" title="Permanent link">&para;</a></h2>
 <p>By default, the pipeline's global (cross-batch) processes —
-<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, and the global feature-selection chain
-(<code>AGGREGATE_FEATURE_TYPE_GLOBAL</code> → ... → <code>FINALIZE_FEATURE_SELECT_GLOBAL</code>) —
+<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, and <code>GLOBAL_FEATURE_SELECT</code> —
 <strong>do not run at all</strong>. To run them, tag batches into named groups and list
 which groups should actually run:</p>
 <ul>
@@ -2267,7 +2271,7 @@ which groups should actually run:</p>
   run.</li>
 <li><strong><code>--global_groups</code></strong> — a pipeline-wide list parameter (default <code>null</code>)
   naming which of those groups actually run. Each name in this list gets
-  its own full <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/feature-selection-global run,
+  its own full <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/<code>GLOBAL_FEATURE_SELECT</code> run,
   scoped to only the batches whose <code>global_group</code> list contains that name,
   published under <code>&lt;pipeline_dir&gt;/global/&lt;group&gt;/</code> (see
   <a href="#pipeline-directory-layout">Pipeline directory layout</a>).</li>
@@ -2275,6 +2279,12 @@ which groups should actually run:</p>
 <p>A batch can belong to multiple groups (via a list <code>global_group</code>), in which
 case it contributes to each of those groups' global runs independently — the
 global processes are not deduplicated or merged across groups.</p>
+<p><code>GLOBAL_FEATURE_SELECT</code> additionally requires a member batch to have its own
+<code>run_feature_selection</code> enabled — it reads that batch's
+<code>feature_select_batchwise/&lt;batch_stem&gt;/{aggregates,blocklist.parquet}</code>
+directly, so a batch with <code>run_feature_selection: false</code> contributes to
+<code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code> for its group(s) but not to
+<code>GLOBAL_FEATURE_SELECT</code>.</p>
 <h3 id="worked-example">Worked example<a class="headerlink" href="#worked-example" title="Permanent link">&para;</a></h3>
 <p>Two batches, two groups, with <code>batch2</code> contributing to both:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># configs/batch1.yaml</span>
@@ -2350,17 +2360,20 @@ via <code>log.info</code> — e.g.:</p>
 <h3 id="not-every-parameter-is-batch-overridable">Not every parameter is batch-overridable<a class="headerlink" href="#not-every-parameter-is-batch-overridable" title="Permanent link">&para;</a></h3>
 <p>Several processes run once across <em>all</em> batches rather than per batch —
 <code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, <code>ANOVA_BLOCKLIST</code> (derived from
-<code>ANOVA_NORMALIZED</code>, which globs every batch, not one), and the
-<code>_GLOBAL</code>-suffixed feature-selection chain. Params consumed only by those
+<code>ANOVA_NORMALIZED</code>, which globs every batch, not one), and
+<code>GLOBAL_FEATURE_SELECT</code>. Params consumed only by those
 processes — <code>--global_groups</code>, <code>--batchvsbatch_min_cells</code>,
 <code>--batchvsbatch_min_batches</code>, <code>--anova_blocklist_pvalue_threshold</code>,
-<code>--feature_select_types</code>, <code>--feature_select_bootstrap_reps</code> — have no batch
+<code>--feature_select_types</code>, <code>--feature_select_bootstrap_reps</code>,
+<code>--global_feature_select_min_batches_ok</code> — have no batch
 to attach a per-batch override to, so they stay pipeline-wide-only.
 (<code>--feature_select_types</code> and <code>--feature_select_bootstrap_reps</code> specifically
 determine shared fan-out <em>cardinality</em> — how many feature-type/bootstrap
 tasks exist at all — not a per-batch scalar value, so letting them vary per
 batch would require a much larger restructuring than a simple value
-override.)</p>
+override. <code>--global_feature_select_min_batches_ok</code> is inherently a
+group-level agreement threshold across batches, with no per-batch meaning at
+all.)</p>
 <p>Every other <code>nextflow.config</code> parameter — including the gating booleans
 <code>--run_ovwt</code>, <code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
 <code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the
@@ -2372,9 +2385,11 @@ a per-batch channel <code>.filter()</code> (via a <code>batchGates()</code> help
 encodes the "<code>run_check_barcodes</code> implies <code>run_single_cell_scores</code>" /
 "<code>run_barcode_filtered_ovwt</code> only takes effect once <code>run_check_barcodes</code> is
 true" rules) rather than a workflow-scope <code>if</code>. <code>--run_feature_selection</code>'s
-<em>global</em> sub-branch (the <code>_GLOBAL</code> feature-selection chain) runs once per
-active global group instead, gated on <code>params.run_feature_selection</code>, since
-that chain has no per-batch identity either.</p>
+<em>global</em> effect (<code>GLOBAL_FEATURE_SELECT</code>) runs once per active global group
+instead, gated on <code>params.run_feature_selection</code>, since that process has no
+per-batch identity either — though it still only reads a member batch's
+<code>feature_select_batchwise/</code> output if that batch's own resolved
+<code>run_feature_selection</code> is true (see <a href="#global-groups">Global groups</a>).</p>
 <p>Parameters shared between a per-batch process and a global-only process
 (<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
 <code>--feature_select_min_correlation</code>) are overridable per batch for their

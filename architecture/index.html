@@ -1554,8 +1554,8 @@ documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
 <a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>     │                                         params.run_barcode_filtered_ovwt true --
 <a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>     │                                         the latter does NOT force the former on)
 <a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>     │                                         └──► OVWT_BATCHWISE (barcode-filtered)  (per batch)
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>     └──► Feature selection (batchwise always runs; global sub-branch runs once per active
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>                              global group instead):
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>     └──► Feature selection, batchwise (per batch; always runs unless
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>                              params.run_feature_selection = false for that batch):
 <a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>            AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
 <a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>            GENERATE_SPLIT              (per bootstrap replicate)    │
 <a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>              └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
@@ -1563,14 +1563,19 @@ documented in the <a href="../cli/qcfilter/">CLI Reference</a>.</p>
 <a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>                          └─► BLOCKLIST  (gathers all bootstrap replicates per feature type — the one sync point)
 <a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>                                └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
 <a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>                                      └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
-<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>
-<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
-<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>                    │
-<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>                    ▼
-<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>             BATCH_CORRECT_TRANSFORM (per batch)
-<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>                    │
-<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>                    ▼
-<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>             ANOVA (batch-corrected)  (always runs)
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>                                            │
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>                                            ▼
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>                                     GLOBAL_FEATURE_SELECT (once per active global group;
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>                                       reuses member batches&#39; aggregates/blocklist above --
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>                                       no cell-level recomputation)
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>QC_FILTER ──► BATCH_CORRECT_FIT (global, waits for all QC_FILTER)
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>                    │
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>                    ▼
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>             BATCH_CORRECT_TRANSFORM (per batch)
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>                    │
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>                    ▼
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>             ANOVA (batch-corrected)  (always runs)
 </code></pre></div>
 <p><code>ANOVA</code> and <code>BATCHVSBATCH</code> are each a single parameterized Nextflow process
 invoked twice via <code>include { X as Y }</code> aliasing (a process cannot be called twice
@@ -1641,15 +1646,18 @@ trains one binary XGBoost classifier per pair of wildtype barcodes. It has no
 feature-filtered/barcode-filtered variants and no global counterpart, and
 depends only on <code>NORMALIZE</code>'s output (not <code>ANOVA_BLOCKLIST</code>). Gated by
 <code>params.run_wtvwt</code> (default <code>true</code>), independent of every other gate.</p>
-<p>Global processes (<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, the <code>*_GLOBAL</code> feature-selection
-branch, <code>ANOVA</code>, <code>ANOVA_BLOCKLIST</code>, <code>BATCH_CORRECT_FIT</code>) read published output
+<p>Global processes (<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, <code>GLOBAL_FEATURE_SELECT</code>,
+<code>ANOVA</code>, <code>ANOVA_BLOCKLIST</code>, <code>BATCH_CORRECT_FIT</code>) read published output
 files from disk via glob patterns (or, for <code>ANOVA_BLOCKLIST</code>, consume a real
 Nextflow channel output) after all upstream per-batch processes finish, rather
 than consuming Nextflow channel outputs directly in the general case.
-<code>BATCHVSBATCH</code> and <code>OVWT_GLOBAL</code>, plus the <code>*_GLOBAL</code> feature-selection branch,
+<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, and <code>GLOBAL_FEATURE_SELECT</code> each
 run once per named group listed in <code>params.global_groups</code> (default <code>null</code> —
 none run at all), each scoped to only the batches whose YAML <code>global_group</code>
 key names that group — see <a href="../configuration/#global-groups">Configuration: Global groups</a>.
+<code>GLOBAL_FEATURE_SELECT</code> additionally only reads a member batch's
+<code>feature_select_batchwise/</code> output if that batch's own <code>run_feature_selection</code>
+is enabled.
 <code>ANOVA</code>, <code>ANOVA_BLOCKLIST</code>, <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code>
 always run, over every batch regardless of group.</p>
 <h2 id="stages">Stages<a class="headerlink" href="#stages" title="Permanent link">&para;</a></h2>
@@ -1724,10 +1732,16 @@ always run, over every batch regardless of group.</p>
 <td><code>barcode_blocklist.parquet</code> (per batch)</td>
 </tr>
 <tr>
-<td>Feature selection</td>
-<td><code>aggregate.py</code>, <code>features.py</code></td>
+<td>Feature selection (batchwise)</td>
+<td><code>aggregate.py</code>, <code>featureselect.py</code></td>
 <td><code>AGGREGATE_FEATURE_TYPE</code>, <code>GENERATE_SPLIT</code>, <code>AGGREGATE_HALF</code>, <code>CORRELATE_FEATURES</code>, <code>BLOCKLIST</code>, <code>COMBINE_BLOCKLISTS</code>, <code>FINALIZE_FEATURE_SELECT</code></td>
-<td><code>output.parquet</code> (final per-variant aggregate)</td>
+<td><code>output.parquet</code> (final per-batch per-variant aggregate)</td>
+</tr>
+<tr>
+<td>Feature selection (global)</td>
+<td><code>globalfeatureselect.py</code></td>
+<td><code>GLOBAL_FEATURE_SELECT</code></td>
+<td><code>aggregate.parquet</code> (cross-batch median aggregate, pycytominer-selected), <code>blocklist.parquet</code> (combined global blocklist)</td>
 </tr>
 <tr>
 <td>Batch correction</td>
@@ -1845,7 +1859,7 @@ and <code>input/</code> folders:</p>
 <a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>                                  # (default null -- none); only that group&#39;s member
 <a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a>                                  # batches (per-batch YAML global_group) contribute
 <a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a>    qc_filter_cells/&lt;batch&gt;.parquet        # staged copy for BATCHVSBATCH_PRE
-<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a>    normalization_cells/&lt;batch&gt;.parquet    # staged copy for BATCHVSBATCH_POST/OVWT_GLOBAL/feature_select
+<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a>    normalization_cells/&lt;batch&gt;.parquet    # staged copy for BATCHVSBATCH_POST/OVWT_GLOBAL
 <a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a>    batchvsbatch/
 <a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a>      pre/results.parquet        # pre batch correction (QC-filtered cells), unfiltered
 <a id="__codelineno-2-64" name="__codelineno-2-64" href="#__codelineno-2-64"></a>      post/results.parquet       # post batch correction (normalized cells), filtered against anova_blocklist
@@ -1853,8 +1867,15 @@ and <code>input/</code> folders:</p>
 <a id="__codelineno-2-66" name="__codelineno-2-66" href="#__codelineno-2-66"></a>      results.parquet
 <a id="__codelineno-2-67" name="__codelineno-2-67" href="#__codelineno-2-67"></a>      models.pkl
 <a id="__codelineno-2-68" name="__codelineno-2-68" href="#__codelineno-2-68"></a>    feature_select/
-<a id="__codelineno-2-69" name="__codelineno-2-69" href="#__codelineno-2-69"></a>      (same layout as feature_select_batchwise/&lt;batch&gt;/ above, no &lt;batch&gt; nesting)
+<a id="__codelineno-2-69" name="__codelineno-2-69" href="#__codelineno-2-69"></a>      aggregate.parquet          # cross-batch median aggregate, pycytominer-selected
+<a id="__codelineno-2-70" name="__codelineno-2-70" href="#__codelineno-2-70"></a>      blocklist.parquet          # combined blocklist (agreement threshold across member
+<a id="__codelineno-2-71" name="__codelineno-2-71" href="#__codelineno-2-71"></a>                                  # batches&#39; feature_select_batchwise/&lt;batch&gt;/blocklist.parquet)
 </code></pre></div>
+<p><code>global/&lt;group&gt;/feature_select/</code> reuses each member batch's already-published
+<code>feature_select_batchwise/&lt;batch&gt;/{aggregates,blocklist.parquet}</code> directly — it
+does not glob <code>normalization_cells/</code> and has no <code>splits/</code>, <code>half_aggregates/</code>,
+<code>correlations/</code>, or <code>blocklists/</code> subtree of its own (those only exist per
+batch, under <code>feature_select_batchwise/&lt;batch&gt;/</code>, above).</p>
 
 
 

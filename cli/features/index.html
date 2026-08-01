@@ -784,6 +784,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. python -m fisseq_data_pipeline.globalfeatureselect (GLOBAL_FEATURE_SELECT)
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1518,6 +1527,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. python -m fisseq_data_pipeline.globalfeatureselect (GLOBAL_FEATURE_SELECT)
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1535,15 +1553,19 @@
 
 
 <h1 id="feature-selection">Feature Selection<a class="headerlink" href="#feature-selection" title="Permanent link">&para;</a></h1>
-<p>The bootstrap pseudo-replicate feature-selection pipeline is implemented as five
-Hydra entry points, one per module, each a Nextflow process (see
-<a href="../../nextflow/">Nextflow Workflow</a>). Cells are split into stratified 50/50
-pseudo-replicate halves across <code>params.feature_select_bootstrap_reps</code> replicates; each half is
+<p>The BATCHWISE bootstrap pseudo-replicate feature-selection pipeline (run once
+per batch) is implemented as five Hydra entry points, one per module, each a
+Nextflow process (see <a href="../../nextflow/">Nextflow Workflow</a>). Cells are split
+into stratified 50/50 pseudo-replicate halves across
+<code>params.feature_select_bootstrap_reps</code> replicates; each half is
 aggregated per feature type (via <a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>),
 correlated against its partner half, and a per-feature blocklist is derived from
 the median correlation across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.</p>
+<p>A separate, much simpler GLOBAL entry point (§6 below) runs once per active
+global group, reusing this BATCHWISE pipeline's already-computed per-batch
+outputs rather than recomputing anything from cells.</p>
 <p>All configs extend the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <h2 id="1-python-m-fisseq_data_pipelinegeneratesplit-generate_split">1. <code>python -m fisseq_data_pipeline.generatesplit</code> (<code>GENERATE_SPLIT</code>)<a class="headerlink" href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" title="Permanent link">&para;</a></h2>
 <p>Generates one stratified 50/50 pseudo-replicate split.</p>
@@ -1718,6 +1740,64 @@ single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="s1">&#39;feature_type_files=out/aggregates/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nv">block_list_file</span><span class="o">=</span>out/blocklist.parquet
+</code></pre></div>
+<h2 id="6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select">6. <code>python -m fisseq_data_pipeline.globalfeatureselect</code> (<code>GLOBAL_FEATURE_SELECT</code>)<a class="headerlink" href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" title="Permanent link">&para;</a></h2>
+<p>Runs once per active global group (see
+<a href="../../configuration/#global-groups">Configuration: Global groups</a>). Reuses the
+group's member batches' already-published BATCHWISE feature-selection
+artifacts directly — no cell-level recomputation:</p>
+<ol>
+<li>For each member batch, joins that batch's own per-feature-type aggregate
+   files (<code>feature_select_batchwise/&lt;batch&gt;/aggregates/*.parquet</code>) and
+   normalizes the joined table to that batch's own synonymous baseline (this
+   serves as both batch correction and normalization).</li>
+<li>Concatenates every member batch's normalized table and takes the
+   per-feature median, grouped by <code>label_column</code> (a variant can appear in
+   more than one batch).</li>
+<li>Combines each member batch's own combined blocklist
+   (<code>feature_select_batchwise/&lt;batch&gt;/blocklist.parquet</code>) using an agreement
+   threshold across batches.</li>
+<li>Drops columns blocked by step 3 and runs <code>pyc_feature_select</code> (the same
+   function <code>FINALIZE_FEATURE_SELECT</code> uses).</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pipeline_dir</code></td>
+<td><strong>required</strong></td>
+<td>Absolute path to the pipeline's root output directory.</td>
+</tr>
+<tr>
+<td><code>batch_stems</code></td>
+<td><strong>required</strong></td>
+<td>List of the active group's member batch stems (only those with <code>run_feature_selection</code> enabled).</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td><code>"meta_aa_changes"</code></td>
+<td>Column identifying variant labels.</td>
+</tr>
+<tr>
+<td><code>min_batches_ok</code></td>
+<td><code>null</code></td>
+<td>Minimum number of member batches that must mark a feature ok for it to be globally ok. <code>null</code> requires unanimity across batches that report on it.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output</strong>: <code>aggregate.parquet</code> (the selected, cross-batch median aggregate
+table) and <code>blocklist.parquet</code> (the combined global blocklist, columns
+<code>feature</code>, <code>n_batches</code>, <code>n_ok</code>, <code>feature_ok</code>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.globalfeatureselect<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nv">pipeline_dir</span><span class="o">=</span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="s1">&#39;batch_stems=[batch1,batch2]&#39;</span>
 </code></pre></div>
 <p>See <a href="../../api/features/">API Reference: features</a> for full function
 documentation, including <code>pyc_feature_select</code> and <code>compute_feature_correlations</code>.</p>

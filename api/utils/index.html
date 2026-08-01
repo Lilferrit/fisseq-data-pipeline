@@ -1602,6 +1602,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#featuretypes" class="md-nav__link">
+    <span class="md-ellipsis">
+      featuretypes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="featuretypes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fisseq_data_pipeline.utils.featuretypes" class="md-nav__link">
+    <span class="md-ellipsis">
+      featuretypes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="featuretypes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fisseq_data_pipeline.utils.featuretypes.join_feature_type_files" class="md-nav__link">
+    <span class="md-ellipsis">
+      join_feature_type_files
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#vectors" class="md-nav__link">
     <span class="md-ellipsis">
       vectors
@@ -2037,6 +2076,45 @@
   <a href="#fisseq_data_pipeline.utils.splits.get_replicate_lf" class="md-nav__link">
     <span class="md-ellipsis">
       get_replicate_lf
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#featuretypes" class="md-nav__link">
+    <span class="md-ellipsis">
+      featuretypes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="featuretypes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fisseq_data_pipeline.utils.featuretypes" class="md-nav__link">
+    <span class="md-ellipsis">
+      featuretypes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="featuretypes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fisseq_data_pipeline.utils.featuretypes.join_feature_type_files" class="md-nav__link">
+    <span class="md-ellipsis">
+      join_feature_type_files
     </span>
   </a>
   
@@ -3646,6 +3724,200 @@ is in <code>rep_idx</code>.</p>
 <a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">        is in ``rep_idx``.</span>
 <a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-51" name="__codelineno-0-51"></a>    <span class="k">return</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">TMP_IDX_COL</span><span class="p">)</span><span class="o">.</span><span class="n">is_in</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">rep_idx</span><span class="p">)))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="featuretypes">featuretypes<a class="headerlink" href="#featuretypes" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="fisseq_data_pipeline.utils.featuretypes" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">fisseq_data_pipeline.utils.featuretypes</span>
+
+
+<a href="#fisseq_data_pipeline.utils.featuretypes" class="headerlink" title="Permanent link">&para;</a></h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Helpers for reconstructing a combined per-variant aggregate table from
+per-feature-type aggregate files (the output of
+:func:<code>fisseq_data_pipeline.aggregatefeaturetype.main</code>).</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="fisseq_data_pipeline.utils.featuretypes.join_feature_type_files" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">join_feature_type_files</span>
+
+
+<a href="#fisseq_data_pipeline.utils.featuretypes.join_feature_type_files" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">join_feature_type_files</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">paths</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">label_column</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Join per-feature-type aggregate parquet files into one combined table.</p>
+<p>Each file is expected to contain <code>[label_column] + &lt;feature type's stat
+columns&gt;</code>, one row per variant. Files are read eagerly and joined
+sequentially on <code>label_column</code>, in the order given.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>paths</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Paths to per-feature-type aggregate parquet files. Must be non-empty.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>label_column</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Name of the column identifying variant labels, used as the join key.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="polars.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Combined table with <code>label_column</code> plus every input file's stat
+columns.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/utils/featuretypes.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-9"> 9</a></span>
+<span class="normal"><a href="#__codelineno-0-10">10</a></span>
+<span class="normal"><a href="#__codelineno-0-11">11</a></span>
+<span class="normal"><a href="#__codelineno-0-12">12</a></span>
+<span class="normal"><a href="#__codelineno-0-13">13</a></span>
+<span class="normal"><a href="#__codelineno-0-14">14</a></span>
+<span class="normal"><a href="#__codelineno-0-15">15</a></span>
+<span class="normal"><a href="#__codelineno-0-16">16</a></span>
+<span class="normal"><a href="#__codelineno-0-17">17</a></span>
+<span class="normal"><a href="#__codelineno-0-18">18</a></span>
+<span class="normal"><a href="#__codelineno-0-19">19</a></span>
+<span class="normal"><a href="#__codelineno-0-20">20</a></span>
+<span class="normal"><a href="#__codelineno-0-21">21</a></span>
+<span class="normal"><a href="#__codelineno-0-22">22</a></span>
+<span class="normal"><a href="#__codelineno-0-23">23</a></span>
+<span class="normal"><a href="#__codelineno-0-24">24</a></span>
+<span class="normal"><a href="#__codelineno-0-25">25</a></span>
+<span class="normal"><a href="#__codelineno-0-26">26</a></span>
+<span class="normal"><a href="#__codelineno-0-27">27</a></span>
+<span class="normal"><a href="#__codelineno-0-28">28</a></span>
+<span class="normal"><a href="#__codelineno-0-29">29</a></span>
+<span class="normal"><a href="#__codelineno-0-30">30</a></span>
+<span class="normal"><a href="#__codelineno-0-31">31</a></span>
+<span class="normal"><a href="#__codelineno-0-32">32</a></span>
+<span class="normal"><a href="#__codelineno-0-33">33</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-9" name="__codelineno-0-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">join_feature_type_files</span><span class="p">(</span><span class="n">paths</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">label_column</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11"></a><span class="sd">    Join per-feature-type aggregate parquet files into one combined table.</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12"></a>
+<a id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="sd">    Each file is expected to contain ``[label_column] + &lt;feature type&#39;s stat</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14"></a><span class="sd">    columns&gt;``, one row per variant. Files are read eagerly and joined</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15"></a><span class="sd">    sequentially on ``label_column``, in the order given.</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19"></a><span class="sd">    paths : list[str]</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20"></a><span class="sd">        Paths to per-feature-type aggregate parquet files. Must be non-empty.</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21"></a><span class="sd">    label_column : str</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22"></a><span class="sd">        Name of the column identifying variant labels, used as the join key.</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23"></a>
+<a id="__codelineno-0-24" name="__codelineno-0-24"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26"></a><span class="sd">    pl.DataFrame</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27"></a><span class="sd">        Combined table with ``label_column`` plus every input file&#39;s stat</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28"></a><span class="sd">        columns.</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30"></a>    <span class="n">agg_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">paths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31"></a>    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32"></a>        <span class="n">agg_df</span> <span class="o">=</span> <span class="n">agg_df</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">p</span><span class="p">),</span> <span class="n">on</span><span class="o">=</span><span class="n">label_column</span><span class="p">)</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33"></a>    <span class="k">return</span> <span class="n">agg_df</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
