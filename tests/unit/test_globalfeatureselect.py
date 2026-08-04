@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import numpy as np
@@ -8,6 +9,7 @@ import pytest
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.globalfeatureselect as m
+from fisseq_data_pipeline.utils.constants import IMPACT_SCORE_COL
 
 # ---------------------------------------------------------------------------
 # combine_batch_blocklists
@@ -94,6 +96,15 @@ def test_normalize_batch_aggregate_raises_on_empty_glob(tmp_path) -> None:
         )
 
 
+def test_normalize_batch_aggregate_drops_blocked_features(tmp_path) -> None:
+    _write_batch_aggregates(tmp_path, "batchA")
+    result = m.normalize_batch_aggregate(
+        str(tmp_path), "batchA", "meta_aa_changes", blocked_features={"f2_mean"}
+    ).collect()
+    assert "f2_mean" not in result.columns
+    assert "f1_mean" in result.columns
+
+
 # ---------------------------------------------------------------------------
 # median_across_batches
 # ---------------------------------------------------------------------------
@@ -120,6 +131,59 @@ def test_median_across_batches_single_batch_variant_unchanged() -> None:
     result = m.median_across_batches([batch1, batch2], "meta_aa_changes")
     row = result.filter(pl.col("meta_aa_changes") == "only_in_1")
     assert row["f1_mean"][0] == 42.0
+
+
+def test_median_across_batches_drops_feature_columns_not_common_to_all_batches() -> (
+    None
+):
+    batch1 = pl.LazyFrame(
+        {"meta_aa_changes": ["shared"], "f1_mean": [1.0], "f2_mean": [10.0]}
+    )
+    batch2 = pl.LazyFrame({"meta_aa_changes": ["shared"], "f1_mean": [3.0]})
+    result = m.median_across_batches([batch1, batch2], "meta_aa_changes")
+    assert "f1_mean" in result.columns
+    assert "f2_mean" not in result.columns
+
+
+def test_median_across_batches_warns_on_dropped_columns(caplog) -> None:
+    batch1 = pl.LazyFrame(
+        {"meta_aa_changes": ["shared"], "f1_mean": [1.0], "f2_mean": [10.0]}
+    )
+    batch2 = pl.LazyFrame({"meta_aa_changes": ["shared"], "f1_mean": [3.0]})
+    with caplog.at_level(logging.WARNING):
+        m.median_across_batches(
+            [batch1, batch2], "meta_aa_changes", batch_labels=["batchA", "batchB"]
+        )
+    assert any(
+        "batchA" in rec.message and "f2_mean" in rec.message for rec in caplog.records
+    )
+
+
+def test_median_across_batches_drops_all_meta_columns_except_label() -> None:
+    batch1 = pl.LazyFrame(
+        {
+            "meta_aa_changes": ["shared"],
+            "meta_is_control": [False],
+            "f1_mean": [1.0],
+        }
+    )
+    batch2 = pl.LazyFrame(
+        {"meta_aa_changes": ["shared"], "meta_batch": ["batchB"], "f1_mean": [3.0]}
+    )
+    result = m.median_across_batches([batch1, batch2], "meta_aa_changes")
+    assert set(result.columns) == {"meta_aa_changes", "f1_mean"}
+
+
+def test_median_across_batches_raises_on_empty_batch_lfs() -> None:
+    with pytest.raises(ValueError):
+        m.median_across_batches([], "meta_aa_changes")
+
+
+def test_median_across_batches_raises_on_empty_feature_intersection() -> None:
+    batch1 = pl.LazyFrame({"meta_aa_changes": ["shared"], "f1_mean": [1.0]})
+    batch2 = pl.LazyFrame({"meta_aa_changes": ["shared"], "f2_mean": [3.0]})
+    with pytest.raises(ValueError):
+        m.median_across_batches([batch1, batch2], "meta_aa_changes")
 
 
 # ---------------------------------------------------------------------------
@@ -160,15 +224,18 @@ def _write_pipeline_dir(tmp_path, *, block_f2: bool = False):
     return pipeline_dir
 
 
-def make_gfs_cfg(tmp_path, pipeline_dir, *, min_batches_ok=None) -> OmegaConf:
-    return OmegaConf.structured(
-        m.GlobalFeatureSelectConfig(
-            output_dir=str(tmp_path / "out"),
-            pipeline_dir=str(pipeline_dir),
-            batch_stems=["batchA", "batchB"],
-            min_batches_ok=min_batches_ok,
-        )
+def make_gfs_cfg(
+    tmp_path, pipeline_dir, *, min_batches_ok=None, compute_impact_score=None
+) -> OmegaConf:
+    kwargs = dict(
+        output_dir=str(tmp_path / "out"),
+        pipeline_dir=str(pipeline_dir),
+        batch_stems=["batchA", "batchB"],
+        min_batches_ok=min_batches_ok,
     )
+    if compute_impact_score is not None:
+        kwargs["compute_impact_score"] = compute_impact_score
+    return OmegaConf.structured(m.GlobalFeatureSelectConfig(**kwargs))
 
 
 def test_main_writes_both_outputs(tmp_path) -> None:
@@ -208,6 +275,143 @@ def test_main_aggregate_has_one_row_per_variant(tmp_path) -> None:
             m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
     result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
     assert len(result) == 5
+
+
+# ---------------------------------------------------------------------------
+# compute_impact_score — main() integration
+# ---------------------------------------------------------------------------
+
+
+def test_main_impact_score_column_present_by_default(tmp_path) -> None:
+    pipeline_dir = _write_pipeline_dir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
+            side_effect=lambda profiles, **_kw: profiles,
+        ):
+            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
+    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    assert IMPACT_SCORE_COL in result.columns
+    assert "meta_is_control" in result.columns
+
+
+def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
+    pipeline_dir = _write_pipeline_dir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
+            side_effect=lambda profiles, **_kw: profiles,
+        ):
+            m.main.__wrapped__(
+                make_gfs_cfg(tmp_path, pipeline_dir, compute_impact_score=False)
+            )
+    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    assert IMPACT_SCORE_COL not in result.columns
+
+
+def test_main_impact_score_values_are_finite(tmp_path) -> None:
+    # A1A/A2A/A3A are the synonymous control group; their normalized feature
+    # vectors are non-zero, so compute_impact_score produces finite scores
+    # for all rows.
+    pipeline_dir = _write_pipeline_dir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
+            side_effect=lambda profiles, **_kw: profiles,
+        ):
+            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
+    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    assert result[IMPACT_SCORE_COL].is_finite().all()
+
+
+def test_main_synonymous_median_has_zero_impact_score(tmp_path) -> None:
+    # _write_batch_aggregates' f2_mean is exactly 2x f1_mean for the
+    # synonymous control rows (A1A/A2A/A3A), so each control row's
+    # normalized vector lies along the same direction and A2A (the middle
+    # raw value) lands exactly on the control median vector -> impact
+    # score 0. batchA and batchB carry identical data, so the cross-batch
+    # median leaves each batch's per-variant normalized values unchanged.
+    pipeline_dir = _write_pipeline_dir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
+            side_effect=lambda profiles, **_kw: profiles,
+        ):
+            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
+    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    median_row = result.filter(pl.col("meta_aa_changes") == "A2A")
+    assert median_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)
+
+
+def _write_mismatched_pipeline_dir(tmp_path):
+    """batchA and batchB deliberately diverge in all three ways this fix
+    guards against: batchA carries a stray metadata column (``meta_extra``)
+    batchB lacks, batchA has a feature column (``f4_mean``) batchB lacks,
+    and ``f3_mean`` is blocked globally even though only batchA's blocklist
+    reports on it (unanimity-among-reporters)."""
+    pipeline_dir = tmp_path / "pipeline"
+
+    agg_dir_a = pipeline_dir / "feature_select_batchwise" / "batchA" / "aggregates"
+    agg_dir_a.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+            "meta_extra": ["x", "x", "x", "x", "x"],
+            "f1_mean": [0.0, 1.0, 4.0, 5.0, 10.0],
+            "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
+            "f3_mean": [0.0, 1.0, 2.0, 3.0, 4.0],
+            "f4_mean": [0.0, 1.0, 2.0, 3.0, 4.0],
+        }
+    ).write_parquet(agg_dir_a / "mean.parquet")
+    pl.DataFrame(
+        {
+            "feature": ["f1_mean", "f2_mean", "f3_mean"],
+            "feature_ok": [True, True, False],
+        }
+    ).write_parquet(
+        pipeline_dir / "feature_select_batchwise" / "batchA" / "blocklist.parquet"
+    )
+
+    agg_dir_b = pipeline_dir / "feature_select_batchwise" / "batchB" / "aggregates"
+    agg_dir_b.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+            "f1_mean": [0.0, 1.0, 4.0, 5.0, 10.0],
+            "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
+            "f3_mean": [0.0, 1.0, 2.0, 3.0, 4.0],
+        }
+    ).write_parquet(agg_dir_b / "mean.parquet")
+    pl.DataFrame(
+        {"feature": ["f1_mean", "f2_mean"], "feature_ok": [True, True]}
+    ).write_parquet(
+        pipeline_dir / "feature_select_batchwise" / "batchB" / "blocklist.parquet"
+    )
+
+    return pipeline_dir
+
+
+def test_main_handles_mismatched_batch_schemas(tmp_path) -> None:
+    # compute_impact_score=False: this test is scoped to schema-mismatch
+    # handling upstream of feature selection, not the impact-score step,
+    # which re-adds its own meta_is_control/meta_impact_score afterward
+    # (see the "compute_impact_score" test section).
+    pipeline_dir = _write_mismatched_pipeline_dir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
+            side_effect=lambda profiles, **_kw: profiles,
+        ):
+            m.main.__wrapped__(
+                make_gfs_cfg(tmp_path, pipeline_dir, compute_impact_score=False)
+            )
+    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    assert "f1_mean" in result.columns
+    assert "f2_mean" in result.columns
+    assert "f3_mean" not in result.columns  # globally blocked
+    assert "f4_mean" not in result.columns  # not common to every batch
+    assert "meta_extra" not in result.columns  # dropped: not label_column
+    assert [c for c in result.columns if c.startswith("meta_")] == ["meta_aa_changes"]
 
 
 def test_main_raises_on_empty_batch_stems(tmp_path) -> None:
