@@ -44,28 +44,28 @@ This runs the default `FisseqPipeline`, which chains every stage described in
 2. `QC_FILTER` — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).
 3. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (once per
-   active group in `params.global_groups`; none by default).
+   active channel in `params.global_channels`; none by default).
 4. `NORMALIZE` — z-score normalization fit on WT control cells (per batch).
 5. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (once per
-   active group).
+   active channel).
 6. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification
-   (`OVWT_GLOBAL` once per active group).
+   (`OVWT_GLOBAL` once per active channel).
 7. `WTVWT_BATCHWISE` — wildtype-only pairwise barcode classification (per
    batch, if `params.run_wtvwt`).
 8. Bootstrap feature selection (batchwise always; global sub-branch once per
-   active group) — see
+   active channel) — see
    [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
    six-stage breakdown.
 9. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
-   (always runs, over every batch).
+   (once per active channel).
 10. `ANOVA` — batch-effect assessment, run once on normalized cells and once
-    on batch-corrected cells (always runs).
+    on batch-corrected cells (once per active channel).
 
 Override any [parameter](configuration.md#parameters) on the command line,
-e.g. to adjust QC thresholds. Global processes (`OVWT_GLOBAL`, the global
-feature-selection branch, and `BATCHVSBATCH`) don't run at all unless you tag
-batches into a group and activate it — see
-[Configuration: Global groups](configuration.md#global-groups):
+e.g. to adjust QC thresholds. Global processes (`OVWT_GLOBAL`, `ANOVA`, batch
+correction, the global feature-selection branch, and `BATCHVSBATCH`) don't
+run at all unless you tag batches into a channel and activate it — see
+[Configuration: Global channels](configuration.md#global-channels):
 
 ```bash
 nextflow run . \
@@ -92,11 +92,12 @@ All outputs land under `<pipeline_dir>`, alongside `configs/`/`input/` — see
 The two results most analyses care about:
 
 - `<pipeline_dir>/feature_select_batchwise/<batch>/output.parquet` (and, if a
-  global group is active, `global/<group>/feature_select/output.parquet`) —
+  global channel is active, `global/<channel>/feature_select/output.parquet`) —
   final per-variant, feature-selected profiles.
-- `<pipeline_dir>/anova/anova.parquet` and
-  `<pipeline_dir>/batch_correction/anova/anova.parquet` — per-feature
-  batch-effect ANOVA results, before and after batch correction.
+- `<pipeline_dir>/global/<channel>/anova/anova.parquet` and
+  `<pipeline_dir>/global/<channel>/batch_correction/anova/anova.parquet`
+  (only present if a global channel is active) — per-feature batch-effect
+  ANOVA results, before and after batch correction.
 
 ## 5. Running individual steps
 

@@ -23,9 +23,11 @@ input/*.parquet  (one file per batch, CellProfiler morphological features + barc
       ▼
 QC_FILTER        (per batch)   ← edit distance, barcode count, variant barcode count
       │
-      ├──► BATCHVSBATCH (pre, unfiltered)   (per active global group in params.global_groups;
-      │           default null = none run; scoped to that group's member batches — see
-      │           "Global groups" below)
+      ├──► BATCHVSBATCH (pre, unfiltered)   (per active global channel in params.global_channels;
+      │           default null = none run; scoped to that channel's member batches — see
+      │           "Global channels" below)
+      ├──► BATCH_CORRECT_FIT/TRANSFORM      (per active global channel)
+      │           └──► ANOVA (batch-corrected)  (per active global channel)
       ▼
 NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │
@@ -33,14 +35,13 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │           cells only, one binary XGBoost classifier per pair of wildtype barcodes;
       │           independent of the ANOVA_BLOCKLIST/OvWT chain below)
       │
-      ├──► ANOVA (normalized)   (global — waits for all batches; always runs)
+      ├──► ANOVA (normalized)   (per active global channel)
       │           │
       │           ▼
-      │      ANOVA_BLOCKLIST   (global; always runs — feature_ok from ANOVA p_value < params.anova_blocklist_pvalue_threshold)
+      │      ANOVA_BLOCKLIST   (per active global channel — feature_ok from ANOVA p_value < params.anova_blocklist_pvalue_threshold)
       │           │
-      │           ├──► BATCHVSBATCH (post, filtered)   (per active global group)
-      │           ├──► OVWT_BATCHWISE (feature-filtered) (per batch; skipped if params.run_feature_filtered_ovwt = false)
-      │           └──► OVWT_GLOBAL (filtered)             (per active global group)
+      │           ├──► BATCHVSBATCH (post, filtered)   (per active global channel)
+      │           └──► OVWT_GLOBAL (filtered)             (per active global channel)
       │
       ├──► OVWT_BATCHWISE (unfiltered)      (per batch — no dependency on ANOVA_BLOCKLIST;
       │           skipped if params.run_ovwt = false, which also skips the whole
@@ -72,47 +73,55 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
                                        └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
                                              │
                                              ▼
-                                      GLOBAL_FEATURE_SELECT (once per active global group;
+                                      GLOBAL_FEATURE_SELECT (once per active global channel;
                                         reuses member batches' aggregates/blocklist above
                                         directly off pipeline_dir -- no cell-level recompute)
 ```
 
-**Global groups.** A batch's YAML `global_group` key (string or list of
-strings) names which group(s) it belongs to; `params.global_groups`
-(pipeline-wide, default `null`) lists which of those groups actually run.
-Each active group gets its own `BATCHVSBATCH`/`OVWT_GLOBAL` run, scoped to
-only that group's member batches, via a small staging process
-`STAGE_GROUP_CELLS` (`modules/local/stage_group.nf`, aliased `STAGE_GROUP_QC`/
-`STAGE_GROUP_NORM`) that republishes each member batch's `QC_FILTER`/`NORMALIZE`
-output into `<pipeline_dir>/global/<group>/{qc_filter_cells,normalization_cells}/`.
-`GLOBAL_FEATURE_SELECT` also runs once per active group, but does not use
+**Global channels.** A batch's YAML `global_channel` key (string or list of
+strings) names which channel(s) it belongs to; `params.global_channels`
+(pipeline-wide, default `null`) lists which of those channels actually run.
+Each active channel gets its own `BATCHVSBATCH`/`OVWT_GLOBAL`/`ANOVA`
+(both calls)/`BATCH_CORRECT_FIT`+`BATCH_CORRECT_TRANSFORM` run, scoped to
+only that channel's member batches, via a small staging process
+`STAGE_CHANNEL_CELLS` (`modules/local/stage_channel.nf`, aliased `STAGE_CHANNEL_QC`/
+`STAGE_CHANNEL_NORM`) that republishes each member batch's `QC_FILTER`/`NORMALIZE`
+output into `<pipeline_dir>/global/<channel>/{qc_filter_cells,normalization_cells}/`.
+This makes the entire `ANOVA`/`ANOVA_BLOCKLIST`/`BATCH_CORRECT_FIT`/
+`BATCH_CORRECT_TRANSFORM`/`ANOVA_BATCH_CORRECTED` chain a purely per-channel
+feature too: with `params.global_channels` unset (default), none of it runs,
+and a batch belonging to no active channel is skipped by the whole chain
+(processed batchwise as normal otherwise); a batch in multiple channels runs
+through the whole chain once per channel, independently, each publishing
+under its own channel's subtree.
+`GLOBAL_FEATURE_SELECT` also runs once per active channel, but does not use
 this cell-staging mechanism at all — it reads each member batch's own
 `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly off
 `pipeline_dir` (member batches resolved straight from `resolvedBatchConfigs`
 in Groovy, only those with `run_feature_selection` enabled), since it has no
 cell-level work to do — see
-[Configuration: Global groups](docs/configuration.md#global-groups) and
+[Configuration: Global channels](docs/configuration.md#global-channels) and
 gotcha 6 below.
 
-`OVWT_BATCHWISE` is a single parameterized process invoked three times (in
+`OVWT_BATCHWISE` is a single parameterized process invoked twice (in
 `FisseqPipeline`; once, always unfiltered, in `OvwtPipeline`) via
 `include { OVWT_BATCHWISE as X }` aliasing (like `ANOVA`/`BATCHVSBATCH`): the
 unfiltered call (`ovwt_batchwise/`) keeps the pipeline's original behavior and
 scheduling (no dependency on `ANOVA_BLOCKLIST` or `BARCODE_BLOCKLIST`); the
-feature-filtered call (`ovwt_batchwise_feature_filtered/`) additionally
-depends on `ANOVA_BLOCKLIST` and is optional, gated by
-`params.run_feature_filtered_ovwt` (default `true`, preserving the pipeline's
-original always-on behavior — renamed from `run_filtered_ovwt`); the
 barcode-filtered call (`ovwt_batchwise_barcode_filtered/`) additionally
 depends on that batch's `BARCODE_BLOCKLIST` output and only runs when both
 `params.run_check_barcodes` (default `false`) and
 `params.run_barcode_filtered_ovwt` (default `true`) are true —
 `run_barcode_filtered_ovwt` deliberately does *not* force `run_check_barcodes`
 on, so the default (`run_check_barcodes=false`) pipeline output is unaffected
-by `run_barcode_filtered_ovwt`'s own default. The two filtered variants are
-independent of each other — each excludes cells/features along a different
-axis (feature-filtered drops feature *columns*; barcode-filtered drops cell
-*rows*).
+by `run_barcode_filtered_ovwt`'s own default. (There used to be a third,
+feature-filtered alias, `OVWT_BATCHWISE_FEATURE_FILTERED`, gated by
+`params.run_feature_filtered_ovwt` — it was removed once `ANOVA_BLOCKLIST`
+became per-channel: a per-batch process broadcasting one of several
+per-channel blocklists onto a batch in 0 or 2+ channels had no single
+well-defined blocklist to use. `BATCHVSBATCH_POST`/`OVWT_GLOBAL`, both
+already per-channel, don't have this problem — each just joins on its own
+channel's blocklist.)
 `OVWT_GLOBAL` has no unfiltered counterpart — it is always feature-filtered,
 and has no barcode-filtered counterpart (`BARCODE_BLOCKLIST` runs per batch,
 not globally).
@@ -337,7 +346,7 @@ fisseq-data-pipeline/
 │   ├── blocklist.py               # Per-feature-type bootstrap blocklist entry point
 │   ├── combineblocklists.py       # Combine per-feature-type blocklists entry point
 │   ├── featureselect.py           # Final BATCHWISE pycytominer feature-selection entry point
-│   ├── globalfeatureselect.py     # Global (per group) feature-selection entry point -- reuses BATCHWISE output
+│   ├── globalfeatureselect.py     # Global (per channel) feature-selection entry point -- reuses BATCHWISE output
 │   ├── batchcorrect.py            # BatchCorrector class + batch-correction fit entry point
 │   ├── batchcorrecttransform.py   # Batch-correction transform entry point (imports batchcorrect.py)
 │   ├── ovwt.py                    # XGBoost one-vs-WT training + entry point
@@ -406,11 +415,11 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 
 **`load_batches`** (`utils/batches.py`) — accepts a path or glob pattern, reads matching Parquet files, tags each with `meta_batch` = filename stem, returns a concatenated `pl.LazyFrame` plus an output stem string.
 
-**Nextflow synchronization pattern** (`workflows/fisseq.nf`): `ANOVA` waits for all per-batch outputs to complete by collecting all batch stems into a single signal channel carrying the absolute `pipeline_dir` path; `BATCHVSBATCH`/`OVWT_GLOBAL` instead wait per active global group, via `group_qc_signal_ch`/`group_norm_signal_ch` (each built from `STAGE_GROUP_QC`/`STAGE_GROUP_NORM`'s output collected with `.groupTuple()`, keyed by group — see "Global groups" above and gotcha 6 below) rather than one flattened signal. `GLOBAL_FEATURE_SELECT` uses neither signal — it waits on `feature_select_ready_signal` (built the same "collect batch stems -> map to `pipeline_dir_abs`" way, but from `combined_bl_ch`, the last BATCHWISE feature-select artifact) since it only ever needs `feature_select_batchwise/` output, never staged cells. `ANOVA` is a single parameterized process (`modules/local/anova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow); `BATCHVSBATCH` (`modules/local/batchvsbatch.nf`) is likewise aliased twice, each alias additionally invoked once per active global group — `BATCHVSBATCH_PRE` waits on `group_qc_signal_ch` and globs that group's staged `qc_filter_cells/*.parquet` with `use_parent_name=false` (every `STAGE_GROUP_CELLS` output is flattened to `<batch_stem>.parquet`, so parent-dir naming is no longer needed), unfiltered; `BATCHVSBATCH_POST` waits on `group_norm_signal_ch` combined with `anova_blocklist_ch` (`ANOVA_BLOCKLIST`'s output) and globs that group's staged `normalization_cells/*.parquet`, filtered. `ANOVA_NORMALIZED` waits on `global_signal`/`normalization/cells/*.parquet` and `ANOVA_BATCH_CORRECTED` waits on `bc_signal`/`batch_correction/cells/*.parquet` — both ANOVA calls always run, unconditionally, over every batch regardless of group. `ANOVA_NORMALIZED`'s call sits earlier in `workflows/fisseq.nf` than `ANOVA_BATCH_CORRECTED`'s (right after `global_signal` is computed, not at the bottom) so its output channel can feed `ANOVA_BLOCKLIST`, which in turn is broadcast via `.combine()` onto `OVWT_BATCHWISE_FILTERED`, `OVWT_GLOBAL`, and `BATCHVSBATCH_POST` — the same broadcast-a-single-global-output idiom `BATCH_CORRECT_TRANSFORM` uses for `BATCH_CORRECT_FIT`'s output. `OVWT_BATCHWISE` is likewise a single parameterized process (`modules/local/ovwt_batchwise.nf`) aliased, in `FisseqPipeline`, into `OVWT_BATCHWISE_UNFILTERED` (no dependency on `ANOVA_BLOCKLIST` or `BARCODE_BLOCKLIST`; optional, gated by `params.run_ovwt`, default `true`), `OVWT_BATCHWISE_FEATURE_FILTERED` (depends on `ANOVA_BLOCKLIST`; optional, gated by `params.run_feature_filtered_ovwt`, default `true`; renamed from `run_filtered_ovwt`/`OVWT_BATCHWISE_FILTERED`), and `OVWT_BATCHWISE_BARCODE_FILTERED` (depends on that batch's `BARCODE_BLOCKLIST` output; optional, gated by `params.run_barcode_filtered_ovwt`, default `true`); the varying `feature_block_list_file`/`barcode_block_list_file` values are each passed as a `val` (not a Nextflow-staged `path`) so a Groovy `null` can flow straight through to `python -m fisseq_data_pipeline.ovwt`'s `feature_block_list_file=null`/`barcode_block_list_file=null` CLI args for calls that don't use them, the same `null`-passthrough trick `qc_filter.nf` uses for `qc_downsample_amounts`/`qc_n_variants`. All varying bits (glob path, `use_parent_name`, the two block-list vals, `publishDir` subpath) are passed in as process input values, not hardcoded per-call. Since `BARCODE_BLOCKLIST` runs per batch (unlike the global `ANOVA_BLOCKLIST`), `OVWT_BATCHWISE_BARCODE_FILTERED`'s input channel uses `norm_ch.join(barcode_blocklist_ch)` (both already keyed one-per-batch_stem) rather than `.combine()` (which is reserved for broadcasting a single global value, as `OVWT_BATCHWISE_FEATURE_FILTERED` does with `anova_blocklist_ch`). `OVWT_BATCHWISE`'s output tuple carries both `test_index.parquet` and `train_index.parquet` (the underlying `ovwt.py:main` always writes both, plus `val_index.parquet`, when `save_splits=True`; only the first two are wired into Nextflow).
+**Nextflow synchronization pattern** (`workflows/fisseq.nf`): `ANOVA`/`BATCHVSBATCH`/`OVWT_GLOBAL`/`BATCH_CORRECT_FIT` all wait per active global channel, via `channel_qc_signal_ch`/`channel_norm_signal_ch` (each built from `STAGE_CHANNEL_QC`/`STAGE_CHANNEL_NORM`'s output collected with `.groupTuple()`, keyed by channel — see "Global channels" above and gotcha 6 below) rather than one flattened signal. `GLOBAL_FEATURE_SELECT` uses neither signal — it waits on `feature_select_ready_signal` (built the same "collect batch stems -> map to `pipeline_dir_abs`" way, but from `combined_bl_ch`, the last BATCHWISE feature-select artifact) since it only ever needs `feature_select_batchwise/` output, never staged cells. `ANOVA` is a single parameterized process (`modules/local/anova.nf`) invoked twice via Nextflow's `include { X as Y }` aliasing (a process cannot be called twice under its own name in one workflow), each alias additionally invoked once per active global channel and threading `channel` through its output tuple so downstream consumers can join back to the right channel; `BATCHVSBATCH` (`modules/local/batchvsbatch.nf`) is likewise aliased twice, each alias additionally invoked once per active global channel — `BATCHVSBATCH_PRE` waits on `channel_qc_signal_ch` and globs that channel's staged `qc_filter_cells/*.parquet` with `use_parent_name=false` (every `STAGE_CHANNEL_CELLS` output is flattened to `<batch_stem>.parquet`, so parent-dir naming is no longer needed), unfiltered; `BATCHVSBATCH_POST` waits on `channel_norm_signal_ch` joined with `anova_blocklist_ch` (`ANOVA_BLOCKLIST`'s output, now one-per-channel) and globs that channel's staged `normalization_cells/*.parquet`, filtered. `ANOVA_NORMALIZED` waits on `channel_norm_signal_ch`/`normalization_cells/*.parquet` and `ANOVA_BATCH_CORRECTED` waits on `channel_bc_signal_ch`/`batch_correction/cells/*.parquet` — both ANOVA calls run once per active global channel, scoped to only that channel's batches; with no active channels, neither runs at all. `ANOVA_NORMALIZED`'s call sits earlier in `workflows/fisseq.nf` than `ANOVA_BATCH_CORRECTED`'s (right after `channel_norm_signal_ch` is computed, not at the bottom) so its output channel can feed `ANOVA_BLOCKLIST`, which in turn is `.join()`ed (per-channel, not a broadcast) onto `OVWT_GLOBAL` and `BATCHVSBATCH_POST` — `.join()` is safe here specifically because both sides are already collapsed to exactly one item per channel; `BATCH_CORRECT_TRANSFORM` instead uses `.combine(fit_out, by: 0)` for `BATCH_CORRECT_FIT`'s output, since the batch side genuinely fans out N batches per channel (not one-per-channel), the many-to-one shape `.join()` must never be used for. `OVWT_BATCHWISE` is likewise a single parameterized process (`modules/local/ovwt_batchwise.nf`) aliased, in `FisseqPipeline`, into `OVWT_BATCHWISE_UNFILTERED` (no dependency on `ANOVA_BLOCKLIST` or `BARCODE_BLOCKLIST`; optional, gated by `params.run_ovwt`, default `true`) and `OVWT_BATCHWISE_BARCODE_FILTERED` (depends on that batch's `BARCODE_BLOCKLIST` output; optional, gated by `params.run_barcode_filtered_ovwt`, default `true`); a third alias, `OVWT_BATCHWISE_FEATURE_FILTERED` (gated by the now-removed `params.run_feature_filtered_ovwt`), used to exist but was removed once `ANOVA_BLOCKLIST` became per-channel (see "Global channels" above); the varying `feature_block_list_file`/`barcode_block_list_file` values are each passed as a `val` (not a Nextflow-staged `path`) so a Groovy `null` can flow straight through to `python -m fisseq_data_pipeline.ovwt`'s `feature_block_list_file=null`/`barcode_block_list_file=null` CLI args for calls that don't use them, the same `null`-passthrough trick `qc_filter.nf` uses for `qc_downsample_amounts`/`qc_n_variants`. All varying bits (glob path, `use_parent_name`, the two block-list vals, `publishDir` subpath) are passed in as process input values, not hardcoded per-call. Since `BARCODE_BLOCKLIST` runs per batch (unlike the per-channel `ANOVA_BLOCKLIST`), `OVWT_BATCHWISE_BARCODE_FILTERED`'s input channel uses `norm_ch.join(barcode_blocklist_ch)` (both already keyed one-per-batch_stem) rather than `.combine()` (which is reserved for broadcasting a single value across every element of another channel). `OVWT_BATCHWISE`'s output tuple carries both `test_index.parquet` and `train_index.parquet` (the underlying `ovwt.py:main` always writes both, plus `val_index.parquet`, when `save_splits=True`; only the first two are wired into Nextflow).
 
 **Feature-selection pipeline** (`workflows/fisseq.nf`) has two independent parts. The BATCHWISE branch follows the same aliasing pattern as `ANOVA`/`BATCHVSBATCH`, applied to 7 processes (`AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT`), each aliased once as `*_BATCHWISE` (no `*_GLOBAL` alias exists anymore — see below). Channels are crossed via `.combine()` over `feature_types_ch` (`params.feature_select_types`) and `bootstrap_ch` (`1..params.feature_select_bootstrap_reps`), split into per-half tuples via `.flatMap()`, and re-paired via `.groupTuple()`. `BLOCKLIST`'s `groupTuple(by: [batch_stem, feature_type])` — gathering all `params.feature_select_bootstrap_reps` correlation replicates for one feature type before computing a median-`r` threshold — is the pipeline's only cross-bootstrap synchronization point; everything else in the split/aggregate/correlate chain is fully parallel across bootstrap × feature type (× half). `params.run_feature_selection` (default `true`, per-batch overridable) gates this whole branch per batch, via `norm_ch_feature_selected`'s `.filter()`.
 
-`GLOBAL_FEATURE_SELECT` (`globalfeatureselect.py`, `modules/local/global_feature_select.nf`) is a separate, single, non-aliased process — not part of the 7-process aliasing pattern above, and no bootstrap/split/correlate machinery of its own. It runs once per active group in `params.global_groups` (default `null` — none run at all), also gated on the pipeline-wide `params.run_feature_selection`. Per group, batch membership (only batches with THEIR OWN `run_feature_selection` enabled) is resolved directly from `resolvedBatchConfigs` in Groovy (`batchesByGroup`, built with `.collectEntries`/`.findAll`, no channel involved) and passed as a plain `val(batch_stems)` list; the process then loops over those batch stems in Python, reading each one's already-published `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly off `pipeline_dir` — join per-feature-type files, normalize to that batch's own synonymous baseline, take the cross-batch median, combine blocklists by agreement threshold (`params.global_feature_select_min_batches_ok`), run `pyc_feature_select`. `OVWT_GLOBAL` and both aliased `BATCHVSBATCH` calls (`_PRE`/`_POST`) likewise run once per active group, independently of `GLOBAL_FEATURE_SELECT` (e.g. run global processes separately per experiment/site/cohort, or not at all). `ANOVA` (`_NORMALIZED`/`_BATCH_CORRECTED`) and the batch-correction branch (`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`) always run regardless, over every batch.
+`GLOBAL_FEATURE_SELECT` (`globalfeatureselect.py`, `modules/local/global_feature_select.nf`) is a separate, single, non-aliased process — not part of the 7-process aliasing pattern above, and no bootstrap/split/correlate machinery of its own. It runs once per active channel in `params.global_channels` (default `null` — none run at all), also gated on the pipeline-wide `params.run_feature_selection`. Per channel, batch membership (only batches with THEIR OWN `run_feature_selection` enabled) is resolved directly from `resolvedBatchConfigs` in Groovy (`batchesByChannel`, built with `.collectEntries`/`.findAll`, no channel involved) and passed as a plain `val(batch_stems)` list; the process then loops over those batch stems in Python, reading each one's already-published `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly off `pipeline_dir` — join per-feature-type files, normalize to that batch's own synonymous baseline, take the cross-batch median, combine blocklists by agreement threshold (`params.global_feature_select_min_batches_ok`), run `pyc_feature_select`. `OVWT_GLOBAL`, both aliased `BATCHVSBATCH` calls (`_PRE`/`_POST`), `ANOVA` (`_NORMALIZED`/`_BATCH_CORRECTED`), and the batch-correction branch (`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`) all likewise run once per active channel, independently of `GLOBAL_FEATURE_SELECT` and of each other (e.g. run global processes separately per experiment/site/cohort, or not at all).
 
 **Single-cell scores and barcode-outlier detection** (`workflows/fisseq.nf`, `workflows/ovwt.nf`): `OVWT_CELLSCORES_BATCHWISE` (per batch, scores cells against `OVWT_BATCHWISE_UNFILTERED`'s models) is gated by `params.run_single_cell_scores` (default `false`) in `FisseqPipeline`, but always runs in `OvwtPipeline` (that workflow's entire purpose). In `FisseqPipeline`, this whole chain (`OVWT_CELLSCORES_BATCHWISE` → `CHECK_BARCODES` → `BARCODE_BLOCKLIST` → `OVWT_BATCHWISE_BARCODE_FILTERED`) also implicitly requires `params.run_ovwt` (default `true`) for that batch, since it consumes `OVWT_BATCHWISE_UNFILTERED`'s output directly — no separate "implies" check is needed for this since an empty upstream channel just produces an empty downstream one. In both workflows, `params.single_cell_scores_split` (`"test"` or `"train"`, default `"test"`; any other value fails fast with a clear error) selects which of `OVWT_BATCHWISE`'s two split-index outputs to score. Downstream, `CHECK_BARCODES` (per batch; per variant, a pairwise Tukey HSD across that variant's barcodes using each cell's own-model score as the response variable, via `checkbarcodes.py:compute_barcode_tukey` — computed as a single vectorized sufficient-statistics groupby + self-join, following `anova.py`'s pattern, rather than looping `statsmodels.stats.multicomp.pairwise_tukeyhsd` per variant) is gated by `params.run_check_barcodes` (default `false`), which also forces `run_single_cell_scores` on — so setting `run_check_barcodes = true` alone is sufficient; you don't need to also set `run_single_cell_scores`. `params.barcode_check_min_cells` (default `10`) drops barcodes with fewer cells before comparison; variants left with fewer than 2 qualifying barcodes are skipped (nothing to compare). `params.barcode_check_alpha` (default `0.05`) is the family-wise significance level for the `reject` flag.
 
@@ -430,7 +439,7 @@ Every entry point uses `@hydra.main(...)` with its config class registered in th
 | `python -m fisseq_data_pipeline.blocklist` | Median-`r`-across-bootstraps blocklist for one feature type |
 | `python -m fisseq_data_pipeline.combineblocklists` | Concatenate per-feature-type blocklists |
 | `python -m fisseq_data_pipeline.featureselect` | Final BATCHWISE stage: joins per-feature-type aggregates, applies combined blocklist, pycytominer selection |
-| `python -m fisseq_data_pipeline.globalfeatureselect` | Global (per group) stage: reuses member batches' BATCHWISE aggregates/blocklist directly, no cell-level recompute |
+| `python -m fisseq_data_pipeline.globalfeatureselect` | Global (per channel) stage: reuses member batches' BATCHWISE aggregates/blocklist directly, no cell-level recompute |
 | `python -m fisseq_data_pipeline.batchcorrect` | Fit two-pass centroid batch correction across all batches |
 | `python -m fisseq_data_pipeline.batchcorrecttransform` | Apply a fitted batch correction to a single batch |
 | `python -m fisseq_data_pipeline.ovwt` | One-vs-WT XGBoost training |
@@ -466,12 +475,6 @@ and `input/` folders:
     train_index.parquet         # columns: row_idx, origin_file
                                  # optional: params.run_ovwt (FisseqPipeline only; always
                                  # runs in OvwtPipeline)
-  ovwt_batchwise_feature_filtered/<batch>/  # filtered against anova_blocklist/anova_blocklist.parquet
-                                 # (renamed from ovwt_batchwise_filtered/)
-    results.parquet
-    models.pkl
-    test_index.parquet
-    train_index.parquet
   ovwt_batchwise_barcode_filtered/<batch>/  # filtered against that batch's
                                  # barcode_blocklist/<batch>/barcode_blocklist.parquet;
                                  # FisseqPipeline only, optional: params.run_barcode_filtered_ovwt
@@ -499,26 +502,31 @@ and `input/` folders:
     blocklists/<feature_type>.parquet                                    # stage 2d
     blocklist.parquet                                                    # stage 3 (combined)
     output.parquet                                                       # stage 4 (final)
-  batch_correction/
-    fit/stats_vb.parquet
-    fit/centroids.parquet
-    cells/<batch>.parquet
-    anova/anova.parquet          # from batch-corrected cells
-  anova/
-    anova.parquet                # from normalized cells
-  anova_blocklist/
-    anova_blocklist.parquet      # derived from anova/anova.parquet
-  global/<group>/                # one subtree per group in params.global_groups (default
-                                  # none) -- only that group's member batches (per-batch YAML
-                                  # global_group) contribute
-    qc_filter_cells/<batch>.parquet        # STAGE_GROUP_QC staging output
-    normalization_cells/<batch>.parquet    # STAGE_GROUP_NORM staging output
+  global/<channel>/               # one subtree per channel in params.global_channels
+                                   # (default none) -- only that channel's member batches
+                                   # (per-batch YAML global_channel) contribute. This is
+                                   # the ONLY place ANOVA/ANOVA_BLOCKLIST/BATCH_CORRECT_*
+                                   # output lands -- with no active channels, none of it
+                                   # exists anywhere in pipeline_dir.
+    qc_filter_cells/<batch>.parquet        # STAGE_CHANNEL_QC staging output
+    normalization_cells/<batch>.parquet    # STAGE_CHANNEL_NORM staging output
     batchvsbatch/
       pre/results.parquet         # pre batch correction (QC-filtered cells), unfiltered; columns: variant, batch, auroc, mw_pvalue, n_batch_cells, n_cells
-      post/results.parquet        # post batch correction (normalized cells), filtered against anova_blocklist/anova_blocklist.parquet
-    ovwt_global/                  # always filtered against anova_blocklist/anova_blocklist.parquet
+      post/results.parquet        # post batch correction (normalized cells), filtered against this channel's own anova_blocklist/anova_blocklist.parquet
+    anova/
+      anova.parquet                # from this channel's normalized cells
+    anova_blocklist/
+      anova_blocklist.parquet      # derived from this channel's anova/anova.parquet
+    ovwt_global/                  # always filtered against this channel's own anova_blocklist/anova_blocklist.parquet
       results.parquet
       models.pkl
+    batch_correction/
+      fit/stats_vb.parquet         # fit over this channel's own QC-filtered batches only
+      fit/centroids.parquet
+      cells/<batch>.parquet        # one task per (channel, batch) pair -- a batch in
+                                    # multiple channels gets a differently-corrected copy
+                                    # under each channel's own subtree
+      anova/anova.parquet          # from this channel's batch-corrected cells
     feature_select/                # GLOBAL_FEATURE_SELECT -- reuses member batches'
                                     # feature_select_batchwise/<batch>/ above directly,
                                     # not staged cells; no splits/half_aggregates/
@@ -600,7 +608,7 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 5. **Integration tests are slow and require Nextflow.** `tests/integration/test_integration.py` runs the full Nextflow pipeline on synthetic data using a session-scoped fixture. Skipping them (`uv run pytest tests/unit`) is standard for day-to-day development.
 
-6. **Global Nextflow processes glob for published files, not channel outputs.** `BATCHVSBATCH` and `OVWT_GLOBAL` read from disk after all upstream processes finish. This means: (a) relative `pipeline_dir` paths are resolved to absolute at workflow start; (b) `publishDir` paths in upstream modules must stay in sync with the globs passed into the global calls. Since these processes run once per active global group rather than once total, they don't glob the whole pipeline tree -- `STAGE_GROUP_CELLS` (`modules/local/stage_group.nf`) first republishes each group's member batches' `QC_FILTER`/`NORMALIZE` output into `global/<group>/{qc_filter_cells,normalization_cells}/` (flattened to `<batch_stem>.parquet` regardless of source), and `BATCHVSBATCH_PRE` globs that group's `qc_filter_cells/*.parquet` while `BATCHVSBATCH_POST`/`OVWT_GLOBAL` glob that group's `normalization_cells/*.parquet`. `GLOBAL_FEATURE_SELECT` follows the same "glob published output, not channel output" idiom but against a different tree entirely: it globs each member batch's `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly (member batches passed in as a plain `val(batch_stems)` list, not a staged directory), so it has no dependency on `STAGE_GROUP_CELLS`/`normalization_cells/` at all.
+6. **Global Nextflow processes glob for published files, not channel outputs.** `BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA`, and `BATCH_CORRECT_FIT` read from disk after all upstream processes finish. This means: (a) relative `pipeline_dir` paths are resolved to absolute at workflow start; (b) `publishDir` paths in upstream modules must stay in sync with the globs passed into the global calls. Since these processes run once per active global channel rather than once total, they don't glob the whole pipeline tree -- `STAGE_CHANNEL_CELLS` (`modules/local/stage_channel.nf`) first republishes each channel's member batches' `QC_FILTER`/`NORMALIZE` output into `global/<channel>/{qc_filter_cells,normalization_cells}/` (flattened to `<batch_stem>.parquet` regardless of source), and `BATCHVSBATCH_PRE`/`BATCH_CORRECT_FIT` glob that channel's `qc_filter_cells/*.parquet` while `BATCHVSBATCH_POST`/`OVWT_GLOBAL`/`ANOVA_NORMALIZED` glob that channel's `normalization_cells/*.parquet`. `GLOBAL_FEATURE_SELECT` follows the same "glob published output, not channel output" idiom but against a different tree entirely: it globs each member batch's `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly (member batches passed in as a plain `val(batch_stems)` list, not a staged directory), so it has no dependency on `STAGE_CHANNEL_CELLS`/`normalization_cells/` at all.
 
 7. **When `output_root` is set, it takes priority over `output_dir` in the underlying Hydra CLIs** (`aggregate.py`, `featureselect.py`) — the output file lands at `{output_root}.{stem}.parquet` regardless of `output_dir`, matching pre-existing behavior in `aggregate.py:main`/`featureselect.py:main`. `aggregate_feature_type.nf`, `aggregate_half.nf`, and `finalize_feature_select.nf` all pass `output_root` and therefore use `output_dir=.` (not a subdirectory) plus a glob-based `mv` to rename the result to the process's declared output filename. `finalize_feature_select.nf` additionally does `mkdir -p ft && mv ${feature_type_files} ft/` to isolate the multi-file `feature_type_files` input from the co-staged `block_list_file` before globbing. If you change output naming in `featureselect.py`/`aggregate.py`, update these workarounds. `globalfeatureselect.py`/`global_feature_select.nf` do not follow this pattern at all — no `output_root`, no `mv`; output filenames (`aggregate.parquet`, `blocklist.parquet`) are hardcoded, matching `blocklist.py`/`combineblocklists.py`'s simpler convention instead.
 
@@ -614,10 +622,10 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 12. **`<pipeline_dir>/configs/` is mandatory** — every batch is declared by a YAML config file there; `INPUT` generates `input/*.parquet` from it (one task per config file). There is no pre-staged-parquet mode. Like every other process, `INPUT` uses `errorStrategy 'ignore'` — a failed config conversion just drops that batch from the run rather than aborting, so a "missing" batch in the output may mean its `INPUT` task failed, not that it was never requested.
 
-13. **Any batch YAML in `configs/` can override most `nextflow.config` params for just that batch** — resolved once per batch, in Groovy, by `lib/BatchParams.groovy`'s `resolve()` (see `docs/configuration.md`'s "Per-batch parameter overrides" and "Global groups" sections for the full mechanism; unlike most of `docs/`, that page is current and was written alongside this code). Every override is logged via `log.info` at workflow-construction time — never buried in a process script. Four things to keep in mind:
+13. **Any batch YAML in `configs/` can override most `nextflow.config` params for just that batch** — resolved once per batch, in Groovy, by `lib/BatchParams.groovy`'s `resolve()` (see `docs/configuration.md`'s "Per-batch parameter overrides" and "Global channels" sections for the full mechanism; unlike most of `docs/`, that page is current and was written alongside this code). Every override is logged via `log.info` at workflow-construction time — never buried in a process script. Four things to keep in mind:
     - `input_paths` is the one required, batch-YAML-only key with **no** `nextflow.config` default — there's no sensible pipeline-wide default for a per-batch list of raw data files. A batch YAML that omits it fails clearly.
-    - `global_group` (string or list of strings) is the other batch-YAML-only key, but **optional** — a batch omitting it simply never contributes to any global run (see "Global groups" above and gotcha 6).
-    - Not every param has a per-batch meaning. `--global_groups`, `--batchvsbatch_min_cells`, `--batchvsbatch_min_batches`, `--anova_blocklist_pvalue_threshold`, `--feature_select_types`, `--feature_select_bootstrap_reps`, and `--global_feature_select_min_batches_ok` are consumed only by processes that run once across *all* (or, for most of these, all of one group's) batches (`BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA_BLOCKLIST`, `GLOBAL_FEATURE_SELECT`), so they're pipeline-wide-only — a batch YAML that tries to set one of these gets a clear rejection error (distinct wording from the plain-unrecognized-key error), not a silent no-op.
+    - `global_channel` (string or list of strings) is the other batch-YAML-only key, but **optional** — a batch omitting it simply never contributes to any global run (see "Global channels" above and gotcha 6).
+    - Not every param has a per-batch meaning. `--global_channels`, `--batchvsbatch_min_cells`, `--batchvsbatch_min_batches`, `--anova_blocklist_pvalue_threshold`, `--feature_select_types`, `--feature_select_bootstrap_reps`, and `--global_feature_select_min_batches_ok` are consumed only by processes that run once across *all* (or, for most of these, all of one channel's) batches (`BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA_BLOCKLIST`, `GLOBAL_FEATURE_SELECT`), so they're pipeline-wide-only — a batch YAML that tries to set one of these gets a clear rejection error (distinct wording from the plain-unrecognized-key error), not a silent no-op.
     - Processes reading a batch-overridable param never receive the whole batch YAML or a merged config map — only the individual resolved scalar(s) they consume, as `val()` inputs. This is deliberate: passing a whole file/map would make Nextflow's `-resume` cache key sensitive to every key in it, so an unrelated change in one batch's YAML would bust the cache for every process that batch feeds. `INPUT` itself no longer takes the raw YAML file as a process input for this same reason — it takes the resolved scalars and rebuilds a minimal YAML from them inside the process script.
 
 ---

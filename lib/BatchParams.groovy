@@ -1,6 +1,6 @@
 // lib/BatchParams.groovy — per-batch YAML parameter override resolution.
 // See docs/configuration.md's "Per-batch parameter overrides" and "Global
-// groups" sections for the full mechanism description and rationale.
+// channels" sections for the full mechanism description and rationale.
 //
 // This class is pure and side-effect-free (no log.info, no file I/O, no
 // dependency on a live Nextflow session or `log` binding) so it can be
@@ -49,7 +49,6 @@ class BatchParams {
         'single_cell_scores_split',
         // gating booleans with a per-batch-only effect
         'run_ovwt',
-        'run_feature_filtered_ovwt',
         'run_single_cell_scores',
         'run_check_barcodes',
         'run_barcode_filtered_ovwt',
@@ -73,7 +72,7 @@ class BatchParams {
     static final List<String> PIPELINE_WIDE_ONLY_KEYS = [
         'pipeline_mode',
         'pipeline_dir',
-        'global_groups',
+        'global_channels',
         'feature_select_types',
         'feature_select_bootstrap_reps',
         'global_feature_select_min_batches_ok',
@@ -85,10 +84,10 @@ class BatchParams {
     // The two batch-YAML-only keys, excluded from the general
     // override-symmetry mechanism (OVERRIDABLE_KEYS/PIPELINE_WIDE_ONLY_KEYS):
     // input_paths (required, no nextflow.config default -- see its handling
-    // below) and global_group (optional, also no nextflow.config default --
-    // a batch not naming any group simply never contributes to a global run).
+    // below) and global_channel (optional, also no nextflow.config default --
+    // a batch not naming any channel simply never contributes to a global run).
     static final String INPUT_PATHS_KEY = 'input_paths'
-    static final String GLOBAL_GROUP_KEY = 'global_group'
+    static final String GLOBAL_CHANNEL_KEY = 'global_channel'
 
     /**
      * Resolve one batch's fully-merged config.
@@ -127,23 +126,23 @@ class BatchParams {
             )
         }
 
-        // 1b. global_group: optional, batch-YAML-only. A bare string or a
+        // 1b. global_channel: optional, batch-YAML-only. A bare string or a
         // list of strings, normalized to a list (empty if omitted). Names
-        // which global_groups (see nextflow.config's params.global_groups)
-        // this batch contributes to -- a batch naming no group is simply
+        // which global_channels (see nextflow.config's params.global_channels)
+        // this batch contributes to -- a batch naming no channel is simply
         // excluded from every global run.
-        def rawGroup = batchYaml.get(GLOBAL_GROUP_KEY)
-        def globalGroup
-        if (rawGroup == null) {
-            globalGroup = []
-        } else if (rawGroup instanceof String) {
-            globalGroup = [rawGroup]
-        } else if (rawGroup instanceof List && rawGroup.every { it instanceof String }) {
-            globalGroup = rawGroup
+        def rawChannel = batchYaml.get(GLOBAL_CHANNEL_KEY)
+        def globalChannel
+        if (rawChannel == null) {
+            globalChannel = []
+        } else if (rawChannel instanceof String) {
+            globalChannel = [rawChannel]
+        } else if (rawChannel instanceof List && rawChannel.every { it instanceof String }) {
+            globalChannel = rawChannel
         } else {
             throw new IllegalArgumentException(
-                "Batch '${batchName}': '${GLOBAL_GROUP_KEY}' must be a string or a list " +
-                "of strings (got: ${rawGroup})"
+                "Batch '${batchName}': '${GLOBAL_CHANNEL_KEY}' must be a string or a list " +
+                "of strings (got: ${rawChannel})"
             )
         }
 
@@ -151,10 +150,10 @@ class BatchParams {
         def overrides = []
         def resolved = new LinkedHashMap<String, Object>(defaults)
         resolved[INPUT_PATHS_KEY] = inputPaths
-        resolved[GLOBAL_GROUP_KEY] = globalGroup
+        resolved[GLOBAL_CHANNEL_KEY] = globalChannel
 
         batchYaml.each { key, value ->
-            if (key == INPUT_PATHS_KEY || key == GLOBAL_GROUP_KEY) {
+            if (key == INPUT_PATHS_KEY || key == GLOBAL_CHANNEL_KEY) {
                 return // handled above
             }
             if (key in PIPELINE_WIDE_ONLY_KEYS) {

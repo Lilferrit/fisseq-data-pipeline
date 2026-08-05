@@ -139,22 +139,22 @@ def _stage_batch(
     _write_input_config(exp_dir / "configs" / f"{name}.yaml", source, **overrides)
 
 
-def _params_file_args(exp_dir: Path, global_groups) -> list:
-    """List-valued params (e.g. global_groups) can't be expressed as a bare
-    CLI flag -- `--global_groups foo,bar` arrives as the single String
+def _params_file_args(exp_dir: Path, global_channels) -> list:
+    """List-valued params (e.g. global_channels) can't be expressed as a bare
+    CLI flag -- `--global_channels foo,bar` arrives as the single String
     "foo,bar", and Groovy's `as List<String>` on a String splits it into
     individual characters, not comma-separated elements (see
     docs/configuration.md). A `-params-file` JSON document is parsed
     properly instead."""
-    if global_groups is None:
+    if global_channels is None:
         return []
     params_path = exp_dir / "_test_params.json"
     with open(params_path, "w") as f:
-        json.dump({"global_groups": list(global_groups)}, f)
+        json.dump({"global_channels": list(global_channels)}, f)
     return ["-params-file", str(params_path)]
 
 
-def _run_pipeline(exp_dir: Path, global_groups=None) -> subprocess.CompletedProcess:
+def _run_pipeline(exp_dir: Path, global_channels=None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
             "nextflow",
@@ -164,7 +164,7 @@ def _run_pipeline(exp_dir: Path, global_groups=None) -> subprocess.CompletedProc
             "false",
             "--pipeline_dir",
             str(exp_dir),
-            *_params_file_args(exp_dir, global_groups),
+            *_params_file_args(exp_dir, global_channels),
             *_NF_PARAMS,
         ],
         cwd=exp_dir,
@@ -298,25 +298,23 @@ def test_pipeline_normalization_outputs(pipeline_outputs, batch_stem):
 
 
 def test_pipeline_no_global_dir_by_default(pipeline_outputs):
-    """params.global_groups defaults to null -- no global processes run and
-    no global/ directory is produced at all unless a group is active."""
+    """params.global_channels defaults to null -- no global processes run and
+    no global/ directory is produced at all unless a channel is active. This
+    includes the entire ANOVA/ANOVA_BLOCKLIST/BATCH_CORRECT_FIT/TRANSFORM/
+    ANOVA_BATCH_CORRECTED chain, which is now a purely per-channel feature --
+    so the old top-level anova/, anova_blocklist/, and batch_correction/
+    directories must not exist either."""
     exp_dir, _ = pipeline_outputs
     assert not (exp_dir / "global").exists()
+    assert not (exp_dir / "anova").exists()
+    assert not (exp_dir / "anova_blocklist").exists()
+    assert not (exp_dir / "batch_correction").exists()
 
 
 @pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
 def test_pipeline_ovwt_batchwise_outputs(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
-    assert (batch_dir / "results.parquet").exists()
-    assert (batch_dir / "models.pkl").exists()
-    assert (batch_dir / "test_index.parquet").exists()
-
-
-@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
-def test_pipeline_ovwt_batchwise_feature_filtered_outputs(pipeline_outputs, batch_stem):
-    exp_dir, _ = pipeline_outputs
-    batch_dir = exp_dir / "ovwt_batchwise_feature_filtered" / batch_stem
     assert (batch_dir / "results.parquet").exists()
     assert (batch_dir / "models.pkl").exists()
     assert (batch_dir / "test_index.parquet").exists()
@@ -343,24 +341,6 @@ def test_pipeline_feature_select_batchwise_outputs(pipeline_outputs, batch_stem)
     batch_dir = exp_dir / "feature_select_batchwise" / batch_stem
     assert (batch_dir / "output.parquet").exists()
     assert (batch_dir / "blocklist.parquet").exists()
-
-
-def test_pipeline_anova_outputs(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "anova" / "anova.parquet").exists()
-
-
-def test_pipeline_anova_blocklist_outputs(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "anova_blocklist" / "anova_blocklist.parquet").exists()
-
-
-def test_anova_blocklist_has_expected_columns(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "anova_blocklist" / "anova_blocklist.parquet")
-    expected = {"feature", "p_value", "feature_ok"}
-    assert expected.issubset(set(df.columns))
-    assert len(df) > 0
 
 
 def test_single_cell_scores_and_check_barcodes_disabled_by_default(pipeline_outputs):
@@ -424,119 +404,53 @@ def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_ste
     assert "feature_ok" in df.columns
 
 
-def test_anova_has_expected_columns(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "anova" / "anova.parquet")
-    expected = {"feature", "f_value", "p_value"}
-    assert expected.issubset(set(df.columns))
-    assert len(df) > 0
-
-
-def test_anova_f_statistic_is_finite(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "anova" / "anova.parquet")
-    assert df["f_value"].is_finite().all()
-    assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
-
-
 # ---------------------------------------------------------------------------
-# Batch correction branch (qc_filtering -> batch_correction -> anova),
-# independent of the normalize branch above.
-# ---------------------------------------------------------------------------
-
-
-def test_pipeline_batch_correction_fit_outputs(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    fit_dir = exp_dir / "batch_correction" / "fit"
-    assert (fit_dir / "stats_vb.parquet").exists()
-    assert (fit_dir / "centroids.parquet").exists()
-
-
-@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
-def test_pipeline_batch_correction_cells_outputs(pipeline_outputs, batch_stem):
-    exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "batch_correction" / "cells" / f"{batch_stem}.parquet").exists()
-
-
-def test_pipeline_batch_correction_anova_outputs(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    assert (exp_dir / "batch_correction" / "anova" / "anova.parquet").exists()
-
-
-def test_batch_correction_anova_has_expected_columns(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "batch_correction" / "anova" / "anova.parquet")
-    expected = {"feature", "f_value", "p_value"}
-    assert expected.issubset(set(df.columns))
-    assert len(df) > 0
-
-
-def test_batch_correction_anova_f_statistic_is_finite(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df = pl.read_parquet(exp_dir / "batch_correction" / "anova" / "anova.parquet")
-    assert df["f_value"].is_finite().all()
-    assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
-
-
-def test_batch_correction_wt_means_converge_across_batches(pipeline_outputs):
-    exp_dir, _ = pipeline_outputs
-    df1 = pl.read_parquet(exp_dir / "batch_correction" / "cells" / "batch1.parquet")
-    df2 = pl.read_parquet(exp_dir / "batch_correction" / "cells" / "batch2.parquet")
-    wt1 = df1.filter(pl.col("meta_aa_changes") == "WT")
-    wt2 = df2.filter(pl.col("meta_aa_changes") == "WT")
-    feature_cols = [c for c in df1.columns if not c.startswith("meta_")]
-    for col in feature_cols:
-        mean1 = wt1[col].drop_nulls().mean()
-        mean2 = wt2[col].drop_nulls().mean()
-        assert abs(mean1 - mean2) < 0.5, (
-            f"WT mean for {col} did not converge across batches after batch correction"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Global groups (params.global_groups / each batch's YAML global_group key).
-# Four batches: batch1 in group "siteA" only, batch2 in both "siteA" and
-# "siteB", batch3 in "siteB" only, batch4 in no group at all -- exercises
-# per-group scoping (overlapping and non-overlapping membership) and
-# exclusion of ungrouped batches, all in one run.
+# Global channels (params.global_channels / each batch's YAML global_channel
+# key). Four batches: batch1 in channel "siteA" only, batch2 in both "siteA"
+# and "siteB", batch3 in "siteB" only, batch4 in no channel at all --
+# exercises per-channel scoping (overlapping and non-overlapping membership)
+# and exclusion of unchanneled batches, all in one run. This is also the only
+# fixture where ANOVA/ANOVA_BLOCKLIST/BATCH_CORRECT_FIT/TRANSFORM/
+# ANOVA_BATCH_CORRECTED produce any output at all, since that whole chain is
+# now purely per-channel (see test_pipeline_no_global_dir_by_default above).
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
-def grouped_global_pipeline_outputs(tmp_path_factory):
+def global_channel_pipeline_outputs(tmp_path_factory):
     if shutil.which("nextflow") is None:
         pytest.skip("nextflow not on PATH")
 
-    exp_dir = tmp_path_factory.mktemp("nf_grouped_experiment")
-    raw_dir = tmp_path_factory.mktemp("nf_grouped_raw")
-    _stage_batch(exp_dir, raw_dir, "batch1", seed=1, global_group="siteA")
-    _stage_batch(exp_dir, raw_dir, "batch2", seed=2, global_group=["siteA", "siteB"])
-    _stage_batch(exp_dir, raw_dir, "batch3", seed=3, global_group="siteB")
-    _stage_batch(exp_dir, raw_dir, "batch4", seed=4)  # no global_group at all
+    exp_dir = tmp_path_factory.mktemp("nf_channel_experiment")
+    raw_dir = tmp_path_factory.mktemp("nf_channel_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=1, global_channel="siteA")
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=2, global_channel=["siteA", "siteB"])
+    _stage_batch(exp_dir, raw_dir, "batch3", seed=3, global_channel="siteB")
+    _stage_batch(exp_dir, raw_dir, "batch4", seed=4)  # no global_channel at all
 
-    result = _run_pipeline(exp_dir, global_groups=["siteA", "siteB"])
+    result = _run_pipeline(exp_dir, global_channels=["siteA", "siteB"])
     return exp_dir, result
 
 
-def test_grouped_pipeline_exits_cleanly(grouped_global_pipeline_outputs):
-    _, result = grouped_global_pipeline_outputs
+def test_channeled_pipeline_exits_cleanly(global_channel_pipeline_outputs):
+    _, result = global_channel_pipeline_outputs
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("group", ["siteA", "siteB"])
-def test_grouped_batchvsbatch_outputs(grouped_global_pipeline_outputs, group):
-    exp_dir, _ = grouped_global_pipeline_outputs
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_batchvsbatch_outputs(global_channel_pipeline_outputs, channel):
+    exp_dir, _ = global_channel_pipeline_outputs
     assert (
-        exp_dir / "global" / group / "batchvsbatch" / "pre" / "results.parquet"
+        exp_dir / "global" / channel / "batchvsbatch" / "pre" / "results.parquet"
     ).exists()
     assert (
-        exp_dir / "global" / group / "batchvsbatch" / "post" / "results.parquet"
+        exp_dir / "global" / channel / "batchvsbatch" / "post" / "results.parquet"
     ).exists()
 
 
 @pytest.mark.parametrize("stage", ["pre", "post"])
-def test_batchvsbatch_has_expected_columns(grouped_global_pipeline_outputs, stage):
-    exp_dir, _ = grouped_global_pipeline_outputs
+def test_batchvsbatch_has_expected_columns(global_channel_pipeline_outputs, stage):
+    exp_dir, _ = global_channel_pipeline_outputs
     df = pl.read_parquet(
         exp_dir / "global" / "siteA" / "batchvsbatch" / stage / "results.parquet"
     )
@@ -545,72 +459,122 @@ def test_batchvsbatch_has_expected_columns(grouped_global_pipeline_outputs, stag
     assert len(df) > 0
 
 
-@pytest.mark.parametrize("group", ["siteA", "siteB"])
-def test_grouped_ovwt_global_outputs(grouped_global_pipeline_outputs, group):
-    exp_dir, _ = grouped_global_pipeline_outputs
-    assert (exp_dir / "global" / group / "ovwt_global" / "results.parquet").exists()
-    assert (exp_dir / "global" / group / "ovwt_global" / "models.pkl").exists()
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_ovwt_global_outputs(global_channel_pipeline_outputs, channel):
+    exp_dir, _ = global_channel_pipeline_outputs
+    assert (exp_dir / "global" / channel / "ovwt_global" / "results.parquet").exists()
+    assert (exp_dir / "global" / channel / "ovwt_global" / "models.pkl").exists()
 
 
-@pytest.mark.parametrize("group", ["siteA", "siteB"])
-def test_grouped_feature_select_global_outputs(grouped_global_pipeline_outputs, group):
-    exp_dir, _ = grouped_global_pipeline_outputs
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_feature_select_global_outputs(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
     assert (
-        exp_dir / "global" / group / "feature_select" / "aggregate.parquet"
+        exp_dir / "global" / channel / "feature_select" / "aggregate.parquet"
     ).exists()
     assert (
-        exp_dir / "global" / group / "feature_select" / "blocklist.parquet"
+        exp_dir / "global" / channel / "feature_select" / "blocklist.parquet"
     ).exists()
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_anova_outputs(global_channel_pipeline_outputs, channel):
+    exp_dir, _ = global_channel_pipeline_outputs
+    assert (exp_dir / "global" / channel / "anova" / "anova.parquet").exists()
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_anova_blocklist_outputs(global_channel_pipeline_outputs, channel):
+    exp_dir, _ = global_channel_pipeline_outputs
+    assert (
+        exp_dir / "global" / channel / "anova_blocklist" / "anova_blocklist.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_anova_blocklist_has_expected_columns(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / channel / "anova_blocklist" / "anova_blocklist.parquet"
+    )
+    expected = {"feature", "p_value", "feature_ok"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_anova_has_expected_columns(global_channel_pipeline_outputs, channel):
+    exp_dir, _ = global_channel_pipeline_outputs
+    df = pl.read_parquet(exp_dir / "global" / channel / "anova" / "anova.parquet")
+    expected = {"feature", "f_value", "p_value"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_anova_f_statistic_is_finite(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    df = pl.read_parquet(exp_dir / "global" / channel / "anova" / "anova.parquet")
+    assert df["f_value"].is_finite().all()
+    assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
 
 
 @pytest.mark.parametrize(
-    "group,expected_batches",
+    "channel,expected_batches",
     [("siteA", {"batch1", "batch2"}), ("siteB", {"batch2", "batch3"})],
 )
-def test_grouped_batchvsbatch_scoped_to_group_membership(
-    grouped_global_pipeline_outputs, group, expected_batches
+def test_channeled_batchvsbatch_scoped_to_channel_membership(
+    global_channel_pipeline_outputs, channel, expected_batches
 ):
-    exp_dir, _ = grouped_global_pipeline_outputs
+    exp_dir, _ = global_channel_pipeline_outputs
     df = pl.read_parquet(
-        exp_dir / "global" / group / "batchvsbatch" / "post" / "results.parquet"
+        exp_dir / "global" / channel / "batchvsbatch" / "post" / "results.parquet"
     )
     assert set(df["batch"].unique().to_list()) == expected_batches
 
 
-@pytest.mark.parametrize("group", ["siteA", "siteB"])
-def test_grouped_ovwt_global_scoped_to_group_membership(
-    grouped_global_pipeline_outputs, group
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_ovwt_global_scoped_to_channel_membership(
+    global_channel_pipeline_outputs, channel
 ):
-    """Each group has exactly 2 member batches -- meta_batch_num_unique must
-    reflect only that group's batches, not all 4 batches in the run."""
-    exp_dir, _ = grouped_global_pipeline_outputs
-    df = pl.read_parquet(exp_dir / "global" / group / "ovwt_global" / "results.parquet")
+    """Each channel has exactly 2 member batches -- meta_batch_num_unique must
+    reflect only that channel's batches, not all 4 batches in the run."""
+    exp_dir, _ = global_channel_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / channel / "ovwt_global" / "results.parquet"
+    )
     assert (df["meta_batch_num_unique"] == 2).all()
 
 
-@pytest.mark.parametrize("group", ["siteA", "siteB"])
-def test_grouped_feature_select_global_scoped_to_group_membership(
-    grouped_global_pipeline_outputs, group
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_feature_select_global_scoped_to_channel_membership(
+    global_channel_pipeline_outputs, channel
 ):
     """GLOBAL_FEATURE_SELECT's aggregate has no per-variant batch metadata
     (unlike the BATCHWISE finalize output) -- verify scoping instead via the
     blocklist's n_batches column, which counts how many member batches'
-    blocklists contributed to each feature's global decision. Each group has
-    exactly 2 member batches."""
-    exp_dir, _ = grouped_global_pipeline_outputs
+    blocklists contributed to each feature's global decision. Each channel
+    has exactly 2 member batches."""
+    exp_dir, _ = global_channel_pipeline_outputs
     df = pl.read_parquet(
-        exp_dir / "global" / group / "feature_select" / "blocklist.parquet"
+        exp_dir / "global" / channel / "feature_select" / "blocklist.parquet"
     )
     assert (df["n_batches"] == 2).all()
 
 
-def test_grouped_stage_group_normalization_cells_scoped(
-    grouped_global_pipeline_outputs,
+def test_channeled_stage_channel_normalization_cells_scoped(
+    global_channel_pipeline_outputs,
 ):
-    """Regression test for the STAGE_GROUP_CELLS staging mechanism itself:
-    each group's normalization_cells/ directory must contain exactly that
-    group's member batches, nothing more."""
-    exp_dir, _ = grouped_global_pipeline_outputs
+    """Regression test for the STAGE_CHANNEL_CELLS staging mechanism itself:
+    each channel's normalization_cells/ directory must contain exactly that
+    channel's member batches, nothing more."""
+    exp_dir, _ = global_channel_pipeline_outputs
     site_a = {
         p.stem
         for p in (exp_dir / "global" / "siteA" / "normalization_cells").glob(
@@ -627,19 +591,134 @@ def test_grouped_stage_group_normalization_cells_scoped(
     assert site_b == {"batch2", "batch3"}
 
 
-def test_grouped_batch_with_no_group_excluded_from_global_only(
-    grouped_global_pipeline_outputs,
+def test_channeled_batch_with_no_channel_excluded_from_global_only(
+    global_channel_pipeline_outputs,
 ):
-    """batch4 has no global_group key -- it must never appear in any group's
-    global output, even though params.global_groups is non-empty, but it is
-    still fully processed batchwise like every other batch."""
-    exp_dir, _ = grouped_global_pipeline_outputs
+    """batch4 has no global_channel key -- it must never appear in any
+    channel's global output, even though params.global_channels is
+    non-empty, but it is still fully processed batchwise like every other
+    batch."""
+    exp_dir, _ = global_channel_pipeline_outputs
     assert (exp_dir / "qc_filter" / "batch4" / "filtered_cells.parquet").exists()
-    for group in ("siteA", "siteB"):
+    for channel in ("siteA", "siteB"):
         df = pl.read_parquet(
-            exp_dir / "global" / group / "batchvsbatch" / "post" / "results.parquet"
+            exp_dir / "global" / channel / "batchvsbatch" / "post" / "results.parquet"
         )
         assert "batch4" not in df["batch"].unique().to_list()
+
+
+# ---------------------------------------------------------------------------
+# Batch correction branch (qc_filtering -> batch_correction -> anova),
+# independent of the normalize branch above. Per-channel, same fixture as
+# the rest of the global-channel tests above.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_batch_correction_fit_outputs(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    fit_dir = exp_dir / "global" / channel / "batch_correction" / "fit"
+    assert (fit_dir / "stats_vb.parquet").exists()
+    assert (fit_dir / "centroids.parquet").exists()
+
+
+@pytest.mark.parametrize(
+    "channel,batch_stem",
+    [
+        ("siteA", "batch1"),
+        ("siteA", "batch2"),
+        ("siteB", "batch2"),
+        ("siteB", "batch3"),
+    ],
+)
+def test_channeled_batch_correction_cells_outputs(
+    global_channel_pipeline_outputs, channel, batch_stem
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    assert (
+        exp_dir
+        / "global"
+        / channel
+        / "batch_correction"
+        / "cells"
+        / f"{batch_stem}.parquet"
+    ).exists()
+
+
+def test_channeled_batch_correction_excludes_unchanneled_batch(
+    global_channel_pipeline_outputs,
+):
+    """batch4 belongs to no active channel -- it must be skipped by the
+    entire batch-correction chain, not just BATCHVSBATCH/OVWT_GLOBAL."""
+    exp_dir, _ = global_channel_pipeline_outputs
+    for channel in ("siteA", "siteB"):
+        assert not (
+            exp_dir
+            / "global"
+            / channel
+            / "batch_correction"
+            / "cells"
+            / "batch4.parquet"
+        ).exists()
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_batch_correction_anova_outputs(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    assert (
+        exp_dir / "global" / channel / "batch_correction" / "anova" / "anova.parquet"
+    ).exists()
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_batch_correction_anova_has_expected_columns(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / channel / "batch_correction" / "anova" / "anova.parquet"
+    )
+    expected = {"feature", "f_value", "p_value"}
+    assert expected.issubset(set(df.columns))
+    assert len(df) > 0
+
+
+@pytest.mark.parametrize("channel", ["siteA", "siteB"])
+def test_channeled_batch_correction_anova_f_statistic_is_finite(
+    global_channel_pipeline_outputs, channel
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "global" / channel / "batch_correction" / "anova" / "anova.parquet"
+    )
+    assert df["f_value"].is_finite().all()
+    assert df["p_value"].is_between(0.0, 1.0, closed="both").all()
+
+
+@pytest.mark.parametrize(
+    "channel,batch_a,batch_b",
+    [("siteA", "batch1", "batch2"), ("siteB", "batch2", "batch3")],
+)
+def test_channeled_batch_correction_wt_means_converge_across_batches(
+    global_channel_pipeline_outputs, channel, batch_a, batch_b
+):
+    exp_dir, _ = global_channel_pipeline_outputs
+    cells_dir = exp_dir / "global" / channel / "batch_correction" / "cells"
+    df1 = pl.read_parquet(cells_dir / f"{batch_a}.parquet")
+    df2 = pl.read_parquet(cells_dir / f"{batch_b}.parquet")
+    wt1 = df1.filter(pl.col("meta_aa_changes") == "WT")
+    wt2 = df2.filter(pl.col("meta_aa_changes") == "WT")
+    feature_cols = [c for c in df1.columns if not c.startswith("meta_")]
+    for col in feature_cols:
+        mean1 = wt1[col].drop_nulls().mean()
+        mean2 = wt2[col].drop_nulls().mean()
+        assert abs(mean1 - mean2) < 0.5, (
+            f"WT mean for {col} did not converge across batches after batch correction"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -757,17 +836,16 @@ def test_pipeline_ovwt_batchwise_barcode_filtered_outputs(
 
 @pytest.fixture(scope="session")
 def disabled_toggles_pipeline_outputs(tmp_path_factory):
-    """run_barcode_filtered_ovwt, run_feature_filtered_ovwt, and run_wtvwt each
-    gate their own unrelated branch of the DAG (BARCODE_BLOCKLIST/
-    OVWT_BATCHWISE_BARCODE_FILTERED, OVWT_BATCHWISE_FEATURE_FILTERED, and
+    """run_barcode_filtered_ovwt and run_wtvwt each gate their own unrelated
+    branch of the DAG (BARCODE_BLOCKLIST/OVWT_BATCHWISE_BARCODE_FILTERED and
     WTVWT_BATCHWISE respectively) with no interaction between them, so one run
-    with all three disabled can verify each toggle's effect independently --
-    no need for three separate `nextflow run` invocations. Uses
+    with both disabled can verify each toggle's effect independently -- no
+    need for two separate `nextflow run` invocations. Uses
     _CHECK_BARCODES_NF_PARAMS (run_check_barcodes=true) so
     run_barcode_filtered_ovwt=false is actually exercised (it only takes
     effect when run_check_barcodes is also true). Also leaves
-    params.global_groups unset (the default), so this doubles as the
-    "no groups active" case for the no-global-dir assertion below."""
+    params.global_channels unset (the default), so this doubles as the
+    "no channels active" case for the no-global-dir assertion below."""
     if shutil.which("nextflow") is None:
         pytest.skip("nextflow not on PATH")
 
@@ -786,8 +864,6 @@ def disabled_toggles_pipeline_outputs(tmp_path_factory):
             "--pipeline_dir",
             str(exp_dir),
             "--run_barcode_filtered_ovwt",
-            "false",
-            "--run_feature_filtered_ovwt",
             "false",
             "--run_wtvwt",
             "false",
@@ -866,27 +942,6 @@ def test_invalid_single_cell_scores_source_fails(tmp_path_factory):
     assert "single_cell_scores_split" in (result.stdout + result.stderr)
 
 
-def test_run_feature_filtered_ovwt_disabled_skips_filtered_output(
-    disabled_toggles_pipeline_outputs,
-):
-    """params.run_feature_filtered_ovwt defaults to true (see
-    test_pipeline_ovwt_batchwise_feature_filtered_outputs for the
-    default-enabled case); false must skip OVWT_BATCHWISE_FEATURE_FILTERED
-    entirely."""
-    exp_dir, _ = disabled_toggles_pipeline_outputs
-    assert not (exp_dir / "ovwt_batchwise_feature_filtered").exists()
-
-
-@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
-def test_run_feature_filtered_ovwt_disabled_unfiltered_output_unaffected(
-    disabled_toggles_pipeline_outputs, batch_stem
-):
-    exp_dir, _ = disabled_toggles_pipeline_outputs
-    batch_dir = exp_dir / "ovwt_batchwise" / batch_stem
-    assert (batch_dir / "results.parquet").exists()
-    assert (batch_dir / "models.pkl").exists()
-
-
 def test_run_wtvwt_disabled_skips_wtvwt_batchwise_output(
     disabled_toggles_pipeline_outputs,
 ):
@@ -904,7 +959,7 @@ def test_run_wtvwt_disabled_ovwt_output_unaffected(disabled_toggles_pipeline_out
 
 
 def test_disabled_toggles_pipeline_no_global_dir(disabled_toggles_pipeline_outputs):
-    """params.global_groups is left unset here (the default) -- no global/
+    """params.global_channels is left unset here (the default) -- no global/
     directory should exist even on a run that otherwise exercises many
     other toggles."""
     exp_dir, _ = disabled_toggles_pipeline_outputs
@@ -1124,10 +1179,10 @@ def test_batch_yaml_missing_input_paths_rejected(tmp_path_factory):
 
 
 def test_batch_yaml_pipeline_wide_key_rejected(tmp_path_factory):
-    """global_groups (like the old run_global before it) is pipeline-wide-only
-    -- a batch YAML that tries to set it gets a clear rejection, distinct
-    from the unrecognized-key case below."""
-    exp_dir = _two_batch_config_dir(tmp_path_factory, global_groups=["siteA"])
+    """global_channels (like the old run_global before it) is
+    pipeline-wide-only -- a batch YAML that tries to set it gets a clear
+    rejection, distinct from the unrecognized-key case below."""
+    exp_dir = _two_batch_config_dir(tmp_path_factory, global_channels=["siteA"])
     result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode != 0
     output = result.stdout + result.stderr
@@ -1136,11 +1191,11 @@ def test_batch_yaml_pipeline_wide_key_rejected(tmp_path_factory):
     assert "unrecognized" not in output
 
 
-def test_batch_yaml_global_group_accepted(tmp_path_factory):
-    """Unlike global_groups (pipeline-wide-only, plural), global_group
+def test_batch_yaml_global_channel_accepted(tmp_path_factory):
+    """Unlike global_channels (pipeline-wide-only, plural), global_channel
     (singular, batch-YAML-only) must be accepted -- not rejected as
     unrecognized or pipeline-wide-only."""
-    exp_dir = _two_batch_config_dir(tmp_path_factory, global_group="siteA")
+    exp_dir = _two_batch_config_dir(tmp_path_factory, global_channel="siteA")
     result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode == 0, result.stderr
     output = result.stdout + result.stderr
@@ -1148,8 +1203,8 @@ def test_batch_yaml_global_group_accepted(tmp_path_factory):
     assert "pipeline-wide-only" not in output
 
 
-def test_batch_yaml_global_group_list_accepted(tmp_path_factory):
-    """global_group may also be a list of strings."""
-    exp_dir = _two_batch_config_dir(tmp_path_factory, global_group=["siteA", "siteB"])
+def test_batch_yaml_global_channel_list_accepted(tmp_path_factory):
+    """global_channel may also be a list of strings."""
+    exp_dir = _two_batch_config_dir(tmp_path_factory, global_channel=["siteA", "siteB"])
     result = _run_ovwt_pipeline(exp_dir)
     assert result.returncode == 0, result.stderr

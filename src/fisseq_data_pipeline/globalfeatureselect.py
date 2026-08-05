@@ -1,9 +1,9 @@
-"""Global (cross-batch, per group) feature-selection stage.
+"""Global (cross-batch, per channel) feature-selection stage.
 
 Hydra entry point backing the Nextflow process ``GLOBAL_FEATURE_SELECT``. Runs
-once per active ``global_group``, reusing the already-computed BATCHWISE
+once per active ``global_channel``, reusing the already-computed BATCHWISE
 feature-selection artifacts (:mod:`.aggregatefeaturetype`,
-:mod:`.combineblocklists`) for that group's member batches instead of
+:mod:`.combineblocklists`) for that channel's member batches instead of
 recomputing anything from raw cells:
 
 1. Combine each member batch's own combined blocklist
