@@ -2028,6 +2028,11 @@ at least one channel is active.</p>
 <td><code>null</code></td>
 <td><code>INPUT</code>: optional path to a glob-pattern feature blocklist file.</td>
 </tr>
+<tr>
+<td><code>--csv_schema_scan_rows</code></td>
+<td><code>100</code></td>
+<td><code>INPUT</code>: rows scanned from each CSV <code>input_paths</code> source to infer column dtypes (polars <code>scan_csv</code>'s <code>infer_schema_length</code>). <code>null</code> scans every row. No effect on parquet sources.</td>
+</tr>
 </tbody>
 </table>
 <p>These mirror <code>INPUT</code>'s per-batch YAML <code>config_path</code> schema (see
