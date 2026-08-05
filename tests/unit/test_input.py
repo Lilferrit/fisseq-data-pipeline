@@ -40,6 +40,44 @@ def test_load_and_tag_rejects_unsupported_extension(tmp_path):
         load_and_tag(str(p)).collect()
 
 
+def _write_sparse_csv(path, n_empty, n_float):
+    """Write a CSV whose 'b' column is empty for the first n_empty rows, then
+    a float for the next n_float rows -- a value only visible past a small
+    infer_schema_length sample. Includes the identity columns
+    (upBarcode/aaChanges/editDistance) main()'s select_output_columns
+    requires, so this doubles as a source for both load_and_tag tests
+    (which only care about 'a'/'b') and main() tests."""
+    lines = ["upBarcode,aaChanges,editDistance,a,b"]
+    for i in range(n_empty):
+        lines.append(f"bc{i},M1K,0,{i},")
+    for i in range(n_float):
+        lines.append(f"bc{n_empty + i},M1K,0,{n_empty + i},1.5")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def test_load_and_tag_infer_schema_length_affects_csv_dtype(tmp_path):
+    p = tmp_path / "sparse.csv"
+    _write_sparse_csv(p, n_empty=120, n_float=10)
+
+    small_sample = load_and_tag(str(p), infer_schema_length=100).collect()
+    full_scan = load_and_tag(str(p), infer_schema_length=None).collect()
+
+    # With only the (empty) first 100 rows sampled, the column's only-later
+    # float value forces it to String; scanning every row correctly infers
+    # Float64.
+    assert small_sample["b"].dtype == pl.String
+    assert full_scan["b"].dtype == pl.Float64
+
+
+def test_load_and_tag_infer_schema_length_defaults_to_100(tmp_path):
+    p = tmp_path / "sparse.csv"
+    _write_sparse_csv(p, n_empty=120, n_float=10)
+
+    result = load_and_tag(str(p)).collect()
+
+    assert result["b"].dtype == pl.String
+
+
 def test_load_and_concat_sums_row_counts(tmp_path):
     p1 = tmp_path / "a.parquet"
     p2 = tmp_path / "b.parquet"
@@ -311,3 +349,40 @@ def test_main_blocked_feature_absent_from_output(tmp_path):
     result = pl.read_parquet(tmp_path / "out" / "output.parquet")
     assert "Cells_AreaShape_Area" in result.columns
     assert "Nuclei_Texture_Contrast" not in result.columns
+
+
+# ---------------------------------------------------------------------------
+# main() — csv_schema_scan_rows
+# ---------------------------------------------------------------------------
+
+
+def test_main_default_csv_schema_scan_rows_mis_infers_sparse_column(tmp_path):
+    source = tmp_path / "source.csv"
+    _write_sparse_csv(source, n_empty=120, n_float=10)
+
+    config_path = tmp_path / "config.yaml"
+    with open(config_path, "w") as f:
+        yaml.safe_dump({"input_paths": [str(source)]}, f)
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    result = pl.read_parquet(tmp_path / "out" / "output.parquet")
+    # Default 100-row sample never sees 'b's float values -> mis-inferred String.
+    assert result["b"].dtype == pl.String
+
+
+def test_main_csv_schema_scan_rows_override_infers_correct_dtype(tmp_path):
+    source = tmp_path / "source.csv"
+    _write_sparse_csv(source, n_empty=120, n_float=10)
+
+    config_path = tmp_path / "config.yaml"
+    config = {"input_paths": [str(source)], "csv_schema_scan_rows": None}
+    with open(config_path, "w") as f:
+        yaml.safe_dump(config, f)
+
+    with patch("fisseq_data_pipeline.input.setup_logging"):
+        m.main.__wrapped__(_make_cfg(tmp_path, config_path))
+
+    result = pl.read_parquet(tmp_path / "out" / "output.parquet")
+    assert result["b"].dtype == pl.Float64

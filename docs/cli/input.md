@@ -28,6 +28,7 @@ Extends the common `output_dir` / `output_root` / `log_level` fields (see
 input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
 feature_allowlist_file: null      # optional, default null (no allowlist)
 feature_blocklist_file: null      # optional, default null (no blocklist)
+csv_schema_scan_rows: 100         # optional, default 100
 global_channel: null              # optional, string or list of strings (see below)
 ```
 
@@ -42,6 +43,12 @@ global_channel: null              # optional, string or list of strings (see bel
   kept; if a blocklist is also given, matching columns are then dropped from
   what remains (allowlist is applied first). Identity columns (`upBarcode`,
   `editDistance`, `aaChanges`) and metadata columns are unaffected.
+- `csv_schema_scan_rows` — optional, number of rows scanned from each CSV
+  `input_paths` source to infer column dtypes (forwarded to polars
+  `scan_csv`'s `infer_schema_length`). Default `100`. `null` scans every row
+  instead — slower, but avoids mis-inferred dtypes on columns whose
+  non-null/non-integer values only appear after the scanned prefix. Has no
+  effect on parquet sources.
 - `global_channel` — optional, a string or list of strings naming which named
   channel(s) this batch belongs to for the purpose of `--global_channels`
   scoping. **Validated and consumed by the Nextflow workflow layer
@@ -52,9 +59,9 @@ global_channel: null              # optional, string or list of strings (see bel
 
 Except for `input_paths` and `global_channel`, every field above is also a
 plain `nextflow.config` pipeline-wide default (`params.feature_allowlist_file`,
-`params.feature_blocklist_file`) — set one on the command line or in
-`nextflow.config` to apply it to every batch, and/or override it for a
-specific batch in that batch's YAML. See
+`params.feature_blocklist_file`, `params.csv_schema_scan_rows`) — set one on
+the command line or in `nextflow.config` to apply it to every batch, and/or
+override it for a specific batch in that batch's YAML. See
 [Per-batch parameter overrides](../configuration.md#per-batch-parameter-overrides)
 for the full mechanism.
 

@@ -83,6 +83,7 @@ Defaults live in `nextflow.config` at the repo root.
 | --------- | ------- | ----------- |
 | `--feature_allowlist_file` | `null` | `INPUT`: optional path to a glob-pattern feature allowlist file. |
 | `--feature_blocklist_file` | `null` | `INPUT`: optional path to a glob-pattern feature blocklist file. |
+| `--csv_schema_scan_rows` | `100` | `INPUT`: rows scanned from each CSV `input_paths` source to infer column dtypes (polars `scan_csv`'s `infer_schema_length`). `null` scans every row. No effect on parquet sources. |
 
 These mirror `INPUT`'s per-batch YAML `config_path` schema (see
 [CLI Reference: Input](cli/input.md#config_path-yaml-schema)) and are

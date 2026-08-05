@@ -31,6 +31,7 @@ Config file
     input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
     feature_allowlist_file: null      # optional, default null (no allowlist)
     feature_blocklist_file: null      # optional, default null (no blocklist)
+    csv_schema_scan_rows: 100         # optional, default 100
 
 ``feature_allowlist_file`` / ``feature_blocklist_file`` each point to a plain
 text file with one fnmatch-style glob pattern per line (e.g.
@@ -38,6 +39,13 @@ text file with one fnmatch-style glob pattern per line (e.g.
 is given, only feature columns matching at least one of its patterns are
 kept; if a blocklist is also given, matching columns are then dropped from
 what remains (allowlist is applied first).
+
+``csv_schema_scan_rows`` controls how many rows of each CSV ``input_paths``
+source are scanned to infer column dtypes (forwarded to polars
+``scan_csv``'s ``infer_schema_length``). ``null`` scans every row instead --
+slower, but avoids mis-inferred dtypes on columns whose non-null/non-integer
+values only appear after the scanned prefix. Has no effect on parquet
+sources.
 
 Usage
 -----
@@ -96,11 +104,22 @@ _cs = ConfigStore.instance()
 _cs.store(name="input_main", node=InputStageConfig)
 
 
-def load_and_tag(path: str) -> pl.LazyFrame:
-    """Scan a CSV or parquet file and tag each row with its file and row index."""
+def load_and_tag(path: str, infer_schema_length: int | None = 100) -> pl.LazyFrame:
+    """
+    Scan a CSV or parquet file and tag each row with its file and row index.
+
+    Parameters
+    ----------
+    path : str
+        Path to the CSV or parquet file to scan.
+    infer_schema_length : int or None
+        Number of rows to sample when inferring CSV column dtypes (forwarded
+        to :func:`polars.scan_csv`'s ``infer_schema_length``). ``None`` scans
+        every row. Ignored for parquet files, which carry their own schema.
+    """
     suffix = pathlib.Path(path).suffix.lower()
     if suffix == ".csv":
-        lf = pl.scan_csv(path)
+        lf = pl.scan_csv(path, infer_schema_length=infer_schema_length)
     elif suffix == ".parquet":
         lf = pl.scan_parquet(path)
     else:
@@ -115,12 +134,19 @@ def load_and_tag(path: str) -> pl.LazyFrame:
     )
 
 
-def load_and_concat(paths: list[str]) -> pl.LazyFrame:
-    """Load and tag every input file, then concatenate them into one lazy frame."""
+def load_and_concat(
+    paths: list[str], infer_schema_length: int | None = 100
+) -> pl.LazyFrame:
+    """
+    Load and tag every input file, then concatenate them into one lazy frame.
+
+    ``infer_schema_length`` is forwarded to each :func:`load_and_tag` call --
+    see its docstring.
+    """
     logger.info("Loading and tagging %d input file(s)", len(paths))
     for p in paths:
         logger.info("  - %s", p)
-    lfs = [load_and_tag(p) for p in paths]
+    lfs = [load_and_tag(p, infer_schema_length=infer_schema_length) for p in paths]
     # "vertical_relaxed" tolerates minor dtype mismatches across CSV/parquet
     # sources (e.g. int32 vs int64) by upcasting, rather than erroring.
     return pl.concat(lfs, how="vertical_relaxed")
@@ -223,7 +249,8 @@ def main(cfg: DictConfig) -> None:
         )
         feature_blocklist = load_feature_patterns(config["feature_blocklist_file"])
 
-    data_lf = load_and_concat(input_paths)
+    csv_schema_scan_rows = config.get("csv_schema_scan_rows", 100)
+    data_lf = load_and_concat(input_paths, infer_schema_length=csv_schema_scan_rows)
 
     logger.info("Selecting output columns")
     combined_lf = select_output_columns(data_lf, feature_allowlist, feature_blocklist)

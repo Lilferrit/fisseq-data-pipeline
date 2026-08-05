@@ -54,6 +54,7 @@ workflow OvwtPipeline {
         run_feature_selection             : params.run_feature_selection.toString().toBoolean(),
         feature_allowlist_file            : params.feature_allowlist_file,
         feature_blocklist_file            : params.feature_blocklist_file,
+        csv_schema_scan_rows              : params.csv_schema_scan_rows,
     ]
     if (!(batchParamDefaults.single_cell_scores_split in ["test", "train"])) {
         error "ERROR: --single_cell_scores_split must be 'test' or 'train', got '${batchParamDefaults.single_cell_scores_split}'"
@@ -94,7 +95,8 @@ workflow OvwtPipeline {
     config_ch = Channel.fromList(config_files).map { f ->
         def stem = f.baseName
         def cfg = resolvedBatchConfigs[stem]
-        tuple(stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file)
+        tuple(stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file,
+              cfg.csv_schema_scan_rows)
     }
     input_ch = INPUT(config_ch)
 
