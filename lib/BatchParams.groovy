@@ -10,6 +10,17 @@
 // workflows/fisseq.nf / workflows/ovwt.nf for the call site.
 class BatchParams {
 
+    // Centralizes the `x.toString().toBoolean()` coercion every gating
+    // param needs: CLI overrides (e.g. --run_ovwt false) arrive as the
+    // Groovy-truthy String "false", while a batch YAML's native `true`/`false`
+    // parses as an actual Boolean -- .toString() normalizes both before
+    // .toBoolean() parses them. See resolve()'s doc comment below for why
+    // callers must apply this before values reach `defaults`/`batchYaml`
+    // comparison.
+    static boolean asBool(x) {
+        return x.toString().toBoolean()
+    }
+
     // Keys a batch YAML is allowed to override, each with a pipeline-wide
     // nextflow.config default supplied via the `defaults` map passed into
     // resolve(). Every key here must also be present in `defaults` — see
