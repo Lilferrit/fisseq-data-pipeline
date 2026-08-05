@@ -328,6 +328,14 @@ uv run isort src/ tests/
 
 > **Note:** The pre-commit hook (`.pre-commit-config.yaml`) only runs `black`. `ruff` and `isort` are in dev dependencies but are **not** run automatically on commit. Run them manually before pushing.
 
+### Nextflow lint
+
+```bash
+nextflow lint .
+```
+
+> **Note:** Not run in CI or pre-commit. Run this after any change to `workflows/*.nf`, `modules/local/*.nf`, or `nextflow.config`, and fix reported warnings before opening a PR.
+
 ### Docs
 
 ```bash

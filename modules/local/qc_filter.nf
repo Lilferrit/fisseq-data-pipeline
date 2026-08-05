@@ -45,8 +45,8 @@ process QC_FILTER {
     // qc_downsample_classes/qc_variant_downsample_classes are always
     // non-empty List<String>; each element needs its own quoting (values
     // like "Single Missense" contain a space) inside the bracket-list.
-    def downsampleClassesArg = "'[${qc_downsample_classes.collect { "\"${it}\"" }.join(',')}]'"
-    def variantClassesArg = "'[${qc_variant_downsample_classes.collect { "\"${it}\"" }.join(',')}]'"
+    def downsampleClassesArg = "'[${qc_downsample_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
+    def variantClassesArg = "'[${qc_variant_downsample_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
     """
     echo "Starting QC_FILTER for ${batch_stem}"
     python -m fisseq_data_pipeline.qcfilter \\

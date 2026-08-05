@@ -29,7 +29,7 @@ process WTVVARIANTPOOL_BATCHWISE {
     // rendered the same way qc_downsample_classes/qc_variant_downsample_classes
     // are in qc_filter.nf.
     def variantClassesArg =
-        "'[${wtvvariantpool_variant_classes.collect { "\"${it}\"" }.join(',')}]'"
+        "'[${wtvvariantpool_variant_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
     """
     echo "Starting WTVVARIANTPOOL_BATCHWISE for ${batch_stem}"
     python -m fisseq_data_pipeline.wtvvariantpool \\
