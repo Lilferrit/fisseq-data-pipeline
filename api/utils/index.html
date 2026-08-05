@@ -1772,6 +1772,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fisseq_data_pipeline.utils.xgbparams.resolve_feature_importance" class="md-nav__link">
+    <span class="md-ellipsis">
+      resolve_feature_importance
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#fisseq_data_pipeline.utils.xgbparams.split_indices_stratified" class="md-nav__link">
     <span class="md-ellipsis">
       split_indices_stratified
@@ -2256,6 +2265,15 @@
   <a href="#fisseq_data_pipeline.utils.xgbparams.get_feature_cols" class="md-nav__link">
     <span class="md-ellipsis">
       get_feature_cols
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fisseq_data_pipeline.utils.xgbparams.resolve_feature_importance" class="md-nav__link">
+    <span class="md-ellipsis">
+      resolve_feature_importance
     </span>
   </a>
   
@@ -4747,10 +4765,10 @@ columns dropped.</p>
     <div class="doc doc-contents first">
 
         <p>Shared XGBoost configuration, DMatrix construction, and split helpers.</p>
-<p>Defines :class:<code>XGBoostParams</code> / :class:<code>XGBoostConfig</code> (shared Hydra sub-config)
-and :func:<code>get_dmatrix</code> / :func:<code>get_dmatrix_multiclass</code> /
-:func:<code>split_indices_stratified</code>, used by :mod:<code>.ovwt</code>, :mod:<code>.ovwtcellscores</code>, and
-:mod:<code>.batchvsbatch</code>.</p>
+<p>Defines :class:<code>XGBoostParams</code> / :class:<code>XGBoostConfig</code> (shared Hydra sub-config),
+:func:<code>get_dmatrix</code> / :func:<code>get_dmatrix_multiclass</code> / :func:<code>split_indices_stratified</code>,
+and :func:<code>resolve_feature_importance</code>, used by :mod:<code>.ovwt</code>, :mod:<code>.ovwtcellscores</code>,
+:mod:<code>.batchvsbatch</code>, :mod:<code>.wtvwt</code>, and :mod:<code>.wtvvariantpool</code>.</p>
 
 
 
@@ -5632,6 +5650,196 @@ convention.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="fisseq_data_pipeline.utils.xgbparams.resolve_feature_importance" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">resolve_feature_importance</span>
+
+
+<a href="#fisseq_data_pipeline.utils.xgbparams.resolve_feature_importance" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">resolve_feature_importance</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">model</span><span class="p">:</span> <span class="n">Booster</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">feature_cols</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">importance_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;gain&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Get a trained booster's feature importances, keyed by real feature name.</p>
+<p>:meth:<code>xgb.Booster.get_score</code> reports importances keyed by internal
+feature index (<code>"f0"</code>, <code>"f1"</code>, ...) rather than by name, since
+:func:<code>get_dmatrix</code>/:func:<code>get_dmatrix_multiclass</code> build DMatrices from
+bare numpy arrays without <code>feature_names</code>. This resolves those indices
+back onto the real column names.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>model</code>
+            </td>
+            <td>
+                  <code><span title="xgboost.Booster">Booster</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Trained XGBoost booster.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>feature_cols</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Feature column names, in the same order used to build the model's
+training DMatrix.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>importance_type</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Importance metric passed to :meth:<code>xgb.Booster.get_score</code>. Defaults
+to <code>"gain"</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;gain&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Mapping from real feature name to importance score. Features never
+used in a split are omitted, matching
+:meth:<code>xgb.Booster.get_score</code>'s own behavior.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/fisseq_data_pipeline/utils/xgbparams.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-167">167</a></span>
+<span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_feature_importance</span><span class="p">(</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a>    <span class="n">model</span><span class="p">:</span> <span class="n">xgb</span><span class="o">.</span><span class="n">Booster</span><span class="p">,</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a>    <span class="n">feature_cols</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="n">importance_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;gain&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">    Get a trained booster&#39;s feature importances, keyed by real feature name.</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">    :meth:`xgb.Booster.get_score` reports importances keyed by internal</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    feature index (``&quot;f0&quot;``, ``&quot;f1&quot;``, ...) rather than by name, since</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">    :func:`get_dmatrix`/:func:`get_dmatrix_multiclass` build DMatrices from</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">    bare numpy arrays without ``feature_names``. This resolves those indices</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    back onto the real column names.</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    model : xgb.Booster</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">        Trained XGBoost booster.</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    feature_cols : list[str]</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">        Feature column names, in the same order used to build the model&#39;s</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        training DMatrix.</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">    importance_type : str</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        Importance metric passed to :meth:`xgb.Booster.get_score`. Defaults</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        to ``&quot;gain&quot;``.</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    dict[str, float]</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">        Mapping from real feature name to importance score. Features never</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">        used in a split are omitted, matching</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">        :meth:`xgb.Booster.get_score`&#39;s own behavior.</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">get_score</span><span class="p">(</span><span class="n">importance_type</span><span class="o">=</span><span class="n">importance_type</span><span class="p">)</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="k">return</span> <span class="p">{</span><span class="n">feature_cols</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">feat</span><span class="p">[</span><span class="mi">1</span><span class="p">:])]:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">feat</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="fisseq_data_pipeline.utils.xgbparams.split_indices_stratified" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">split_indices_stratified</span>
 
@@ -5720,73 +5928,73 @@ hashable dtype (strings, integers, etc.).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/utils/xgbparams.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-167">167</a></span>
-<span class="normal"><a href="#__codelineno-0-168">168</a></span>
-<span class="normal"><a href="#__codelineno-0-169">169</a></span>
-<span class="normal"><a href="#__codelineno-0-170">170</a></span>
-<span class="normal"><a href="#__codelineno-0-171">171</a></span>
-<span class="normal"><a href="#__codelineno-0-172">172</a></span>
-<span class="normal"><a href="#__codelineno-0-173">173</a></span>
-<span class="normal"><a href="#__codelineno-0-174">174</a></span>
-<span class="normal"><a href="#__codelineno-0-175">175</a></span>
-<span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span>
-<span class="normal"><a href="#__codelineno-0-178">178</a></span>
-<span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="k">def</span><span class="w"> </span><span class="nf">split_indices_stratified</span><span class="p">(</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a>    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">    Produce an 80/10/10 stratified train/test/val index split.</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    labels : np.ndarray</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        1-D array of group labels used for stratification. May be any</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">        hashable dtype (strings, integers, etc.).</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    random_state : int</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">        Random seed passed to :func:`sklearn.model_selection.train_test_split`.</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">    tuple[np.ndarray, np.ndarray, np.ndarray]</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">        ``(train_idx, test_idx, val_idx)`` — 0-based positions into ``labels``.</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="n">all_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>    <span class="n">train_idx</span><span class="p">,</span> <span class="n">val_test_idx</span> <span class="o">=</span> <span class="n">sklearn</span><span class="o">.</span><span class="n">model_selection</span><span class="o">.</span><span class="n">train_test_split</span><span class="p">(</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="n">all_idx</span><span class="p">,</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>        <span class="n">stratify</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="p">)</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="n">test_idx</span><span class="p">,</span> <span class="n">val_idx</span> <span class="o">=</span> <span class="n">sklearn</span><span class="o">.</span><span class="n">model_selection</span><span class="o">.</span><span class="n">train_test_split</span><span class="p">(</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="n">val_test_idx</span><span class="p">,</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>        <span class="n">test_size</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>        <span class="n">stratify</span><span class="o">=</span><span class="n">labels</span><span class="p">[</span><span class="n">val_test_idx</span><span class="p">],</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>        <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="p">)</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="k">return</span> <span class="n">train_idx</span><span class="p">,</span> <span class="n">test_idx</span><span class="p">,</span> <span class="n">val_idx</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span>
+<span class="normal"><a href="#__codelineno-0-234">234</a></span>
+<span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="k">def</span><span class="w"> </span><span class="nf">split_indices_stratified</span><span class="p">(</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">    Produce an 80/10/10 stratified train/test/val index split.</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">    labels : np.ndarray</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">        1-D array of group labels used for stratification. May be any</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">        hashable dtype (strings, integers, etc.).</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    random_state : int</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        Random seed passed to :func:`sklearn.model_selection.train_test_split`.</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">    tuple[np.ndarray, np.ndarray, np.ndarray]</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        ``(train_idx, test_idx, val_idx)`` — 0-based positions into ``labels``.</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>    <span class="n">all_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>    <span class="n">train_idx</span><span class="p">,</span> <span class="n">val_test_idx</span> <span class="o">=</span> <span class="n">sklearn</span><span class="o">.</span><span class="n">model_selection</span><span class="o">.</span><span class="n">train_test_split</span><span class="p">(</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="n">all_idx</span><span class="p">,</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a>        <span class="n">stratify</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>    <span class="p">)</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="n">test_idx</span><span class="p">,</span> <span class="n">val_idx</span> <span class="o">=</span> <span class="n">sklearn</span><span class="o">.</span><span class="n">model_selection</span><span class="o">.</span><span class="n">train_test_split</span><span class="p">(</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="n">val_test_idx</span><span class="p">,</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="n">test_size</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>        <span class="n">stratify</span><span class="o">=</span><span class="n">labels</span><span class="p">[</span><span class="n">val_test_idx</span><span class="p">],</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="p">)</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="k">return</span> <span class="n">train_idx</span><span class="p">,</span> <span class="n">test_idx</span><span class="p">,</span> <span class="n">val_idx</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

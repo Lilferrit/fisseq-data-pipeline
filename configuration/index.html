@@ -678,6 +678,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wildtype-barcode-vs-variant-pool-classification-wtvvariantpool_batchwise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wildtype-barcode-vs-variant-pool classification (WTVVARIANTPOOL_BATCHWISE)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
     <span class="md-ellipsis">
       Feature selection (bootstrap + aggregation + correlation)
@@ -1749,6 +1758,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wildtype-barcode-vs-variant-pool-classification-wtvvariantpool_batchwise" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wildtype-barcode-vs-variant-pool classification (WTVVARIANTPOOL_BATCHWISE)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#feature-selection-bootstrap-aggregation-correlation" class="md-nav__link">
     <span class="md-ellipsis">
       Feature selection (bootstrap + aggregation + correlation)
@@ -1907,22 +1925,23 @@ for the process DAG itself.</p>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  qc_filter/&lt;batch_stem&gt;/
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  normalization/{cells,normalizers}/
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  wtvwt_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  ovwt_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  ovwt_batchwise_barcode_filtered/&lt;batch_stem&gt;/
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  ovwt_cellscores_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  check_barcodes/&lt;batch_stem&gt;/
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  barcode_blocklist/&lt;batch_stem&gt;/
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>  global/
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    &lt;channel&gt;/
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      qc_filter_cells/&lt;batch_stem&gt;.parquet        # per-channel staged copy
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>      normalization_cells/&lt;batch_stem&gt;.parquet    # per-channel staged copy
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>      batchvsbatch/{pre,post}/results.parquet
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>      anova/anova.parquet
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>      anova_blocklist/anova_blocklist.parquet
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>      ovwt_global/{results.parquet,models.pkl}
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      batch_correction/{fit,cells,anova}/...
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>      feature_select/{aggregate.parquet,blocklist.parquet}
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  wtvvariantpool_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  ovwt_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  ovwt_batchwise_barcode_filtered/&lt;batch_stem&gt;/
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  ovwt_cellscores_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  check_barcodes/&lt;batch_stem&gt;/
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  barcode_blocklist/&lt;batch_stem&gt;/
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>  global/
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    &lt;channel&gt;/
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>      qc_filter_cells/&lt;batch_stem&gt;.parquet        # per-channel staged copy
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>      normalization_cells/&lt;batch_stem&gt;.parquet    # per-channel staged copy
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>      batchvsbatch/{pre,post}/results.parquet
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>      anova/anova.parquet
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>      anova_blocklist/anova_blocklist.parquet
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      ovwt_global/{results.parquet,models.pkl}
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>      batch_correction/{fit,cells,anova}/...
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>      feature_select/{aggregate.parquet,blocklist.parquet}
 </code></pre></div>
 <p><code>configs/</code> is <strong>mandatory</strong> -- every batch is declared by a YAML config file
 there; there is no mode where the pipeline scans a directory of pre-staged
@@ -2005,6 +2024,11 @@ at least one channel is active.</p>
 <td><code>--run_wtvwt</code></td>
 <td><code>true</code></td>
 <td><code>FisseqPipeline</code> only: run <code>WTVWT_BATCHWISE</code> (per-batch, wildtype-only pairwise barcode classification) for that batch. Independent of <code>--run_ovwt</code> and every other gate.</td>
+</tr>
+<tr>
+<td><code>--run_wtvvariantpool</code></td>
+<td><code>false</code></td>
+<td><code>FisseqPipeline</code> only: run <code>WTVVARIANTPOOL_BATCHWISE</code> (per-batch, wildtype-barcode-vs-variant-pool classification) for that batch. Independent of <code>--run_wtvwt</code> and every other gate. Default <code>false</code>, unlike <code>--run_wtvwt</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2211,6 +2235,33 @@ overridable per batch exactly like every other parameter here — see
 </tr>
 </tbody>
 </table>
+<h3 id="wildtype-barcode-vs-variant-pool-classification-wtvvariantpool_batchwise">Wildtype-barcode-vs-variant-pool classification (<code>WTVVARIANTPOOL_BATCHWISE</code>)<a class="headerlink" href="#wildtype-barcode-vs-variant-pool-classification-wtvvariantpool_batchwise" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--wtvvariantpool_min_cells_per_barcode</code></td>
+<td><code>100</code></td>
+<td>Minimum wildtype cells a barcode must have to be included.</td>
+</tr>
+<tr>
+<td><code>--wtvvariantpool_variant_classes</code></td>
+<td><code>['Synonymous']</code></td>
+<td><code>classify_variant()</code> classes eligible for the pooled non-wildtype set.</td>
+</tr>
+<tr>
+<td><code>--wtvvariantpool_downsample_variant_pool</code></td>
+<td><code>null</code></td>
+<td><code>null</code>/<code>false</code> disables downsampling; <code>true</code> downsamples the pool to match the size of the largest surviving wildtype barcode group; an int downsamples the pool to that exact count.</td>
+</tr>
+</tbody>
+</table>
 <h3 id="feature-selection-bootstrap-aggregation-correlation">Feature selection (bootstrap + aggregation + correlation)<a class="headerlink" href="#feature-selection-bootstrap-aggregation-correlation" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2401,11 +2452,13 @@ channel-level agreement threshold across batches, with no per-batch meaning
 at all.)</p>
 <p>Every other <code>nextflow.config</code> parameter — including the gating booleans
 <code>--run_ovwt</code>, <code>--run_single_cell_scores</code>, <code>--run_check_barcodes</code>,
-<code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the <em>batchwise</em> effect of
-<code>--run_feature_selection</code> — is genuinely per-batch overridable.
-<code>--wtvwt_min_cells_per_barcode</code>, <code>--wtvwt_max_barcodes</code>, and
+<code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, <code>--run_wtvvariantpool</code>, and the
+<em>batchwise</em> effect of <code>--run_feature_selection</code> — is genuinely per-batch
+overridable. <code>--wtvwt_min_cells_per_barcode</code>, <code>--wtvwt_max_barcodes</code>, and
 <code>--wtvwt_barcode_downsample_mode</code> are likewise per-batch overridable, same
-bucket as <code>--ovwt_min_cells</code>. Each of these gates only a
+bucket as <code>--ovwt_min_cells</code> — as are
+<code>--wtvvariantpool_min_cells_per_barcode</code>, <code>--wtvvariantpool_variant_classes</code>,
+and <code>--wtvvariantpool_downsample_variant_pool</code>. Each of these gates only a
 per-batch-only process or chain, so <code>workflows/fisseq.nf</code> implements them as
 a per-batch channel <code>.filter()</code> (via a <code>batchGates()</code> helper that also
 encodes the "<code>run_check_barcodes</code> implies <code>run_single_cell_scores</code>" /
