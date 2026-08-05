@@ -24,7 +24,7 @@ workflow OvwtPipeline {
     // defaults map for the full OVERRIDABLE_KEYS set so a batch YAML
     // setting one of those keys is still validated/logged consistently
     // (it just has no process to wire into in this pipeline_mode). Likewise,
-    // global_group is validated/normalized by BatchParams.resolve()
+    // global_channel is validated/normalized by BatchParams.resolve()
     // independently of this map (same as input_paths) -- OvwtPipeline has no
     // global processes to gate, so it's accepted but never read here.
     def batchParamDefaults = [
@@ -48,7 +48,6 @@ workflow OvwtPipeline {
         barcode_check_alpha               : params.barcode_check_alpha,
         single_cell_scores_split          : params.single_cell_scores_split,
         run_ovwt                          : params.run_ovwt.toString().toBoolean(),
-        run_feature_filtered_ovwt         : params.run_feature_filtered_ovwt.toString().toBoolean(),
         run_single_cell_scores            : params.run_single_cell_scores.toString().toBoolean(),
         run_check_barcodes                : params.run_check_barcodes.toString().toBoolean(),
         run_barcode_filtered_ovwt         : params.run_barcode_filtered_ovwt.toString().toBoolean(),

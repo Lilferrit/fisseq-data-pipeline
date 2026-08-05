@@ -28,7 +28,7 @@ Extends the common `output_dir` / `output_root` / `log_level` fields (see
 input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
 feature_allowlist_file: null      # optional, default null (no allowlist)
 feature_blocklist_file: null      # optional, default null (no blocklist)
-global_group: null                # optional, string or list of strings (see below)
+global_channel: null              # optional, string or list of strings (see below)
 ```
 
 - `input_paths` — one or more raw cell-score files (CSV or Parquet), concatenated.
@@ -42,15 +42,15 @@ global_group: null                # optional, string or list of strings (see bel
   kept; if a blocklist is also given, matching columns are then dropped from
   what remains (allowlist is applied first). Identity columns (`upBarcode`,
   `editDistance`, `aaChanges`) and metadata columns are unaffected.
-- `global_group` — optional, a string or list of strings naming which named
-  group(s) this batch belongs to for the purpose of `--global_groups`
+- `global_channel` — optional, a string or list of strings naming which named
+  channel(s) this batch belongs to for the purpose of `--global_channels`
   scoping. **Validated and consumed by the Nextflow workflow layer
   (`lib/BatchParams.groovy`), not by this CLI** — it has no effect on
   `python -m fisseq_data_pipeline.input`'s own behavior, but lives in the
   same batch YAML file, so it's documented here alongside `input_paths`. See
-  [Configuration: Global groups](../configuration.md#global-groups).
+  [Configuration: Global channels](../configuration.md#global-channels).
 
-Except for `input_paths` and `global_group`, every field above is also a
+Except for `input_paths` and `global_channel`, every field above is also a
 plain `nextflow.config` pipeline-wide default (`params.feature_allowlist_file`,
 `params.feature_blocklist_file`) — set one on the command line or in
 `nextflow.config` to apply it to every batch, and/or override it for a

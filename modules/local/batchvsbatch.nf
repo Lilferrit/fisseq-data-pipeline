@@ -6,9 +6,9 @@ nextflow.enable.dsl = 2
 // `include { BATCHVSBATCH as X }` aliasing: once pre-normalization
 // (QC-filtered cells, unfiltered -- block_list_file=null) and once
 // post-normalization (filtered against the ANOVA_BLOCKLIST output). Each
-// alias is additionally invoked once per active global group (see
+// alias is additionally invoked once per active global channel (see
 // workflows/fisseq.nf), so publish_subdir carries the full path (including
-// "global/<group>/batchvsbatch/...") rather than just "pre"/"post".
+// "global/<channel>/batchvsbatch/...") rather than just "pre"/"post".
 // block_list_file is a val (not a staged path) so a Groovy null can be
 // passed through directly for the unfiltered (pre) call -- see
 // ovwt_batchwise.nf for the same convention.

@@ -1,11 +1,11 @@
 nextflow.enable.dsl = 2
 
 // OVWT_GLOBAL: wraps python -m fisseq_data_pipeline.ovwt. Runs once per
-// active global group (see workflows/fisseq.nf), over that group's
-// normalized cells (globs cells_glob, a per-group directory published by
-// STAGE_GROUP_CELLS). Always filtered against the ANOVA_BLOCKLIST output --
+// active global channel (see workflows/fisseq.nf), over that channel's
+// normalized cells (globs cells_glob, a per-channel directory published by
+// STAGE_CHANNEL_CELLS). Always filtered against the ANOVA_BLOCKLIST output --
 // there is no unfiltered global OvWT run. Publishes results.parquet and
-// models.pkl under publish_subdir (e.g. "global/<group>/ovwt_global").
+// models.pkl under publish_subdir (e.g. "global/<channel>/ovwt_global").
 process OVWT_GLOBAL {
     errorStrategy 'ignore'
     publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
