@@ -21,6 +21,7 @@ Every pipeline run is rooted at a single directory, `--pipeline_dir`:
   qc_filter/<batch_stem>/
   normalization/{cells,normalizers}/
   wtvwt_batchwise/<batch_stem>/
+  wtvvariantpool_batchwise/<batch_stem>/
   ovwt_batchwise/<batch_stem>/
   ovwt_batchwise_barcode_filtered/<batch_stem>/
   ovwt_cellscores_batchwise/<batch_stem>/
@@ -76,6 +77,7 @@ Defaults live in `nextflow.config` at the repo root.
 | `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--run_single_cell_scores true`. |
 | `--run_barcode_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_BARCODE_FILTERED` (per-batch OvWT filtered against `barcode_blocklist/<batch>/barcode_blocklist.parquet`). Only takes effect when `--run_check_barcodes true` is also set (default `false`) -- does NOT force it on, so the default pipeline output is unaffected. |
 | `--run_wtvwt` | `true` | `FisseqPipeline` only: run `WTVWT_BATCHWISE` (per-batch, wildtype-only pairwise barcode classification) for that batch. Independent of `--run_ovwt` and every other gate. |
+| `--run_wtvvariantpool` | `false` | `FisseqPipeline` only: run `WTVVARIANTPOOL_BATCHWISE` (per-batch, wildtype-barcode-vs-variant-pool classification) for that batch. Independent of `--run_wtvwt` and every other gate. Default `false`, unlike `--run_wtvwt`. |
 
 ### INPUT stage tunables
 
@@ -139,6 +141,14 @@ overridable per batch exactly like every other parameter here — see
 | `--wtvwt_min_cells_per_barcode` | `100` | Minimum wildtype cells a barcode must have to be included in pairwise classification. |
 | `--wtvwt_max_barcodes` | `null` | Optional: after `--wtvwt_min_cells_per_barcode` filtering, caps the number of wildtype barcodes profiled to at most this many. `null` disables it. |
 | `--wtvwt_barcode_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count barcodes; `'random'` keeps a seeded random sample (using `random_state`). |
+
+### Wildtype-barcode-vs-variant-pool classification (`WTVVARIANTPOOL_BATCHWISE`)
+
+| Parameter | Default | Description |
+| --------- | ------- | ----------- |
+| `--wtvvariantpool_min_cells_per_barcode` | `100` | Minimum wildtype cells a barcode must have to be included. |
+| `--wtvvariantpool_variant_classes` | `['Synonymous']` | `classify_variant()` classes eligible for the pooled non-wildtype set. |
+| `--wtvvariantpool_downsample_variant_pool` | `null` | `null`/`false` disables downsampling; `true` downsamples the pool to match the size of the largest surviving wildtype barcode group; an int downsamples the pool to that exact count. |
 
 ### Feature selection (bootstrap + aggregation + correlation)
 
@@ -309,11 +319,13 @@ at all.)
 
 Every other `nextflow.config` parameter — including the gating booleans
 `--run_ovwt`, `--run_single_cell_scores`, `--run_check_barcodes`,
-`--run_barcode_filtered_ovwt`, `--run_wtvwt`, and the *batchwise* effect of
-`--run_feature_selection` — is genuinely per-batch overridable.
-`--wtvwt_min_cells_per_barcode`, `--wtvwt_max_barcodes`, and
+`--run_barcode_filtered_ovwt`, `--run_wtvwt`, `--run_wtvvariantpool`, and the
+*batchwise* effect of `--run_feature_selection` — is genuinely per-batch
+overridable. `--wtvwt_min_cells_per_barcode`, `--wtvwt_max_barcodes`, and
 `--wtvwt_barcode_downsample_mode` are likewise per-batch overridable, same
-bucket as `--ovwt_min_cells`. Each of these gates only a
+bucket as `--ovwt_min_cells` — as are
+`--wtvvariantpool_min_cells_per_barcode`, `--wtvvariantpool_variant_classes`,
+and `--wtvvariantpool_downsample_variant_pool`. Each of these gates only a
 per-batch-only process or chain, so `workflows/fisseq.nf` implements them as
 a per-batch channel `.filter()` (via a `batchGates()` helper that also
 encodes the "`run_check_barcodes` implies `run_single_cell_scores`" /

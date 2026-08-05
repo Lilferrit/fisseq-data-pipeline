@@ -1,9 +1,9 @@
 """Shared XGBoost configuration, DMatrix construction, and split helpers.
 
-Defines :class:`XGBoostParams` / :class:`XGBoostConfig` (shared Hydra sub-config)
-and :func:`get_dmatrix` / :func:`get_dmatrix_multiclass` /
-:func:`split_indices_stratified`, used by :mod:`.ovwt`, :mod:`.ovwtcellscores`, and
-:mod:`.batchvsbatch`.
+Defines :class:`XGBoostParams` / :class:`XGBoostConfig` (shared Hydra sub-config),
+:func:`get_dmatrix` / :func:`get_dmatrix_multiclass` / :func:`split_indices_stratified`,
+and :func:`resolve_feature_importance`, used by :mod:`.ovwt`, :mod:`.ovwtcellscores`,
+:mod:`.batchvsbatch`, :mod:`.wtvwt`, and :mod:`.wtvvariantpool`.
 """
 
 import dataclasses
@@ -162,6 +162,42 @@ def get_dmatrix_multiclass(
     class_to_int = {c: i for i, c in enumerate(classes)}
     y = np.array([class_to_int[v] for v in raw_labels], dtype=np.int32)
     return xgb.DMatrix(x, label=y), classes
+
+
+def resolve_feature_importance(
+    model: xgb.Booster,
+    feature_cols: list[str],
+    importance_type: str = "gain",
+) -> dict[str, float]:
+    """
+    Get a trained booster's feature importances, keyed by real feature name.
+
+    :meth:`xgb.Booster.get_score` reports importances keyed by internal
+    feature index (``"f0"``, ``"f1"``, ...) rather than by name, since
+    :func:`get_dmatrix`/:func:`get_dmatrix_multiclass` build DMatrices from
+    bare numpy arrays without ``feature_names``. This resolves those indices
+    back onto the real column names.
+
+    Parameters
+    ----------
+    model : xgb.Booster
+        Trained XGBoost booster.
+    feature_cols : list[str]
+        Feature column names, in the same order used to build the model's
+        training DMatrix.
+    importance_type : str
+        Importance metric passed to :meth:`xgb.Booster.get_score`. Defaults
+        to ``"gain"``.
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping from real feature name to importance score. Features never
+        used in a split are omitted, matching
+        :meth:`xgb.Booster.get_score`'s own behavior.
+    """
+    raw = model.get_score(importance_type=importance_type)
+    return {feature_cols[int(feat[1:])]: value for feat, value in raw.items()}
 
 
 def split_indices_stratified(

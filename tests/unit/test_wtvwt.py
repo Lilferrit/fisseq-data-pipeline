@@ -1,10 +1,15 @@
+from unittest.mock import patch
+
 import numpy as np
 import polars as pl
 import pytest
 import xgboost as xgb
 from omegaconf import OmegaConf
 
+import fisseq_data_pipeline.wtvwt as m
+from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig, XGBoostParams
 from fisseq_data_pipeline.wtvwt import (
+    WtvwtConfig,
     _exclude_blocked_features,
     evaluate,
     evaluate_pair,
@@ -486,3 +491,55 @@ def test_profile_pair_filters_to_target_pair_only(profile_pair_splits):
     result, _ = profile_pair("bc_a", "bc_b", train, test, val, cfg)
     assert result["n_cells_a"] == 60
     assert result["n_cells_b"] == 60
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+
+def _make_wtvwt_structured_cfg(tmp_path, input_path) -> OmegaConf:
+    xgb_params = XGBoostParams(
+        nthread=1,
+        max_depth=2,
+        colsample_bytree=1.0,
+        colsample_bylevel=1.0,
+        colsample_bynode=1.0,
+        subsample=1.0,
+    )
+    xgb_cfg = XGBoostConfig(
+        num_boost_round=5,
+        early_stopping_rounds=3,
+        weigh_samples=False,
+        params=xgb_params,
+    )
+    cfg = WtvwtConfig(
+        output_dir=str(tmp_path),
+        input_file=str(input_path),
+        label_column=_LABEL_COL,
+        wt_label="WT",
+        barcode_column=_BARCODE_COL,
+        random_state=0,
+        min_cells_per_barcode=5,
+        xgboost=xgb_cfg,
+    )
+    return OmegaConf.structured(cfg)
+
+
+def test_main_writes_feature_importance(tmp_path):
+    df = _make_barcode_df({"bc1": 30, "bc2": 30, "bc3": 30})
+    input_path = tmp_path / "input.parquet"
+    df.write_parquet(input_path)
+    cfg = _make_wtvwt_structured_cfg(tmp_path, input_path)
+    with patch("fisseq_data_pipeline.wtvwt.setup_logging"):
+        m.main.__wrapped__(cfg)
+    importance = pl.read_parquet(tmp_path / "feature_importance.parquet")
+    assert set(zip(importance["barcode_a"], importance["barcode_b"])) == {
+        ("bc1", "bc2"),
+        ("bc1", "bc3"),
+        ("bc2", "bc3"),
+    }
+    assert set(importance.columns) - {"barcode_a", "barcode_b"} <= {
+        "Intensity_Mean",
+        "Texture_Var",
+    }

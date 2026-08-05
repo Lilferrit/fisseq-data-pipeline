@@ -34,6 +34,18 @@ _VARIANTS = {
     "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 6),
 }
 
+# GLOBAL_FEATURE_SELECT's normalize_batch_aggregate fits a per-batch
+# Normalizer on that batch's synonymous ("control") rows (see
+# test_globalfeatureselect.py's A1A/A2A/A3A fixture) -- a single control row
+# makes std (ddof=1) undefined, nulling every feature. The channeled fixture
+# below needs its own synonymous label(s) beyond the shared _VARIANTS' lone
+# "A1A"; counts/prefix mirror "A1A" so the existing barcode/variant count
+# thresholds are satisfied the same way.
+_EXTRA_SYNONYMOUS_VARIANTS = {
+    "A2A": ("bc_syn2_{i:02d}", 5, 6),
+    "A3A": ("bc_syn3_{i:02d}", 5, 6),
+}
+
 _FEATURE_COLS = [
     "Cells_AreaShape_Area",
     "Cells_AreaShape_Perimeter",
@@ -95,16 +107,27 @@ _CHECK_BARCODES_NF_PARAMS = _NF_PARAMS + [
     "2",
 ]
 
+# run_wtvvariantpool defaults to false, so it needs its own opt-in run.
+# wtvvariantpool_min_cells_per_barcode is dropped to 10 for the same reason
+# --wtvwt_min_cells_per_barcode is in _NF_PARAMS: the synthetic WT barcodes
+# only have 20 cells each, well under the pipeline-wide default of 100.
+_WTVVARIANTPOOL_NF_PARAMS = _NF_PARAMS + [
+    "--run_wtvvariantpool",
+    "true",
+    "--wtvvariantpool_min_cells_per_barcode",
+    "10",
+]
+
 _PROJECT_ROOT = Path(__file__).parents[2]
 
 # Avoids a network round-trip (version check) on every `nextflow run` call.
 _NF_ENV = {**os.environ, "NXF_DISABLE_CHECK_LATEST": "true"}
 
 
-def _write_batch(path: Path, seed: int = 42) -> None:
+def _write_batch(path: Path, seed: int = 42, variants: dict = None) -> None:
     rng = np.random.default_rng(seed)
     rows = []
-    for variant, (bc_fmt, n_barcodes, cells_per_bc) in _VARIANTS.items():
+    for variant, (bc_fmt, n_barcodes, cells_per_bc) in (variants or _VARIANTS).items():
         for i in range(n_barcodes):
             bc = bc_fmt.format(i=i)
             for _ in range(cells_per_bc):
@@ -129,13 +152,18 @@ def _write_input_config(path: Path, source_path: Path, **overrides) -> None:
 
 
 def _stage_batch(
-    exp_dir: Path, raw_dir: Path, name: str, seed: int, **overrides
+    exp_dir: Path,
+    raw_dir: Path,
+    name: str,
+    seed: int,
+    variants: dict = None,
+    **overrides,
 ) -> None:
     """Write a raw batch parquet under raw_dir and its mandatory YAML config
     under exp_dir/configs/ -- YAML configs are the only way to declare a
     batch now that direct input-directory scanning has been removed."""
     source = raw_dir / f"{name}_source.parquet"
-    _write_batch(source, seed=seed)
+    _write_batch(source, seed=seed, variants=variants)
     _write_input_config(exp_dir / "configs" / f"{name}.yaml", source, **overrides)
 
 
@@ -154,7 +182,9 @@ def _params_file_args(exp_dir: Path, global_channels) -> list:
     return ["-params-file", str(params_path)]
 
 
-def _run_pipeline(exp_dir: Path, global_channels=None) -> subprocess.CompletedProcess:
+def _run_pipeline(
+    exp_dir: Path, global_channels=None, extra_params: list = ()
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
             "nextflow",
@@ -166,6 +196,7 @@ def _run_pipeline(exp_dir: Path, global_channels=None) -> subprocess.CompletedPr
             str(exp_dir),
             *_params_file_args(exp_dir, global_channels),
             *_NF_PARAMS,
+            *extra_params,
         ],
         cwd=exp_dir,
         env=_NF_ENV,
@@ -352,6 +383,14 @@ def test_single_cell_scores_and_check_barcodes_disabled_by_default(pipeline_outp
     assert not (exp_dir / "check_barcodes").exists()
 
 
+def test_run_wtvvariantpool_disabled_by_default(pipeline_outputs):
+    """params.run_wtvvariantpool defaults to false (unlike run_wtvwt's default
+    true) -- see test_pipeline_wtvvariantpool_batchwise_outputs below for the
+    enabled case, which needs its own opt-in `nextflow run`."""
+    exp_dir, _ = pipeline_outputs
+    assert not (exp_dir / "wtvvariantpool_batchwise").exists()
+
+
 # ---------------------------------------------------------------------------
 # Pipeline output content tests
 # ---------------------------------------------------------------------------
@@ -423,12 +462,38 @@ def global_channel_pipeline_outputs(tmp_path_factory):
 
     exp_dir = tmp_path_factory.mktemp("nf_channel_experiment")
     raw_dir = tmp_path_factory.mktemp("nf_channel_raw")
-    _stage_batch(exp_dir, raw_dir, "batch1", seed=1, global_channel="siteA")
-    _stage_batch(exp_dir, raw_dir, "batch2", seed=2, global_channel=["siteA", "siteB"])
-    _stage_batch(exp_dir, raw_dir, "batch3", seed=3, global_channel="siteB")
-    _stage_batch(exp_dir, raw_dir, "batch4", seed=4)  # no global_channel at all
+    channel_variants = {**_VARIANTS, **_EXTRA_SYNONYMOUS_VARIANTS}
+    _stage_batch(
+        exp_dir, raw_dir, "batch1", seed=1, variants=channel_variants, global_channel="siteA"
+    )
+    _stage_batch(
+        exp_dir,
+        raw_dir,
+        "batch2",
+        seed=2,
+        variants=channel_variants,
+        global_channel=["siteA", "siteB"],
+    )
+    _stage_batch(
+        exp_dir, raw_dir, "batch3", seed=3, variants=channel_variants, global_channel="siteB"
+    )
+    _stage_batch(
+        exp_dir, raw_dir, "batch4", seed=4, variants=channel_variants
+    )  # no global_channel at all
 
-    result = _run_pipeline(exp_dir, global_channels=["siteA", "siteB"])
+    result = _run_pipeline(
+        exp_dir,
+        global_channels=["siteA", "siteB"],
+        # Default (null) requires unanimity across every member batch's own
+        # blocklist before a feature counts as globally ok. Each channel here
+        # has only 2 member batches, and the batchwise blocklist's per-feature
+        # reproducibility check is noisy on this small synthetic dataset
+        # (feature_select_bootstrap_reps=3, 6 cells/barcode) -- unanimity can
+        # land on zero globally-ok features by chance of which 2 batches
+        # share a channel. Relaxing to "1 of 2" keeps this fixture robust to
+        # that per-batch noise without weakening the unanimity default itself.
+        extra_params=["--global_feature_select_min_batches_ok", "1"],
+    )
     return exp_dir, result
 
 
@@ -964,6 +1029,81 @@ def test_disabled_toggles_pipeline_no_global_dir(disabled_toggles_pipeline_outpu
     other toggles."""
     exp_dir, _ = disabled_toggles_pipeline_outputs
     assert not (exp_dir / "global").exists()
+
+
+# ---------------------------------------------------------------------------
+# WTVVARIANTPOOL_BATCHWISE (run_wtvvariantpool=true) — session fixture and tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def wtvvariantpool_pipeline_outputs(tmp_path_factory):
+    """params.run_wtvvariantpool defaults to false (see
+    test_run_wtvvariantpool_disabled_by_default), so it needs its own opt-in
+    `nextflow run` to exercise WTVVARIANTPOOL_BATCHWISE's output at all."""
+    if shutil.which("nextflow") is None:
+        pytest.skip("nextflow not on PATH")
+
+    exp_dir = tmp_path_factory.mktemp("nf_wtvvariantpool_experiment")
+    raw_dir = tmp_path_factory.mktemp("nf_wtvvariantpool_raw")
+    _stage_batch(exp_dir, raw_dir, "batch1", seed=42)
+    _stage_batch(exp_dir, raw_dir, "batch2", seed=99)
+
+    result = subprocess.run(
+        [
+            "nextflow",
+            "run",
+            str(_PROJECT_ROOT),
+            "-ansi-log",
+            "false",
+            "--pipeline_dir",
+            str(exp_dir),
+            *_WTVVARIANTPOOL_NF_PARAMS,
+        ],
+        cwd=exp_dir,
+        env=_NF_ENV,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    return exp_dir, result
+
+
+def test_wtvvariantpool_pipeline_exits_cleanly(wtvvariantpool_pipeline_outputs):
+    _, result = wtvvariantpool_pipeline_outputs
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_pipeline_wtvvariantpool_batchwise_outputs(
+    wtvvariantpool_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = wtvvariantpool_pipeline_outputs
+    batch_dir = exp_dir / "wtvvariantpool_batchwise" / batch_stem
+    assert (batch_dir / "results.parquet").exists()
+    assert (batch_dir / "models.pkl").exists()
+
+
+@pytest.mark.parametrize("batch_stem", ["batch1", "batch2"])
+def test_wtvvariantpool_results_have_expected_columns(
+    wtvvariantpool_pipeline_outputs, batch_stem
+):
+    exp_dir, _ = wtvvariantpool_pipeline_outputs
+    df = pl.read_parquet(
+        exp_dir / "wtvvariantpool_batchwise" / batch_stem / "results.parquet"
+    )
+    expected = {
+        "barcode",
+        "train_auroc",
+        "val_auroc",
+        "test_auroc",
+        "n_cells_barcode",
+        "n_cells_pool",
+    }
+    assert expected.issubset(set(df.columns))
+    # 10 WT barcodes all survive wtvvariantpool_min_cells_per_barcode=10 ->
+    # one row (classifier) per barcode.
+    assert len(df) == 10
 
 
 # ---------------------------------------------------------------------------
