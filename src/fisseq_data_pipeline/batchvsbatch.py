@@ -4,7 +4,7 @@ Hydra entry point (``python -m fisseq_data_pipeline.batchvsbatch``), backing the
 ``BATCHVSBATCH`` (run once pre- and once post-normalization). Trains one
 multiclass XGBoost model per variant to predict batch label, then extracts a
 one-vs-rest AUROC and Mann-Whitney p-value for every (variant, batch) pair from the
-held-out test split.
+held-out test split. Also writes per-variant gain-based feature importance.
 """
 
 import dataclasses
@@ -25,11 +25,13 @@ from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .utils.batches import load_batches
+from .utils.filtering import _exclude_blocked_features
 from .utils.log import setup_logging
 from .utils.xgbparams import (
     XGBoostConfig,
     get_dmatrix_multiclass,
     get_feature_cols,
+    resolve_feature_importance,
     split_indices_stratified,
 )
 
@@ -85,33 +87,6 @@ class BvbConfig(LabeledInputConfig):
 
 _cs = ConfigStore.instance()
 _cs.store(name="bvb_main", node=BvbConfig)
-
-
-def _exclude_blocked_features(
-    feature_cols: list[str], block_list_file: Optional[str]
-) -> list[str]:
-    """
-    Drop blocked feature names from a feature column list.
-
-    Parameters
-    ----------
-    feature_cols : list[str]
-        Candidate feature column names.
-    block_list_file : str or None
-        Path to a parquet file with ``feature`` (str) and ``feature_ok``
-        (bool) columns, or ``None`` to skip filtering entirely.
-
-    Returns
-    -------
-    list[str]
-        ``feature_cols`` with any feature whose ``feature_ok`` is ``False``
-        removed. Unchanged if ``block_list_file`` is ``None``.
-    """
-    if block_list_file is None:
-        return feature_cols
-    bl_df = pl.read_parquet(block_list_file)
-    blocked = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
-    return [f for f in feature_cols if f not in blocked]
 
 
 def train_test_val_split(
@@ -306,7 +281,7 @@ def profile_variant(
     val_all: pl.DataFrame,
     feature_cols: list[str],
     cfg: DictConfig,
-) -> list[dict]:
+) -> tuple[list[dict], Optional[xgb.Booster]]:
     """
     Train one multiclass model for ``variant`` and return per-batch OvR stats.
 
@@ -331,9 +306,11 @@ def profile_variant(
 
     Returns
     -------
-    list[dict]
-        Per-batch result dicts with a ``variant`` key prepended. Empty list
-        if the variant does not meet eligibility criteria.
+    tuple[list[dict], xgb.Booster or None]
+        ``(rows, model)``. ``rows`` are per-batch result dicts with a
+        ``variant`` key prepended, empty if the variant does not meet
+        eligibility criteria. ``model`` is the trained multiclass booster, or
+        ``None`` when the variant was skipped and no model was trained.
     """
     label_col = cfg.label_column
     batch_col = cfg.batch_column
@@ -354,7 +331,7 @@ def profile_variant(
             n_cells,
             cfg.min_cells,
         )
-        return []
+        return [], None
     if n_batches < cfg.min_batches:
         logging.warning(
             "Variant '%s' has %d unique batch(es) in train split (< min_batches=%d); skipping",
@@ -362,7 +339,7 @@ def profile_variant(
             n_batches,
             cfg.min_batches,
         )
-        return []
+        return [], None
 
     classes = sorted(unique_batches)
     logging.info(
@@ -375,7 +352,7 @@ def profile_variant(
 
     model = train_batch_classifier(train, val, feature_cols, batch_col, classes, cfg)
     stats = extract_ovr_stats(model, test, feature_cols, batch_col, classes)
-    return [{"variant": variant, **s} for s in stats]
+    return [{"variant": variant, **s} for s in stats], model
 
 
 @hydra.main(version_base=None, config_path=None, config_name="bvb_main")
@@ -392,11 +369,16 @@ def main(cfg: DictConfig) -> None:
        batch label via :func:`profile_variant`. Variants that raise an exception
        are skipped with a warning.
     4. Write per-(variant, batch) statistics to ``results.parquet``.
+    5. Write per-variant gain-based feature importance to
+       ``feature_importance.parquet``.
 
     Output files
     ------------
     - ``{output_dir}/results.parquet`` — columns: ``variant``, ``batch``,
       ``auroc``, ``mw_pvalue``, ``n_batch_cells``, ``n_cells``
+    - ``{output_dir}/feature_importance.parquet`` (one row per variant, one
+      column per feature that appeared in at least one variant's splits, plus
+      ``cfg.label_column``)
 
     Configuration
     -------------
@@ -443,10 +425,11 @@ def main(cfg: DictConfig) -> None:
     logging.info("Found %d variant(s) to profile", len(variants))
 
     all_results = []
+    models = {}
     for variant in variants:
         logging.info("Profiling variant '%s'", variant)
         try:
-            rows = profile_variant(
+            rows, model = profile_variant(
                 variant, train_all, test_all, val_all, feature_cols, cfg
             )
         except Exception:
@@ -457,6 +440,8 @@ def main(cfg: DictConfig) -> None:
             )
             continue
         all_results.extend(rows)
+        if model is not None:
+            models[variant] = model
 
     results_df = (
         pl.DataFrame(all_results)
@@ -476,6 +461,22 @@ def main(cfg: DictConfig) -> None:
     results_path = output_dir / "results.parquet"
     results_df.write_parquet(results_path)
     logging.info("Results written to %s", results_path)
+
+    logging.info("Computing feature importance")
+    importance_dicts = []
+    for variant, model in models.items():
+        importance = resolve_feature_importance(model, feature_cols)
+        importance[cfg.label_column] = variant
+        importance_dicts.append(importance)
+    importance_df = (
+        pl.from_dicts(importance_dicts)
+        if importance_dicts
+        else pl.DataFrame({cfg.label_column: []})
+    )
+    importance_path = output_dir / "feature_importance.parquet"
+    importance_df.write_parquet(importance_path)
+    logging.info("Feature importance written to %s", importance_path)
+
     logging.info("Done")
 
 

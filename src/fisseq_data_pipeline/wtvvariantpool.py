@@ -1,19 +1,20 @@
-"""Wildtype-vs-wildtype pairwise barcode XGBoost classification.
+"""Wildtype-barcode-vs-variant-pool XGBoost classification.
 
-Hydra entry point (``python -m fisseq_data_pipeline.wtvwt``), backing the Nextflow process
-``WTVWT_BATCHWISE``. Restricts to wildtype-labeled cells only, then trains one
-binary XGBoost classifier per pair of wildtype barcodes to distinguish cells
-belonging to either barcode, writing per-pair AUROC/accuracy results, the
-trained models, and per-pair gain-based feature importance.
+Hydra entry point (``python -m fisseq_data_pipeline.wtvvariantpool``), backing the Nextflow
+process ``WTVVARIANTPOOL_BATCHWISE``. Pools non-wildtype cells whose classified
+variant class (via :func:`.utils.variant.classify_variant`) is in a configurable
+set (default ``["Synonymous"]``), then trains one binary XGBoost classifier per
+wildtype barcode to distinguish cells belonging to that barcode from cells
+belonging to the pool, writing per-barcode AUROC/accuracy results, the
+trained models, and per-barcode gain-based feature importance.
 """
 
 import dataclasses
-import itertools
 import logging
 import pathlib
 import pickle
 import traceback
-from typing import Optional
+from typing import Optional, Union
 
 import hydra
 import polars as pl
@@ -28,9 +29,11 @@ from .utils.batches import load_batches
 from .utils.constants import META_BARCODE_COL
 from .utils.filtering import (
     _exclude_blocked_features,
+    downsample_group_to_target,
     drop_small_groups,
 )
 from .utils.log import setup_logging
+from .utils.variant import classify_variant
 from .utils.xgbparams import (
     XGBoostConfig,
     get_dmatrix,
@@ -39,46 +42,49 @@ from .utils.xgbparams import (
     split_indices_stratified,
 )
 
-BARCODE_DOWNSAMPLE_MODES = ("top", "random")
+# Sentinel value written into barcode_column for pooled variant rows, standing
+# in for "the other barcode" so get_dmatrix/split_indices_stratified can be
+# reused unmodified (see AGENTS.md's note on wtvwt.py's identical trick).
+# Chosen to be implausible as a real barcode string; train_test_val_split
+# defensively raises if a real barcode ever collides with it.
+_POOL_GROUP = "__WTVVARIANTPOOL_POOL__"
 
 
 @dataclasses.dataclass
-class WtvwtConfig(LabeledInputConfig):
+class WtvvariantpoolConfig(LabeledInputConfig):
     """
-    Hydra structured configuration for the wildtype-vs-wildtype entry point.
+    Hydra structured configuration for the wildtype-vs-variant-pool entry point.
 
     Extends :class:`.config.LabeledInputConfig` with parameters controlling
-    per-barcode-pair XGBoost training restricted to wildtype cells.
+    per-barcode-vs-pool XGBoost training.
 
     Attributes
     ----------
     wt_label : str
-        Label string identifying wildtype cells; only rows with this label are
-        used. Defaults to ``"WT"``.
+        Label string identifying wildtype cells. Defaults to ``"WT"``.
     barcode_column : str
         Name of the column in ``input_file`` identifying each cell's barcode.
         Defaults to :data:`.utils.constants.META_BARCODE_COL` (``"meta_barcode"``).
     random_state : int
         Random seed for train/test/val splitting, and for
-        ``barcode_downsample_mode="random"``. Defaults to ``42``.
+        ``downsample_variant_pool``. Defaults to ``42``.
     feature_cols : list or None
         Explicit list of feature column names. If ``None``, columns are
         auto-detected by :func:`.xgbparams.get_feature_cols`. Defaults to
         ``None``.
     min_cells_per_barcode : int
         Minimum number of wildtype cells required for a barcode to be
-        included in pairing. Barcodes with fewer cells are dropped before
-        splitting. Defaults to ``100``.
-    max_barcodes : int or None
-        If set, caps the number of wildtype barcodes profiled to at most this
-        many, selected via :func:`select_barcodes` (mode controlled by
-        ``barcode_downsample_mode``). Applied after ``min_cells_per_barcode``
-        filtering. Defaults to ``None`` (disabled).
-    barcode_downsample_mode : str
-        ``"top"`` keeps the ``max_barcodes`` barcodes with the highest cell
-        count (ties broken alphabetically); ``"random"`` keeps a seeded
-        random sample (using ``random_state``) of ``max_barcodes`` barcodes.
-        Defaults to ``"top"``.
+        included. Barcodes with fewer cells are dropped before splitting.
+        Defaults to ``100``.
+    variant_classes : list[str]
+        Classes (from :func:`.utils.variant.classify_variant`) eligible for
+        the pooled non-wildtype set. Defaults to ``["Synonymous"]``.
+    downsample_variant_pool : bool, int, or None
+        If ``None`` or ``False``, the pool is not downsampled. If ``True``,
+        the pool is downsampled to match the size of the largest surviving
+        wildtype barcode group. If an integer, the pool is downsampled to
+        that exact count (no-op if already at or below the target).
+        Defaults to ``None``.
     feature_block_list_file : str or None
         Optional path to a parquet file with at least ``feature`` (str) and
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
@@ -93,106 +99,59 @@ class WtvwtConfig(LabeledInputConfig):
     random_state: int = 42
     feature_cols: Optional[list] = None
     min_cells_per_barcode: int = 100
-    max_barcodes: Optional[int] = None
-    barcode_downsample_mode: str = "top"
+    variant_classes: list = dataclasses.field(default_factory=lambda: ["Synonymous"])
+    downsample_variant_pool: Optional[Union[bool, int]] = None
     feature_block_list_file: Optional[str] = None
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
 
 _cs = ConfigStore.instance()
-_cs.store(name="wtvwt_main", node=WtvwtConfig)
+_cs.store(name="wtvvariantpool_main", node=WtvvariantpoolConfig)
 
 
-def filter_min_cells_per_barcode(
+def build_variant_pool(
     data_df: pl.DataFrame,
-    barcode_column: str,
-    min_cells: int,
+    label_column: str,
+    wt_label: str,
+    variant_classes: list[str],
 ) -> pl.DataFrame:
     """
-    Remove barcode groups with fewer than ``min_cells`` cells.
+    Build the pool of non-wildtype cells eligible for barcode-vs-pool training.
+
+    Rows with ``label_column == wt_label`` are excluded first, by
+    construction -- not by relying on :func:`.utils.variant.classify_variant`'s
+    own ``"WT"`` category, since ``wt_label`` is a configurable string and
+    need not literally be ``"WT"``. The remaining rows are classified via
+    :func:`.utils.variant.classify_variant` and kept iff the result is in
+    ``variant_classes``.
 
     Parameters
     ----------
     data_df : pl.DataFrame
-        DataFrame containing wildtype rows, including ``barcode_column``.
-    barcode_column : str
-        Name of the column identifying each cell's barcode.
-    min_cells : int
-        Minimum number of cells a barcode must have to be retained.
+        Full feature DataFrame containing ``label_column``.
+    label_column : str
+        Name of the column identifying variant labels.
+    wt_label : str
+        Label string identifying wildtype cells, excluded from the pool.
+    variant_classes : list[str]
+        Classes (from :func:`.utils.variant.classify_variant`) eligible for
+        the pool.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with small barcode groups removed.
+        Rows of ``data_df`` belonging to the pool. May be empty if no rows
+        match.
     """
-    return drop_small_groups(data_df, barcode_column, min_cells)
-
-
-def select_barcodes(
-    data_df: pl.DataFrame,
-    barcode_column: str,
-    max_barcodes: int,
-    mode: str,
-    seed: int,
-) -> pl.DataFrame:
-    """
-    Restrict `data_df` to at most `max_barcodes` distinct barcodes.
-
-    `mode` is one of:
-
-    - ``"top"``: keep the `max_barcodes` barcodes with the highest cell
-      count, ties broken alphabetically ascending on `barcode_column`. Fully
-      deterministic.
-    - ``"random"``: keep a seeded-random sample of `max_barcodes` distinct
-      barcodes. Deterministic given `seed`.
-
-    Parameters
-    ----------
-    data_df : pl.DataFrame
-        DataFrame to restrict, containing `barcode_column`.
-    barcode_column : str
-        Name of the column identifying each cell's barcode.
-    max_barcodes : int
-        Maximum number of distinct barcodes to keep.
-    mode : str
-        One of :data:`BARCODE_DOWNSAMPLE_MODES`.
-    seed : int
-        Seed used when `mode` is ``"random"``.
-
-    Returns
-    -------
-    pl.DataFrame
-        `data_df` restricted to rows whose barcode is among the selected set.
-
-    Raises
-    ------
-    ValueError
-        If `mode` is not one of :data:`BARCODE_DOWNSAMPLE_MODES`.
-    """
-    if mode not in BARCODE_DOWNSAMPLE_MODES:
-        raise ValueError(
-            f"barcode_downsample_mode must be one of {BARCODE_DOWNSAMPLE_MODES}, "
-            f"got {mode!r}"
-        )
-
-    counts = data_df.group_by(barcode_column).len()
-    if mode == "top":
-        selected = (
-            counts.sort(["len", barcode_column], descending=[True, False])
-            .head(max_barcodes)
-            .get_column(barcode_column)
-            .to_list()
-        )
-    else:
-        selected = (
-            counts.with_columns(pl.col(barcode_column).hash(seed=seed).alias("_rand"))
-            .sort("_rand")
-            .head(max_barcodes)
-            .get_column(barcode_column)
-            .to_list()
-        )
-
-    return data_df.filter(pl.col(barcode_column).is_in(selected))
+    non_wt = data_df.filter(pl.col(label_column) != wt_label)
+    classified = non_wt.with_columns(
+        pl.col(label_column)
+        .map_elements(classify_variant, return_dtype=pl.String)
+        .alias("__variant_class__")
+    )
+    return classified.filter(pl.col("__variant_class__").is_in(variant_classes)).drop(
+        "__variant_class__"
+    )
 
 
 def train_test_val_split(
@@ -200,14 +159,16 @@ def train_test_val_split(
     cfg: DictConfig,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    Split wildtype cells into train, test, and validation sets.
+    Split wildtype cells and pooled variant cells into train, test, and validation sets.
 
-    Restricts ``data_df`` to wildtype rows (``label_column == wt_label``),
-    drops barcodes with fewer than ``min_cells_per_barcode`` cells, then (if
-    ``max_barcodes`` is set) caps the surviving barcodes to at most that many
-    via :func:`select_barcodes`, and produces an 80/10/10 split stratified by
-    ``barcode_column`` so every surviving barcode's rows span all three
-    splits.
+    Restricts wildtype rows (``label_column == wt_label``) to those whose
+    barcode has at least ``min_cells_per_barcode`` cells, builds the pooled
+    non-wildtype set via :func:`build_variant_pool`, tags pool rows with a
+    reserved sentinel value in ``barcode_column``, optionally downsamples the
+    pool via ``downsample_variant_pool``, then produces an 80/10/10 split
+    stratified jointly by ``barcode_column`` (individual wildtype barcodes
+    plus the pool sentinel) so every surviving barcode's rows -- and the
+    pool's -- span all three splits.
 
     Parameters
     ----------
@@ -217,13 +178,21 @@ def train_test_val_split(
     cfg : DictConfig
         Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
         ``feature_block_list_file``, ``barcode_column``, ``min_cells_per_barcode``,
-        ``max_barcodes``, ``barcode_downsample_mode``, and ``random_state``.
+        ``variant_classes``, ``downsample_variant_pool``, and ``random_state``.
 
     Returns
     -------
     tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
         ``(train, test, val)`` DataFrames, each containing feature columns and
-        ``barcode_column``.
+        ``barcode_column`` (with pool rows carrying the reserved sentinel
+        value).
+
+    Raises
+    ------
+    ValueError
+        If a real wildtype barcode collides with the reserved pool sentinel
+        value, or if the variant pool is empty after filtering to
+        ``variant_classes``.
     """
     barcode_col = cfg.barcode_column
     if cfg.feature_cols is not None:
@@ -231,30 +200,51 @@ def train_test_val_split(
     else:
         feature_cols = get_feature_cols(data_df)
     feature_cols = _exclude_blocked_features(feature_cols, cfg.feature_block_list_file)
-
-    data_df = data_df.filter(pl.col(cfg.label_column) == cfg.wt_label)
     select_cols = feature_cols + [barcode_col]
-    data_df = data_df.select(select_cols)
-    data_df = data_df.filter(pl.col(barcode_col).is_not_null())
-    data_df = filter_min_cells_per_barcode(
-        data_df, barcode_col, cfg.min_cells_per_barcode
-    )
-    if cfg.max_barcodes is not None:
-        data_df = select_barcodes(
-            data_df,
-            barcode_col,
-            cfg.max_barcodes,
-            cfg.barcode_downsample_mode,
-            cfg.random_state,
+
+    wt_df = data_df.filter(pl.col(cfg.label_column) == cfg.wt_label)
+    wt_df = wt_df.select(select_cols)
+    wt_df = wt_df.filter(pl.col(barcode_col).is_not_null())
+    wt_df = drop_small_groups(wt_df, barcode_col, cfg.min_cells_per_barcode)
+
+    if (wt_df.get_column(barcode_col) == _POOL_GROUP).any():
+        raise ValueError(
+            f"wtvvariantpool: a wildtype barcode collides with the reserved "
+            f"pool sentinel value {_POOL_GROUP!r}; rename that barcode or the "
+            f"sentinel."
         )
 
-    data_df = data_df.with_row_index("__idx__")
-    barcodes = data_df.get_column(barcode_col).to_numpy()
+    pool_df = build_variant_pool(
+        data_df, cfg.label_column, cfg.wt_label, list(cfg.variant_classes)
+    )
+    if len(pool_df) == 0:
+        raise ValueError(
+            f"wtvvariantpool: variant pool is empty after filtering to "
+            f"variant_classes={list(cfg.variant_classes)!r}; no cells matched"
+        )
+    pool_df = pool_df.select(feature_cols).with_columns(
+        pl.lit(_POOL_GROUP).alias(barcode_col)
+    )
 
-    train_idx, test_idx, val_idx = split_indices_stratified(barcodes, cfg.random_state)
+    merged = pl.concat([wt_df, pool_df], how="vertical")
+
+    if cfg.downsample_variant_pool is not None and cfg.downsample_variant_pool is not False:
+        n = (
+            cfg.downsample_variant_pool
+            if not isinstance(cfg.downsample_variant_pool, bool)
+            else None
+        )
+        merged = downsample_group_to_target(
+            merged, barcode_col, _POOL_GROUP, cfg.random_state, n=n
+        )
+
+    merged = merged.with_row_index("__idx__")
+    groups = merged.get_column(barcode_col).to_numpy()
+
+    train_idx, test_idx, val_idx = split_indices_stratified(groups, cfg.random_state)
 
     def select_rows(idx) -> pl.DataFrame:
-        return data_df.filter(pl.col("__idx__").is_in(idx)).select(select_cols)
+        return merged.filter(pl.col("__idx__").is_in(idx)).select(select_cols)
 
     return select_rows(train_idx), select_rows(test_idx), select_rows(val_idx)
 
@@ -267,7 +257,7 @@ def train_xgboost(
     cfg: DictConfig,
 ) -> xgb.Booster:
     """
-    Train an XGBoost binary classifier to distinguish two wildtype barcodes.
+    Train an XGBoost binary classifier to distinguish a wildtype barcode from the pool.
 
     Uses ``binary:logistic`` objective with AUC as the eval metric. Sample
     weights are computed with :func:`sklearn.utils.compute_sample_weight`
@@ -278,7 +268,7 @@ def train_xgboost(
     ----------
     train : pl.DataFrame
         Training split containing feature columns and ``barcode_column``,
-        restricted to the current barcode pair.
+        restricted to the current barcode vs. the pool.
     val : pl.DataFrame
         Validation split used for early stopping and eval logging.
     barcode_column : str
@@ -351,14 +341,13 @@ def evaluate(
     return auroc, accuracy
 
 
-def evaluate_pair(
+def evaluate_barcode(
     model: xgb.Booster,
     train: pl.DataFrame,
     val: pl.DataFrame,
     test: pl.DataFrame,
     barcode_column: str,
-    barcode_a: str,
-    barcode_b: str,
+    barcode: str,
 ) -> dict:
     """
     Evaluate a trained model on train, validation, and test splits.
@@ -368,76 +357,70 @@ def evaluate_pair(
     model : xgb.Booster
         Trained XGBoost booster.
     train : pl.DataFrame
-        Training split, restricted to ``barcode_a``/``barcode_b``.
+        Training split, restricted to ``barcode``/the pool.
     val : pl.DataFrame
-        Validation split, restricted to ``barcode_a``/``barcode_b``.
+        Validation split, restricted to ``barcode``/the pool.
     test : pl.DataFrame
-        Held-out test split, restricted to ``barcode_a``/``barcode_b``.
+        Held-out test split, restricted to ``barcode``/the pool.
     barcode_column : str
         Name of the barcode label column.
-    barcode_a : str
-        First barcode of the pair (treated as the positive class).
-    barcode_b : str
-        Second barcode of the pair.
+    barcode : str
+        Wildtype barcode being profiled (treated as the positive class).
 
     Returns
     -------
     dict
-        Dictionary with keys ``barcode_a``, ``barcode_b``, ``train_auroc``,
-        ``train_accuracy``, ``val_auroc``, ``val_accuracy``, ``test_auroc``,
-        ``test_accuracy``, ``n_cells_a``, ``n_cells_b``.
+        Dictionary with keys ``barcode``, ``train_auroc``, ``train_accuracy``,
+        ``val_auroc``, ``val_accuracy``, ``test_auroc``, ``test_accuracy``,
+        ``n_cells_barcode``, ``n_cells_pool``.
     """
-    evaluate_wrapper = lambda df: evaluate(df, model, barcode_column, barcode_a)
+    evaluate_wrapper = lambda df: evaluate(df, model, barcode_column, barcode)
 
     train_auroc, train_accuracy = evaluate_wrapper(train)
     val_auroc, val_accuracy = evaluate_wrapper(val)
     test_auroc, test_accuracy = evaluate_wrapper(test)
 
     all_rows = pl.concat([train, val, test])
-    n_cells_a = int((all_rows.get_column(barcode_column) == barcode_a).sum())
-    n_cells_b = int((all_rows.get_column(barcode_column) == barcode_b).sum())
+    n_cells_barcode = int((all_rows.get_column(barcode_column) == barcode).sum())
+    n_cells_pool = int((all_rows.get_column(barcode_column) == _POOL_GROUP).sum())
 
     return {
-        "barcode_a": barcode_a,
-        "barcode_b": barcode_b,
+        "barcode": barcode,
         "train_auroc": train_auroc,
         "train_accuracy": train_accuracy,
         "val_auroc": val_auroc,
         "val_accuracy": val_accuracy,
         "test_auroc": test_auroc,
         "test_accuracy": test_accuracy,
-        "n_cells_a": n_cells_a,
-        "n_cells_b": n_cells_b,
+        "n_cells_barcode": n_cells_barcode,
+        "n_cells_pool": n_cells_pool,
     }
 
 
-def profile_pair(
-    a: str,
-    b: str,
+def profile_barcode(
+    barcode: str,
     train_all: pl.DataFrame,
     test_all: pl.DataFrame,
     val_all: pl.DataFrame,
     cfg: DictConfig,
 ) -> tuple[dict, xgb.Booster]:
     """
-    Train and evaluate an XGBoost model for one pair of wildtype barcodes.
+    Train and evaluate an XGBoost model for one wildtype barcode vs. the pool.
 
     Subsets ``train_all``, ``test_all``, and ``val_all`` to rows belonging to
-    barcode ``a`` or ``b``, trains a model via :func:`train_xgboost`, and
-    evaluates it via :func:`evaluate_pair`.
+    ``barcode`` or the pool, trains a model via :func:`train_xgboost`, and
+    evaluates it via :func:`evaluate_barcode`.
 
     Parameters
     ----------
-    a : str
-        First barcode of the pair.
-    b : str
-        Second barcode of the pair.
+    barcode : str
+        Wildtype barcode to profile.
     train_all : pl.DataFrame
-        Full training split (all barcodes).
+        Full training split (all barcodes plus the pool).
     test_all : pl.DataFrame
-        Full test split (all barcodes).
+        Full test split (all barcodes plus the pool).
     val_all : pl.DataFrame
-        Full validation split (all barcodes).
+        Full validation split (all barcodes plus the pool).
     cfg : DictConfig
         Hydra config supplying ``barcode_column`` and XGBoost settings.
 
@@ -445,29 +428,27 @@ def profile_pair(
     -------
     tuple[dict, xgb.Booster]
         ``(result_dict, model)`` where ``result_dict`` contains the evaluation
-        metrics from :func:`evaluate_pair`.
+        metrics from :func:`evaluate_barcode`.
     """
     barcode_col = cfg.barcode_column
-    keep = pl.col(barcode_col).is_in([a, b])
+    keep = pl.col(barcode_col).is_in([barcode, _POOL_GROUP])
     train, test, val = (
         train_all.filter(keep),
         test_all.filter(keep),
         val_all.filter(keep),
     )
     logging.info(
-        "Subset sizes for ('%s', '%s') — train: %d, val: %d, test: %d",
-        a,
-        b,
+        "Subset sizes for barcode '%s' vs. pool — train: %d, val: %d, test: %d",
+        barcode,
         len(train),
         len(val),
         len(test),
     )
-    model = train_xgboost(train, val, barcode_col, a, cfg)
-    result = evaluate_pair(model, train, val, test, barcode_col, a, b)
+    model = train_xgboost(train, val, barcode_col, barcode, cfg)
+    result = evaluate_barcode(model, train, val, test, barcode_col, barcode)
     logging.info(
-        "Results for ('%s', '%s'): train_auroc=%.4f, val_auroc=%.4f, test_auroc=%.4f",
-        a,
-        b,
+        "Results for barcode '%s' vs. pool: train_auroc=%.4f, val_auroc=%.4f, test_auroc=%.4f",
+        barcode,
         result["train_auroc"],
         result["val_auroc"],
         result["test_auroc"],
@@ -476,67 +457,71 @@ def profile_pair(
 
 
 _EMPTY_RESULTS_SCHEMA = {
-    "barcode_a": pl.Utf8,
-    "barcode_b": pl.Utf8,
+    "barcode": pl.Utf8,
     "train_auroc": pl.Float64,
     "train_accuracy": pl.Float64,
     "val_auroc": pl.Float64,
     "val_accuracy": pl.Float64,
     "test_auroc": pl.Float64,
     "test_accuracy": pl.Float64,
-    "n_cells_a": pl.Int64,
-    "n_cells_b": pl.Int64,
+    "n_cells_barcode": pl.Int64,
+    "n_cells_pool": pl.Int64,
 }
 
 
-@hydra.main(version_base=None, config_path=None, config_name="wtvwt_main")
+@hydra.main(version_base=None, config_path=None, config_name="wtvvariantpool_main")
 def main(cfg: DictConfig) -> None:
     """
-    Hydra entry point: wildtype-vs-wildtype pairwise barcode XGBoost profiling.
+    Hydra entry point: wildtype-barcode-vs-variant-pool XGBoost profiling.
 
     Steps
     -----
     1. Read the feature file at ``cfg.input_file``.
-    2. Restrict to wildtype cells and split into train/test/val via
-       :func:`train_test_val_split`.
-    3. For each pair of wildtype barcodes, train and evaluate an XGBoost
-       binary classifier via :func:`profile_pair`. Pairs that raise an
-       exception are skipped with a warning.
-    4. Write per-pair evaluation metrics to ``results.parquet`` and all
-       trained models (keyed by ``(barcode_a, barcode_b)``) to ``models.pkl``.
-    5. Write per-pair gain-based feature importance to
+    2. Build the pooled non-wildtype set (cells whose classified variant
+       class is in ``cfg.variant_classes``) and split wildtype-vs-pool cells
+       into train/test/val via :func:`train_test_val_split`.
+    3. For each surviving wildtype barcode, train and evaluate an XGBoost
+       binary classifier vs. the pool via :func:`profile_barcode`. Barcodes
+       that raise an exception are skipped with a warning.
+    4. Write per-barcode evaluation metrics to ``results.parquet`` and all
+       trained models (keyed by barcode) to ``models.pkl``.
+    5. Write per-barcode gain-based feature importance to
        ``feature_importance.parquet``.
 
     Output files
     ------------
     - ``{output_dir}/results.parquet``
     - ``{output_dir}/models.pkl``
-    - ``{output_dir}/feature_importance.parquet`` (one row per pair, one
-      column per feature that appeared in at least one pair's splits, plus
-      ``barcode_a``/``barcode_b``)
+    - ``{output_dir}/feature_importance.parquet`` (one row per barcode, one
+      column per feature that appeared in at least one barcode's splits, plus
+      ``barcode``)
 
     Configuration
     -------------
     Override any field on the command line, e.g.::
 
-        python -m fisseq_data_pipeline.wtvwt \\
+        python -m fisseq_data_pipeline.wtvvariantpool \\
             output_dir=./out \\
             input_file=data/features.parquet \\
             wt_label=WT
     """
-    wtvwt_cfg: WtvwtConfig = OmegaConf.to_object(cfg)
+    wtvvariantpool_cfg: WtvvariantpoolConfig = OmegaConf.to_object(cfg)
 
-    output_dir = pathlib.Path(wtvwt_cfg.output_dir)
+    output_dir = pathlib.Path(wtvvariantpool_cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    wtvwt_cfg.output_dir = output_dir
-    setup_logging(wtvwt_cfg, "wtvwt")
+    wtvvariantpool_cfg.output_dir = output_dir
+    setup_logging(wtvvariantpool_cfg, "wtvvariantpool")
 
     logging.info("Config:\n%s", OmegaConf.to_yaml(cfg))
     logging.info("Loading input from %s", cfg.input_file)
     feature_df = load_batches(cfg.input_file)[0].collect()
     train_all, test_all, val_all = train_test_val_split(feature_df, cfg)
 
-    barcodes = sorted(train_all.get_column(cfg.barcode_column).unique().to_list())
+    barcodes = sorted(
+        b
+        for b in train_all.get_column(cfg.barcode_column).unique().to_list()
+        if b != _POOL_GROUP
+    )
     logging.info(
         "Split sizes — train: %d, val: %d, test: %d",
         len(train_all),
@@ -547,31 +532,29 @@ def main(cfg: DictConfig) -> None:
     results = []
     models = {}
 
-    if len(barcodes) < 2:
+    if len(barcodes) < 1:
         logging.warning(
-            "Fewer than 2 wildtype barcodes meet min_cells_per_barcode=%d "
-            "(found %d); nothing to profile",
+            "No wildtype barcodes meet min_cells_per_barcode=%d; nothing to profile",
             cfg.min_cells_per_barcode,
-            len(barcodes),
         )
     else:
-        pairs = list(itertools.combinations(barcodes, 2))
-        logging.info("Found %d barcode pair(s) to profile", len(pairs))
+        logging.info("Found %d wildtype barcode(s) to profile", len(barcodes))
 
-        for a, b in pairs:
-            logging.info("Training model for barcode '%s' vs. '%s'", a, b)
+        for barcode in barcodes:
+            logging.info("Training model for barcode '%s' vs. variant pool", barcode)
             try:
-                result, model = profile_pair(a, b, train_all, test_all, val_all, cfg)
+                result, model = profile_barcode(
+                    barcode, train_all, test_all, val_all, cfg
+                )
             except Exception:
                 logging.warning(
-                    "Failed to profile pair ('%s', '%s'), skipping:\n%s",
-                    a,
-                    b,
+                    "Failed to profile barcode '%s', skipping:\n%s",
+                    barcode,
                     traceback.format_exc(),
                 )
                 continue
             results.append(result)
-            models[(a, b)] = model
+            models[barcode] = model
 
     results_df = (
         pl.DataFrame(results) if results else pl.DataFrame(schema=_EMPTY_RESULTS_SCHEMA)
@@ -589,15 +572,14 @@ def main(cfg: DictConfig) -> None:
     logging.info("Computing feature importance")
     feature_cols = [c for c in train_all.columns if c != cfg.barcode_column]
     importance_dicts = []
-    for (a, b), model in models.items():
+    for barcode, model in models.items():
         importance = resolve_feature_importance(model, feature_cols)
-        importance["barcode_a"] = a
-        importance["barcode_b"] = b
+        importance["barcode"] = barcode
         importance_dicts.append(importance)
     importance_df = (
         pl.from_dicts(importance_dicts)
         if importance_dicts
-        else pl.DataFrame({"barcode_a": [], "barcode_b": []})
+        else pl.DataFrame({"barcode": []})
     )
     importance_path = output_dir / "feature_importance.parquet"
     importance_df.write_parquet(importance_path)

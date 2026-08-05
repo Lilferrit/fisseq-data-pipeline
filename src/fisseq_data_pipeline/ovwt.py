@@ -3,8 +3,8 @@
 Hydra entry point (``python -m fisseq_data_pipeline.ovwt``), backing the Nextflow processes ``OVWT_BATCHWISE``
 and ``OVWT_GLOBAL``. Trains a separate binary XGBoost classifier per non-wildtype
 variant against a shared 80/10/10 stratified split, optionally downsampling
-wildtype cells, and writes per-variant AUROC/accuracy results plus the trained
-models.
+wildtype cells, and writes per-variant AUROC/accuracy results, the trained
+models, and per-variant gain-based feature importance.
 """
 
 import dataclasses
@@ -28,12 +28,17 @@ from omegaconf import DictConfig, OmegaConf
 from .config import LabeledInputConfig
 from .utils.batches import load_batches
 from .utils.constants import META_BARCODE_COL
+from .utils.filtering import (
+    _exclude_blocked_features,
+    downsample_group_to_target,
+)
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
 from .utils.xgbparams import (
     XGBoostConfig,
     get_dmatrix,
     get_feature_cols,
+    resolve_feature_importance,
     split_indices_stratified,
 )
 
@@ -381,20 +386,7 @@ def downsample_wildtype(
         DataFrame with wildtype rows downsampled, or unchanged if already
         at or below the target.
     """
-    if n is None:
-        target = (
-            data_df.filter(pl.col(label_col) != wt_label)
-            .group_by(label_col)
-            .len()
-            .get_column("len")
-            .max()
-        )
-    else:
-        target = n
-    wt_df = data_df.filter(pl.col(label_col) == wt_label)
-    if target is not None and len(wt_df) > target:
-        wt_df = wt_df.sample(n=target, seed=seed)
-    return pl.concat([data_df.filter(pl.col(label_col) != wt_label), wt_df])
+    return downsample_group_to_target(data_df, label_col, wt_label, seed, n=n)
 
 
 def filter_min_cells(
@@ -435,33 +427,6 @@ def filter_min_cells(
     return data_df.filter(
         (pl.col(label_col) == wt_label) | pl.col(label_col).is_in(keep_labels)
     )
-
-
-def _exclude_blocked_features(
-    feature_cols: list[str], feature_block_list_file: Optional[str]
-) -> list[str]:
-    """
-    Drop blocked feature names from a feature column list.
-
-    Parameters
-    ----------
-    feature_cols : list[str]
-        Candidate feature column names.
-    feature_block_list_file : str or None
-        Path to a parquet file with ``feature`` (str) and ``feature_ok``
-        (bool) columns, or ``None`` to skip filtering entirely.
-
-    Returns
-    -------
-    list[str]
-        ``feature_cols`` with any feature whose ``feature_ok`` is ``False``
-        removed. Unchanged if ``feature_block_list_file`` is ``None``.
-    """
-    if feature_block_list_file is None:
-        return feature_cols
-    bl_df = pl.read_parquet(feature_block_list_file)
-    blocked = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
-    return [f for f in feature_cols if f not in blocked]
 
 
 def _exclude_blocked_barcodes(
@@ -659,11 +624,16 @@ def main(cfg: DictConfig) -> None:
        are skipped with a warning.
     4. Write per-variant evaluation metrics to ``results.csv`` and all trained
        models (keyed by variant label) to ``models.pkl``.
+    5. Write per-variant gain-based feature importance to
+       ``feature_importance.parquet``.
 
     Output files
     ------------
     - ``{output_dir}/results.parquet``
     - ``{output_dir}/models.pkl``
+    - ``{output_dir}/feature_importance.parquet`` (one row per variant, one
+      column per feature that appeared in at least one variant's splits, plus
+      ``cfg.label_column``)
     - ``{output_dir}/{train,test,val}_index.parquet`` (when ``save_splits`` is ``True``,
       which is the default; each file has columns ``row_idx`` and ``origin_file``)
 
@@ -753,6 +723,22 @@ def main(cfg: DictConfig) -> None:
     logging.info("Writing models to %s", models_path)
     with open(models_path, "wb") as f:
         pickle.dump(models, f)
+
+    logging.info("Computing feature importance")
+    feature_cols = [c for c in train_all.columns if c != cfg.label_column]
+    importance_dicts = []
+    for v, model in models.items():
+        importance = resolve_feature_importance(model, feature_cols)
+        importance[cfg.label_column] = v
+        importance_dicts.append(importance)
+    importance_df = (
+        pl.from_dicts(importance_dicts)
+        if importance_dicts
+        else pl.DataFrame({cfg.label_column: []})
+    )
+    importance_path = output_dir / "feature_importance.parquet"
+    importance_df.write_parquet(importance_path)
+    logging.info("Feature importance written to %s", importance_path)
 
     logging.info("Done")
 

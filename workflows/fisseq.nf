@@ -8,7 +8,10 @@ nextflow.enable.dsl = 2
 // -> BATCH_CORRECT_FIT/TRANSFORM -> ANOVA (batch-corrected). WTVWT_BATCHWISE
 // (per batch, wildtype cells only, one binary classifier per pair of
 // wildtype barcodes) branches off NORMALIZE independently, gated per batch
-// by params.run_wtvwt (default true).
+// by params.run_wtvwt (default true). WTVVARIANTPOOL_BATCHWISE (per batch,
+// wildtype-barcode-vs-variant-pool) likewise branches off NORMALIZE
+// independently, gated per batch by params.run_wtvvariantpool (default
+// false).
 // BATCHVSBATCH, OVWT_GLOBAL, ANOVA (both calls), BATCH_CORRECT_FIT/TRANSFORM,
 // and the global feature-selection branch all run once per named channel in
 // params.global_channels (default null = none run), each scoped to only the
@@ -47,6 +50,7 @@ include { OVWT_BATCHWISE as OVWT_BATCHWISE_BARCODE_FILTERED } from '../modules/l
 include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
 include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'
 include { WTVWT_BATCHWISE           } from '../modules/local/wtvwt_batchwise'
+include { WTVVARIANTPOOL_BATCHWISE  } from '../modules/local/wtvvariantpool_batchwise'
 include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 include { BARCODE_BLOCKLIST         } from '../modules/local/barcode_blocklist'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
@@ -93,6 +97,9 @@ workflow FisseqPipeline {
         wtvwt_min_cells_per_barcode       : params.wtvwt_min_cells_per_barcode,
         wtvwt_max_barcodes                : params.wtvwt_max_barcodes,
         wtvwt_barcode_downsample_mode     : params.wtvwt_barcode_downsample_mode,
+        wtvvariantpool_min_cells_per_barcode  : params.wtvvariantpool_min_cells_per_barcode,
+        wtvvariantpool_variant_classes        : params.wtvvariantpool_variant_classes,
+        wtvvariantpool_downsample_variant_pool: params.wtvvariantpool_downsample_variant_pool,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
         barcode_check_min_cells           : params.barcode_check_min_cells,
@@ -104,6 +111,7 @@ workflow FisseqPipeline {
         run_barcode_filtered_ovwt         : params.run_barcode_filtered_ovwt.toString().toBoolean(),
         run_feature_selection             : params.run_feature_selection.toString().toBoolean(),
         run_wtvwt                         : params.run_wtvwt.toString().toBoolean(),
+        run_wtvvariantpool                : params.run_wtvvariantpool.toString().toBoolean(),
         feature_allowlist_file            : params.feature_allowlist_file,
         feature_blocklist_file            : params.feature_blocklist_file,
         csv_schema_scan_rows              : params.csv_schema_scan_rows,
@@ -167,6 +175,7 @@ workflow FisseqPipeline {
             run_barcode_filtered_ovwt: cfg.run_barcode_filtered_ovwt.toString().toBoolean() && runCheckBarcodes,
             run_feature_selection    : cfg.run_feature_selection.toString().toBoolean(),
             run_wtvwt                : cfg.run_wtvwt.toString().toBoolean(),
+            run_wtvvariantpool       : cfg.run_wtvvariantpool.toString().toBoolean(),
         ]
     }
 
@@ -257,6 +266,20 @@ workflow FisseqPipeline {
                                  resolvedBatchConfigs[stem].wtvwt_max_barcodes,
                                  resolvedBatchConfigs[stem].wtvwt_barcode_downsample_mode) }
     WTVWT_BATCHWISE(wtvwt_input_ch)
+
+    // Step 2c: WTVVARIANTPOOL — batchwise, wildtype-barcode-vs-variant-pool
+    // classification. Pools non-wildtype cells whose classified variant class
+    // is in wtvvariantpool_variant_classes, then trains one binary classifier
+    // per surviving wildtype barcode vs. that pool. Per-batch gated on
+    // run_wtvvariantpool (default FALSE, unlike run_wtvwt's default true).
+    // Independent of the ANOVA/OvWT/feature-selection chains and of
+    // WTVWT_BATCHWISE itself, so it only needs norm_ch.
+    wtvvariantpool_input_ch = norm_ch
+        .filter { stem, p -> batchGates.call(stem).run_wtvvariantpool }
+        .map { stem, p -> tuple(stem, p, resolvedBatchConfigs[stem].wtvvariantpool_min_cells_per_barcode,
+                                 resolvedBatchConfigs[stem].wtvvariantpool_variant_classes,
+                                 resolvedBatchConfigs[stem].wtvvariantpool_downsample_variant_pool) }
+    WTVVARIANTPOOL_BATCHWISE(wtvvariantpool_input_ch)
 
     // ANOVA (normalized) — once per active global channel, scoped to that
     // channel's normalized cells (channel_norm_signal_ch). Its output feeds

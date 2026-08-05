@@ -268,19 +268,20 @@ def global_splits():
 
 def test_profile_variant_returns_list(global_splits):
     train, test, val, cfg = global_splits
-    result = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
+    result, model = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
     assert isinstance(result, list)
+    assert isinstance(model, xgb.Booster)
 
 
 def test_profile_variant_one_entry_per_batch(global_splits):
     train, test, val, cfg = global_splits
-    result = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
+    result, _ = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
     assert len(result) == 3
 
 
 def test_profile_variant_has_variant_key(global_splits):
     train, test, val, cfg = global_splits
-    result = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
+    result, _ = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
     for row in result:
         assert row["variant"] == "V0"
 
@@ -289,8 +290,9 @@ def test_profile_variant_too_few_cells_returns_empty():
     df = _make_batch_df(n_batches=2, n_cells_per_batch=30, n_variants=1)
     cfg = _make_cfg(min_cells=100_000)
     train, test, val = m.train_test_val_split(df, cfg)
-    result = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
+    result, model = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
     assert result == []
+    assert model is None
 
 
 def test_profile_variant_single_batch_returns_empty():
@@ -310,8 +312,9 @@ def test_profile_variant_single_batch_returns_empty():
     train = df[:48]
     test = df[48:54]
     val = df[54:]
-    result = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
+    result, model = m.profile_variant("V0", train, test, val, _FEATURE_COLS, cfg)
     assert result == []
+    assert model is None
 
 
 # ---------------------------------------------------------------------------
@@ -402,3 +405,21 @@ def test_main_output_schema(tmp_path):
         "n_cells",
     }
     assert expected_cols.issubset(set(result.columns))
+
+
+def test_main_writes_feature_importance(tmp_path):
+    # load_batches (called by main()) derives meta_batch from each matched
+    # file's name, overwriting any meta_batch column already in the data — so
+    # a real multi-batch input is one file per batch, not one file containing
+    # a meta_batch column.
+    df = _make_batch_df(n_batches=3, n_cells_per_batch=40, n_variants=2)
+    input_dir = tmp_path / "batches"
+    input_dir.mkdir()
+    for batch, group in df.group_by(_BATCH_COL):
+        group.drop(_BATCH_COL).write_parquet(input_dir / f"{batch[0]}.parquet")
+    cfg = _make_structured_cfg(tmp_path, input_dir / "*.parquet")
+    with patch("fisseq_data_pipeline.batchvsbatch.setup_logging"):
+        m.main.__wrapped__(cfg)
+    importance = pl.read_parquet(tmp_path / "feature_importance.parquet")
+    assert set(importance.get_column(_LABEL_COL).to_list()) == {"V0", "V1"}
+    assert set(_FEATURE_COLS).issuperset(set(importance.columns) - {_LABEL_COL})

@@ -9,6 +9,7 @@ from fisseq_data_pipeline.utils.xgbparams import (
     get_dmatrix,
     get_dmatrix_multiclass,
     get_feature_cols,
+    resolve_feature_importance,
     split_indices_stratified,
 )
 
@@ -202,6 +203,53 @@ def test_split_indices_stratified_preserves_class_ratio():
         n_a = (split_labels == "A").sum()
         n_b = (split_labels == "B").sum()
         assert n_a == n_b
+
+
+# ---------------------------------------------------------------------------
+# resolve_feature_importance
+# ---------------------------------------------------------------------------
+
+
+def _train_separable_model() -> tuple[xgb.Booster, list[str]]:
+    """A model where Intensity_Mean (feature index 0) is the only useful split."""
+    df = _make_df(n=40)
+    feature_cols = ["Intensity_Mean", "Texture_Var"]
+    dm = get_dmatrix(df, "label", "WT")
+    model = xgb.train({"objective": "binary:logistic"}, dm, num_boost_round=5)
+    return model, feature_cols
+
+
+def test_resolve_feature_importance_keys_are_real_feature_names():
+    model, feature_cols = _train_separable_model()
+    importance = resolve_feature_importance(model, feature_cols)
+    assert set(importance.keys()).issubset(set(feature_cols))
+
+
+def test_resolve_feature_importance_no_f_prefixed_keys_remain():
+    model, feature_cols = _train_separable_model()
+    importance = resolve_feature_importance(model, feature_cols)
+    assert not any(key.startswith("f") and key[1:].isdigit() for key in importance)
+
+
+def test_resolve_feature_importance_values_are_positive():
+    model, feature_cols = _train_separable_model()
+    importance = resolve_feature_importance(model, feature_cols)
+    assert all(value > 0 for value in importance.values())
+
+
+def test_resolve_feature_importance_matches_raw_score_by_index():
+    model, feature_cols = _train_separable_model()
+    raw = model.get_score(importance_type="gain")
+    importance = resolve_feature_importance(model, feature_cols)
+    for feat, value in raw.items():
+        assert importance[feature_cols[int(feat[1:])]] == value
+
+
+def test_resolve_feature_importance_respects_importance_type():
+    model, feature_cols = _train_separable_model()
+    gain = resolve_feature_importance(model, feature_cols, importance_type="gain")
+    weight = resolve_feature_importance(model, feature_cols, importance_type="weight")
+    assert gain != weight
 
 
 # ---------------------------------------------------------------------------

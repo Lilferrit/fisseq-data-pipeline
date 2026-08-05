@@ -1,9 +1,13 @@
+from unittest.mock import patch
+
 import numpy as np
 import polars as pl
 import pytest
 from omegaconf import OmegaConf
 
+import fisseq_data_pipeline.ovwt as m
 from fisseq_data_pipeline.ovwt import (
+    OvwtConfig,
     _exclude_blocked_barcodes,
     _exclude_blocked_features,
     downsample_per_barcode,
@@ -16,6 +20,7 @@ from fisseq_data_pipeline.ovwt import (
 )
 from fisseq_data_pipeline.ovwt import test_xgboost as evaluate_splits
 from fisseq_data_pipeline.ovwt import train_test_val_split, train_xgboost
+from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig, XGBoostParams
 
 
 def _make_df(
@@ -998,3 +1003,55 @@ def test_profile_variant_filters_to_target_variant_only(profile_variant_splits):
     result, _ = profile_variant("V2", train, test, val, cfg)
     # V2 is indistinguishable from WT, so the model should not achieve high AUROC
     assert result["train_auroc"] < 0.75
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+
+def _make_ovwt_structured_cfg(tmp_path, input_path, label_column: str) -> OmegaConf:
+    xgb_params = XGBoostParams(
+        nthread=1,
+        max_depth=2,
+        colsample_bytree=1.0,
+        colsample_bylevel=1.0,
+        colsample_bynode=1.0,
+        subsample=1.0,
+    )
+    xgb_cfg = XGBoostConfig(
+        num_boost_round=5,
+        early_stopping_rounds=3,
+        weigh_samples=False,
+        params=xgb_params,
+    )
+    cfg = OvwtConfig(
+        output_dir=str(tmp_path),
+        input_file=str(input_path),
+        label_column=label_column,
+        wt_label="WT",
+        random_state=0,
+        min_cells=5,
+        downsample_wt=False,
+        save_splits=False,
+        xgboost=xgb_cfg,
+    )
+    return OmegaConf.structured(cfg)
+
+
+def test_main_writes_feature_importance(tmp_path):
+    # get_aggregate_meta_data (called by main()) only retains meta_*-prefixed
+    # columns, so label_column must carry that prefix for the full main() run.
+    label_column = "meta_label"
+    df = _make_df(n=200, label_column=label_column)
+    input_path = tmp_path / "input.parquet"
+    df.write_parquet(input_path)
+    cfg = _make_ovwt_structured_cfg(tmp_path, input_path, label_column)
+    with patch("fisseq_data_pipeline.ovwt.setup_logging"):
+        m.main.__wrapped__(cfg)
+    importance = pl.read_parquet(tmp_path / "feature_importance.parquet")
+    assert importance.get_column(label_column).to_list() == ["V1"]
+    assert set(importance.columns) - {label_column} <= {
+        "Intensity_Mean",
+        "Texture_Var",
+    }
