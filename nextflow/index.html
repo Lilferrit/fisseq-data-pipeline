@@ -1664,28 +1664,28 @@ directly.</p>
 <td>per batch</td>
 </tr>
 <tr>
-<td><code>STAGE_GROUP_CELLS</code> (aliased <code>_QC</code> / <code>_NORM</code>)</td>
-<td><code>stage_group.nf</code></td>
+<td><code>STAGE_CHANNEL_CELLS</code> (aliased <code>_QC</code> / <code>_NORM</code>)</td>
+<td><code>stage_channel.nf</code></td>
 <td>(no Python wrapper — republishes a staged file)</td>
-<td>per (active global group × member batch); stages that batch's <code>QC_FILTER</code>/<code>NORMALIZE</code> output into <code>global/&lt;group&gt;/{qc_filter_cells,normalization_cells}/</code> so the global processes below can glob a group-scoped directory</td>
+<td>per (active global channel × member batch); stages that batch's <code>QC_FILTER</code>/<code>NORMALIZE</code> output into <code>global/&lt;channel&gt;/{qc_filter_cells,normalization_cells}/</code> so the global processes below can glob a channel-scoped directory</td>
 </tr>
 <tr>
 <td><code>BATCHVSBATCH</code> (aliased <code>_PRE</code> / <code>_POST</code>)</td>
 <td><code>batchvsbatch.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.batchvsbatch</code></td>
-<td>per active global group, twice (<code>params.global_groups</code>, default none run); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>per active global channel, twice (<code>params.global_channels</code>, default none run); <code>_PRE</code> unfiltered, <code>_POST</code> filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
-<td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_FEATURE_FILTERED</code> / <code>_BARCODE_FILTERED</code>)</td>
+<td><code>OVWT_BATCHWISE</code> (aliased <code>_UNFILTERED</code> / <code>_BARCODE_FILTERED</code>)</td>
 <td><code>ovwt_batchwise.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.ovwt</code></td>
-<td>per batch, three times (<code>FisseqPipeline</code>); <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>/<code>BARCODE_BLOCKLIST</code> and is optional (<code>params.run_ovwt</code>), <code>_FEATURE_FILTERED</code> depends on <code>ANOVA_BLOCKLIST</code> and is optional (<code>params.run_feature_filtered_ovwt</code>), <code>_BARCODE_FILTERED</code> depends on that batch's <code>BARCODE_BLOCKLIST</code> output and is optional (<code>params.run_barcode_filtered_ovwt</code>)</td>
+<td>per batch, twice (<code>FisseqPipeline</code>); <code>_UNFILTERED</code> has no dependency on <code>ANOVA_BLOCKLIST</code>/<code>BARCODE_BLOCKLIST</code> and is optional (<code>params.run_ovwt</code>), <code>_BARCODE_FILTERED</code> depends on that batch's <code>BARCODE_BLOCKLIST</code> output and is optional (<code>params.run_barcode_filtered_ovwt</code>). A third alias, <code>_FEATURE_FILTERED</code> (gated by <code>params.run_feature_filtered_ovwt</code>), was removed once <code>ANOVA_BLOCKLIST</code> became per-channel.</td>
 </tr>
 <tr>
 <td><code>OVWT_GLOBAL</code></td>
 <td><code>ovwt_global.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.ovwt</code></td>
-<td>per active global group (<code>params.global_groups</code>, default none run); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
+<td>per active global channel (<code>params.global_channels</code>, default none run); always feature-filtered against <code>ANOVA_BLOCKLIST</code></td>
 </tr>
 <tr>
 <td><code>WTVWT_BATCHWISE</code></td>
@@ -1757,31 +1757,31 @@ directly.</p>
 <td><code>GLOBAL_FEATURE_SELECT</code></td>
 <td><code>global_feature_select.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.globalfeatureselect</code></td>
-<td>per active global group (<code>params.global_groups</code>, default none run); reuses each member batch's <code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>-chain aggregates/blocklist directly, no cell-level recomputation</td>
+<td>per active global channel (<code>params.global_channels</code>, default none run); reuses each member batch's <code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>-chain aggregates/blocklist directly, no cell-level recomputation</td>
 </tr>
 <tr>
 <td><code>BATCH_CORRECT_FIT</code></td>
 <td><code>batch_correct_fit.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.batchcorrect</code></td>
-<td>global, waits for all <code>QC_FILTER</code></td>
+<td>per active global channel, waits for that channel's <code>STAGE_CHANNEL_QC</code> batches</td>
 </tr>
 <tr>
 <td><code>BATCH_CORRECT_TRANSFORM</code></td>
 <td><code>batch_correct_transform.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.batchcorrecttransform</code></td>
-<td>per batch</td>
+<td>per (active global channel × member batch) pair</td>
 </tr>
 <tr>
 <td><code>ANOVA</code> (aliased <code>_NORMALIZED</code> / <code>_BATCH_CORRECTED</code>)</td>
 <td><code>anova.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.anova</code></td>
-<td>global, twice, always runs</td>
+<td>per active global channel, twice</td>
 </tr>
 <tr>
 <td><code>ANOVA_BLOCKLIST</code></td>
 <td><code>anova_blocklist.nf</code></td>
 <td><code>python -m fisseq_data_pipeline.anovablocklist</code></td>
-<td>global, always runs; consumes <code>ANOVA_NORMALIZED</code>'s output</td>
+<td>per active global channel; consumes that channel's <code>ANOVA_NORMALIZED</code> output</td>
 </tr>
 </tbody>
 </table>
@@ -1826,27 +1826,30 @@ per batch, which features are reproducible enough to keep. In
   correlation replicates for one feature type before computing a median-<code>r</code>
   threshold.</li>
 <li>This whole branch is per-batch gated on that batch's resolved
-  <code>run_feature_selection</code>; it does not depend on <code>params.global_groups</code> at all.</li>
+  <code>run_feature_selection</code>; it does not depend on <code>params.global_channels</code> at all.</li>
 </ul>
 <p><code>GLOBAL_FEATURE_SELECT</code> is a separate, much simpler branch, run once per
-active group in <code>params.global_groups</code> (default <code>null</code> = none active). Unlike
-the batchwise branch, it does no bootstrap recomputation from cells: it reuses
-each member batch's already-published <code>feature_select_batchwise/&lt;batch&gt;/</code>
+active channel in <code>params.global_channels</code> (default <code>null</code> = none active).
+Unlike the batchwise branch, it does no bootstrap recomputation from cells: it
+reuses each member batch's already-published <code>feature_select_batchwise/&lt;batch&gt;/</code>
 aggregates and blocklist directly off <code>pipeline_dir</code>, so it needs no
 Nextflow-level fan-out — the whole "join per-feature-type files, normalize to
 that batch's synonymous baseline, take the cross-batch median, combine
 blocklists by batch-agreement threshold, run pycytominer selection" sequence
-runs as one Python invocation per group. Batch → group membership (only
+runs as one Python invocation per channel. Batch → channel membership (only
 batches with <code>run_feature_selection</code> enabled) is resolved once in Groovy from
 <code>resolvedBatchConfigs</code>, the same way <code>resolvedBatchConfigs</code> itself is built —
-see <a href="../configuration/#global-groups">Configuration: Global groups</a> for the
-parameter reference and output layout.</p>
+see <a href="../configuration/#global-channels">Configuration: Global channels</a> for the
+parameter reference and output layout. <code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, <code>ANOVA</code>
+(both calls), and <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code> all likewise
+run once per active channel.</p>
 <h2 id="parameters-pipeline-directory-layout-and-per-batch-overrides">Parameters, pipeline directory layout, and per-batch overrides<a class="headerlink" href="#parameters-pipeline-directory-layout-and-per-batch-overrides" title="Permanent link">&para;</a></h2>
 <p>See <a href="../configuration/">Configuration</a> for the full parameter reference, the
 <code>&lt;pipeline_dir&gt;</code> directory layout (including the mandatory <code>configs/</code>
-subdirectory and the <code>global/&lt;group&gt;/</code> output tree), how a batch YAML can
-override most parameters for just that batch, and how named global groups
-scope <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/the global feature-selection branch.</p>
+subdirectory and the <code>global/&lt;channel&gt;/</code> output tree), how a batch YAML can
+override most parameters for just that batch, and how named global channels
+scope <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/<code>ANOVA</code>/<code>BATCH_CORRECT_FIT</code>+<code>TRANSFORM</code>/the
+global feature-selection branch.</p>
 <h2 id="profiles">Profiles<a class="headerlink" href="#profiles" title="Permanent link">&para;</a></h2>
 <p><code>nextflow.config</code> also ships commented-out profile stubs for <code>venv</code>, <code>conda</code>,
 <code>singularity</code>, and <code>sge</code> executors — see <a href="../installation/#cluster-hpc">Installation</a>

@@ -1581,7 +1581,7 @@ batch rather than only to batches routed through this optional stage.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/path/to/file1.parquet</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">/path/to/file2.csv</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">global_group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">                </span><span class="c1"># optional, string or list of strings (see below)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">              </span><span class="c1"># optional, string or list of strings (see below)</span>
 </code></pre></div>
 <ul>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.
@@ -1595,15 +1595,15 @@ batch rather than only to batches routed through this optional stage.</p>
   kept; if a blocklist is also given, matching columns are then dropped from
   what remains (allowlist is applied first). Identity columns (<code>upBarcode</code>,
   <code>editDistance</code>, <code>aaChanges</code>) and metadata columns are unaffected.</li>
-<li><code>global_group</code> — optional, a string or list of strings naming which named
-  group(s) this batch belongs to for the purpose of <code>--global_groups</code>
+<li><code>global_channel</code> — optional, a string or list of strings naming which named
+  channel(s) this batch belongs to for the purpose of <code>--global_channels</code>
   scoping. <strong>Validated and consumed by the Nextflow workflow layer
   (<code>lib/BatchParams.groovy</code>), not by this CLI</strong> — it has no effect on
   <code>python -m fisseq_data_pipeline.input</code>'s own behavior, but lives in the
   same batch YAML file, so it's documented here alongside <code>input_paths</code>. See
-  <a href="../../configuration/#global-groups">Configuration: Global groups</a>.</li>
+  <a href="../../configuration/#global-channels">Configuration: Global channels</a>.</li>
 </ul>
-<p>Except for <code>input_paths</code> and <code>global_group</code>, every field above is also a
+<p>Except for <code>input_paths</code> and <code>global_channel</code>, every field above is also a
 plain <code>nextflow.config</code> pipeline-wide default (<code>params.feature_allowlist_file</code>,
 <code>params.feature_blocklist_file</code>) — set one on the command line or in
 <code>nextflow.config</code> to apply it to every batch, and/or override it for a

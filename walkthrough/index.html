@@ -1560,28 +1560,28 @@ the config schema:</p>
 <li><code>QC_FILTER</code> — edit-distance, barcode-count, and variant-barcode-count filtering
    (per batch).</li>
 <li><code>BATCHVSBATCH</code> (pre) — batch-effect check on QC-filtered cells (once per
-   active group in <code>params.global_groups</code>; none by default).</li>
+   active channel in <code>params.global_channels</code>; none by default).</li>
 <li><code>NORMALIZE</code> — z-score normalization fit on WT control cells (per batch).</li>
 <li><code>BATCHVSBATCH</code> (post) — batch-effect check on normalized cells (once per
-   active group).</li>
+   active channel).</li>
 <li><code>OVWT_BATCHWISE</code> / <code>OVWT_GLOBAL</code> — one-vs-wildtype XGBoost classification
-   (<code>OVWT_GLOBAL</code> once per active group).</li>
+   (<code>OVWT_GLOBAL</code> once per active channel).</li>
 <li><code>WTVWT_BATCHWISE</code> — wildtype-only pairwise barcode classification (per
    batch, if <code>params.run_wtvwt</code>).</li>
 <li>Bootstrap feature selection (batchwise always; global sub-branch once per
-   active group) — see
+   active channel) — see
    <a href="../nextflow/#feature-selection-channel-wiring">Nextflow Workflow</a> for the
    six-stage breakdown.</li>
 <li><code>BATCH_CORRECT_FIT</code> / <code>BATCH_CORRECT_TRANSFORM</code> — centroid batch correction
-   (always runs, over every batch).</li>
+   (once per active channel).</li>
 <li><code>ANOVA</code> — batch-effect assessment, run once on normalized cells and once
-    on batch-corrected cells (always runs).</li>
+    on batch-corrected cells (once per active channel).</li>
 </ol>
 <p>Override any <a href="../configuration/#parameters">parameter</a> on the command line,
-e.g. to adjust QC thresholds. Global processes (<code>OVWT_GLOBAL</code>, the global
-feature-selection branch, and <code>BATCHVSBATCH</code>) don't run at all unless you tag
-batches into a group and activate it — see
-<a href="../configuration/#global-groups">Configuration: Global groups</a>:</p>
+e.g. to adjust QC thresholds. Global processes (<code>OVWT_GLOBAL</code>, <code>ANOVA</code>, batch
+correction, the global feature-selection branch, and <code>BATCHVSBATCH</code>) don't
+run at all unless you tag batches into a channel and activate it — see
+<a href="../configuration/#global-channels">Configuration: Global channels</a>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--pipeline_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>--barcode_count_threshold<span class="w"> </span><span class="m">15</span>
@@ -1598,11 +1598,12 @@ batches into a group and activate it — see
 The two results most analyses care about:</p>
 <ul>
 <li><code>&lt;pipeline_dir&gt;/feature_select_batchwise/&lt;batch&gt;/output.parquet</code> (and, if a
-  global group is active, <code>global/&lt;group&gt;/feature_select/output.parquet</code>) —
+  global channel is active, <code>global/&lt;channel&gt;/feature_select/output.parquet</code>) —
   final per-variant, feature-selected profiles.</li>
-<li><code>&lt;pipeline_dir&gt;/anova/anova.parquet</code> and
-  <code>&lt;pipeline_dir&gt;/batch_correction/anova/anova.parquet</code> — per-feature
-  batch-effect ANOVA results, before and after batch correction.</li>
+<li><code>&lt;pipeline_dir&gt;/global/&lt;channel&gt;/anova/anova.parquet</code> and
+  <code>&lt;pipeline_dir&gt;/global/&lt;channel&gt;/batch_correction/anova/anova.parquet</code>
+  (only present if a global channel is active) — per-feature batch-effect
+  ANOVA results, before and after batch correction.</li>
 </ul>
 <h2 id="5-running-individual-steps">5. Running individual steps<a class="headerlink" href="#5-running-individual-steps" title="Permanent link">&para;</a></h2>
 <p>Every Nextflow process wraps a standalone <code>python -m fisseq_data_pipeline.&lt;module&gt;</code>

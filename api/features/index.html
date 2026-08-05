@@ -4053,11 +4053,11 @@ filters. Non-feature (<code>meta_</code>) columns are preserved unchanged.</p>
 
     <div class="doc doc-contents first">
 
-        <p>Global (cross-batch, per group) feature-selection stage.</p>
+        <p>Global (cross-batch, per channel) feature-selection stage.</p>
 <p>Hydra entry point backing the Nextflow process <code>GLOBAL_FEATURE_SELECT</code>. Runs
-once per active <code>global_group</code>, reusing the already-computed BATCHWISE
+once per active <code>global_channel</code>, reusing the already-computed BATCHWISE
 feature-selection artifacts (:mod:<code>.aggregatefeaturetype</code>,
-:mod:<code>.combineblocklists</code>) for that group's member batches instead of
+:mod:<code>.combineblocklists</code>) for that channel's member batches instead of
 recomputing anything from raw cells:</p>
 <ol>
 <li>Combine each member batch's own combined blocklist

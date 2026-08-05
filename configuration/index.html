@@ -701,13 +701,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#global-groups" class="md-nav__link">
+  <a href="#global-channels" class="md-nav__link">
     <span class="md-ellipsis">
-      Global groups
+      Global channels
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Global groups">
+    <nav class="md-nav" aria-label="Global channels">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -720,18 +720,18 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#global_group-is-validated-not-consumed-by-input" class="md-nav__link">
+  <a href="#global_channel-is-validated-not-consumed-by-input" class="md-nav__link">
     <span class="md-ellipsis">
-      global_group is validated, not consumed, by INPUT
+      global_channel is validated, not consumed, by INPUT
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#ovwtpipeline-accepts-but-ignores-global_group" class="md-nav__link">
+  <a href="#ovwtpipeline-accepts-but-ignores-global_channel" class="md-nav__link">
     <span class="md-ellipsis">
-      OvwtPipeline accepts but ignores global_group
+      OvwtPipeline accepts but ignores global_channel
     </span>
   </a>
   
@@ -780,9 +780,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#global_group-optional-batch-yaml-only" class="md-nav__link">
+  <a href="#global_channel-optional-batch-yaml-only" class="md-nav__link">
     <span class="md-ellipsis">
-      global_group: optional, batch-YAML-only
+      global_channel: optional, batch-YAML-only
     </span>
   </a>
   
@@ -1772,13 +1772,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#global-groups" class="md-nav__link">
+  <a href="#global-channels" class="md-nav__link">
     <span class="md-ellipsis">
-      Global groups
+      Global channels
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Global groups">
+    <nav class="md-nav" aria-label="Global channels">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1791,18 +1791,18 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#global_group-is-validated-not-consumed-by-input" class="md-nav__link">
+  <a href="#global_channel-is-validated-not-consumed-by-input" class="md-nav__link">
     <span class="md-ellipsis">
-      global_group is validated, not consumed, by INPUT
+      global_channel is validated, not consumed, by INPUT
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#ovwtpipeline-accepts-but-ignores-global_group" class="md-nav__link">
+  <a href="#ovwtpipeline-accepts-but-ignores-global_channel" class="md-nav__link">
     <span class="md-ellipsis">
-      OvwtPipeline accepts but ignores global_group
+      OvwtPipeline accepts but ignores global_channel
     </span>
   </a>
   
@@ -1851,9 +1851,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#global_group-optional-batch-yaml-only" class="md-nav__link">
+  <a href="#global_channel-optional-batch-yaml-only" class="md-nav__link">
     <span class="md-ellipsis">
-      global_group: optional, batch-YAML-only
+      global_channel: optional, batch-YAML-only
     </span>
   </a>
   
@@ -1893,7 +1893,7 @@
 <p>This page is the authoritative reference for pointing the pipeline at data and
 tuning it: the <code>pipeline_dir</code> layout, every <code>nextflow.config</code> parameter, how a
 batch's YAML config can override those parameters for just that batch, and
-how named <strong>global groups</strong> control which batches contribute to the
+how named <strong>global channels</strong> control which batches contribute to the
 pipeline's global (cross-batch) processes. See <a href="../nextflow/">Nextflow Workflow</a>
 for the process DAG itself.</p>
 <h2 id="pipeline-directory-layout">Pipeline directory layout<a class="headerlink" href="#pipeline-directory-layout" title="Permanent link">&para;</a></h2>
@@ -1908,29 +1908,35 @@ for the process DAG itself.</p>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  normalization/{cells,normalizers}/
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  wtvwt_batchwise/&lt;batch_stem&gt;/
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  ovwt_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  ovwt_batchwise_feature_filtered/&lt;batch_stem&gt;/
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  ovwt_batchwise_barcode_filtered/&lt;batch_stem&gt;/
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  ovwt_cellscores_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  check_barcodes/&lt;batch_stem&gt;/
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  barcode_blocklist/&lt;batch_stem&gt;/
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>  anova/, anova_blocklist/, batch_correction/     # always run, over every batch
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>  global/
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    &lt;group&gt;/
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>      qc_filter_cells/&lt;batch_stem&gt;.parquet        # per-group staged copy
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>      normalization_cells/&lt;batch_stem&gt;.parquet    # per-group staged copy
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>      batchvsbatch/{pre,post}/results.parquet
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  ovwt_batchwise_barcode_filtered/&lt;batch_stem&gt;/
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  ovwt_cellscores_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  check_barcodes/&lt;batch_stem&gt;/
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  barcode_blocklist/&lt;batch_stem&gt;/
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>  global/
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    &lt;channel&gt;/
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      qc_filter_cells/&lt;batch_stem&gt;.parquet        # per-channel staged copy
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>      normalization_cells/&lt;batch_stem&gt;.parquet    # per-channel staged copy
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>      batchvsbatch/{pre,post}/results.parquet
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>      anova/anova.parquet
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>      anova_blocklist/anova_blocklist.parquet
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>      ovwt_global/{results.parquet,models.pkl}
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      feature_select/{aggregate.parquet,blocklist.parquet}
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      batch_correction/{fit,cells,anova}/...
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>      feature_select/{aggregate.parquet,blocklist.parquet}
 </code></pre></div>
 <p><code>configs/</code> is <strong>mandatory</strong> -- every batch is declared by a YAML config file
 there; there is no mode where the pipeline scans a directory of pre-staged
 parquet files directly. <code>INPUT</code> (see
 <a href="../cli/input/">CLI Reference: Input</a>) always runs once per config file,
 producing that batch's <code>input/&lt;batch_stem&gt;.parquet</code>.</p>
-<p><code>global/&lt;group&gt;/</code> only exists for groups actually listed in
-<code>--global_groups</code> (see <a href="#global-groups">Global groups</a> below); by default
-(<code>--global_groups</code> unset) no <code>global/</code> directory is produced at all.</p>
+<p><code>global/&lt;channel&gt;/</code> only exists for channels actually listed in
+<code>--global_channels</code> (see <a href="#global-channels">Global channels</a> below); by
+default (<code>--global_channels</code> unset) no <code>global/</code> directory is produced at
+all. This includes <code>ANOVA</code>/<code>ANOVA_BLOCKLIST</code>/<code>BATCH_CORRECT_FIT</code>/
+<code>BATCH_CORRECT_TRANSFORM</code>/<code>ANOVA_BATCH_CORRECTED</code> -- unlike every other stage
+on this page, that entire chain is a purely per-channel feature with no
+pipeline-wide (ungated) counterpart, so it produces no output at all unless
+at least one channel is active.</p>
 <h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
 <p>Defaults live in <code>nextflow.config</code> at the repo root.</p>
 <h3 id="pipeline-selection">Pipeline selection<a class="headerlink" href="#pipeline-selection" title="Permanent link">&para;</a></h3>
@@ -1966,9 +1972,9 @@ producing that batch's <code>input/&lt;batch_stem&gt;.parquet</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>--global_groups</code></td>
+<td><code>--global_channels</code></td>
 <td><code>null</code></td>
-<td>List of named groups to run <code>OVWT_GLOBAL</code>, <code>BATCHVSBATCH</code>, and <code>GLOBAL_FEATURE_SELECT</code> for -- once per group, scoped to only the batches whose YAML <code>global_group</code> key names that group. <code>null</code> or <code>[]</code> (the default): no global processes run at all. See <a href="#global-groups">Global groups</a>.</td>
+<td>List of named channels to run <code>OVWT_GLOBAL</code>, <code>BATCHVSBATCH</code>, <code>ANOVA</code> (both calls), <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code>, and <code>GLOBAL_FEATURE_SELECT</code> for -- once per channel, scoped to only the batches whose YAML <code>global_channel</code> key names that channel. <code>null</code> or <code>[]</code> (the default): no global processes run at all. See <a href="#global-channels">Global channels</a>.</td>
 </tr>
 <tr>
 <td><code>--run_feature_selection</code></td>
@@ -1979,11 +1985,6 @@ producing that batch's <code>input/&lt;batch_stem&gt;.parquet</code>.</p>
 <td><code>--run_ovwt</code></td>
 <td><code>true</code></td>
 <td><code>FisseqPipeline</code> only: run <code>OVWT_BATCHWISE_UNFILTERED</code> (the normal/unfiltered per-batch OvWT pass) for that batch. Setting <code>false</code> also disables <code>run_single_cell_scores</code>/<code>run_check_barcodes</code>/<code>run_barcode_filtered_ovwt</code> for that batch regardless of their own settings, since all three consume this pass's output. No effect in <code>OvwtPipeline</code> (its entire purpose is this pass, so it always runs there).</td>
-</tr>
-<tr>
-<td><code>--run_feature_filtered_ovwt</code></td>
-<td><code>true</code></td>
-<td>Run <code>OVWT_BATCHWISE_FEATURE_FILTERED</code> (per-batch OvWT filtered against <code>anova_blocklist/anova_blocklist.parquet</code>). Set <code>false</code> to skip it and keep only the unfiltered pass.</td>
 </tr>
 <tr>
 <td><code>--run_single_cell_scores</code></td>
@@ -2238,7 +2239,7 @@ overridable per batch exactly like every other parameter here — see
 <tr>
 <td><code>--global_feature_select_min_batches_ok</code></td>
 <td><code>null</code></td>
-<td><code>GLOBAL_FEATURE_SELECT</code> only: minimum number of a global group's member batches that must mark a feature ok (in their own <code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>-chain blocklist) for it to be globally ok. <code>null</code> (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning.</td>
+<td><code>GLOBAL_FEATURE_SELECT</code> only: minimum number of a global channel's member batches that must mark a feature ok (in their own <code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>-chain blocklist) for it to be globally ok. <code>null</code> (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning.</td>
 </tr>
 </tbody>
 </table>
@@ -2269,73 +2270,82 @@ overridable per batch exactly like every other parameter here — see
 </tr>
 </tbody>
 </table>
-<h2 id="global-groups">Global groups<a class="headerlink" href="#global-groups" title="Permanent link">&para;</a></h2>
+<h2 id="global-channels">Global channels<a class="headerlink" href="#global-channels" title="Permanent link">&para;</a></h2>
 <p>By default, the pipeline's global (cross-batch) processes —
-<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, and <code>GLOBAL_FEATURE_SELECT</code> —
-<strong>do not run at all</strong>. To run them, tag batches into named groups and list
-which groups should actually run:</p>
+<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, <code>ANOVA</code> (both calls),
+<code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code>, and <code>GLOBAL_FEATURE_SELECT</code> —
+<strong>do not run at all</strong>. To run them, tag batches into named channels and list
+which channels should actually run:</p>
 <ul>
-<li><strong><code>global_group</code></strong> — an optional key in a batch's YAML config, either a
-  bare string or a list of strings, naming which group(s) that batch
+<li><strong><code>global_channel</code></strong> — an optional key in a batch's YAML config, either a
+  bare string or a list of strings, naming which channel(s) that batch
   belongs to. A batch that omits this key never contributes to any global
   run.</li>
-<li><strong><code>--global_groups</code></strong> — a pipeline-wide list parameter (default <code>null</code>)
-  naming which of those groups actually run. Each name in this list gets
-  its own full <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/<code>GLOBAL_FEATURE_SELECT</code> run,
-  scoped to only the batches whose <code>global_group</code> list contains that name,
-  published under <code>&lt;pipeline_dir&gt;/global/&lt;group&gt;/</code> (see
+<li><strong><code>--global_channels</code></strong> — a pipeline-wide list parameter (default <code>null</code>)
+  naming which of those channels actually run. Each name in this list gets
+  its own full <code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/<code>ANOVA</code>/
+  <code>BATCH_CORRECT_FIT</code>+<code>TRANSFORM</code>/<code>GLOBAL_FEATURE_SELECT</code> run, scoped to
+  only the batches whose <code>global_channel</code> list contains that name,
+  published under <code>&lt;pipeline_dir&gt;/global/&lt;channel&gt;/</code> (see
   <a href="#pipeline-directory-layout">Pipeline directory layout</a>).</li>
 </ul>
-<p>A batch can belong to multiple groups (via a list <code>global_group</code>), in which
-case it contributes to each of those groups' global runs independently — the
-global processes are not deduplicated or merged across groups.</p>
+<p>A batch can belong to multiple channels (via a list <code>global_channel</code>), in
+which case it contributes to each of those channels' global runs
+independently — the global processes are not deduplicated or merged across
+channels. This includes <code>BATCH_CORRECT_TRANSFORM</code>: a batch in two channels is
+batch-corrected once per channel, each using that channel's own fit (over
+only that channel's member batches), producing two independently-corrected
+copies of the batch's cells, one under each channel's own subtree.</p>
 <p><code>GLOBAL_FEATURE_SELECT</code> additionally requires a member batch to have its own
 <code>run_feature_selection</code> enabled — it reads that batch's
 <code>feature_select_batchwise/&lt;batch_stem&gt;/{aggregates,blocklist.parquet}</code>
 directly, so a batch with <code>run_feature_selection: false</code> contributes to
-<code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code> for its group(s) but not to
-<code>GLOBAL_FEATURE_SELECT</code>.</p>
+<code>BATCHVSBATCH</code>/<code>OVWT_GLOBAL</code>/<code>ANOVA</code>/<code>BATCH_CORRECT_FIT</code>+<code>TRANSFORM</code> for its
+channel(s) but not to <code>GLOBAL_FEATURE_SELECT</code>.</p>
 <h3 id="worked-example">Worked example<a class="headerlink" href="#worked-example" title="Permanent link">&para;</a></h3>
-<p>Two batches, two groups, with <code>batch2</code> contributing to both:</p>
+<p>Two batches, two channels, with <code>batch2</code> contributing to both:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># configs/batch1.yaml</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/batch1.parquet</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">global_group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">siteA</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">siteA</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># configs/batch2.yaml</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/batch2.parquet</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">global_group</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">siteA</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">siteB</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">siteA</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">siteB</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># configs/batch3.yaml</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/batch3.parquet</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">global_group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">siteB</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">siteB</span>
 </code></pre></div>
-<p>Running with <code>--global_groups '["siteA", "siteB"]'</code> produces:</p>
+<p>Running with <code>--global_channels '["siteA", "siteB"]'</code> produces:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>&lt;pipeline_dir&gt;/global/siteA/...   # batch1 + batch2
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>&lt;pipeline_dir&gt;/global/siteB/...   # batch2 + batch3
 </code></pre></div>
-<p>A fourth batch with no <code>global_group</code> key would be fully processed by every
+<p>A fourth batch with no <code>global_channel</code> key would be fully processed by every
 batchwise stage (<code>QC_FILTER</code>, <code>NORMALIZE</code>, <code>OVWT_BATCHWISE</code>, ...) but would
-never appear in either <code>global/siteA/</code> or <code>global/siteB/</code>.</p>
+never appear in either <code>global/siteA/</code> or <code>global/siteB/</code> — including the
+<code>ANOVA</code>/<code>ANOVA_BLOCKLIST</code>/<code>BATCH_CORRECT_FIT</code>/<code>TRANSFORM</code>/
+<code>ANOVA_BATCH_CORRECTED</code> chain, which now runs exclusively inside those
+per-channel subtrees.</p>
 <div class="admonition note">
 <p class="admonition-title">Passing a list on the command line</p>
-<p>A bare <code>--global_groups siteA,siteB</code> CLI flag does <strong>not</strong> produce a
+<p>A bare <code>--global_channels siteA,siteB</code> CLI flag does <strong>not</strong> produce a
 Groovy list — Nextflow's CLI parser treats it as the single string
 <code>"siteA,siteB"</code>. To pass a genuine list, either set
-<code>params.global_groups = ['siteA', 'siteB']</code> in a <code>-c your.config</code> file,
-or pass <code>-params-file params.json</code> with <code>{"global_groups": ["siteA", "siteB"]}</code>.
+<code>params.global_channels = ['siteA', 'siteB']</code> in a <code>-c your.config</code> file,
+or pass <code>-params-file params.json</code> with <code>{"global_channels": ["siteA", "siteB"]}</code>.
 This is the same limitation <code>--qc_downsample_amounts</code> and
 <code>--feature_select_types</code> already have for list-valued overrides.</p>
 </div>
-<h3 id="global_group-is-validated-not-consumed-by-input"><code>global_group</code> is validated, not consumed, by <code>INPUT</code><a class="headerlink" href="#global_group-is-validated-not-consumed-by-input" title="Permanent link">&para;</a></h3>
-<p><code>global_group</code> lives in the same batch YAML file as <code>input_paths</code> (see
+<h3 id="global_channel-is-validated-not-consumed-by-input"><code>global_channel</code> is validated, not consumed, by <code>INPUT</code><a class="headerlink" href="#global_channel-is-validated-not-consumed-by-input" title="Permanent link">&para;</a></h3>
+<p><code>global_channel</code> lives in the same batch YAML file as <code>input_paths</code> (see
 <a href="../cli/input/#config_path-yaml-schema">CLI Reference: Input</a>), but it has no
 effect on <code>python -m fisseq_data_pipeline.input</code> itself — it is read and
 validated by the Nextflow workflow layer (<code>lib/BatchParams.groovy</code>) at
 workflow-construction time, before <code>INPUT</code> ever runs.</p>
-<h3 id="ovwtpipeline-accepts-but-ignores-global_group"><code>OvwtPipeline</code> accepts but ignores <code>global_group</code><a class="headerlink" href="#ovwtpipeline-accepts-but-ignores-global_group" title="Permanent link">&para;</a></h3>
+<h3 id="ovwtpipeline-accepts-but-ignores-global_channel"><code>OvwtPipeline</code> accepts but ignores <code>global_channel</code><a class="headerlink" href="#ovwtpipeline-accepts-but-ignores-global_channel" title="Permanent link">&para;</a></h3>
 <p><code>OvwtPipeline</code> (<code>--pipeline_mode ovwt</code>) has no global processes at all, so
-<code>global_group</code>/<code>--global_groups</code> have no effect there. A batch YAML's
-<code>global_group</code> key is still validated the same way for consistency, but it
+<code>global_channel</code>/<code>--global_channels</code> have no effect there. A batch YAML's
+<code>global_channel</code> key is still validated the same way for consistency, but it
 is simply never read.</p>
 <h2 id="per-batch-parameter-overrides">Per-batch parameter overrides<a class="headerlink" href="#per-batch-parameter-overrides" title="Permanent link">&para;</a></h2>
 <p>Any batch YAML in <code>&lt;pipeline_dir&gt;/configs/</code> may set additional keys beyond
@@ -2358,21 +2368,21 @@ via <code>log.info</code> — e.g.:</p>
   batch YAML overrides the pipeline-wide default for that batch only.</li>
 <li><strong>Pipeline-wide-only</strong> — a <code>nextflow.config</code> parameter with no per-batch
   meaning, because it either gates/consumes ALL batches uniformly (e.g.
-  <code>--anova_blocklist_pvalue_threshold</code>, <code>--global_groups</code>) or is a
+  <code>--anova_blocklist_pvalue_threshold</code>, <code>--global_channels</code>) or is a
   meta/bootstrap parameter resolved before any batch config can even be
   located (<code>--pipeline_mode</code>, <code>--pipeline_dir</code>). A batch YAML that tries to
   set one of these gets a clear rejection error, distinct from the
   unrecognized-key error below.</li>
 <li><strong>Batch-YAML-only</strong> — a key with no <code>nextflow.config</code> default at all,
   meaningful only inside a batch YAML: <code>input_paths</code> (required — see below)
-  and <code>global_group</code> (optional — see <a href="#global-groups">Global groups</a>).</li>
+  and <code>global_channel</code> (optional — see <a href="#global-channels">Global channels</a>).</li>
 </ul>
 <h3 id="not-every-parameter-is-batch-overridable">Not every parameter is batch-overridable<a class="headerlink" href="#not-every-parameter-is-batch-overridable" title="Permanent link">&para;</a></h3>
-<p>Several processes run once across <em>all</em> batches rather than per batch —
-<code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, <code>ANOVA_BLOCKLIST</code> (derived from
-<code>ANOVA_NORMALIZED</code>, which globs every batch, not one), and
+<p>Several processes run once per active global channel (or not at all) rather
+than per batch — <code>BATCHVSBATCH</code>, <code>OVWT_GLOBAL</code>, <code>ANOVA</code> (both calls),
+<code>ANOVA_BLOCKLIST</code>, <code>BATCH_CORRECT_FIT</code>/<code>BATCH_CORRECT_TRANSFORM</code>, and
 <code>GLOBAL_FEATURE_SELECT</code>. Params consumed only by those
-processes — <code>--global_groups</code>, <code>--batchvsbatch_min_cells</code>,
+processes — <code>--global_channels</code>, <code>--batchvsbatch_min_cells</code>,
 <code>--batchvsbatch_min_batches</code>, <code>--anova_blocklist_pvalue_threshold</code>,
 <code>--feature_select_types</code>, <code>--feature_select_bootstrap_reps</code>,
 <code>--global_feature_select_min_batches_ok</code> — have no batch
@@ -2382,13 +2392,13 @@ determine shared fan-out <em>cardinality</em> — how many feature-type/bootstra
 tasks exist at all — not a per-batch scalar value, so letting them vary per
 batch would require a much larger restructuring than a simple value
 override. <code>--global_feature_select_min_batches_ok</code> is inherently a
-group-level agreement threshold across batches, with no per-batch meaning at
-all.)</p>
+channel-level agreement threshold across batches, with no per-batch meaning
+at all.)</p>
 <p>Every other <code>nextflow.config</code> parameter — including the gating booleans
-<code>--run_ovwt</code>, <code>--run_feature_filtered_ovwt</code>, <code>--run_single_cell_scores</code>,
-<code>--run_check_barcodes</code>, <code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the
-<em>batchwise</em> effect of <code>--run_feature_selection</code> — is genuinely per-batch
-overridable. <code>--wtvwt_min_cells_per_barcode</code>, <code>--wtvwt_max_barcodes</code>, and
+<code>--run_ovwt</code>, <code>--run_single_cell_scores</code>, <code>--run_check_barcodes</code>,
+<code>--run_barcode_filtered_ovwt</code>, <code>--run_wtvwt</code>, and the <em>batchwise</em> effect of
+<code>--run_feature_selection</code> — is genuinely per-batch overridable.
+<code>--wtvwt_min_cells_per_barcode</code>, <code>--wtvwt_max_barcodes</code>, and
 <code>--wtvwt_barcode_downsample_mode</code> are likewise per-batch overridable, same
 bucket as <code>--ovwt_min_cells</code>. Each of these gates only a
 per-batch-only process or chain, so <code>workflows/fisseq.nf</code> implements them as
@@ -2396,11 +2406,11 @@ a per-batch channel <code>.filter()</code> (via a <code>batchGates()</code> help
 encodes the "<code>run_check_barcodes</code> implies <code>run_single_cell_scores</code>" /
 "<code>run_barcode_filtered_ovwt</code> only takes effect once <code>run_check_barcodes</code> is
 true" rules) rather than a workflow-scope <code>if</code>. <code>--run_feature_selection</code>'s
-<em>global</em> effect (<code>GLOBAL_FEATURE_SELECT</code>) runs once per active global group
+<em>global</em> effect (<code>GLOBAL_FEATURE_SELECT</code>) runs once per active global channel
 instead, gated on <code>params.run_feature_selection</code>, since that process has no
 per-batch identity either — though it still only reads a member batch's
 <code>feature_select_batchwise/</code> output if that batch's own resolved
-<code>run_feature_selection</code> is true (see <a href="#global-groups">Global groups</a>).</p>
+<code>run_feature_selection</code> is true (see <a href="#global-channels">Global channels</a>).</p>
 <p>Parameters shared between a per-batch process and a global-only process
 (<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
 <code>--feature_select_min_correlation</code>) are overridable per batch for their
@@ -2418,8 +2428,8 @@ data files: unlike a threshold or a boolean gate, a default <code>input_paths</c
 would look like something batches inherit, when in practice every batch
 must supply its own. A batch YAML that omits it fails clearly at
 config-resolution time rather than silently proceeding with no data.</p>
-<h3 id="global_group-optional-batch-yaml-only"><code>global_group</code>: optional, batch-YAML-only<a class="headerlink" href="#global_group-optional-batch-yaml-only" title="Permanent link">&para;</a></h3>
-<p><code>global_group</code> (see <a href="#global-groups">Global groups</a>) is the other
+<h3 id="global_channel-optional-batch-yaml-only"><code>global_channel</code>: optional, batch-YAML-only<a class="headerlink" href="#global_channel-optional-batch-yaml-only" title="Permanent link">&para;</a></h3>
+<p><code>global_channel</code> (see <a href="#global-channels">Global channels</a>) is the other
 batch-YAML-only key, but unlike <code>input_paths</code> it's optional — a batch
 omitting it simply never contributes to any global run, rather than failing.</p>
 <h3 id="why-resolved-scalars-not-the-whole-config-are-passed-to-processes">Why resolved scalars, not the whole config, are passed to processes<a class="headerlink" href="#why-resolved-scalars-not-the-whole-config-are-passed-to-processes" title="Permanent link">&para;</a></h3>
