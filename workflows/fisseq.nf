@@ -126,7 +126,7 @@ workflow FisseqPipeline {
     if (!configsDir.isDirectory()) {
         error "ERROR: ${params.pipeline_dir}/configs does not exist or is not a directory"
     }
-    def config_files = configsDir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
+    def config_files = configsDir.listFiles()?.findAll { f -> f.name.endsWith('.yaml') } ?: []
     if (config_files.size() == 0) {
         error "ERROR: No .yaml files found in ${params.pipeline_dir}/configs"
     }
@@ -180,7 +180,11 @@ workflow FisseqPipeline {
     // input channel below .join()s this instead of calling batchGates.call(batch_stem)
     // inline. One entry per batch_stem, same "resolved at workflow-construction
     // time" property as resolvedBatchConfigs.
-    gates_ch = Channel.fromList(resolvedBatchConfigs.keySet() as List)
+    // NOTE: `channel.fromList(...)` here is the lowercase channel *factory*
+    // (Nextflow's current preferred syntax, replacing the deprecated
+    // `Channel.fromList(...)`) -- unrelated to the "never bind a variable
+    // named `channel`" rule below; a factory call is not a variable binding.
+    gates_ch = channel.fromList(resolvedBatchConfigs.keySet() as List)
         .map { batch_stem -> tuple(batch_stem, batchGates.call(batch_stem)) }
 
     // Resolve pipeline_dir to absolute path so global process scripts can
@@ -188,7 +192,7 @@ workflow FisseqPipeline {
     // Nextflow work directories.
     def pipeline_dir_abs = file(params.pipeline_dir).toAbsolutePath().toString()
 
-    config_ch = Channel.fromList(config_files).map { f ->
+    config_ch = channel.fromList(config_files).map { f ->
         def batch_stem = f.baseName
         def cfg = resolvedBatchConfigs[batch_stem]
         tuple(batch_stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file,
@@ -208,7 +212,7 @@ workflow FisseqPipeline {
 
     // Step 2: Normalization (per batch)
     // qc_ch carries: (batch_stem, filtered_cells, barcode_counts, variants_per_barcode)
-    norm_input_ch = qc_ch.map { batch_stem, fc, bc, vpb -> [ batch_stem, fc ] }
+    norm_input_ch = qc_ch.map { batch_stem, fc, _bc, _vpb -> [ batch_stem, fc ] }
     NORMALIZE(norm_input_ch)
     norm_ch = NORMALIZE.out.normalized  // tuple(batch_stem, normalized_parquet)
 
@@ -216,7 +220,7 @@ workflow FisseqPipeline {
     // actually run BATCHVSBATCH/OVWT_GLOBAL/ANOVA/BATCH_CORRECT_FIT+TRANSFORM/
     // the _GLOBAL feature-selection chain -- each gets its own run, scoped to
     // only the batches whose resolved global_channel list names that
-    // channel. channels_ch is built via Channel.fromList(), the same idiom
+    // channel. channels_ch is built via channel.fromList(), the same idiom
     // feature_types_ch/bootstrap_ch use below to fan out N tasks from one
     // process invocation -- NOT a Groovy loop calling a process repeatedly.
     // If params.global_channels is null/[] (the default), channels_ch is
@@ -227,7 +231,7 @@ workflow FisseqPipeline {
     // ANOVA_BATCH_CORRECTED chain a purely per-channel feature too: with no
     // active channels, none of it runs.
     def activeChannels = (params.global_channels ?: []) as List<String>
-    channels_ch = Channel.fromList(activeChannels)
+    channels_ch = channel.fromList(activeChannels)
 
     // NOTE: the per-channel identifier is bound as "chan" in every closure
     // below, never "channel" -- "channel" is a reserved Nextflow binding
@@ -241,10 +245,10 @@ workflow FisseqPipeline {
     // tuple with `label` (the STAGE_CHANNEL_CELLS subdir to publish under).
     stageChannelInput = { srcCh, label ->
         srcCh.combine(channels_ch)
-            .filter { batch_stem, v, chan -> chan in (resolvedBatchConfigs[batch_stem].global_channel ?: []) }
+            .filter { batch_stem, _v, chan -> chan in (resolvedBatchConfigs[batch_stem].global_channel ?: []) }
             .map { batch_stem, v, chan -> tuple(chan, batch_stem, v, label) }
     }
-    channel_qc_input_ch = stageChannelInput.call(qc_ch.map { batch_stem, fc, bc, vpb -> tuple(batch_stem, fc) }, 'qc_filter_cells')
+    channel_qc_input_ch = stageChannelInput.call(qc_ch.map { batch_stem, fc, _bc, _vpb -> tuple(batch_stem, fc) }, 'qc_filter_cells')
     STAGE_CHANNEL_QC(channel_qc_input_ch)
 
     channel_norm_input_ch = stageChannelInput.call(norm_ch, 'normalization_cells')
@@ -258,9 +262,9 @@ workflow FisseqPipeline {
     // signal below (channel_qc_signal_ch, channel_norm_signal_ch,
     // channel_bc_signal_ch) -- all consume a (chan, batch_stem, value) source.
     perChannelSignal = { srcCh, subdir ->
-        srcCh.map { chan, batch_stem, f -> tuple(chan, batch_stem) }
+        srcCh.map { chan, batch_stem, _f -> tuple(chan, batch_stem) }
             .groupTuple()
-            .map { chan, batch_stems -> tuple(chan, "${pipeline_dir_abs}/global/${chan}/${subdir}") }
+            .map { chan, _batch_stems -> tuple(chan, "${pipeline_dir_abs}/global/${chan}/${subdir}") }
     }
     channel_qc_signal_ch = perChannelSignal.call(STAGE_CHANNEL_QC.out, 'qc_filter_cells')
     channel_norm_signal_ch = perChannelSignal.call(STAGE_CHANNEL_NORM.out, 'normalization_cells')
@@ -271,7 +275,7 @@ workflow FisseqPipeline {
     // run_ovwt/run_feature_selection. Independent of the ANOVA/OvWT/
     // feature-selection chains below, so it only needs norm_ch.
     wtvwt_input_ch = norm_ch.join(gates_ch)
-        .filter { batch_stem, p, gates -> gates.run_wtvwt }
+        .filter { _batch_stem, _p, gates -> gates.run_wtvwt }
         .map { batch_stem, p, _gates -> tuple(batch_stem, p, resolvedBatchConfigs[batch_stem].wtvwt_min_cells_per_barcode,
                                  resolvedBatchConfigs[batch_stem].wtvwt_max_barcodes,
                                  resolvedBatchConfigs[batch_stem].wtvwt_barcode_downsample_mode) }
@@ -285,7 +289,7 @@ workflow FisseqPipeline {
     // Independent of the ANOVA/OvWT/feature-selection chains and of
     // WTVWT_BATCHWISE itself, so it only needs norm_ch.
     wtvvariantpool_input_ch = norm_ch.join(gates_ch)
-        .filter { batch_stem, p, gates -> gates.run_wtvvariantpool }
+        .filter { _batch_stem, _p, gates -> gates.run_wtvvariantpool }
         .map { batch_stem, p, _gates -> tuple(batch_stem, p, resolvedBatchConfigs[batch_stem].wtvvariantpool_min_cells_per_barcode,
                                  resolvedBatchConfigs[batch_stem].wtvvariantpool_variant_classes,
                                  resolvedBatchConfigs[batch_stem].wtvvariantpool_downsample_variant_pool) }
@@ -338,7 +342,7 @@ workflow FisseqPipeline {
     // channel (no separate "implies" logic needed, unlike the
     // run_check_barcodes/run_single_cell_scores pair below).
     ovwt_unfiltered_input_ch = norm_ch.join(gates_ch)
-        .filter { batch_stem, p, gates -> gates.run_ovwt }
+        .filter { _batch_stem, _p, gates -> gates.run_ovwt }
         .map { batch_stem, p, _gates ->
             def cfg = resolvedBatchConfigs[batch_stem]
             tuple(batch_stem, p, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
@@ -354,7 +358,7 @@ workflow FisseqPipeline {
     // above) fall out naturally without re-deriving them at each filter --
     // see nextflow.config's comments for these params.
     score_source_ch = OVWT_BATCHWISE_UNFILTERED.out.join(gates_ch)
-        .filter { batch_stem, _res, mdl, test_idx, train_idx, gates -> gates.run_single_cell_scores }
+        .filter { _batch_stem, _res, _mdl, _test_idx, _train_idx, gates -> gates.run_single_cell_scores }
         .map { batch_stem, _res, mdl, test_idx, train_idx, _gates ->
             def split = resolvedBatchConfigs[batch_stem].single_cell_scores_split
             tuple(batch_stem, (split == "test") ? test_idx : train_idx, mdl)
@@ -362,7 +366,7 @@ workflow FisseqPipeline {
     OVWT_CELLSCORES_BATCHWISE(score_source_ch)
 
     check_barcodes_input_ch = OVWT_CELLSCORES_BATCHWISE.out.join(gates_ch)
-        .filter { batch_stem, scores, gates -> gates.run_check_barcodes }
+        .filter { _batch_stem, _scores, gates -> gates.run_check_barcodes }
         .map { batch_stem, scores, _gates ->
             def cfg = resolvedBatchConfigs[batch_stem]
             tuple(batch_stem, scores, cfg.barcode_check_min_cells, cfg.barcode_check_alpha)
@@ -372,7 +376,7 @@ workflow FisseqPipeline {
     // Per-batch, unlike ANOVA_BLOCKLIST (per-channel) -- consumes CHECK_BARCODES'
     // per-batch (batch_stem, results_file) tuple directly.
     barcode_blocklist_input_ch = CHECK_BARCODES.out.join(gates_ch)
-        .filter { batch_stem, res, gates -> gates.run_barcode_filtered_ovwt }
+        .filter { _batch_stem, _res, gates -> gates.run_barcode_filtered_ovwt }
         .map { batch_stem, res, _gates -> tuple(batch_stem, res, resolvedBatchConfigs[batch_stem].barcode_blocklist_pvalue_threshold) }
     BARCODE_BLOCKLIST(barcode_blocklist_input_ch)
     barcode_blocklist_ch = BARCODE_BLOCKLIST.out  // (batch_stem, barcode_blocklist_file)
@@ -411,17 +415,17 @@ workflow FisseqPipeline {
     // feature_select_bootstrap_reps are pipeline-wide-only -- they determine
     // shared fan-out cardinality, not a per-batch scalar -- so
     // feature_types_ch/bootstrap_ch are built unconditionally, outside any gate.
-    feature_types_ch = Channel.fromList(params.feature_select_types)
+    feature_types_ch = channel.fromList(params.feature_select_types)
     // Explicit cast: Nextflow CLI overrides (e.g. --feature_select_bootstrap_reps 3)
     // arrive as Strings and silently produce a bogus/huge range if left
     // uncoerced in a Groovy IntRange (1..params.feature_select_bootstrap_reps).
-    bootstrap_ch = Channel.of(1..(params.feature_select_bootstrap_reps as int))
+    bootstrap_ch = channel.of(1..(params.feature_select_bootstrap_reps as int))
 
     // --- Batchwise --- (per-batch gated on run_feature_selection; norm_ch is
     // filtered once, independently, here -- every downstream groupTuple/
     // .join() stage automatically only sees the surviving batch keys.)
     norm_ch_feature_selected = norm_ch.join(gates_ch)
-        .filter { batch_stem, _p, gates -> gates.run_feature_selection }
+        .filter { _batch_stem, _p, gates -> gates.run_feature_selection }
         .map { batch_stem, p, _gates -> tuple(batch_stem, p) }
 
     // Stage 1: full per-feature-type aggregation, one task per (batch, feature_type).
@@ -481,7 +485,7 @@ workflow FisseqPipeline {
         .groupTuple(by: [0, 1, 2])
         // (batch_stem, bootstrap_idx, feature_type, [half_num,half_num], [half_agg_file,half_agg_file])
         .map { batch_stem, bootstrap_idx, feature_type, half_nums, half_files ->
-            def pairs = [half_nums, half_files].transpose().sort { it[0] }
+            def pairs = [half_nums, half_files].transpose().sort { pair -> pair[0] }
             tuple(batch_stem, bootstrap_idx, feature_type, pairs[0][1], pairs[1][1],
                   "feature_select_batchwise/${batch_stem}")
         }
@@ -492,7 +496,7 @@ workflow FisseqPipeline {
     // replicates. THE one intentional synchronization point, scoped to this
     // stage only.
     blocklist_input_ch = corr_ch
-        .map { batch_stem, feature_type, bootstrap_idx, correlation_file ->
+        .map { batch_stem, feature_type, _bootstrap_idx, correlation_file ->
             tuple(batch_stem, feature_type, correlation_file)
         }
         .groupTuple(by: [0, 1])
@@ -506,7 +510,7 @@ workflow FisseqPipeline {
 
     // Stage 3: group by batch_stem — gathers all feature types.
     combine_bl_input_ch = bl_ch
-        .map { batch_stem, feature_type, blocklist_file -> tuple(batch_stem, blocklist_file) }
+        .map { batch_stem, _feature_type, blocklist_file -> tuple(batch_stem, blocklist_file) }
         .groupTuple(by: 0)
         // (batch_stem, [blocklist_file, ...])  (N = params.feature_select_types.size())
         .map { batch_stem, blocklist_files ->
@@ -519,7 +523,7 @@ workflow FisseqPipeline {
     // aggregates), join norm_ch_feature_selected (raw cells, for metadata),
     // join stage-3's combined blocklist.
     finalize_input_ch = agg_ch
-        .map { batch_stem, feature_type, agg_file -> tuple(batch_stem, agg_file) }
+        .map { batch_stem, _feature_type, agg_file -> tuple(batch_stem, agg_file) }
         .groupTuple(by: 0)
         // (batch_stem, [agg_file, ...])  (N = params.feature_select_types.size())
         .join(norm_ch_feature_selected)
@@ -547,7 +551,7 @@ workflow FisseqPipeline {
         // feature_select_batchwise/<batch>/{aggregates,blocklist.parquet} on
         // disk for GLOBAL_FEATURE_SELECT to read.
         def batchesByChannel = activeChannels.collectEntries { chan ->
-            [chan, resolvedBatchConfigs.findAll { batch_stem, cfg ->
+            [chan, resolvedBatchConfigs.findAll { _batch_stem, cfg ->
                 (cfg.global_channel ?: []).contains(chan) && BatchParams.asBool(cfg.run_feature_selection)
             }.keySet() as List]
         }

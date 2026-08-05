@@ -66,7 +66,7 @@ workflow OvwtPipeline {
     if (!configsDir.isDirectory()) {
         error "ERROR: ${params.pipeline_dir}/configs does not exist or is not a directory"
     }
-    def config_files = configsDir.listFiles()?.findAll { it.name.endsWith('.yaml') } ?: []
+    def config_files = configsDir.listFiles()?.findAll { f -> f.name.endsWith('.yaml') } ?: []
     if (config_files.size() == 0) {
         error "ERROR: No .yaml files found in ${params.pipeline_dir}/configs"
     }
@@ -92,7 +92,7 @@ workflow OvwtPipeline {
         resolvedBatchConfigs[stem] = resolution.resolved
     }
 
-    config_ch = Channel.fromList(config_files).map { f ->
+    config_ch = channel.fromList(config_files).map { f ->
         def stem = f.baseName
         def cfg = resolvedBatchConfigs[stem]
         tuple(stem, cfg.input_paths, cfg.feature_allowlist_file, cfg.feature_blocklist_file,
@@ -138,7 +138,7 @@ workflow OvwtPipeline {
     // here (unlike FisseqPipeline's batchGates()), since OVWT_CELLSCORES_BATCHWISE
     // always runs unconditionally in this pipeline.
     check_barcodes_input_ch = OVWT_CELLSCORES_BATCHWISE.out
-        .filter { stem, scores -> resolvedBatchConfigs[stem].run_check_barcodes.toString().toBoolean() }
+        .filter { stem, _scores -> resolvedBatchConfigs[stem].run_check_barcodes.toString().toBoolean() }
         .map { stem, scores ->
             def cfg = resolvedBatchConfigs[stem]
             tuple(stem, scores, cfg.barcode_check_min_cells, cfg.barcode_check_alpha)

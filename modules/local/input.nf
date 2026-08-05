@@ -30,7 +30,7 @@ process INPUT {
     tuple val(name), path("${name}.parquet")
 
     script:
-    def inputPathsYaml = input_paths.collect { "'${it}'" }.join(', ')
+    def inputPathsYaml = input_paths.collect { p -> "'${p}'" }.join(', ')
     def allowlistYaml = (feature_allowlist_file == null) ? 'null' : "'${feature_allowlist_file}'"
     def blocklistYaml = (feature_blocklist_file == null) ? 'null' : "'${feature_blocklist_file}'"
     def schemaScanRowsYaml = (csv_schema_scan_rows == null) ? 'null' : "${csv_schema_scan_rows}"
