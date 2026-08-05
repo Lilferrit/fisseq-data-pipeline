@@ -101,7 +101,8 @@ batch's YAML is parsed and merged with the pipeline-wide defaults once, at
 workflow-construction time (see
 [Configuration: Per-batch parameter overrides](configuration.md#per-batch-parameter-overrides)),
 and `INPUT` instead receives the resolved `input_paths` / `feature_allowlist_file`
-/ `feature_blocklist_file` values as individual process inputs. The process
+/ `feature_blocklist_file` / `csv_schema_scan_rows` values as individual
+process inputs. The process
 script rebuilds a minimal YAML from those values before invoking
 `python -m fisseq_data_pipeline.input` — see
 [Configuration: Why resolved scalars, not the whole config, are passed to processes](configuration.md#why-resolved-scalars-not-the-whole-config-are-passed-to-processes)

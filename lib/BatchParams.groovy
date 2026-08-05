@@ -59,6 +59,7 @@ class BatchParams {
         // pipeline-wide defaults (see nextflow.config)
         'feature_allowlist_file',
         'feature_blocklist_file',
+        'csv_schema_scan_rows',
     ] as List<String>
 
     // Keys that exist in nextflow.config but can never be set from a batch
