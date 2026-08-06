@@ -573,7 +573,7 @@ workflow FisseqPipeline {
 
         global_fs_input_ch = channels_ch
             .combine(feature_select_ready_signal)
-            .map { chan, d -> tuple(chan, batchesByChannel[chan], d, "global/${chan}/feature_select", params.global_feature_select_min_batches_ok) }
+            .map { chan, d -> tuple(chan, batchesByChannel[chan], d, "global/${chan}/feature_select", params.global_feature_select_min_batches_ok, params.feature_select_types) }
         GLOBAL_FEATURE_SELECT(global_fs_input_ch)
     }
 
