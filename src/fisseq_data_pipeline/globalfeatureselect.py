@@ -12,10 +12,15 @@ recomputing anything from raw cells:
    first, before any per-batch aggregate is touched, so the resulting
    globally-blocked feature set can be dropped from each batch up front.
 2. For each member batch, join its per-feature-type aggregate files
-   (``feature_select_batchwise/<batch>/aggregates/<feature_type>.parquet``),
-   drop step 1's globally-blocked columns, and normalize the joined table to
-   its own synonymous baseline (see :func:`normalize_batch_aggregate`) —
-   this is both the batch-correction step and the normalization step.
+   (``feature_select_batchwise/<batch>/aggregates/<feature_type>.parquet``,
+   filtered to the currently-configured ``feature_select_types`` — a batch's
+   ``aggregates/`` directory can otherwise carry stale files for feature
+   types no longer configured, left behind by an earlier run's larger
+   ``feature_select_types`` since ``publishDir mode: 'copy'`` never deletes
+   them), drop step 1's globally-blocked columns, and normalize the joined
+   table to its own synonymous baseline (see
+   :func:`normalize_batch_aggregate`) — this is both the batch-correction
+   step and the normalization step.
 3. Concatenate every member batch's normalized table and take the
    per-feature median, grouped by ``label_column`` (see
    :func:`median_across_batches`), since the same variant can appear in more
@@ -76,6 +81,7 @@ def normalize_batch_aggregate(
     pipeline_dir: str,
     batch_stem: str,
     label_column: str,
+    feature_select_types: Iterable[str],
     blocked_features: Optional[Iterable[str]] = None,
 ) -> pl.LazyFrame:
     """
@@ -90,6 +96,21 @@ def normalize_batch_aggregate(
         The batch's identifier (matches ``feature_select_batchwise/<batch_stem>``).
     label_column : str
         Name of the column identifying variant labels.
+    feature_select_types : Iterable[str]
+        The currently-configured feature types (e.g. ``mean``, ``median``,
+        ``MAD``, ``std``, ``KS``, ``QQ``, ``AUROC`` — see
+        :data:`fisseq_data_pipeline.aggregate._AGGREGATORS`). Only aggregate
+        files whose stem (``<feature_type>.parquet``) is in this set are
+        joined; any other file present in the batch's ``aggregates/``
+        directory (e.g. a stale file for a feature type no longer
+        configured, left behind by an earlier run's larger
+        ``feature_select_types`` since ``AGGREGATE_FEATURE_TYPE``'s
+        ``publishDir mode: 'copy'`` never deletes removed outputs) is
+        ignored. A configured type missing its file for this batch (e.g. its
+        ``AGGREGATE_FEATURE_TYPE`` task failed under ``errorStrategy
+        'ignore'``) is likewise silently skipped — see
+        :func:`median_across_batches` for how cross-batch column mismatches
+        are handled downstream.
     blocked_features : Iterable[str] or None
         Feature column names to drop before normalization (e.g. the
         globally-blocked set from :func:`combine_batch_blocklists`). Names
@@ -106,15 +127,21 @@ def normalize_batch_aggregate(
     Raises
     ------
     ValueError
-        If no per-feature-type aggregate files are found for this batch.
+        If no per-feature-type aggregate files matching
+        ``feature_select_types`` are found for this batch.
     """
     glob_pattern = (
         f"{pipeline_dir}/feature_select_batchwise/{batch_stem}/aggregates/*.parquet"
     )
-    paths = sorted(glob.glob(glob_pattern))
+    allowed_types = set(feature_select_types)
+    paths = sorted(
+        p for p in glob.glob(glob_pattern) if pathlib.Path(p).stem in allowed_types
+    )
     if not paths:
         raise ValueError(
-            f"No per-feature-type aggregate files matched glob pattern: {glob_pattern!r}"
+            f"No per-feature-type aggregate files matching feature_select_types="
+            f"{sorted(allowed_types)!r} found for batch {batch_stem!r} "
+            f"(glob pattern: {glob_pattern!r})"
         )
     agg_df = join_feature_type_files(paths, label_column)
     if blocked_features:
@@ -295,6 +322,14 @@ class GlobalFeatureSelectConfig(AppConfig):
         ``run_feature_selection`` enabled, i.e. the ones that actually have
         ``feature_select_batchwise/<batch>/...`` on disk). Required,
         non-empty.
+    feature_select_types : list[str]
+        The currently-configured feature types (e.g. ``mean``, ``median``,
+        ``MAD``, ``std``, ``KS``, ``QQ``, ``AUROC`` — mirrors the
+        pipeline-wide ``feature_select_types`` Nextflow param). Used to
+        filter each member batch's ``aggregates/`` directory down to files
+        for these types, so stale files for feature types no longer
+        configured (left behind by an earlier run) are ignored — see
+        :func:`normalize_batch_aggregate`. Required.
     label_column : str
         Name of the column identifying variant labels. Defaults to
         ``meta_aa_changes``.
@@ -309,6 +344,7 @@ class GlobalFeatureSelectConfig(AppConfig):
 
     pipeline_dir: str = MISSING
     batch_stems: List[str] = MISSING
+    feature_select_types: List[str] = MISSING
     label_column: str = "meta_aa_changes"
     min_batches_ok: Optional[int] = None
     compute_impact_score: bool = True
@@ -362,7 +398,11 @@ def main(cfg: DictConfig) -> None:
     )
     batch_lfs = [
         normalize_batch_aggregate(
-            gfs_cfg.pipeline_dir, stem, gfs_cfg.label_column, blocked_features
+            gfs_cfg.pipeline_dir,
+            stem,
+            gfs_cfg.label_column,
+            gfs_cfg.feature_select_types,
+            blocked_features,
         )
         for stem in gfs_cfg.batch_stems
     ]

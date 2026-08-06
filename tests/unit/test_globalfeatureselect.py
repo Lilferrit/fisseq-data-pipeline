@@ -80,7 +80,7 @@ def _write_batch_aggregates(pipeline_dir, batch_stem: str) -> None:
 def test_normalize_batch_aggregate_normalizes_to_synonymous_baseline(tmp_path) -> None:
     _write_batch_aggregates(tmp_path, "batchA")
     result = m.normalize_batch_aggregate(
-        str(tmp_path), "batchA", "meta_aa_changes"
+        str(tmp_path), "batchA", "meta_aa_changes", ["mean"]
     ).collect()
 
     control_f1 = np.array([0.0, 1.0, 4.0])
@@ -92,17 +92,55 @@ def test_normalize_batch_aggregate_normalizes_to_synonymous_baseline(tmp_path) -
 def test_normalize_batch_aggregate_raises_on_empty_glob(tmp_path) -> None:
     with pytest.raises(ValueError):
         m.normalize_batch_aggregate(
-            str(tmp_path), "nonexistent_batch", "meta_aa_changes"
+            str(tmp_path), "nonexistent_batch", "meta_aa_changes", ["mean"]
         )
 
 
 def test_normalize_batch_aggregate_drops_blocked_features(tmp_path) -> None:
     _write_batch_aggregates(tmp_path, "batchA")
     result = m.normalize_batch_aggregate(
-        str(tmp_path), "batchA", "meta_aa_changes", blocked_features={"f2_mean"}
+        str(tmp_path),
+        "batchA",
+        "meta_aa_changes",
+        ["mean"],
+        blocked_features={"f2_mean"},
     ).collect()
     assert "f2_mean" not in result.columns
     assert "f1_mean" in result.columns
+
+
+def test_normalize_batch_aggregate_ignores_stale_unconfigured_feature_type(
+    tmp_path,
+) -> None:
+    """A feature type file present on disk (e.g. left behind by an earlier
+    run with a larger feature_select_types) but absent from the current
+    feature_select_types must not leak into the joined aggregate."""
+    _write_batch_aggregates(tmp_path, "batchA")
+    agg_dir = tmp_path / "feature_select_batchwise" / "batchA" / "aggregates"
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+            "f1_AUROC": [0.0, 1.0, 4.0, 5.0, 10.0],
+        }
+    ).write_parquet(agg_dir / "AUROC.parquet")
+
+    result = m.normalize_batch_aggregate(
+        str(tmp_path), "batchA", "meta_aa_changes", ["mean"]
+    ).collect()
+    assert "f1_AUROC" not in result.columns
+    assert "f1_mean" in result.columns
+
+
+def test_normalize_batch_aggregate_raises_when_configured_types_all_missing(
+    tmp_path,
+) -> None:
+    """Only a stale, unconfigured feature type file is present -- there is
+    nothing to join for the currently-configured feature_select_types."""
+    _write_batch_aggregates(tmp_path, "batchA")
+    with pytest.raises(ValueError):
+        m.normalize_batch_aggregate(
+            str(tmp_path), "batchA", "meta_aa_changes", ["AUROC"]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +269,7 @@ def make_gfs_cfg(
         output_dir=str(tmp_path / "out"),
         pipeline_dir=str(pipeline_dir),
         batch_stems=["batchA", "batchB"],
+        feature_select_types=["mean"],
         min_batches_ok=min_batches_ok,
     )
     if compute_impact_score is not None:
@@ -421,6 +460,7 @@ def test_main_raises_on_empty_batch_stems(tmp_path) -> None:
             output_dir=str(tmp_path / "out"),
             pipeline_dir=str(pipeline_dir),
             batch_stems=[],
+            feature_select_types=["mean"],
         )
     )
     with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
