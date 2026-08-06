@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -168,6 +169,151 @@ def test_ks_aggregator_matches_scipy(native_stats_df: pl.DataFrame, label: str) 
     assert row["f1_KS"] == pytest.approx(expected, abs=1e-9)
 
 
+# ---------------------------------------------------------------------------
+# KSNegLogPValueAggregator — native vs. scipy ground truth
+# ---------------------------------------------------------------------------
+
+
+def test_ks_neg_log_p_aggregator_returns_expected_columns(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    result = m.KSNegLogPValueAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert {"meta_aa_changes", "f1_KSnegLogP", "f2_KSnegLogP"}.issubset(
+        set(result.columns)
+    )
+
+
+def test_ks_neg_log_p_aggregator_excludes_control_rows(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    result = m.KSNegLogPValueAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert "WT" not in result["meta_aa_changes"].to_list()
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES", "SINGLE"])
+def test_ks_neg_log_p_matches_kstwobign(
+    native_stats_df: pl.DataFrame, label: str
+) -> None:
+    """Ground truth is scipy.stats.kstwobign.sf(D*sqrt(n_e)) -- the
+    classical limiting Kolmogorov distribution this aggregator implements
+    literally (see the class docstring for why this is NOT the same
+    number as scipy.stats.kstwo.sf / ks_2samp's own 'asymp' mode)."""
+    result = m.KSNegLogPValueAggregator().aggregate(native_stats_df.lazy()).collect()
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    d = scipy.stats.ks_2samp(group, ref).statistic
+    n_e = len(group) * len(ref) / (len(group) + len(ref))
+    expected = -np.log10(scipy.stats.kstwobign.sf(d * np.sqrt(n_e)))
+    assert row["f1_KSnegLogP"] == pytest.approx(expected, abs=1e-6)
+
+
+def test_ks_neg_log_p_n_equals_one_group_matches_kstwobign() -> None:
+    ref = list(np.linspace(0, 1, 20))
+    group = [10.0]
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * len(ref) + ["A"],
+            "meta_is_control": [True] * len(ref) + [False],
+            "f1": ref + group,
+        }
+    )
+    row = _get_row(m.KSNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
+    d = scipy.stats.ks_2samp(group, ref).statistic
+    n_e = len(group) * len(ref) / (len(group) + len(ref))
+    expected = -np.log10(scipy.stats.kstwobign.sf(d * np.sqrt(n_e)))
+    assert row["f1_KSnegLogP"] == pytest.approx(expected, abs=1e-6)
+
+
+def test_ks_neg_log_p_loosely_tracks_ks_2samp_asymp() -> None:
+    """ks_2samp's own 'asymp' p-value uses a different, more refined
+    finite-sample algorithm (kstwo.sf with a rounded effective n) than the
+    classical closed-form series this aggregator implements -- the two
+    disagree by tens of percent in p even at moderate n (see class
+    docstring). This only checks they land in the same ballpark for a
+    clearly-significant case, not close agreement."""
+    rng = np.random.default_rng(42)
+    group = rng.normal(loc=1.5, size=100).tolist()
+    ref = rng.normal(loc=0.0, size=100).tolist()
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * len(ref) + ["A"] * len(group),
+            "meta_is_control": [True] * len(ref) + [False] * len(group),
+            "f1": ref + group,
+        }
+    )
+    row = _get_row(m.KSNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
+    expected_ks2samp = -np.log10(
+        scipy.stats.ks_2samp(group, ref, method="asymp").pvalue
+    )
+    assert row["f1_KSnegLogP"] == pytest.approx(expected_ks2samp, rel=0.5)
+
+
+def test_ks_neg_log_p_strong_separation_is_finite_and_large() -> None:
+    """Exercises the logsumexp underflow-safe path: naively summing the
+    alternating series in linear space underflows to exactly 0.0 well
+    before D is this large, which would otherwise silently produce
+    -inf/null instead of a large finite score."""
+    rng = np.random.default_rng(7)
+    n = 200
+    group = rng.normal(loc=10.0, size=n).tolist()
+    ref = rng.normal(loc=0.0, size=n).tolist()
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * n + ["A"] * n,
+            "meta_is_control": [True] * n + [False] * n,
+            "f1": ref + group,
+        }
+    )
+    row = _get_row(m.KSNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
+    assert row["f1_KSnegLogP"] is not None
+    assert np.isfinite(row["f1_KSnegLogP"])
+    assert row["f1_KSnegLogP"] > 50.0
+
+
+def test_ks_neg_log_p_null_when_reference_empty() -> None:
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["A", "A"],
+            "meta_is_control": [False, False],
+            "f1": [1.0, 2.0],
+        }
+    )
+    row = _get_row(m.KSNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
+    assert row["f1_KSnegLogP"] is None
+
+
+def test_ks_neg_log_p_null_when_group_all_null() -> None:
+    full = _ref_based_null_df()
+    row = (
+        m.KSNegLogPValueAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f2_KSnegLogP"] is None
+
+
+def test_ks_neg_log_p_null_when_reference_all_null() -> None:
+    full = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
+            "meta_is_control": [True, True, False, False],
+            "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
+        }
+    )
+    row = (
+        m.KSNegLogPValueAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f1_KSnegLogP"] is None
+
+
 def _signed_ks_stat(group: list[float], ref: list[float]) -> float:
     """Independent numpy reference for the signed KS statistic: same
     combined-sort/signed-weight construction as SignedKSAggregator, kept
@@ -302,6 +448,224 @@ def test_auroc_aggregator_fully_overlapping_near_half() -> None:
     )
     row = _get_row(m.AUROCAggregator().aggregate(df.lazy()).collect(), "A")
     assert row["f1_AUROC"] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# AUROCNegLogPValueAggregator — native vs. scipy ground truth
+# ---------------------------------------------------------------------------
+
+
+def test_auroc_neg_log_p_aggregator_returns_expected_columns(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    result = m.AUROCNegLogPValueAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert {"meta_aa_changes", "f1_AUROCnegLogP", "f2_AUROCnegLogP"}.issubset(
+        set(result.columns)
+    )
+
+
+def test_auroc_neg_log_p_aggregator_excludes_control_rows(
+    toy_norm_df: pl.DataFrame,
+) -> None:
+    result = m.AUROCNegLogPValueAggregator().aggregate(toy_norm_df.lazy()).collect()
+    assert "WT" not in result["meta_aa_changes"].to_list()
+
+
+@pytest.mark.parametrize("label", ["RANDOM", "TIES", "SINGLE"])
+def test_auroc_neg_log_p_matches_mannwhitneyu_no_continuity(
+    native_stats_df: pl.DataFrame, label: str
+) -> None:
+    """No continuity correction is applied (see class docstring), so the
+    matching scipy call must also disable it for exact agreement."""
+    result = (
+        m.AUROCNegLogPValueAggregator().aggregate(native_stats_df.lazy()).collect()
+    )
+    row = _get_row(result, label)
+    group, ref = _group_and_ref(native_stats_df, label)
+    expected = -np.log10(
+        scipy.stats.mannwhitneyu(
+            group,
+            ref,
+            method="asymptotic",
+            alternative="two-sided",
+            use_continuity=False,
+        ).pvalue
+    )
+    assert row["f1_AUROCnegLogP"] == pytest.approx(expected, abs=1e-5)
+
+
+def test_auroc_neg_log_p_n_equals_one_group() -> None:
+    ref = list(np.linspace(0, 1, 20))
+    group = [10.0]
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * len(ref) + ["A"],
+            "meta_is_control": [True] * len(ref) + [False],
+            "f1": ref + group,
+        }
+    )
+    row = _get_row(
+        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
+    )
+    expected = -np.log10(
+        scipy.stats.mannwhitneyu(
+            group,
+            ref,
+            method="asymptotic",
+            alternative="two-sided",
+            use_continuity=False,
+        ).pvalue
+    )
+    assert row["f1_AUROCnegLogP"] == pytest.approx(expected, abs=1e-5)
+
+
+def test_auroc_neg_log_p_loosely_tracks_continuity_corrected_default() -> None:
+    """scipy's default use_continuity=True applies a small +/-0.5 shift
+    toward mu_U -- not expected to match exactly (see class docstring),
+    but should stay close for a moderately-sized, clearly-significant
+    case."""
+    rng = np.random.default_rng(3)
+    group = rng.normal(loc=1.0, size=40).tolist()
+    ref = rng.normal(loc=0.0, size=40).tolist()
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * len(ref) + ["A"] * len(group),
+            "meta_is_control": [True] * len(ref) + [False] * len(group),
+            "f1": ref + group,
+        }
+    )
+    row = _get_row(
+        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
+    )
+    expected_default = -np.log10(
+        scipy.stats.mannwhitneyu(
+            group, ref, method="asymptotic", alternative="two-sided"
+        ).pvalue
+    )
+    assert row["f1_AUROCnegLogP"] == pytest.approx(expected_default, abs=0.1)
+
+
+def test_auroc_neg_log_p_strong_separation_is_finite_and_large() -> None:
+    """Exercises the log-space erfc tail path: naively computing
+    1-Phi(|z|) in linear space underflows to exactly 0.0 well before |z|
+    is this large, which would otherwise silently produce -inf/null
+    instead of a large finite score."""
+    rng = np.random.default_rng(9)
+    n = 300
+    group = rng.normal(loc=10.0, size=n).tolist()
+    ref = rng.normal(loc=0.0, size=n).tolist()
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * n + ["A"] * n,
+            "meta_is_control": [True] * n + [False] * n,
+            "f1": ref + group,
+        }
+    )
+    row = _get_row(
+        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
+    )
+    assert row["f1_AUROCnegLogP"] is not None
+    assert np.isfinite(row["f1_AUROCnegLogP"])
+    assert row["f1_AUROCnegLogP"] > 50.0
+
+
+def test_auroc_neg_log_p_null_when_reference_empty() -> None:
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["A", "A"],
+            "meta_is_control": [False, False],
+            "f1": [1.0, 2.0],
+        }
+    )
+    row = _get_row(
+        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
+    )
+    assert row["f1_AUROCnegLogP"] is None
+
+
+def test_auroc_neg_log_p_null_when_group_all_null() -> None:
+    full = _ref_based_null_df()
+    row = (
+        m.AUROCNegLogPValueAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f2_AUROCnegLogP"] is None
+
+
+def test_auroc_neg_log_p_null_when_reference_all_null() -> None:
+    full = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B"],
+            "meta_is_control": [True, True, False, False],
+            "f1": pl.Series([None, None, 1.0, 2.0], dtype=pl.Float64),
+        }
+    )
+    row = (
+        m.AUROCNegLogPValueAggregator()
+        .aggregate(full.lazy())
+        .filter(pl.col("meta_aa_changes") == "A1B")
+        .collect()
+        .to_dicts()
+        .pop()
+    )
+    assert row["f1_AUROCnegLogP"] is None
+
+
+# ---------------------------------------------------------------------------
+# AUROCNegLogPValueAggregator — standalone numerical-helper verification
+# ---------------------------------------------------------------------------
+
+
+def test_standard_normal_cdf_expr_matches_scipy() -> None:
+    rng = np.random.default_rng(123)
+    z_vals = np.concatenate(
+        [rng.uniform(-5, 5, 200), [-8.0, -6.0, -5.5, 5.5, 6.0, 8.0, 0.0]]
+    )
+    df = pl.DataFrame({"z": z_vals})
+    result = df.select(
+        m.AUROCNegLogPValueAggregator._standard_normal_cdf_expr(pl.col("z")).alias(
+            "phi"
+        )
+    )["phi"].to_numpy()
+    expected = scipy.stats.norm.cdf(z_vals)
+    np.testing.assert_allclose(result, expected, atol=1e-6)
+
+
+def test_neg_log10_two_sided_normal_pvalue_matches_scipy_moderate_z() -> None:
+    rng = np.random.default_rng(321)
+    z_vals = rng.uniform(0.1, 6.0, 50)
+    df = pl.DataFrame({"z": z_vals})
+    result = df.select(
+        m.AUROCNegLogPValueAggregator._neg_log10_two_sided_normal_pvalue_expr(
+            pl.col("z")
+        ).alias("nlp")
+    )["nlp"].to_numpy()
+    expected = -np.log10(2 * scipy.stats.norm.sf(np.abs(z_vals)))
+    np.testing.assert_allclose(result, expected, atol=1e-5)
+
+
+def test_tie_term_rank_identity_matches_counter_reference() -> None:
+    """Verifies sum_groups(t**3 - t) == sum_elements(tie_size(x_i)**2 - 1)
+    against an independent collections.Counter-based computation, across
+    randomized tie-heavy integer trials -- the identity
+    AUROCNegLogPValueAggregator._prep_exprs relies on."""
+    rng = np.random.default_rng(55)
+    for _ in range(20):
+        n = int(rng.integers(1, 30))
+        vals = rng.integers(0, 5, size=n).tolist()
+        counter_term = sum(t**3 - t for t in Counter(vals).values())
+
+        s = pl.Series(vals)
+        rank_min = s.rank(method="min")
+        rank_max = s.rank(method="max")
+        tie_size = (rank_max - rank_min + 1).cast(pl.Float64)
+        rank_term = float((tie_size * tie_size - 1).sum())
+
+        assert rank_term == pytest.approx(counter_term)
 
 
 def test_qq_aggregator_returns_expected_columns(toy_norm_df: pl.DataFrame) -> None:
@@ -1119,7 +1483,10 @@ def test_aggregate_unknown_feature_in_block_list_ignored(
     assert {"f1_mean", "f2_mean"}.issubset(set(result.columns))
 
 
-@pytest.mark.parametrize("aggregator_name", ["KS", "signedKS", "QQ", "AUROC"])
+@pytest.mark.parametrize(
+    "aggregator_name",
+    ["KS", "signedKS", "QQ", "AUROC", "KSnegLogP", "AUROCnegLogP"],
+)
 def test_aggregate_block_list_with_reference_based_aggregator(
     toy_norm_df: pl.DataFrame, aggregator_name: str
 ) -> None:
@@ -1131,6 +1498,14 @@ def test_aggregate_block_list_with_reference_based_aggregator(
     ).collect()
     assert f"f1_{aggregator_name}" not in result.columns
     assert f"f2_{aggregator_name}" in result.columns
+
+
+def test_ks_neg_log_p_stat_suffix_matches_expected_block_list_name() -> None:
+    assert f"f1{m.KSNegLogPValueAggregator._stat_suffix}" == "f1_KSnegLogP"
+
+
+def test_auroc_neg_log_p_stat_suffix_matches_expected_block_list_name() -> None:
+    assert f"f1{m.AUROCNegLogPValueAggregator._stat_suffix}" == "f1_AUROCnegLogP"
 
 
 def test_main_block_list_file_excludes_features(tmp_path) -> None:
