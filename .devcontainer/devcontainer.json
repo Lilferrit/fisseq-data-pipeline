@@ -14,7 +14,7 @@
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
   "containerUser": "vscode",
-  "postCreateCommand": "uv sync",
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude && uv sync",
   "customizations": {
     "vscode": {
       "extensions": ["anthropic.claude-code", "ms-python.python", "charliermarsh.ruff"]
