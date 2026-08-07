@@ -2025,9 +2025,7 @@ the sign of separation is preserved in the value itself.</p>
 <span class="normal"><a href="#__codelineno-0-838">838</a></span>
 <span class="normal"><a href="#__codelineno-0-839">839</a></span>
 <span class="normal"><a href="#__codelineno-0-840">840</a></span>
-<span class="normal"><a href="#__codelineno-0-841">841</a></span>
-<span class="normal"><a href="#__codelineno-0-842">842</a></span>
-<span class="normal"><a href="#__codelineno-0-843">843</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="k">class</span><span class="w"> </span><span class="nc">AUROCAggregator</span><span class="p">(</span><span class="n">ReferenceBasedAggregator</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-841">841</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-774" name="__codelineno-0-774"></a><span class="k">class</span><span class="w"> </span><span class="nc">AUROCAggregator</span><span class="p">(</span><span class="n">ReferenceBasedAggregator</span><span class="p">):</span>
 <a id="__codelineno-0-775" name="__codelineno-0-775"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <a id="__codelineno-0-776" name="__codelineno-0-776"></a><span class="sd">    Computes per-group AUROC against the reference distribution for each</span>
 <a id="__codelineno-0-777" name="__codelineno-0-777"></a><span class="sd">    feature column.</span>
@@ -2043,60 +2041,58 @@ the sign of separation is preserved in the value itself.</p>
 <a id="__codelineno-0-787" name="__codelineno-0-787"></a>
 <a id="__codelineno-0-788" name="__codelineno-0-788"></a>    <span class="n">_stat_suffix</span> <span class="o">=</span> <span class="s2">&quot;_AUROC&quot;</span>
 <a id="__codelineno-0-789" name="__codelineno-0-789"></a>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_auroc_ranks_expr</span><span class="p">(</span>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">]:</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">        Returns ``(combined, ranks, n_group, n_ref)``: the concatenated</span>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a><span class="sd">        ``[group_values, ref_values]`` list for this feature, its</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a><span class="sd">        ``rank(method=&quot;average&quot;)`` transform (feeds the rank-sum/U</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a><span class="sd">        statistic below), and the group/reference sizes.</span>
-<a id="__codelineno-0-798" name="__codelineno-0-798"></a>
-<a id="__codelineno-0-799" name="__codelineno-0-799"></a><span class="sd">        Exposed separately from :meth:`_auroc_u_expr` so</span>
-<a id="__codelineno-0-800" name="__codelineno-0-800"></a><span class="sd">        :class:`AUROCNegLogPValueAggregator` can derive its tie-correction</span>
-<a id="__codelineno-0-801" name="__codelineno-0-801"></a><span class="sd">        term from the same combined value list (via</span>
-<a id="__codelineno-0-802" name="__codelineno-0-802"></a><span class="sd">        ``rank(method=&quot;min&quot;/&quot;max&quot;)``) without rebuilding</span>
-<a id="__codelineno-0-803" name="__codelineno-0-803"></a><span class="sd">        ``group_list``/``ref_list``/``concat_list`` from scratch.</span>
-<a id="__codelineno-0-804" name="__codelineno-0-804"></a>
-<a id="__codelineno-0-805" name="__codelineno-0-805"></a><span class="sd">        Rank-sum (Mann-Whitney U) identity: rank the combined pool with</span>
-<a id="__codelineno-0-806" name="__codelineno-0-806"></a><span class="sd">        average ranks for ties (matches sklearn.metrics.roc_auc_score&#39;s</span>
-<a id="__codelineno-0-807" name="__codelineno-0-807"></a><span class="sd">        own tie handling — verified across 300 randomized trials,</span>
-<a id="__codelineno-0-808" name="__codelineno-0-808"></a><span class="sd">        continuous and tied data). concat_list preserves element order,</span>
-<a id="__codelineno-0-809" name="__codelineno-0-809"></a><span class="sd">        so the group&#39;s own ranks are exactly the first n_group entries</span>
-<a id="__codelineno-0-810" name="__codelineno-0-810"></a><span class="sd">        of the ranked combined list.</span>
-<a id="__codelineno-0-811" name="__codelineno-0-811"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="n">ref_list</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">_ref&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-813" name="__codelineno-0-813"></a>        <span class="n">group_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_native_clean</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
-<a id="__codelineno-0-814" name="__codelineno-0-814"></a>        <span class="n">combined</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat_list</span><span class="p">([</span><span class="n">group_list</span><span class="p">,</span> <span class="n">ref_list</span><span class="p">])</span>
-<a id="__codelineno-0-815" name="__codelineno-0-815"></a>        <span class="n">ranks</span> <span class="o">=</span> <span class="n">combined</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;average&quot;</span><span class="p">))</span>
-<a id="__codelineno-0-816" name="__codelineno-0-816"></a>        <span class="k">return</span> <span class="n">combined</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">group_list</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">len</span><span class="p">(),</span> <span class="n">ref_list</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">len</span><span class="p">()</span>
-<a id="__codelineno-0-817" name="__codelineno-0-817"></a>
-<a id="__codelineno-0-818" name="__codelineno-0-818"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_auroc_u_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">]:</span>
-<a id="__codelineno-0-819" name="__codelineno-0-819"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a><span class="sd">        Returns ``(u, n_group, n_ref)`` as unaliased, un-nulled exprs —</span>
-<a id="__codelineno-0-821" name="__codelineno-0-821"></a><span class="sd">        the raw Mann-Whitney U statistic (numerator before dividing by</span>
-<a id="__codelineno-0-822" name="__codelineno-0-822"></a><span class="sd">        ``n_group * n_ref``) and the group/reference sizes. Shared with</span>
-<a id="__codelineno-0-823" name="__codelineno-0-823"></a><span class="sd">        :class:`AUROCNegLogPValueAggregator`, which reuses ``u`` and the</span>
-<a id="__codelineno-0-824" name="__codelineno-0-824"></a><span class="sd">        sizes to derive a p-value instead of recomputing ranks.</span>
-<a id="__codelineno-0-825" name="__codelineno-0-825"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-826" name="__codelineno-0-826"></a>        <span class="n">_combined</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_ranks_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
-<a id="__codelineno-0-827" name="__codelineno-0-827"></a>        <span class="n">group_rank_sum</span> <span class="o">=</span> <span class="n">ranks</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_group</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<a id="__codelineno-0-828" name="__codelineno-0-828"></a>        <span class="n">u</span> <span class="o">=</span> <span class="n">group_rank_sum</span> <span class="o">-</span> <span class="n">n_group</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_group</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
-<a id="__codelineno-0-829" name="__codelineno-0-829"></a>        <span class="k">return</span> <span class="n">u</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span>
-<a id="__codelineno-0-830" name="__codelineno-0-830"></a>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_feature_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="n">alias</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat</span><span class="si">}{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>        <span class="n">u</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_u_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
-<a id="__codelineno-0-834" name="__codelineno-0-834"></a>        <span class="n">auroc</span> <span class="o">=</span> <span class="n">u</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_group</span> <span class="o">*</span> <span class="n">n_ref</span><span class="p">)</span>
-<a id="__codelineno-0-835" name="__codelineno-0-835"></a>
-<a id="__codelineno-0-836" name="__codelineno-0-836"></a>        <span class="n">result</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_ref</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_auroc_ranks_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">]:</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a><span class="sd">        Returns ``(combined, ranks, n_group, n_ref)``: the concatenated</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a><span class="sd">        ``[group_values, ref_values]`` list for this feature, its</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a><span class="sd">        ``rank(method=&quot;average&quot;)`` transform (feeds the rank-sum/U</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a><span class="sd">        statistic below), and the group/reference sizes.</span>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a><span class="sd">        Exposed separately from :meth:`_auroc_u_expr` so</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a><span class="sd">        :class:`AUROCNegLogPValueAggregator` can derive its tie-correction</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a><span class="sd">        term from the same combined value list (via</span>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a><span class="sd">        ``rank(method=&quot;min&quot;/&quot;max&quot;)``) without rebuilding</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a><span class="sd">        ``group_list``/``ref_list``/``concat_list`` from scratch.</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a><span class="sd">        Rank-sum (Mann-Whitney U) identity: rank the combined pool with</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a><span class="sd">        average ranks for ties (matches sklearn.metrics.roc_auc_score&#39;s</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a><span class="sd">        own tie handling — verified across 300 randomized trials,</span>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a><span class="sd">        continuous and tied data). concat_list preserves element order,</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a><span class="sd">        so the group&#39;s own ranks are exactly the first n_group entries</span>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a><span class="sd">        of the ranked combined list.</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a>        <span class="n">ref_list</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">_ref&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>        <span class="n">group_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_native_clean</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="n">combined</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat_list</span><span class="p">([</span><span class="n">group_list</span><span class="p">,</span> <span class="n">ref_list</span><span class="p">])</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>        <span class="n">ranks</span> <span class="o">=</span> <span class="n">combined</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;average&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>        <span class="k">return</span> <span class="n">combined</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">group_list</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">len</span><span class="p">(),</span> <span class="n">ref_list</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">len</span><span class="p">()</span>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_auroc_u_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">]:</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a><span class="sd">        Returns ``(u, n_group, n_ref)`` as unaliased, un-nulled exprs —</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a><span class="sd">        the raw Mann-Whitney U statistic (numerator before dividing by</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a><span class="sd">        ``n_group * n_ref``) and the group/reference sizes. Shared with</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a><span class="sd">        :class:`AUROCNegLogPValueAggregator`, which reuses ``u`` and the</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a><span class="sd">        sizes to derive a p-value instead of recomputing ranks.</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>        <span class="n">_combined</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_ranks_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>        <span class="n">group_rank_sum</span> <span class="o">=</span> <span class="n">ranks</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_group</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a>        <span class="n">u</span> <span class="o">=</span> <span class="n">group_rank_sum</span> <span class="o">-</span> <span class="n">n_group</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_group</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a>        <span class="k">return</span> <span class="n">u</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_feature_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>        <span class="n">alias</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat</span><span class="si">}{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="n">u</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_u_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="n">auroc</span> <span class="o">=</span> <span class="n">u</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_group</span> <span class="o">*</span> <span class="n">n_ref</span><span class="p">)</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>        <span class="n">result</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_ref</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_group</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-0-838" name="__codelineno-0-838"></a>            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-839" name="__codelineno-0-839"></a>            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_group</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-0-840" name="__codelineno-0-840"></a>            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-841" name="__codelineno-0-841"></a>            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">auroc</span><span class="p">)</span>
-<a id="__codelineno-0-842" name="__codelineno-0-842"></a>        <span class="p">)</span>
-<a id="__codelineno-0-843" name="__codelineno-0-843"></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">alias</span><span class="p">)</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a>            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">auroc</span><span class="p">)</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a>        <span class="p">)</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">alias</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2193,7 +2189,9 @@ measurable additional peak RSS at this scale.</p>
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>src/fisseq_data_pipeline/aggregate.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-846"> 846</a></span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-844"> 844</a></span>
+<span class="normal"><a href="#__codelineno-0-845"> 845</a></span>
+<span class="normal"><a href="#__codelineno-0-846"> 846</a></span>
 <span class="normal"><a href="#__codelineno-0-847"> 847</a></span>
 <span class="normal"><a href="#__codelineno-0-848"> 848</a></span>
 <span class="normal"><a href="#__codelineno-0-849"> 849</a></span>
@@ -2395,213 +2393,211 @@ measurable additional peak RSS at this scale.</p>
 <span class="normal"><a href="#__codelineno-0-1045">1045</a></span>
 <span class="normal"><a href="#__codelineno-0-1046">1046</a></span>
 <span class="normal"><a href="#__codelineno-0-1047">1047</a></span>
-<span class="normal"><a href="#__codelineno-0-1048">1048</a></span>
-<span class="normal"><a href="#__codelineno-0-1049">1049</a></span>
-<span class="normal"><a href="#__codelineno-0-1050">1050</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-846" name="__codelineno-0-846"></a><span class="k">class</span><span class="w"> </span><span class="nc">AUROCNegLogPValueAggregator</span><span class="p">(</span><span class="n">AUROCAggregator</span><span class="p">):</span>
-<a id="__codelineno-0-847" name="__codelineno-0-847"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-848" name="__codelineno-0-848"></a><span class="sd">    Computes ``-log10(p)`` of the AUROC / Mann-Whitney U statistic against</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a><span class="sd">    the reference distribution, for each feature column.</span>
-<a id="__codelineno-0-850" name="__codelineno-0-850"></a>
-<a id="__codelineno-0-851" name="__codelineno-0-851"></a><span class="sd">    Reports evidence strength against the null hypothesis &quot;this variant</span>
-<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="sd">    group&#39;s values are drawn from the same distribution as the reference</span>
-<a id="__codelineno-0-853" name="__codelineno-0-853"></a><span class="sd">    control&quot; — larger values mean more significant departures. This</span>
-<a id="__codelineno-0-854" name="__codelineno-0-854"></a><span class="sd">    reuses the exact same rank-sum/U statistic as :class:`AUROCAggregator`</span>
-<a id="__codelineno-0-855" name="__codelineno-0-855"></a><span class="sd">    (via :meth:`AUROCAggregator._auroc_u_expr` and</span>
-<a id="__codelineno-0-856" name="__codelineno-0-856"></a><span class="sd">    :meth:`AUROCAggregator._auroc_ranks_expr`) rather than recomputing</span>
-<a id="__codelineno-0-857" name="__codelineno-0-857"></a><span class="sd">    ranks or U independently; only the U -&gt; p-value conversion is new.</span>
-<a id="__codelineno-0-858" name="__codelineno-0-858"></a>
-<a id="__codelineno-0-859" name="__codelineno-0-859"></a><span class="sd">    The p-value comes from the standard asymptotic-normal approximation</span>
-<a id="__codelineno-0-860" name="__codelineno-0-860"></a><span class="sd">    to the Mann-Whitney U distribution with a tie correction (``tie_term</span>
-<a id="__codelineno-0-861" name="__codelineno-0-861"></a><span class="sd">    = sum over tie-groups of (t^3 - t)``, ``t`` = each tied value&#39;s group</span>
-<a id="__codelineno-0-862" name="__codelineno-0-862"></a><span class="sd">    size):</span>
-<a id="__codelineno-0-863" name="__codelineno-0-863"></a>
-<a id="__codelineno-0-864" name="__codelineno-0-864"></a><span class="sd">        N = n_group + n_ref</span>
-<a id="__codelineno-0-865" name="__codelineno-0-865"></a><span class="sd">        mu_U = n_group * n_ref / 2</span>
-<a id="__codelineno-0-866" name="__codelineno-0-866"></a><span class="sd">        sigma2_U = (n_group * n_ref / 12) * ((N + 1) - tie_term / (N * (N - 1)))</span>
-<a id="__codelineno-0-867" name="__codelineno-0-867"></a><span class="sd">        z = (U - mu_U) / sqrt(sigma2_U)</span>
-<a id="__codelineno-0-868" name="__codelineno-0-868"></a><span class="sd">        p = 2 * (1 - Phi(|z|))</span>
-<a id="__codelineno-0-869" name="__codelineno-0-869"></a>
-<a id="__codelineno-0-870" name="__codelineno-0-870"></a><span class="sd">    Deliberately **no continuity correction** is applied (unlike</span>
-<a id="__codelineno-0-871" name="__codelineno-0-871"></a><span class="sd">    ``scipy.stats.mannwhitneyu``&#39;s default ``use_continuity=True``) — this</span>
-<a id="__codelineno-0-872" name="__codelineno-0-872"></a><span class="sd">    matches the plain textbook asymptotic-normal formula above. Tests</span>
-<a id="__codelineno-0-873" name="__codelineno-0-873"></a><span class="sd">    compare against ``scipy.stats.mannwhitneyu(..., use_continuity=False)``</span>
-<a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="sd">    for exact agreement (~1e-8, limited only by the erfc rational</span>
-<a id="__codelineno-0-875" name="__codelineno-0-875"></a><span class="sd">    approximation&#39;s own error bound); the continuity-corrected default</span>
-<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="sd">    differs slightly (a fixed 0.5 shift toward ``mu_U``), which matters</span>
-<a id="__codelineno-0-877" name="__codelineno-0-877"></a><span class="sd">    more for small samples than the large per-well/per-guide cell counts</span>
-<a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">    this pipeline typically works with.</span>
-<a id="__codelineno-0-879" name="__codelineno-0-879"></a>
-<a id="__codelineno-0-880" name="__codelineno-0-880"></a><span class="sd">    Since Polars has no built-in normal CDF, ``Phi`` is implemented via a</span>
-<a id="__codelineno-0-881" name="__codelineno-0-881"></a><span class="sd">    rational approximation to ``erfc`` — see :meth:`_log_erfc_expr` for</span>
-<a id="__codelineno-0-882" name="__codelineno-0-882"></a><span class="sd">    the formula and citation. Critically, the final p-value is computed</span>
-<a id="__codelineno-0-883" name="__codelineno-0-883"></a><span class="sd">    by staying in **log space end to end** (see</span>
-<a id="__codelineno-0-884" name="__codelineno-0-884"></a><span class="sd">    :meth:`_neg_log10_two_sided_normal_pvalue_expr`): naively computing</span>
-<a id="__codelineno-0-885" name="__codelineno-0-885"></a><span class="sd">    ``Phi(z)`` in linear space and then taking ``-log10(2*(1-Phi(|z|)))``</span>
-<a id="__codelineno-0-886" name="__codelineno-0-886"></a><span class="sd">    underflows to exactly 0.0 (-&gt; null/-inf) for exactly the</span>
-<a id="__codelineno-0-887" name="__codelineno-0-887"></a><span class="sd">    most-significant, large-|z| hits this aggregator exists to rank —</span>
-<a id="__codelineno-0-888" name="__codelineno-0-888"></a><span class="sd">    well before z is &quot;impossibly significant&quot; for these sample sizes.</span>
-<a id="__codelineno-0-889" name="__codelineno-0-889"></a>
-<a id="__codelineno-0-890" name="__codelineno-0-890"></a><span class="sd">    Benchmark (300 labels x 300 features, 30 cells/group synthetic data;</span>
-<a id="__codelineno-0-891" name="__codelineno-0-891"></a><span class="sd">    see ``tests/benchmarks/benchmark_pvalue_aggregators.py``):</span>
-<a id="__codelineno-0-892" name="__codelineno-0-892"></a><span class="sd">    ``AUROCAggregator`` took 0.93s / 283.1KB peak traced Python allocations</span>
-<a id="__codelineno-0-893" name="__codelineno-0-893"></a><span class="sd">    vs. ``AUROCNegLogPValueAggregator``&#39;s 2.66s / 660.4KB — computing the</span>
-<a id="__codelineno-0-894" name="__codelineno-0-894"></a><span class="sd">    p-value adds ~2.9x time over the base AUROC statistic alone (the extra</span>
-<a id="__codelineno-0-895" name="__codelineno-0-895"></a><span class="sd">    ``_prep_exprs`` pass for the tie-correction term and the rank/U</span>
-<a id="__codelineno-0-896" name="__codelineno-0-896"></a><span class="sd">    recomputation inside it — see the note on that in the source); no</span>
-<a id="__codelineno-0-897" name="__codelineno-0-897"></a><span class="sd">    measurable additional peak RSS at this scale.</span>
-<a id="__codelineno-0-898" name="__codelineno-0-898"></a><span class="sd">    &quot;&quot;&quot;</span>
+<span class="normal"><a href="#__codelineno-0-1048">1048</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-844" name="__codelineno-0-844"></a><span class="k">class</span><span class="w"> </span><span class="nc">AUROCNegLogPValueAggregator</span><span class="p">(</span><span class="n">AUROCAggregator</span><span class="p">):</span>
+<a id="__codelineno-0-845" name="__codelineno-0-845"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-846" name="__codelineno-0-846"></a><span class="sd">    Computes ``-log10(p)`` of the AUROC / Mann-Whitney U statistic against</span>
+<a id="__codelineno-0-847" name="__codelineno-0-847"></a><span class="sd">    the reference distribution, for each feature column.</span>
+<a id="__codelineno-0-848" name="__codelineno-0-848"></a>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a><span class="sd">    Reports evidence strength against the null hypothesis &quot;this variant</span>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a><span class="sd">    group&#39;s values are drawn from the same distribution as the reference</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a><span class="sd">    control&quot; — larger values mean more significant departures. This</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="sd">    reuses the exact same rank-sum/U statistic as :class:`AUROCAggregator`</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a><span class="sd">    (via :meth:`AUROCAggregator._auroc_u_expr` and</span>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a><span class="sd">    :meth:`AUROCAggregator._auroc_ranks_expr`) rather than recomputing</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a><span class="sd">    ranks or U independently; only the U -&gt; p-value conversion is new.</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a><span class="sd">    The p-value comes from the standard asymptotic-normal approximation</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a><span class="sd">    to the Mann-Whitney U distribution with a tie correction (``tie_term</span>
+<a id="__codelineno-0-859" name="__codelineno-0-859"></a><span class="sd">    = sum over tie-groups of (t^3 - t)``, ``t`` = each tied value&#39;s group</span>
+<a id="__codelineno-0-860" name="__codelineno-0-860"></a><span class="sd">    size):</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a><span class="sd">        N = n_group + n_ref</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a><span class="sd">        mu_U = n_group * n_ref / 2</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a><span class="sd">        sigma2_U = (n_group * n_ref / 12) * ((N + 1) - tie_term / (N * (N - 1)))</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a><span class="sd">        z = (U - mu_U) / sqrt(sigma2_U)</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a><span class="sd">        p = 2 * (1 - Phi(|z|))</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a><span class="sd">    Deliberately **no continuity correction** is applied (unlike</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a><span class="sd">    ``scipy.stats.mannwhitneyu``&#39;s default ``use_continuity=True``) — this</span>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a><span class="sd">    matches the plain textbook asymptotic-normal formula above. Tests</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a><span class="sd">    compare against ``scipy.stats.mannwhitneyu(..., use_continuity=False)``</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a><span class="sd">    for exact agreement (~1e-8, limited only by the erfc rational</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a><span class="sd">    approximation&#39;s own error bound); the continuity-corrected default</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="sd">    differs slightly (a fixed 0.5 shift toward ``mu_U``), which matters</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a><span class="sd">    more for small samples than the large per-well/per-guide cell counts</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="sd">    this pipeline typically works with.</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">    Since Polars has no built-in normal CDF, ``Phi`` is implemented via a</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a><span class="sd">    rational approximation to ``erfc`` — see :meth:`_log_erfc_expr` for</span>
+<a id="__codelineno-0-880" name="__codelineno-0-880"></a><span class="sd">    the formula and citation. Critically, the final p-value is computed</span>
+<a id="__codelineno-0-881" name="__codelineno-0-881"></a><span class="sd">    by staying in **log space end to end** (see</span>
+<a id="__codelineno-0-882" name="__codelineno-0-882"></a><span class="sd">    :meth:`_neg_log10_two_sided_normal_pvalue_expr`): naively computing</span>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a><span class="sd">    ``Phi(z)`` in linear space and then taking ``-log10(2*(1-Phi(|z|)))``</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a><span class="sd">    underflows to exactly 0.0 (-&gt; null/-inf) for exactly the</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a><span class="sd">    most-significant, large-|z| hits this aggregator exists to rank —</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a><span class="sd">    well before z is &quot;impossibly significant&quot; for these sample sizes.</span>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a>
+<a id="__codelineno-0-888" name="__codelineno-0-888"></a><span class="sd">    Benchmark (300 labels x 300 features, 30 cells/group synthetic data;</span>
+<a id="__codelineno-0-889" name="__codelineno-0-889"></a><span class="sd">    see ``tests/benchmarks/benchmark_pvalue_aggregators.py``):</span>
+<a id="__codelineno-0-890" name="__codelineno-0-890"></a><span class="sd">    ``AUROCAggregator`` took 0.93s / 283.1KB peak traced Python allocations</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a><span class="sd">    vs. ``AUROCNegLogPValueAggregator``&#39;s 2.66s / 660.4KB — computing the</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a><span class="sd">    p-value adds ~2.9x time over the base AUROC statistic alone (the extra</span>
+<a id="__codelineno-0-893" name="__codelineno-0-893"></a><span class="sd">    ``_prep_exprs`` pass for the tie-correction term and the rank/U</span>
+<a id="__codelineno-0-894" name="__codelineno-0-894"></a><span class="sd">    recomputation inside it — see the note on that in the source); no</span>
+<a id="__codelineno-0-895" name="__codelineno-0-895"></a><span class="sd">    measurable additional peak RSS at this scale.</span>
+<a id="__codelineno-0-896" name="__codelineno-0-896"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-897" name="__codelineno-0-897"></a>
+<a id="__codelineno-0-898" name="__codelineno-0-898"></a>    <span class="n">_stat_suffix</span> <span class="o">=</span> <span class="s2">&quot;_AUROCnegLogP&quot;</span>
 <a id="__codelineno-0-899" name="__codelineno-0-899"></a>
-<a id="__codelineno-0-900" name="__codelineno-0-900"></a>    <span class="n">_stat_suffix</span> <span class="o">=</span> <span class="s2">&quot;_AUROCnegLogP&quot;</span>
-<a id="__codelineno-0-901" name="__codelineno-0-901"></a>
-<a id="__codelineno-0-902" name="__codelineno-0-902"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-903" name="__codelineno-0-903"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_u_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-904" name="__codelineno-0-904"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_u__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-905" name="__codelineno-0-905"></a>
-<a id="__codelineno-0-906" name="__codelineno-0-906"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-907" name="__codelineno-0-907"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_ngroup_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-908" name="__codelineno-0-908"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_ngroup__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-909" name="__codelineno-0-909"></a>
-<a id="__codelineno-0-910" name="__codelineno-0-910"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-911" name="__codelineno-0-911"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_nref_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-912" name="__codelineno-0-912"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_nref__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-913" name="__codelineno-0-913"></a>
-<a id="__codelineno-0-914" name="__codelineno-0-914"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-915" name="__codelineno-0-915"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tieterm_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-916" name="__codelineno-0-916"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_tieterm__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-917" name="__codelineno-0-917"></a>
-<a id="__codelineno-0-918" name="__codelineno-0-918"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_prep_exprs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">]:</span>
-<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-920" name="__codelineno-0-920"></a><span class="sd">        Materializes, once per feature, the quantities</span>
-<a id="__codelineno-0-921" name="__codelineno-0-921"></a><span class="sd">        :meth:`_feature_expr` needs more than once downstream (``u``,</span>
-<a id="__codelineno-0-922" name="__codelineno-0-922"></a><span class="sd">        ``n_group``, ``n_ref``, ``tie_term``) — see</span>
-<a id="__codelineno-0-923" name="__codelineno-0-923"></a><span class="sd">        :meth:`BaseAggregator._prep_exprs` for why this hoisting is</span>
-<a id="__codelineno-0-924" name="__codelineno-0-924"></a><span class="sd">        required for performance, not just style (same reasoning</span>
-<a id="__codelineno-0-925" name="__codelineno-0-925"></a><span class="sd">        documented for :class:`SignedKSAggregator`).</span>
-<a id="__codelineno-0-926" name="__codelineno-0-926"></a>
-<a id="__codelineno-0-927" name="__codelineno-0-927"></a><span class="sd">        ``tie_term`` uses the identity</span>
-<a id="__codelineno-0-928" name="__codelineno-0-928"></a><span class="sd">        ``sum_groups(t^3 - t) == sum_elements(tie_size(x_i)^2 - 1)``</span>
-<a id="__codelineno-0-929" name="__codelineno-0-929"></a><span class="sd">        (verified against a ``collections.Counter``-based reference</span>
-<a id="__codelineno-0-930" name="__codelineno-0-930"></a><span class="sd">        computation across 20 randomized tie-heavy integer trials),</span>
-<a id="__codelineno-0-931" name="__codelineno-0-931"></a><span class="sd">        computed natively from per-element min/max rank without any</span>
-<a id="__codelineno-0-932" name="__codelineno-0-932"></a><span class="sd">        groupby or ``value_counts`` inside ``list.eval``: a tied run&#39;s</span>
-<a id="__codelineno-0-933" name="__codelineno-0-933"></a><span class="sd">        every element shares the same ``[rank_min, rank_max]`` window, so</span>
-<a id="__codelineno-0-934" name="__codelineno-0-934"></a><span class="sd">        ``tie_size = rank_max - rank_min + 1`` recovers each element&#39;s</span>
-<a id="__codelineno-0-935" name="__codelineno-0-935"></a><span class="sd">        tie-group size directly.</span>
-<a id="__codelineno-0-936" name="__codelineno-0-936"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-937" name="__codelineno-0-937"></a>        <span class="n">u</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_u_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
-<a id="__codelineno-0-938" name="__codelineno-0-938"></a>        <span class="n">combined</span><span class="p">,</span> <span class="n">_ranks</span><span class="p">,</span> <span class="n">_n_group</span><span class="p">,</span> <span class="n">_n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_ranks_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
-<a id="__codelineno-0-939" name="__codelineno-0-939"></a>        <span class="n">rank_min</span> <span class="o">=</span> <span class="n">combined</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;min&quot;</span><span class="p">))</span>
-<a id="__codelineno-0-940" name="__codelineno-0-940"></a>        <span class="n">rank_max</span> <span class="o">=</span> <span class="n">combined</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;max&quot;</span><span class="p">))</span>
-<a id="__codelineno-0-941" name="__codelineno-0-941"></a>        <span class="c1"># rank(...) is UInt32-typed; cast to Float64 first (elementwise</span>
-<a id="__codelineno-0-942" name="__codelineno-0-942"></a>        <span class="c1"># multiply, not `**`/`pow`, since Polars&#39; `pow` doesn&#39;t support a</span>
-<a id="__codelineno-0-943" name="__codelineno-0-943"></a>        <span class="c1"># List-typed base).</span>
-<a id="__codelineno-0-944" name="__codelineno-0-944"></a>        <span class="n">tie_size</span> <span class="o">=</span> <span class="p">(</span><span class="n">rank_max</span> <span class="o">-</span> <span class="n">rank_min</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">))</span>
-<a id="__codelineno-0-945" name="__codelineno-0-945"></a>        <span class="n">tie_term</span> <span class="o">=</span> <span class="p">(</span><span class="n">tie_size</span> <span class="o">*</span> <span class="n">tie_size</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<a id="__codelineno-0-946" name="__codelineno-0-946"></a>        <span class="k">return</span> <span class="p">[</span>
-<a id="__codelineno-0-947" name="__codelineno-0-947"></a>            <span class="n">u</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_u_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
-<a id="__codelineno-0-948" name="__codelineno-0-948"></a>            <span class="n">n_group</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ngroup_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
-<a id="__codelineno-0-949" name="__codelineno-0-949"></a>            <span class="n">n_ref</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nref_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
-<a id="__codelineno-0-950" name="__codelineno-0-950"></a>            <span class="n">tie_term</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tieterm_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
-<a id="__codelineno-0-951" name="__codelineno-0-951"></a>        <span class="p">]</span>
-<a id="__codelineno-0-952" name="__codelineno-0-952"></a>
-<a id="__codelineno-0-953" name="__codelineno-0-953"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-954" name="__codelineno-0-954"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_log_erfc_expr</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
-<a id="__codelineno-0-955" name="__codelineno-0-955"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-956" name="__codelineno-0-956"></a><span class="sd">        Natural log of ``erfc(x)`` for ``x &gt;= 0``, via the Numerical</span>
-<a id="__codelineno-0-957" name="__codelineno-0-957"></a><span class="sd">        Recipes rational/Chebyshev approximation (Press, Teukolsky,</span>
-<a id="__codelineno-0-958" name="__codelineno-0-958"></a><span class="sd">        Vetterling &amp; Flannery, *Numerical Recipes*, 3rd ed., S6.2.2,</span>
-<a id="__codelineno-0-959" name="__codelineno-0-959"></a><span class="sd">        &quot;erfcc&quot;; documented fractional error &lt; 1.2e-7 across the entire</span>
-<a id="__codelineno-0-960" name="__codelineno-0-960"></a><span class="sd">        domain — not just a tail expansion). Verified here against</span>
-<a id="__codelineno-0-961" name="__codelineno-0-961"></a><span class="sd">        ``scipy.special.erfc`` up to x=30 (max relative error ~1.05e-7,</span>
-<a id="__codelineno-0-962" name="__codelineno-0-962"></a><span class="sd">        consistent with the cited bound).</span>
-<a id="__codelineno-0-963" name="__codelineno-0-963"></a>
-<a id="__codelineno-0-964" name="__codelineno-0-964"></a><span class="sd">        Kept in log space throughout — never forms ``erfc(x)`` or</span>
-<a id="__codelineno-0-965" name="__codelineno-0-965"></a><span class="sd">        ``exp(-x^2)`` directly — because for the ``|z| &gt; 5`` tails this</span>
-<a id="__codelineno-0-966" name="__codelineno-0-966"></a><span class="sd">        is meant to serve, ``exp(-x^2)`` itself underflows to 0.0 in</span>
-<a id="__codelineno-0-967" name="__codelineno-0-967"></a><span class="sd">        float64 (around ``x &gt; ~26``) long before the true p-value stops</span>
-<a id="__codelineno-0-968" name="__codelineno-0-968"></a><span class="sd">        mattering for ranking hits.</span>
-<a id="__codelineno-0-969" name="__codelineno-0-969"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-970" name="__codelineno-0-970"></a>        <span class="n">t</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">x</span><span class="p">)</span>
-<a id="__codelineno-0-971" name="__codelineno-0-971"></a>        <span class="n">poly</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.26551223</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span>
-<a id="__codelineno-0-972" name="__codelineno-0-972"></a>            <span class="mf">1.00002368</span>
-<a id="__codelineno-0-973" name="__codelineno-0-973"></a>            <span class="o">+</span> <span class="n">t</span>
-<a id="__codelineno-0-974" name="__codelineno-0-974"></a>            <span class="o">*</span> <span class="p">(</span>
-<a id="__codelineno-0-975" name="__codelineno-0-975"></a>                <span class="mf">0.37409196</span>
-<a id="__codelineno-0-976" name="__codelineno-0-976"></a>                <span class="o">+</span> <span class="n">t</span>
-<a id="__codelineno-0-977" name="__codelineno-0-977"></a>                <span class="o">*</span> <span class="p">(</span>
-<a id="__codelineno-0-978" name="__codelineno-0-978"></a>                    <span class="mf">0.09678418</span>
-<a id="__codelineno-0-979" name="__codelineno-0-979"></a>                    <span class="o">+</span> <span class="n">t</span>
-<a id="__codelineno-0-980" name="__codelineno-0-980"></a>                    <span class="o">*</span> <span class="p">(</span>
-<a id="__codelineno-0-981" name="__codelineno-0-981"></a>                        <span class="o">-</span><span class="mf">0.18628806</span>
-<a id="__codelineno-0-982" name="__codelineno-0-982"></a>                        <span class="o">+</span> <span class="n">t</span>
-<a id="__codelineno-0-983" name="__codelineno-0-983"></a>                        <span class="o">*</span> <span class="p">(</span>
-<a id="__codelineno-0-984" name="__codelineno-0-984"></a>                            <span class="mf">0.27886807</span>
-<a id="__codelineno-0-985" name="__codelineno-0-985"></a>                            <span class="o">+</span> <span class="n">t</span>
-<a id="__codelineno-0-986" name="__codelineno-0-986"></a>                            <span class="o">*</span> <span class="p">(</span>
-<a id="__codelineno-0-987" name="__codelineno-0-987"></a>                                <span class="o">-</span><span class="mf">1.13520398</span>
-<a id="__codelineno-0-988" name="__codelineno-0-988"></a>                                <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.48851587</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="mf">0.82215223</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="mf">0.17087277</span><span class="p">))</span>
-<a id="__codelineno-0-989" name="__codelineno-0-989"></a>                            <span class="p">)</span>
-<a id="__codelineno-0-990" name="__codelineno-0-990"></a>                        <span class="p">)</span>
-<a id="__codelineno-0-991" name="__codelineno-0-991"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-992" name="__codelineno-0-992"></a>                <span class="p">)</span>
-<a id="__codelineno-0-993" name="__codelineno-0-993"></a>            <span class="p">)</span>
-<a id="__codelineno-0-994" name="__codelineno-0-994"></a>        <span class="p">)</span>
-<a id="__codelineno-0-995" name="__codelineno-0-995"></a>        <span class="k">return</span> <span class="n">t</span><span class="o">.</span><span class="n">log</span><span class="p">()</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">poly</span><span class="p">)</span>
-<a id="__codelineno-0-996" name="__codelineno-0-996"></a>
-<a id="__codelineno-0-997" name="__codelineno-0-997"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-998" name="__codelineno-0-998"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_standard_normal_cdf_expr</span><span class="p">(</span><span class="n">z</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
-<a id="__codelineno-0-999" name="__codelineno-0-999"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1000" name="__codelineno-0-1000"></a><span class="sd">        Rational approximation to ``Phi(z)``, built from</span>
-<a id="__codelineno-0-1001" name="__codelineno-0-1001"></a><span class="sd">        :meth:`_log_erfc_expr` (see there for the citation and peak error</span>
-<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a><span class="sd">        bound of ~1.2e-7). Verified against ``scipy.stats.norm.cdf``</span>
-<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a><span class="sd">        across randomized z values, including tail values (``|z| &gt; 5``),</span>
-<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a><span class="sd">        before being trusted downstream. Provided for standalone</span>
-<a id="__codelineno-0-1005" name="__codelineno-0-1005"></a><span class="sd">        testing/verification — :meth:`_neg_log10_two_sided_normal_pvalue_expr`</span>
-<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a><span class="sd">        does not call this; it stays in log space end to end instead.</span>
-<a id="__codelineno-0-1007" name="__codelineno-0-1007"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>        <span class="n">a</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span><span class="p">)</span>
-<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a>        <span class="n">log_erfc_a</span> <span class="o">=</span> <span class="n">AUROCNegLogPValueAggregator</span><span class="o">.</span><span class="n">_log_erfc_expr</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
-<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a>        <span class="n">erfc_a</span> <span class="o">=</span> <span class="n">log_erfc_a</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
-<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a>        <span class="n">erfc_z_over_sqrt2</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">z</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">erfc_a</span><span class="p">)</span><span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">-</span> <span class="n">erfc_a</span><span class="p">)</span>
-<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a>        <span class="k">return</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">erfc_z_over_sqrt2</span>
-<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a>
-<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a>    <span class="nd">@staticmethod</span>
-<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_neg_log10_two_sided_normal_pvalue_expr</span><span class="p">(</span><span class="n">z</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
-<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a><span class="sd">        ``-log10(2 * (1 - Phi(|z|))) == -log10(erfc(|z| / sqrt(2)))``,</span>
-<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a><span class="sd">        computed by staying in log space via :meth:`_log_erfc_expr` end</span>
-<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a><span class="sd">        to end — never forming ``Phi(z)`` or ``1 - Phi(z)`` in linear</span>
-<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a><span class="sd">        space, which is exactly what underflows to 0.0 (-&gt; null/-inf) for</span>
-<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a><span class="sd">        the large-``|z|`` hits this aggregator ranks by most.</span>
-<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a><span class="sd">        &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1023" name="__codelineno-0-1023"></a>        <span class="n">a</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span><span class="p">)</span>
-<a id="__codelineno-0-1024" name="__codelineno-0-1024"></a>        <span class="n">log_erfc_a</span> <span class="o">=</span> <span class="n">AUROCNegLogPValueAggregator</span><span class="o">.</span><span class="n">_log_erfc_expr</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
-<a id="__codelineno-0-1025" name="__codelineno-0-1025"></a>        <span class="n">neg_log10_p</span> <span class="o">=</span> <span class="o">-</span><span class="n">log_erfc_a</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span>
-<a id="__codelineno-0-1026" name="__codelineno-0-1026"></a>        <span class="c1"># -log10(p) can never legitimately be negative (p &lt;= 1 always);</span>
-<a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>        <span class="c1"># this guards float noise near z~0 (p slightly &gt; 1).</span>
-<a id="__codelineno-0-1028" name="__codelineno-0-1028"></a>        <span class="k">return</span> <span class="n">neg_log10_p</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">lower_bound</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
-<a id="__codelineno-0-1029" name="__codelineno-0-1029"></a>
-<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_feature_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
-<a id="__codelineno-0-1031" name="__codelineno-0-1031"></a>        <span class="n">alias</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat</span><span class="si">}{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-1032" name="__codelineno-0-1032"></a>        <span class="n">u</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_u_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
-<a id="__codelineno-0-1033" name="__codelineno-0-1033"></a>        <span class="n">n_group</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ngroup_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
-<a id="__codelineno-0-1034" name="__codelineno-0-1034"></a>        <span class="n">n_ref</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nref_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
-<a id="__codelineno-0-1035" name="__codelineno-0-1035"></a>        <span class="n">tie_term</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tieterm_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
-<a id="__codelineno-0-1036" name="__codelineno-0-1036"></a>
-<a id="__codelineno-0-1037" name="__codelineno-0-1037"></a>        <span class="n">n</span> <span class="o">=</span> <span class="n">n_group</span> <span class="o">+</span> <span class="n">n_ref</span>
-<a id="__codelineno-0-1038" name="__codelineno-0-1038"></a>        <span class="n">mu_u</span> <span class="o">=</span> <span class="n">n_group</span> <span class="o">*</span> <span class="n">n_ref</span> <span class="o">/</span> <span class="mf">2.0</span>
-<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>        <span class="n">sigma2_u</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_group</span> <span class="o">*</span> <span class="n">n_ref</span> <span class="o">/</span> <span class="mf">12.0</span><span class="p">)</span> <span class="o">*</span> <span class="p">((</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="n">tie_term</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)))</span>
-<a id="__codelineno-0-1040" name="__codelineno-0-1040"></a>        <span class="n">z</span> <span class="o">=</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="n">mu_u</span><span class="p">)</span> <span class="o">/</span> <span class="n">sigma2_u</span><span class="o">.</span><span class="n">sqrt</span><span class="p">()</span>
-<a id="__codelineno-0-1041" name="__codelineno-0-1041"></a>        <span class="n">neg_log10_p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_neg_log10_two_sided_normal_pvalue_expr</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
-<a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>
-<a id="__codelineno-0-1043" name="__codelineno-0-1043"></a>        <span class="n">result</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-1044" name="__codelineno-0-1044"></a>            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_ref</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-900" name="__codelineno-0-900"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-901" name="__codelineno-0-901"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_u_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-902" name="__codelineno-0-902"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_u__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-903" name="__codelineno-0-903"></a>
+<a id="__codelineno-0-904" name="__codelineno-0-904"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-905" name="__codelineno-0-905"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_ngroup_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-906" name="__codelineno-0-906"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_ngroup__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-907" name="__codelineno-0-907"></a>
+<a id="__codelineno-0-908" name="__codelineno-0-908"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-909" name="__codelineno-0-909"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_nref_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-910" name="__codelineno-0-910"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_nref__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-911" name="__codelineno-0-911"></a>
+<a id="__codelineno-0-912" name="__codelineno-0-912"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-913" name="__codelineno-0-913"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_tieterm_col</span><span class="p">(</span><span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-914" name="__codelineno-0-914"></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;__aurocnlp_tieterm__</span><span class="si">{</span><span class="n">feat</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-915" name="__codelineno-0-915"></a>
+<a id="__codelineno-0-916" name="__codelineno-0-916"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_prep_exprs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">]:</span>
+<a id="__codelineno-0-917" name="__codelineno-0-917"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-918" name="__codelineno-0-918"></a><span class="sd">        Materializes, once per feature, the quantities</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">        :meth:`_feature_expr` needs more than once downstream (``u``,</span>
+<a id="__codelineno-0-920" name="__codelineno-0-920"></a><span class="sd">        ``n_group``, ``n_ref``, ``tie_term``) — see</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a><span class="sd">        :meth:`BaseAggregator._prep_exprs` for why this hoisting is</span>
+<a id="__codelineno-0-922" name="__codelineno-0-922"></a><span class="sd">        required for performance, not just style (same reasoning</span>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a><span class="sd">        documented for :class:`SignedKSAggregator`).</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a>
+<a id="__codelineno-0-925" name="__codelineno-0-925"></a><span class="sd">        ``tie_term`` uses the identity</span>
+<a id="__codelineno-0-926" name="__codelineno-0-926"></a><span class="sd">        ``sum_groups(t^3 - t) == sum_elements(tie_size(x_i)^2 - 1)``</span>
+<a id="__codelineno-0-927" name="__codelineno-0-927"></a><span class="sd">        (verified against a ``collections.Counter``-based reference</span>
+<a id="__codelineno-0-928" name="__codelineno-0-928"></a><span class="sd">        computation across 20 randomized tie-heavy integer trials),</span>
+<a id="__codelineno-0-929" name="__codelineno-0-929"></a><span class="sd">        computed natively from per-element min/max rank without any</span>
+<a id="__codelineno-0-930" name="__codelineno-0-930"></a><span class="sd">        groupby or ``value_counts`` inside ``list.eval``: a tied run&#39;s</span>
+<a id="__codelineno-0-931" name="__codelineno-0-931"></a><span class="sd">        every element shares the same ``[rank_min, rank_max]`` window, so</span>
+<a id="__codelineno-0-932" name="__codelineno-0-932"></a><span class="sd">        ``tie_size = rank_max - rank_min + 1`` recovers each element&#39;s</span>
+<a id="__codelineno-0-933" name="__codelineno-0-933"></a><span class="sd">        tie-group size directly.</span>
+<a id="__codelineno-0-934" name="__codelineno-0-934"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-935" name="__codelineno-0-935"></a>        <span class="n">u</span><span class="p">,</span> <span class="n">n_group</span><span class="p">,</span> <span class="n">n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_u_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
+<a id="__codelineno-0-936" name="__codelineno-0-936"></a>        <span class="n">combined</span><span class="p">,</span> <span class="n">_ranks</span><span class="p">,</span> <span class="n">_n_group</span><span class="p">,</span> <span class="n">_n_ref</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_auroc_ranks_expr</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
+<a id="__codelineno-0-937" name="__codelineno-0-937"></a>        <span class="n">rank_min</span> <span class="o">=</span> <span class="n">combined</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;min&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-938" name="__codelineno-0-938"></a>        <span class="n">rank_max</span> <span class="o">=</span> <span class="n">combined</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;max&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-939" name="__codelineno-0-939"></a>        <span class="c1"># rank(...) is UInt32-typed; cast to Float64 first (elementwise</span>
+<a id="__codelineno-0-940" name="__codelineno-0-940"></a>        <span class="c1"># multiply, not `**`/`pow`, since Polars&#39; `pow` doesn&#39;t support a</span>
+<a id="__codelineno-0-941" name="__codelineno-0-941"></a>        <span class="c1"># List-typed base).</span>
+<a id="__codelineno-0-942" name="__codelineno-0-942"></a>        <span class="n">tie_size</span> <span class="o">=</span> <span class="p">(</span><span class="n">rank_max</span> <span class="o">-</span> <span class="n">rank_min</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">))</span>
+<a id="__codelineno-0-943" name="__codelineno-0-943"></a>        <span class="n">tie_term</span> <span class="o">=</span> <span class="p">(</span><span class="n">tie_size</span> <span class="o">*</span> <span class="n">tie_size</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<a id="__codelineno-0-944" name="__codelineno-0-944"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-0-945" name="__codelineno-0-945"></a>            <span class="n">u</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_u_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
+<a id="__codelineno-0-946" name="__codelineno-0-946"></a>            <span class="n">n_group</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ngroup_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
+<a id="__codelineno-0-947" name="__codelineno-0-947"></a>            <span class="n">n_ref</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nref_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
+<a id="__codelineno-0-948" name="__codelineno-0-948"></a>            <span class="n">tie_term</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tieterm_col</span><span class="p">(</span><span class="n">feat</span><span class="p">)),</span>
+<a id="__codelineno-0-949" name="__codelineno-0-949"></a>        <span class="p">]</span>
+<a id="__codelineno-0-950" name="__codelineno-0-950"></a>
+<a id="__codelineno-0-951" name="__codelineno-0-951"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-952" name="__codelineno-0-952"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_log_erfc_expr</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
+<a id="__codelineno-0-953" name="__codelineno-0-953"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-954" name="__codelineno-0-954"></a><span class="sd">        Natural log of ``erfc(x)`` for ``x &gt;= 0``, via the Numerical</span>
+<a id="__codelineno-0-955" name="__codelineno-0-955"></a><span class="sd">        Recipes rational/Chebyshev approximation (Press, Teukolsky,</span>
+<a id="__codelineno-0-956" name="__codelineno-0-956"></a><span class="sd">        Vetterling &amp; Flannery, *Numerical Recipes*, 3rd ed., S6.2.2,</span>
+<a id="__codelineno-0-957" name="__codelineno-0-957"></a><span class="sd">        &quot;erfcc&quot;; documented fractional error &lt; 1.2e-7 across the entire</span>
+<a id="__codelineno-0-958" name="__codelineno-0-958"></a><span class="sd">        domain — not just a tail expansion). Verified here against</span>
+<a id="__codelineno-0-959" name="__codelineno-0-959"></a><span class="sd">        ``scipy.special.erfc`` up to x=30 (max relative error ~1.05e-7,</span>
+<a id="__codelineno-0-960" name="__codelineno-0-960"></a><span class="sd">        consistent with the cited bound).</span>
+<a id="__codelineno-0-961" name="__codelineno-0-961"></a>
+<a id="__codelineno-0-962" name="__codelineno-0-962"></a><span class="sd">        Kept in log space throughout — never forms ``erfc(x)`` or</span>
+<a id="__codelineno-0-963" name="__codelineno-0-963"></a><span class="sd">        ``exp(-x^2)`` directly — because for the ``|z| &gt; 5`` tails this</span>
+<a id="__codelineno-0-964" name="__codelineno-0-964"></a><span class="sd">        is meant to serve, ``exp(-x^2)`` itself underflows to 0.0 in</span>
+<a id="__codelineno-0-965" name="__codelineno-0-965"></a><span class="sd">        float64 (around ``x &gt; ~26``) long before the true p-value stops</span>
+<a id="__codelineno-0-966" name="__codelineno-0-966"></a><span class="sd">        mattering for ranking hits.</span>
+<a id="__codelineno-0-967" name="__codelineno-0-967"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-968" name="__codelineno-0-968"></a>        <span class="n">t</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-969" name="__codelineno-0-969"></a>        <span class="n">poly</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.26551223</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span>
+<a id="__codelineno-0-970" name="__codelineno-0-970"></a>            <span class="mf">1.00002368</span>
+<a id="__codelineno-0-971" name="__codelineno-0-971"></a>            <span class="o">+</span> <span class="n">t</span>
+<a id="__codelineno-0-972" name="__codelineno-0-972"></a>            <span class="o">*</span> <span class="p">(</span>
+<a id="__codelineno-0-973" name="__codelineno-0-973"></a>                <span class="mf">0.37409196</span>
+<a id="__codelineno-0-974" name="__codelineno-0-974"></a>                <span class="o">+</span> <span class="n">t</span>
+<a id="__codelineno-0-975" name="__codelineno-0-975"></a>                <span class="o">*</span> <span class="p">(</span>
+<a id="__codelineno-0-976" name="__codelineno-0-976"></a>                    <span class="mf">0.09678418</span>
+<a id="__codelineno-0-977" name="__codelineno-0-977"></a>                    <span class="o">+</span> <span class="n">t</span>
+<a id="__codelineno-0-978" name="__codelineno-0-978"></a>                    <span class="o">*</span> <span class="p">(</span>
+<a id="__codelineno-0-979" name="__codelineno-0-979"></a>                        <span class="o">-</span><span class="mf">0.18628806</span>
+<a id="__codelineno-0-980" name="__codelineno-0-980"></a>                        <span class="o">+</span> <span class="n">t</span>
+<a id="__codelineno-0-981" name="__codelineno-0-981"></a>                        <span class="o">*</span> <span class="p">(</span>
+<a id="__codelineno-0-982" name="__codelineno-0-982"></a>                            <span class="mf">0.27886807</span>
+<a id="__codelineno-0-983" name="__codelineno-0-983"></a>                            <span class="o">+</span> <span class="n">t</span>
+<a id="__codelineno-0-984" name="__codelineno-0-984"></a>                            <span class="o">*</span> <span class="p">(</span>
+<a id="__codelineno-0-985" name="__codelineno-0-985"></a>                                <span class="o">-</span><span class="mf">1.13520398</span>
+<a id="__codelineno-0-986" name="__codelineno-0-986"></a>                                <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.48851587</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="mf">0.82215223</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="mf">0.17087277</span><span class="p">))</span>
+<a id="__codelineno-0-987" name="__codelineno-0-987"></a>                            <span class="p">)</span>
+<a id="__codelineno-0-988" name="__codelineno-0-988"></a>                        <span class="p">)</span>
+<a id="__codelineno-0-989" name="__codelineno-0-989"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-990" name="__codelineno-0-990"></a>                <span class="p">)</span>
+<a id="__codelineno-0-991" name="__codelineno-0-991"></a>            <span class="p">)</span>
+<a id="__codelineno-0-992" name="__codelineno-0-992"></a>        <span class="p">)</span>
+<a id="__codelineno-0-993" name="__codelineno-0-993"></a>        <span class="k">return</span> <span class="n">t</span><span class="o">.</span><span class="n">log</span><span class="p">()</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="o">.</span><span class="n">pow</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">poly</span><span class="p">)</span>
+<a id="__codelineno-0-994" name="__codelineno-0-994"></a>
+<a id="__codelineno-0-995" name="__codelineno-0-995"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-996" name="__codelineno-0-996"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_standard_normal_cdf_expr</span><span class="p">(</span><span class="n">z</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
+<a id="__codelineno-0-997" name="__codelineno-0-997"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-998" name="__codelineno-0-998"></a><span class="sd">        Rational approximation to ``Phi(z)``, built from</span>
+<a id="__codelineno-0-999" name="__codelineno-0-999"></a><span class="sd">        :meth:`_log_erfc_expr` (see there for the citation and peak error</span>
+<a id="__codelineno-0-1000" name="__codelineno-0-1000"></a><span class="sd">        bound of ~1.2e-7). Verified against ``scipy.stats.norm.cdf``</span>
+<a id="__codelineno-0-1001" name="__codelineno-0-1001"></a><span class="sd">        across randomized z values, including tail values (``|z| &gt; 5``),</span>
+<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a><span class="sd">        before being trusted downstream. Provided for standalone</span>
+<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a><span class="sd">        testing/verification — :meth:`_neg_log10_two_sided_normal_pvalue_expr`</span>
+<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a><span class="sd">        does not call this; it stays in log space end to end instead.</span>
+<a id="__codelineno-0-1005" name="__codelineno-0-1005"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a>        <span class="n">a</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span><span class="p">)</span>
+<a id="__codelineno-0-1007" name="__codelineno-0-1007"></a>        <span class="n">log_erfc_a</span> <span class="o">=</span> <span class="n">AUROCNegLogPValueAggregator</span><span class="o">.</span><span class="n">_log_erfc_expr</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<a id="__codelineno-0-1008" name="__codelineno-0-1008"></a>        <span class="n">erfc_a</span> <span class="o">=</span> <span class="n">log_erfc_a</span><span class="o">.</span><span class="n">exp</span><span class="p">()</span>
+<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a>        <span class="n">erfc_z_over_sqrt2</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">z</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">erfc_a</span><span class="p">)</span><span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">-</span> <span class="n">erfc_a</span><span class="p">)</span>
+<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a>        <span class="k">return</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">erfc_z_over_sqrt2</span>
+<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a>
+<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a>    <span class="nd">@staticmethod</span>
+<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_neg_log10_two_sided_normal_pvalue_expr</span><span class="p">(</span><span class="n">z</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
+<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a><span class="sd">        ``-log10(2 * (1 - Phi(|z|))) == -log10(erfc(|z| / sqrt(2)))``,</span>
+<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a><span class="sd">        computed by staying in log space via :meth:`_log_erfc_expr` end</span>
+<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a><span class="sd">        to end — never forming ``Phi(z)`` or ``1 - Phi(z)`` in linear</span>
+<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a><span class="sd">        space, which is exactly what underflows to 0.0 (-&gt; null/-inf) for</span>
+<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a><span class="sd">        the large-``|z|`` hits this aggregator ranks by most.</span>
+<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a>        <span class="n">a</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span><span class="p">)</span>
+<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a>        <span class="n">log_erfc_a</span> <span class="o">=</span> <span class="n">AUROCNegLogPValueAggregator</span><span class="o">.</span><span class="n">_log_erfc_expr</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<a id="__codelineno-0-1023" name="__codelineno-0-1023"></a>        <span class="n">neg_log10_p</span> <span class="o">=</span> <span class="o">-</span><span class="n">log_erfc_a</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span>
+<a id="__codelineno-0-1024" name="__codelineno-0-1024"></a>        <span class="c1"># -log10(p) can never legitimately be negative (p &lt;= 1 always);</span>
+<a id="__codelineno-0-1025" name="__codelineno-0-1025"></a>        <span class="c1"># this guards float noise near z~0 (p slightly &gt; 1).</span>
+<a id="__codelineno-0-1026" name="__codelineno-0-1026"></a>        <span class="k">return</span> <span class="n">neg_log10_p</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">lower_bound</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+<a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>
+<a id="__codelineno-0-1028" name="__codelineno-0-1028"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_feature_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
+<a id="__codelineno-0-1029" name="__codelineno-0-1029"></a>        <span class="n">alias</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">feat</span><span class="si">}{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a>        <span class="n">u</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_u_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
+<a id="__codelineno-0-1031" name="__codelineno-0-1031"></a>        <span class="n">n_group</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ngroup_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
+<a id="__codelineno-0-1032" name="__codelineno-0-1032"></a>        <span class="n">n_ref</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nref_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
+<a id="__codelineno-0-1033" name="__codelineno-0-1033"></a>        <span class="n">tie_term</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tieterm_col</span><span class="p">(</span><span class="n">feat</span><span class="p">))</span>
+<a id="__codelineno-0-1034" name="__codelineno-0-1034"></a>
+<a id="__codelineno-0-1035" name="__codelineno-0-1035"></a>        <span class="n">n</span> <span class="o">=</span> <span class="n">n_group</span> <span class="o">+</span> <span class="n">n_ref</span>
+<a id="__codelineno-0-1036" name="__codelineno-0-1036"></a>        <span class="n">mu_u</span> <span class="o">=</span> <span class="n">n_group</span> <span class="o">*</span> <span class="n">n_ref</span> <span class="o">/</span> <span class="mf">2.0</span>
+<a id="__codelineno-0-1037" name="__codelineno-0-1037"></a>        <span class="n">sigma2_u</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_group</span> <span class="o">*</span> <span class="n">n_ref</span> <span class="o">/</span> <span class="mf">12.0</span><span class="p">)</span> <span class="o">*</span> <span class="p">((</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="n">tie_term</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)))</span>
+<a id="__codelineno-0-1038" name="__codelineno-0-1038"></a>        <span class="n">z</span> <span class="o">=</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="n">mu_u</span><span class="p">)</span> <span class="o">/</span> <span class="n">sigma2_u</span><span class="o">.</span><span class="n">sqrt</span><span class="p">()</span>
+<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>        <span class="n">neg_log10_p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_neg_log10_two_sided_normal_pvalue_expr</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+<a id="__codelineno-0-1040" name="__codelineno-0-1040"></a>
+<a id="__codelineno-0-1041" name="__codelineno-0-1041"></a>        <span class="n">result</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>            <span class="n">pl</span><span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_ref</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-1043" name="__codelineno-0-1043"></a>            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-1044" name="__codelineno-0-1044"></a>            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_group</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
 <a id="__codelineno-0-1045" name="__codelineno-0-1045"></a>            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-1046" name="__codelineno-0-1046"></a>            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">n_group</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-0-1047" name="__codelineno-0-1047"></a>            <span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
-<a id="__codelineno-0-1048" name="__codelineno-0-1048"></a>            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">neg_log10_p</span><span class="p">)</span>
-<a id="__codelineno-0-1049" name="__codelineno-0-1049"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1050" name="__codelineno-0-1050"></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">alias</span><span class="p">)</span>
+<a id="__codelineno-0-1046" name="__codelineno-0-1046"></a>            <span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">neg_log10_p</span><span class="p">)</span>
+<a id="__codelineno-0-1047" name="__codelineno-0-1047"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1048" name="__codelineno-0-1048"></a>        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">alias</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -5010,7 +5006,9 @@ to <code>None</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/aggregate.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1115">1115</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1113">1113</a></span>
+<span class="normal"><a href="#__codelineno-0-1114">1114</a></span>
+<span class="normal"><a href="#__codelineno-0-1115">1115</a></span>
 <span class="normal"><a href="#__codelineno-0-1116">1116</a></span>
 <span class="normal"><a href="#__codelineno-0-1117">1117</a></span>
 <span class="normal"><a href="#__codelineno-0-1118">1118</a></span>
@@ -5048,49 +5046,47 @@ to <code>None</code>.</p>
 <span class="normal"><a href="#__codelineno-0-1150">1150</a></span>
 <span class="normal"><a href="#__codelineno-0-1151">1151</a></span>
 <span class="normal"><a href="#__codelineno-0-1152">1152</a></span>
-<span class="normal"><a href="#__codelineno-0-1153">1153</a></span>
-<span class="normal"><a href="#__codelineno-0-1154">1154</a></span>
-<span class="normal"><a href="#__codelineno-0-1155">1155</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1115" name="__codelineno-0-1115"></a><span class="k">def</span><span class="w"> </span><span class="nf">aggregate</span><span class="p">(</span>
-<a id="__codelineno-0-1116" name="__codelineno-0-1116"></a>    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
-<a id="__codelineno-0-1117" name="__codelineno-0-1117"></a>    <span class="n">label_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-1118" name="__codelineno-0-1118"></a>    <span class="n">aggregator_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-1119" name="__codelineno-0-1119"></a>    <span class="n">block_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-1120" name="__codelineno-0-1120"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
-<a id="__codelineno-0-1121" name="__codelineno-0-1121"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1122" name="__codelineno-0-1122"></a><span class="sd">    Run the specified aggregator on cell-level data and return per-label statistics.</span>
-<a id="__codelineno-0-1123" name="__codelineno-0-1123"></a>
-<a id="__codelineno-0-1124" name="__codelineno-0-1124"></a><span class="sd">    Control rows (where ``CONTROL_COLUMN`` is ``True``) are passed as the</span>
-<a id="__codelineno-0-1125" name="__codelineno-0-1125"></a><span class="sd">    reference distribution to all aggregators that require one.</span>
-<a id="__codelineno-0-1126" name="__codelineno-0-1126"></a>
-<a id="__codelineno-0-1127" name="__codelineno-0-1127"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-1128" name="__codelineno-0-1128"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-1129" name="__codelineno-0-1129"></a><span class="sd">    lf : pl.LazyFrame</span>
-<a id="__codelineno-0-1130" name="__codelineno-0-1130"></a><span class="sd">        Cell-level LazyFrame. Must contain a boolean ``CONTROL_COLUMN`` column.</span>
-<a id="__codelineno-0-1131" name="__codelineno-0-1131"></a><span class="sd">    label_col : str</span>
-<a id="__codelineno-0-1132" name="__codelineno-0-1132"></a><span class="sd">        Name of the column identifying variant labels.</span>
-<a id="__codelineno-0-1133" name="__codelineno-0-1133"></a><span class="sd">    aggregator_name : str</span>
-<a id="__codelineno-0-1134" name="__codelineno-0-1134"></a><span class="sd">        Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,</span>
-<a id="__codelineno-0-1135" name="__codelineno-0-1135"></a><span class="sd">        ``KS``, ``signedKS``, ``QQ``, ``AUROC``, ``KSnegLogP``,</span>
-<a id="__codelineno-0-1136" name="__codelineno-0-1136"></a><span class="sd">        ``AUROCnegLogP``.</span>
-<a id="__codelineno-0-1137" name="__codelineno-0-1137"></a><span class="sd">    block_list : set[str] or None</span>
-<a id="__codelineno-0-1138" name="__codelineno-0-1138"></a><span class="sd">        Aggregated output column names to skip (e.g. ``&quot;f1_KS&quot;``). Blocked</span>
-<a id="__codelineno-0-1139" name="__codelineno-0-1139"></a><span class="sd">        statistics are not computed and do not appear in the output. Names</span>
-<a id="__codelineno-0-1140" name="__codelineno-0-1140"></a><span class="sd">        that do not match any aggregated output are silently ignored. Defaults</span>
-<a id="__codelineno-0-1141" name="__codelineno-0-1141"></a><span class="sd">        to ``None``.</span>
-<a id="__codelineno-0-1142" name="__codelineno-0-1142"></a>
-<a id="__codelineno-0-1143" name="__codelineno-0-1143"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-1144" name="__codelineno-0-1144"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-1145" name="__codelineno-0-1145"></a><span class="sd">    pl.LazyFrame</span>
-<a id="__codelineno-0-1146" name="__codelineno-0-1146"></a><span class="sd">        One row per non-control variant group with computed statistics.</span>
-<a id="__codelineno-0-1147" name="__codelineno-0-1147"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1148" name="__codelineno-0-1148"></a>    <span class="n">valid</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">_AGGREGATORS</span><span class="p">)</span>
-<a id="__codelineno-0-1149" name="__codelineno-0-1149"></a>    <span class="k">if</span> <span class="n">aggregator_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid</span><span class="p">:</span>
-<a id="__codelineno-0-1150" name="__codelineno-0-1150"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-1151" name="__codelineno-0-1151"></a>            <span class="sa">f</span><span class="s2">&quot;Unknown aggregator </span><span class="si">{</span><span class="n">aggregator_name</span><span class="si">!r}</span><span class="s2">. Choose from: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">valid</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-1152" name="__codelineno-0-1152"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1153" name="__codelineno-0-1153"></a>
-<a id="__codelineno-0-1154" name="__codelineno-0-1154"></a>    <span class="n">agg</span> <span class="o">=</span> <span class="n">_AGGREGATORS</span><span class="p">[</span><span class="n">aggregator_name</span><span class="p">](</span><span class="n">label_col</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">block_list</span><span class="o">=</span><span class="n">block_list</span><span class="p">)</span>
-<a id="__codelineno-0-1155" name="__codelineno-0-1155"></a>    <span class="k">return</span> <span class="n">agg</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-1153">1153</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1113" name="__codelineno-0-1113"></a><span class="k">def</span><span class="w"> </span><span class="nf">aggregate</span><span class="p">(</span>
+<a id="__codelineno-0-1114" name="__codelineno-0-1114"></a>    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
+<a id="__codelineno-0-1115" name="__codelineno-0-1115"></a>    <span class="n">label_col</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-1116" name="__codelineno-0-1116"></a>    <span class="n">aggregator_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-1117" name="__codelineno-0-1117"></a>    <span class="n">block_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-1118" name="__codelineno-0-1118"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<a id="__codelineno-0-1119" name="__codelineno-0-1119"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1120" name="__codelineno-0-1120"></a><span class="sd">    Run the specified aggregator on cell-level data and return per-label statistics.</span>
+<a id="__codelineno-0-1121" name="__codelineno-0-1121"></a>
+<a id="__codelineno-0-1122" name="__codelineno-0-1122"></a><span class="sd">    Control rows (where ``CONTROL_COLUMN`` is ``True``) are passed as the</span>
+<a id="__codelineno-0-1123" name="__codelineno-0-1123"></a><span class="sd">    reference distribution to all aggregators that require one.</span>
+<a id="__codelineno-0-1124" name="__codelineno-0-1124"></a>
+<a id="__codelineno-0-1125" name="__codelineno-0-1125"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-1126" name="__codelineno-0-1126"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-1127" name="__codelineno-0-1127"></a><span class="sd">    lf : pl.LazyFrame</span>
+<a id="__codelineno-0-1128" name="__codelineno-0-1128"></a><span class="sd">        Cell-level LazyFrame. Must contain a boolean ``CONTROL_COLUMN`` column.</span>
+<a id="__codelineno-0-1129" name="__codelineno-0-1129"></a><span class="sd">    label_col : str</span>
+<a id="__codelineno-0-1130" name="__codelineno-0-1130"></a><span class="sd">        Name of the column identifying variant labels.</span>
+<a id="__codelineno-0-1131" name="__codelineno-0-1131"></a><span class="sd">    aggregator_name : str</span>
+<a id="__codelineno-0-1132" name="__codelineno-0-1132"></a><span class="sd">        Aggregation method. One of: ``mean``, ``median``, ``MAD``, ``std``,</span>
+<a id="__codelineno-0-1133" name="__codelineno-0-1133"></a><span class="sd">        ``KS``, ``signedKS``, ``QQ``, ``AUROC``, ``KSnegLogP``,</span>
+<a id="__codelineno-0-1134" name="__codelineno-0-1134"></a><span class="sd">        ``AUROCnegLogP``.</span>
+<a id="__codelineno-0-1135" name="__codelineno-0-1135"></a><span class="sd">    block_list : set[str] or None</span>
+<a id="__codelineno-0-1136" name="__codelineno-0-1136"></a><span class="sd">        Aggregated output column names to skip (e.g. ``&quot;f1_KS&quot;``). Blocked</span>
+<a id="__codelineno-0-1137" name="__codelineno-0-1137"></a><span class="sd">        statistics are not computed and do not appear in the output. Names</span>
+<a id="__codelineno-0-1138" name="__codelineno-0-1138"></a><span class="sd">        that do not match any aggregated output are silently ignored. Defaults</span>
+<a id="__codelineno-0-1139" name="__codelineno-0-1139"></a><span class="sd">        to ``None``.</span>
+<a id="__codelineno-0-1140" name="__codelineno-0-1140"></a>
+<a id="__codelineno-0-1141" name="__codelineno-0-1141"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-1142" name="__codelineno-0-1142"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-1143" name="__codelineno-0-1143"></a><span class="sd">    pl.LazyFrame</span>
+<a id="__codelineno-0-1144" name="__codelineno-0-1144"></a><span class="sd">        One row per non-control variant group with computed statistics.</span>
+<a id="__codelineno-0-1145" name="__codelineno-0-1145"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1146" name="__codelineno-0-1146"></a>    <span class="n">valid</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">_AGGREGATORS</span><span class="p">)</span>
+<a id="__codelineno-0-1147" name="__codelineno-0-1147"></a>    <span class="k">if</span> <span class="n">aggregator_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid</span><span class="p">:</span>
+<a id="__codelineno-0-1148" name="__codelineno-0-1148"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-1149" name="__codelineno-0-1149"></a>            <span class="sa">f</span><span class="s2">&quot;Unknown aggregator </span><span class="si">{</span><span class="n">aggregator_name</span><span class="si">!r}</span><span class="s2">. Choose from: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">valid</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-1150" name="__codelineno-0-1150"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1151" name="__codelineno-0-1151"></a>
+<a id="__codelineno-0-1152" name="__codelineno-0-1152"></a>    <span class="n">agg</span> <span class="o">=</span> <span class="n">_AGGREGATORS</span><span class="p">[</span><span class="n">aggregator_name</span><span class="p">](</span><span class="n">label_col</span><span class="o">=</span><span class="n">label_col</span><span class="p">,</span> <span class="n">block_list</span><span class="o">=</span><span class="n">block_list</span><span class="p">)</span>
+<a id="__codelineno-0-1153" name="__codelineno-0-1153"></a>    <span class="k">return</span> <span class="n">agg</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">lf</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5215,7 +5211,9 @@ below the target).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/aggregate.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1053">1053</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1051">1051</a></span>
+<span class="normal"><a href="#__codelineno-0-1052">1052</a></span>
+<span class="normal"><a href="#__codelineno-0-1053">1053</a></span>
 <span class="normal"><a href="#__codelineno-0-1054">1054</a></span>
 <span class="normal"><a href="#__codelineno-0-1055">1055</a></span>
 <span class="normal"><a href="#__codelineno-0-1056">1056</a></span>
@@ -5258,54 +5256,52 @@ below the target).</p>
 <span class="normal"><a href="#__codelineno-0-1093">1093</a></span>
 <span class="normal"><a href="#__codelineno-0-1094">1094</a></span>
 <span class="normal"><a href="#__codelineno-0-1095">1095</a></span>
-<span class="normal"><a href="#__codelineno-0-1096">1096</a></span>
-<span class="normal"><a href="#__codelineno-0-1097">1097</a></span>
-<span class="normal"><a href="#__codelineno-0-1098">1098</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1053" name="__codelineno-0-1053"></a><span class="k">def</span><span class="w"> </span><span class="nf">downsample_control</span><span class="p">(</span>
-<a id="__codelineno-0-1054" name="__codelineno-0-1054"></a>    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">downsample_wt</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span>
-<a id="__codelineno-0-1055" name="__codelineno-0-1055"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
-<a id="__codelineno-0-1056" name="__codelineno-0-1056"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1057" name="__codelineno-0-1057"></a><span class="sd">    Reproducibly downsample control (wildtype) rows to a target size.</span>
-<a id="__codelineno-0-1058" name="__codelineno-0-1058"></a>
-<a id="__codelineno-0-1059" name="__codelineno-0-1059"></a><span class="sd">    Non-control rows are left untouched. Selection is deterministic given</span>
-<a id="__codelineno-0-1060" name="__codelineno-0-1060"></a><span class="sd">    ``seed``: each control row gets a seeded hash of a fresh row index, rows</span>
-<a id="__codelineno-0-1061" name="__codelineno-0-1061"></a><span class="sd">    are ranked by that hash, and the lowest ``target`` ranks are kept — the</span>
-<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a><span class="sd">    same lazy hash-and-rank idiom used by</span>
-<a id="__codelineno-0-1063" name="__codelineno-0-1063"></a><span class="sd">    :func:`fisseq_data_pipeline.qcfilter.add_downsampled_pseudo_variants`, which</span>
-<a id="__codelineno-0-1064" name="__codelineno-0-1064"></a><span class="sd">    avoids collecting the full control pool up front and reproduces exactly</span>
-<a id="__codelineno-0-1065" name="__codelineno-0-1065"></a><span class="sd">    across runs for a fixed seed.</span>
-<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>
-<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a><span class="sd">    lf : pl.LazyFrame</span>
-<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a><span class="sd">        Cell-level LazyFrame containing a boolean ``CONTROL_COLUMN`` column.</span>
-<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a><span class="sd">    downsample_wt : float or int</span>
-<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a><span class="sd">        Target control-pool size. A float in ``(0, 1)`` is interpreted as</span>
-<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a><span class="sd">        the fraction of control rows to keep; an int is interpreted as an</span>
-<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a><span class="sd">        absolute target count (a no-op if the control pool is already at or</span>
-<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a><span class="sd">        below the target).</span>
-<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a><span class="sd">    seed : int</span>
-<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a><span class="sd">        Random seed for the downsample draw.</span>
-<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a>
-<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a><span class="sd">    pl.LazyFrame</span>
-<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a><span class="sd">        ``lf`` with control rows downsampled to the target size.</span>
-<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1084" name="__codelineno-0-1084"></a>    <span class="n">control</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">CONTROL_COLUMN</span><span class="p">)</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;_tmp_row_idx&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1085" name="__codelineno-0-1085"></a>    <span class="n">non_control</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">CONTROL_COLUMN</span><span class="p">)</span>
-<a id="__codelineno-0-1086" name="__codelineno-0-1086"></a>
-<a id="__codelineno-0-1087" name="__codelineno-0-1087"></a>    <span class="n">ranked</span> <span class="o">=</span> <span class="n">control</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
-<a id="__codelineno-0-1088" name="__codelineno-0-1088"></a>        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_tmp_row_idx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">hash</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;ordinal&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_rank&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-1089" name="__codelineno-0-1089"></a>    <span class="p">)</span>
-<a id="__codelineno-0-1090" name="__codelineno-0-1090"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">downsample_wt</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
-<a id="__codelineno-0-1091" name="__codelineno-0-1091"></a>        <span class="n">target</span> <span class="o">=</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span> <span class="o">*</span> <span class="n">downsample_wt</span><span class="p">)</span><span class="o">.</span><span class="n">floor</span><span class="p">()</span>
-<a id="__codelineno-0-1092" name="__codelineno-0-1092"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-1093" name="__codelineno-0-1093"></a>        <span class="n">target</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="n">downsample_wt</span><span class="p">)</span>
-<a id="__codelineno-0-1094" name="__codelineno-0-1094"></a>
-<a id="__codelineno-0-1095" name="__codelineno-0-1095"></a>    <span class="n">downsampled_control</span> <span class="o">=</span> <span class="n">ranked</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_rank&quot;</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span>
-<a id="__codelineno-0-1096" name="__codelineno-0-1096"></a>        <span class="p">[</span><span class="s2">&quot;_tmp_row_idx&quot;</span><span class="p">,</span> <span class="s2">&quot;_rank&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-1097" name="__codelineno-0-1097"></a>    <span class="p">)</span>
-<a id="__codelineno-0-1098" name="__codelineno-0-1098"></a>    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">non_control</span><span class="p">,</span> <span class="n">downsampled_control</span><span class="p">])</span>
+<span class="normal"><a href="#__codelineno-0-1096">1096</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1051" name="__codelineno-0-1051"></a><span class="k">def</span><span class="w"> </span><span class="nf">downsample_control</span><span class="p">(</span>
+<a id="__codelineno-0-1052" name="__codelineno-0-1052"></a>    <span class="n">lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">downsample_wt</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-0-1053" name="__codelineno-0-1053"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">:</span>
+<a id="__codelineno-0-1054" name="__codelineno-0-1054"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1055" name="__codelineno-0-1055"></a><span class="sd">    Reproducibly downsample control (wildtype) rows to a target size.</span>
+<a id="__codelineno-0-1056" name="__codelineno-0-1056"></a>
+<a id="__codelineno-0-1057" name="__codelineno-0-1057"></a><span class="sd">    Non-control rows are left untouched. Selection is deterministic given</span>
+<a id="__codelineno-0-1058" name="__codelineno-0-1058"></a><span class="sd">    ``seed``: each control row gets a seeded hash of a fresh row index, rows</span>
+<a id="__codelineno-0-1059" name="__codelineno-0-1059"></a><span class="sd">    are ranked by that hash, and the lowest ``target`` ranks are kept — the</span>
+<a id="__codelineno-0-1060" name="__codelineno-0-1060"></a><span class="sd">    same lazy hash-and-rank idiom used by</span>
+<a id="__codelineno-0-1061" name="__codelineno-0-1061"></a><span class="sd">    :func:`fisseq_data_pipeline.qcfilter.add_downsampled_pseudo_variants`, which</span>
+<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a><span class="sd">    avoids collecting the full control pool up front and reproduces exactly</span>
+<a id="__codelineno-0-1063" name="__codelineno-0-1063"></a><span class="sd">    across runs for a fixed seed.</span>
+<a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>
+<a id="__codelineno-0-1065" name="__codelineno-0-1065"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a><span class="sd">    lf : pl.LazyFrame</span>
+<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a><span class="sd">        Cell-level LazyFrame containing a boolean ``CONTROL_COLUMN`` column.</span>
+<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a><span class="sd">    downsample_wt : float or int</span>
+<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a><span class="sd">        Target control-pool size. A float in ``(0, 1)`` is interpreted as</span>
+<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a><span class="sd">        the fraction of control rows to keep; an int is interpreted as an</span>
+<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a><span class="sd">        absolute target count (a no-op if the control pool is already at or</span>
+<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a><span class="sd">        below the target).</span>
+<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a><span class="sd">    seed : int</span>
+<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a><span class="sd">        Random seed for the downsample draw.</span>
+<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a>
+<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a><span class="sd">    pl.LazyFrame</span>
+<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a><span class="sd">        ``lf`` with control rows downsampled to the target size.</span>
+<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a>    <span class="n">control</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">CONTROL_COLUMN</span><span class="p">)</span><span class="o">.</span><span class="n">with_row_index</span><span class="p">(</span><span class="s2">&quot;_tmp_row_idx&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a>    <span class="n">non_control</span> <span class="o">=</span> <span class="n">lf</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">CONTROL_COLUMN</span><span class="p">)</span>
+<a id="__codelineno-0-1084" name="__codelineno-0-1084"></a>
+<a id="__codelineno-0-1085" name="__codelineno-0-1085"></a>    <span class="n">ranked</span> <span class="o">=</span> <span class="n">control</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+<a id="__codelineno-0-1086" name="__codelineno-0-1086"></a>        <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_tmp_row_idx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">hash</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;ordinal&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_rank&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-1087" name="__codelineno-0-1087"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1088" name="__codelineno-0-1088"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">downsample_wt</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+<a id="__codelineno-0-1089" name="__codelineno-0-1089"></a>        <span class="n">target</span> <span class="o">=</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">()</span> <span class="o">*</span> <span class="n">downsample_wt</span><span class="p">)</span><span class="o">.</span><span class="n">floor</span><span class="p">()</span>
+<a id="__codelineno-0-1090" name="__codelineno-0-1090"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-1091" name="__codelineno-0-1091"></a>        <span class="n">target</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="n">downsample_wt</span><span class="p">)</span>
+<a id="__codelineno-0-1092" name="__codelineno-0-1092"></a>
+<a id="__codelineno-0-1093" name="__codelineno-0-1093"></a>    <span class="n">downsampled_control</span> <span class="o">=</span> <span class="n">ranked</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_rank&quot;</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span>
+<a id="__codelineno-0-1094" name="__codelineno-0-1094"></a>        <span class="p">[</span><span class="s2">&quot;_tmp_row_idx&quot;</span><span class="p">,</span> <span class="s2">&quot;_rank&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-1095" name="__codelineno-0-1095"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1096" name="__codelineno-0-1096"></a>    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">non_control</span><span class="p">,</span> <span class="n">downsampled_control</span><span class="p">])</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -5361,7 +5357,9 @@ is also written alongside the output as <code>normalizer.parquet</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/aggregate.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1158">1158</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1156">1156</a></span>
+<span class="normal"><a href="#__codelineno-0-1157">1157</a></span>
+<span class="normal"><a href="#__codelineno-0-1158">1158</a></span>
 <span class="normal"><a href="#__codelineno-0-1159">1159</a></span>
 <span class="normal"><a href="#__codelineno-0-1160">1160</a></span>
 <span class="normal"><a href="#__codelineno-0-1161">1161</a></span>
@@ -5454,104 +5452,102 @@ is also written alongside the output as <code>normalizer.parquet</code>.</p>
 <span class="normal"><a href="#__codelineno-0-1248">1248</a></span>
 <span class="normal"><a href="#__codelineno-0-1249">1249</a></span>
 <span class="normal"><a href="#__codelineno-0-1250">1250</a></span>
-<span class="normal"><a href="#__codelineno-0-1251">1251</a></span>
-<span class="normal"><a href="#__codelineno-0-1252">1252</a></span>
-<span class="normal"><a href="#__codelineno-0-1253">1253</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1158" name="__codelineno-0-1158"></a><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;aggregate_main&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1159" name="__codelineno-0-1159"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1160" name="__codelineno-0-1160"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-1161" name="__codelineno-0-1161"></a><span class="sd">    Aggregate cell-level features, z-score normalize to synonymous baseline,</span>
-<a id="__codelineno-0-1162" name="__codelineno-0-1162"></a><span class="sd">    and attach per-variant metadata.</span>
-<a id="__codelineno-0-1163" name="__codelineno-0-1163"></a>
-<a id="__codelineno-0-1164" name="__codelineno-0-1164"></a><span class="sd">    ``input_file`` is interpreted as a glob pattern via</span>
-<a id="__codelineno-0-1165" name="__codelineno-0-1165"></a><span class="sd">    :func:`.utils.load_batches`; each matching file becomes one batch, with</span>
-<a id="__codelineno-0-1166" name="__codelineno-0-1166"></a><span class="sd">    ``meta_batch`` set to the filename stem. A concrete (non-glob) path is</span>
-<a id="__codelineno-0-1167" name="__codelineno-0-1167"></a><span class="sd">    treated as a single-file pattern.</span>
-<a id="__codelineno-0-1168" name="__codelineno-0-1168"></a>
-<a id="__codelineno-0-1169" name="__codelineno-0-1169"></a><span class="sd">    Runs the configured aggregator to produce one row per variant, marks</span>
-<a id="__codelineno-0-1170" name="__codelineno-0-1170"></a><span class="sd">    synonymous variants as the normalization reference via</span>
-<a id="__codelineno-0-1171" name="__codelineno-0-1171"></a><span class="sd">    :func:`variant_classification`, fits a :class:`.normalize.Normalizer` on</span>
-<a id="__codelineno-0-1172" name="__codelineno-0-1172"></a><span class="sd">    those rows, applies it, joins per-variant metadata from</span>
-<a id="__codelineno-0-1173" name="__codelineno-0-1173"></a><span class="sd">    :func:`get_aggregate_meta_data`, and writes the result.</span>
-<a id="__codelineno-0-1174" name="__codelineno-0-1174"></a>
-<a id="__codelineno-0-1175" name="__codelineno-0-1175"></a><span class="sd">    Output path</span>
-<a id="__codelineno-0-1176" name="__codelineno-0-1176"></a><span class="sd">    -----------</span>
-<a id="__codelineno-0-1177" name="__codelineno-0-1177"></a><span class="sd">    - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``</span>
-<a id="__codelineno-0-1178" name="__codelineno-0-1178"></a><span class="sd">    - Single-file input: ``{output_root}.{stem}.{ext}`` or</span>
-<a id="__codelineno-0-1179" name="__codelineno-0-1179"></a><span class="sd">      ``{output_dir}/{filename}`` (same name as the input file)</span>
-<a id="__codelineno-0-1180" name="__codelineno-0-1180"></a>
-<a id="__codelineno-0-1181" name="__codelineno-0-1181"></a><span class="sd">    If ``save_normalizer`` is ``True``, the fitted :class:`.normalize.Normalizer`</span>
-<a id="__codelineno-0-1182" name="__codelineno-0-1182"></a><span class="sd">    is also written alongside the output as ``normalizer.parquet``.</span>
-<a id="__codelineno-0-1183" name="__codelineno-0-1183"></a>
-<a id="__codelineno-0-1184" name="__codelineno-0-1184"></a><span class="sd">    Configuration</span>
-<a id="__codelineno-0-1185" name="__codelineno-0-1185"></a><span class="sd">    -------------</span>
-<a id="__codelineno-0-1186" name="__codelineno-0-1186"></a><span class="sd">    Override any field on the command line, e.g.::</span>
-<a id="__codelineno-0-1187" name="__codelineno-0-1187"></a>
-<a id="__codelineno-0-1188" name="__codelineno-0-1188"></a><span class="sd">        python -m fisseq_data_pipeline.aggregate \\</span>
-<a id="__codelineno-0-1189" name="__codelineno-0-1189"></a><span class="sd">            output_dir=./out \\</span>
-<a id="__codelineno-0-1190" name="__codelineno-0-1190"></a><span class="sd">            &#39;input_file=data/batches/*.parquet&#39; \\</span>
-<a id="__codelineno-0-1191" name="__codelineno-0-1191"></a><span class="sd">            aggregator=KS</span>
-<a id="__codelineno-0-1192" name="__codelineno-0-1192"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-1193" name="__codelineno-0-1193"></a>    <span class="n">agg_cfg</span><span class="p">:</span> <span class="n">AggregateConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
-<a id="__codelineno-0-1194" name="__codelineno-0-1194"></a>
-<a id="__codelineno-0-1195" name="__codelineno-0-1195"></a>    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
-<a id="__codelineno-0-1196" name="__codelineno-0-1196"></a>    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-1197" name="__codelineno-0-1197"></a>    <span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
-<a id="__codelineno-0-1198" name="__codelineno-0-1198"></a>    <span class="n">setup_logging</span><span class="p">(</span><span class="n">agg_cfg</span><span class="p">,</span> <span class="s2">&quot;aggregate&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1199" name="__codelineno-0-1199"></a>
-<a id="__codelineno-0-1200" name="__codelineno-0-1200"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading input from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
-<a id="__codelineno-0-1201" name="__codelineno-0-1201"></a>    <span class="n">lf</span><span class="p">,</span> <span class="n">output_stem</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
-<a id="__codelineno-0-1202" name="__codelineno-0-1202"></a>
-<a id="__codelineno-0-1203" name="__codelineno-0-1203"></a>    <span class="n">block_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-1204" name="__codelineno-0-1204"></a>    <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">block_list_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1205" name="__codelineno-0-1205"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading block list from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">block_list_file</span><span class="p">)</span>
-<a id="__codelineno-0-1206" name="__codelineno-0-1206"></a>        <span class="n">bl_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">block_list_file</span><span class="p">)</span>
-<a id="__codelineno-0-1207" name="__codelineno-0-1207"></a>        <span class="n">block_list</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">bl_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;feature_ok&quot;</span><span class="p">))[</span><span class="s2">&quot;feature&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_list</span><span class="p">())</span>
-<a id="__codelineno-0-1208" name="__codelineno-0-1208"></a>
-<a id="__codelineno-0-1209" name="__codelineno-0-1209"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running </span><span class="si">%s</span><span class="s2"> aggregator&quot;</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">aggregator</span><span class="p">)</span>
-<a id="__codelineno-0-1210" name="__codelineno-0-1210"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-1211" name="__codelineno-0-1211"></a>        <span class="s2">&quot;Classifying variants and marking synonymous as normalization reference&quot;</span>
-<a id="__codelineno-0-1212" name="__codelineno-0-1212"></a>    <span class="p">)</span>
-<a id="__codelineno-0-1213" name="__codelineno-0-1213"></a>    <span class="n">agg_lf</span> <span class="o">=</span> <span class="n">variant_classification</span><span class="p">(</span>
-<a id="__codelineno-0-1214" name="__codelineno-0-1214"></a>        <span class="n">aggregate</span><span class="p">(</span>
-<a id="__codelineno-0-1215" name="__codelineno-0-1215"></a>            <span class="n">lf</span><span class="p">,</span>
-<a id="__codelineno-0-1216" name="__codelineno-0-1216"></a>            <span class="n">label_col</span><span class="o">=</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">,</span>
-<a id="__codelineno-0-1217" name="__codelineno-0-1217"></a>            <span class="n">aggregator_name</span><span class="o">=</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">aggregator</span><span class="p">,</span>
-<a id="__codelineno-0-1218" name="__codelineno-0-1218"></a>            <span class="n">block_list</span><span class="o">=</span><span class="n">block_list</span><span class="p">,</span>
-<a id="__codelineno-0-1219" name="__codelineno-0-1219"></a>        <span class="p">),</span>
-<a id="__codelineno-0-1220" name="__codelineno-0-1220"></a>        <span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">,</span>
-<a id="__codelineno-0-1221" name="__codelineno-0-1221"></a>    <span class="p">)</span>
-<a id="__codelineno-0-1222" name="__codelineno-0-1222"></a>
-<a id="__codelineno-0-1223" name="__codelineno-0-1223"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting normalizer on synonymous rows&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1224" name="__codelineno-0-1224"></a>    <span class="n">normalizer</span> <span class="o">=</span> <span class="n">Normalizer</span><span class="o">.</span><span class="n">from_lazyframe</span><span class="p">(</span><span class="n">agg_lf</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-1225" name="__codelineno-0-1225"></a>
-<a id="__codelineno-0-1226" name="__codelineno-0-1226"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Applying normalizer&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1227" name="__codelineno-0-1227"></a>    <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">normalizer</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">agg_lf</span><span class="p">)</span>
-<a id="__codelineno-0-1228" name="__codelineno-0-1228"></a>
-<a id="__codelineno-0-1229" name="__codelineno-0-1229"></a>    <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1230" name="__codelineno-0-1230"></a>        <span class="n">out_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1231" name="__codelineno-0-1231"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-1232" name="__codelineno-0-1232"></a>        <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span>
-<a id="__codelineno-0-1233" name="__codelineno-0-1233"></a>
-<a id="__codelineno-0-1234" name="__codelineno-0-1234"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding queries to retrieve metadata&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1235" name="__codelineno-0-1235"></a>    <span class="n">meta_lf</span> <span class="o">=</span> <span class="n">get_aggregate_meta_data</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
-<a id="__codelineno-0-1236" name="__codelineno-0-1236"></a>    <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">normalized_lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
-<a id="__codelineno-0-1237" name="__codelineno-0-1237"></a>
-<a id="__codelineno-0-1238" name="__codelineno-0-1238"></a>    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">compute_impact_score</span><span class="p">:</span>
-<a id="__codelineno-0-1239" name="__codelineno-0-1239"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing impact scores&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1240" name="__codelineno-0-1240"></a>        <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">compute_impact_score</span><span class="p">(</span><span class="n">normalized_lf</span><span class="p">)</span>
-<a id="__codelineno-0-1241" name="__codelineno-0-1241"></a>
-<a id="__codelineno-0-1242" name="__codelineno-0-1242"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing output to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
-<a id="__codelineno-0-1243" name="__codelineno-0-1243"></a>    <span class="n">normalized_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
-<a id="__codelineno-0-1244" name="__codelineno-0-1244"></a>
-<a id="__codelineno-0-1245" name="__codelineno-0-1245"></a>    <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">save_normalizer</span><span class="p">:</span>
-<a id="__codelineno-0-1246" name="__codelineno-0-1246"></a>        <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1247" name="__codelineno-0-1247"></a>            <span class="n">norm_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.normalizer.parquet&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-1248" name="__codelineno-0-1248"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-1249" name="__codelineno-0-1249"></a>            <span class="n">norm_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalizer.parquet&quot;</span>
-<a id="__codelineno-0-1250" name="__codelineno-0-1250"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving normalizer to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">norm_path</span><span class="p">)</span>
-<a id="__codelineno-0-1251" name="__codelineno-0-1251"></a>        <span class="n">normalizer</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">norm_path</span><span class="p">)</span>
-<a id="__codelineno-0-1252" name="__codelineno-0-1252"></a>
-<a id="__codelineno-0-1253" name="__codelineno-0-1253"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-1251">1251</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1156" name="__codelineno-0-1156"></a><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;aggregate_main&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1157" name="__codelineno-0-1157"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1158" name="__codelineno-0-1158"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1159" name="__codelineno-0-1159"></a><span class="sd">    Aggregate cell-level features, z-score normalize to synonymous baseline,</span>
+<a id="__codelineno-0-1160" name="__codelineno-0-1160"></a><span class="sd">    and attach per-variant metadata.</span>
+<a id="__codelineno-0-1161" name="__codelineno-0-1161"></a>
+<a id="__codelineno-0-1162" name="__codelineno-0-1162"></a><span class="sd">    ``input_file`` is interpreted as a glob pattern via</span>
+<a id="__codelineno-0-1163" name="__codelineno-0-1163"></a><span class="sd">    :func:`.utils.load_batches`; each matching file becomes one batch, with</span>
+<a id="__codelineno-0-1164" name="__codelineno-0-1164"></a><span class="sd">    ``meta_batch`` set to the filename stem. A concrete (non-glob) path is</span>
+<a id="__codelineno-0-1165" name="__codelineno-0-1165"></a><span class="sd">    treated as a single-file pattern.</span>
+<a id="__codelineno-0-1166" name="__codelineno-0-1166"></a>
+<a id="__codelineno-0-1167" name="__codelineno-0-1167"></a><span class="sd">    Runs the configured aggregator to produce one row per variant, marks</span>
+<a id="__codelineno-0-1168" name="__codelineno-0-1168"></a><span class="sd">    synonymous variants as the normalization reference via</span>
+<a id="__codelineno-0-1169" name="__codelineno-0-1169"></a><span class="sd">    :func:`variant_classification`, fits a :class:`.normalize.Normalizer` on</span>
+<a id="__codelineno-0-1170" name="__codelineno-0-1170"></a><span class="sd">    those rows, applies it, joins per-variant metadata from</span>
+<a id="__codelineno-0-1171" name="__codelineno-0-1171"></a><span class="sd">    :func:`get_aggregate_meta_data`, and writes the result.</span>
+<a id="__codelineno-0-1172" name="__codelineno-0-1172"></a>
+<a id="__codelineno-0-1173" name="__codelineno-0-1173"></a><span class="sd">    Output path</span>
+<a id="__codelineno-0-1174" name="__codelineno-0-1174"></a><span class="sd">    -----------</span>
+<a id="__codelineno-0-1175" name="__codelineno-0-1175"></a><span class="sd">    - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``</span>
+<a id="__codelineno-0-1176" name="__codelineno-0-1176"></a><span class="sd">    - Single-file input: ``{output_root}.{stem}.{ext}`` or</span>
+<a id="__codelineno-0-1177" name="__codelineno-0-1177"></a><span class="sd">      ``{output_dir}/{filename}`` (same name as the input file)</span>
+<a id="__codelineno-0-1178" name="__codelineno-0-1178"></a>
+<a id="__codelineno-0-1179" name="__codelineno-0-1179"></a><span class="sd">    If ``save_normalizer`` is ``True``, the fitted :class:`.normalize.Normalizer`</span>
+<a id="__codelineno-0-1180" name="__codelineno-0-1180"></a><span class="sd">    is also written alongside the output as ``normalizer.parquet``.</span>
+<a id="__codelineno-0-1181" name="__codelineno-0-1181"></a>
+<a id="__codelineno-0-1182" name="__codelineno-0-1182"></a><span class="sd">    Configuration</span>
+<a id="__codelineno-0-1183" name="__codelineno-0-1183"></a><span class="sd">    -------------</span>
+<a id="__codelineno-0-1184" name="__codelineno-0-1184"></a><span class="sd">    Override any field on the command line, e.g.::</span>
+<a id="__codelineno-0-1185" name="__codelineno-0-1185"></a>
+<a id="__codelineno-0-1186" name="__codelineno-0-1186"></a><span class="sd">        python -m fisseq_data_pipeline.aggregate \\</span>
+<a id="__codelineno-0-1187" name="__codelineno-0-1187"></a><span class="sd">            output_dir=./out \\</span>
+<a id="__codelineno-0-1188" name="__codelineno-0-1188"></a><span class="sd">            &#39;input_file=data/batches/*.parquet&#39; \\</span>
+<a id="__codelineno-0-1189" name="__codelineno-0-1189"></a><span class="sd">            aggregator=KS</span>
+<a id="__codelineno-0-1190" name="__codelineno-0-1190"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1191" name="__codelineno-0-1191"></a>    <span class="n">agg_cfg</span><span class="p">:</span> <span class="n">AggregateConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+<a id="__codelineno-0-1192" name="__codelineno-0-1192"></a>
+<a id="__codelineno-0-1193" name="__codelineno-0-1193"></a>    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+<a id="__codelineno-0-1194" name="__codelineno-0-1194"></a>    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-1195" name="__codelineno-0-1195"></a>    <span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+<a id="__codelineno-0-1196" name="__codelineno-0-1196"></a>    <span class="n">setup_logging</span><span class="p">(</span><span class="n">agg_cfg</span><span class="p">,</span> <span class="s2">&quot;aggregate&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1197" name="__codelineno-0-1197"></a>
+<a id="__codelineno-0-1198" name="__codelineno-0-1198"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading input from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+<a id="__codelineno-0-1199" name="__codelineno-0-1199"></a>    <span class="n">lf</span><span class="p">,</span> <span class="n">output_stem</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+<a id="__codelineno-0-1200" name="__codelineno-0-1200"></a>
+<a id="__codelineno-0-1201" name="__codelineno-0-1201"></a>    <span class="n">block_list</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-1202" name="__codelineno-0-1202"></a>    <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">block_list_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1203" name="__codelineno-0-1203"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading block list from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">block_list_file</span><span class="p">)</span>
+<a id="__codelineno-0-1204" name="__codelineno-0-1204"></a>        <span class="n">bl_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">block_list_file</span><span class="p">)</span>
+<a id="__codelineno-0-1205" name="__codelineno-0-1205"></a>        <span class="n">block_list</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">bl_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;feature_ok&quot;</span><span class="p">))[</span><span class="s2">&quot;feature&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_list</span><span class="p">())</span>
+<a id="__codelineno-0-1206" name="__codelineno-0-1206"></a>
+<a id="__codelineno-0-1207" name="__codelineno-0-1207"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running </span><span class="si">%s</span><span class="s2"> aggregator&quot;</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">aggregator</span><span class="p">)</span>
+<a id="__codelineno-0-1208" name="__codelineno-0-1208"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-1209" name="__codelineno-0-1209"></a>        <span class="s2">&quot;Classifying variants and marking synonymous as normalization reference&quot;</span>
+<a id="__codelineno-0-1210" name="__codelineno-0-1210"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1211" name="__codelineno-0-1211"></a>    <span class="n">agg_lf</span> <span class="o">=</span> <span class="n">variant_classification</span><span class="p">(</span>
+<a id="__codelineno-0-1212" name="__codelineno-0-1212"></a>        <span class="n">aggregate</span><span class="p">(</span>
+<a id="__codelineno-0-1213" name="__codelineno-0-1213"></a>            <span class="n">lf</span><span class="p">,</span>
+<a id="__codelineno-0-1214" name="__codelineno-0-1214"></a>            <span class="n">label_col</span><span class="o">=</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">,</span>
+<a id="__codelineno-0-1215" name="__codelineno-0-1215"></a>            <span class="n">aggregator_name</span><span class="o">=</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">aggregator</span><span class="p">,</span>
+<a id="__codelineno-0-1216" name="__codelineno-0-1216"></a>            <span class="n">block_list</span><span class="o">=</span><span class="n">block_list</span><span class="p">,</span>
+<a id="__codelineno-0-1217" name="__codelineno-0-1217"></a>        <span class="p">),</span>
+<a id="__codelineno-0-1218" name="__codelineno-0-1218"></a>        <span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">,</span>
+<a id="__codelineno-0-1219" name="__codelineno-0-1219"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1220" name="__codelineno-0-1220"></a>
+<a id="__codelineno-0-1221" name="__codelineno-0-1221"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting normalizer on synonymous rows&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1222" name="__codelineno-0-1222"></a>    <span class="n">normalizer</span> <span class="o">=</span> <span class="n">Normalizer</span><span class="o">.</span><span class="n">from_lazyframe</span><span class="p">(</span><span class="n">agg_lf</span><span class="p">,</span> <span class="n">fit_only_on_control</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-1223" name="__codelineno-0-1223"></a>
+<a id="__codelineno-0-1224" name="__codelineno-0-1224"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Applying normalizer&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1225" name="__codelineno-0-1225"></a>    <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">normalizer</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">agg_lf</span><span class="p">)</span>
+<a id="__codelineno-0-1226" name="__codelineno-0-1226"></a>
+<a id="__codelineno-0-1227" name="__codelineno-0-1227"></a>    <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1228" name="__codelineno-0-1228"></a>        <span class="n">out_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1229" name="__codelineno-0-1229"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-1230" name="__codelineno-0-1230"></a>        <span class="n">out_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_stem</span><span class="si">}</span><span class="s2">.parquet&quot;</span>
+<a id="__codelineno-0-1231" name="__codelineno-0-1231"></a>
+<a id="__codelineno-0-1232" name="__codelineno-0-1232"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding queries to retrieve metadata&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1233" name="__codelineno-0-1233"></a>    <span class="n">meta_lf</span> <span class="o">=</span> <span class="n">get_aggregate_meta_data</span><span class="p">(</span><span class="n">lf</span><span class="p">,</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+<a id="__codelineno-0-1234" name="__codelineno-0-1234"></a>    <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">normalized_lf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">meta_lf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">label_column</span><span class="p">)</span>
+<a id="__codelineno-0-1235" name="__codelineno-0-1235"></a>
+<a id="__codelineno-0-1236" name="__codelineno-0-1236"></a>    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">compute_impact_score</span><span class="p">:</span>
+<a id="__codelineno-0-1237" name="__codelineno-0-1237"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing impact scores&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1238" name="__codelineno-0-1238"></a>        <span class="n">normalized_lf</span> <span class="o">=</span> <span class="n">compute_impact_score</span><span class="p">(</span><span class="n">normalized_lf</span><span class="p">)</span>
+<a id="__codelineno-0-1239" name="__codelineno-0-1239"></a>
+<a id="__codelineno-0-1240" name="__codelineno-0-1240"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing output to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">out_path</span><span class="p">)</span>
+<a id="__codelineno-0-1241" name="__codelineno-0-1241"></a>    <span class="n">normalized_lf</span><span class="o">.</span><span class="n">sink_parquet</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+<a id="__codelineno-0-1242" name="__codelineno-0-1242"></a>
+<a id="__codelineno-0-1243" name="__codelineno-0-1243"></a>    <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">save_normalizer</span><span class="p">:</span>
+<a id="__codelineno-0-1244" name="__codelineno-0-1244"></a>        <span class="k">if</span> <span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1245" name="__codelineno-0-1245"></a>            <span class="n">norm_path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">agg_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.normalizer.parquet&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1246" name="__codelineno-0-1246"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-1247" name="__codelineno-0-1247"></a>            <span class="n">norm_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;normalizer.parquet&quot;</span>
+<a id="__codelineno-0-1248" name="__codelineno-0-1248"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving normalizer to </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">norm_path</span><span class="p">)</span>
+<a id="__codelineno-0-1249" name="__codelineno-0-1249"></a>        <span class="n">normalizer</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">norm_path</span><span class="p">)</span>
+<a id="__codelineno-0-1250" name="__codelineno-0-1250"></a>
+<a id="__codelineno-0-1251" name="__codelineno-0-1251"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
