@@ -1731,10 +1731,55 @@ built-in blocklist, correlation threshold).</p>
 <td><code>true</code></td>
 <td>Compute per-variant impact score (cosine distance vs. synonymous baseline) after feature selection.</td>
 </tr>
+<tr>
+<td><code>run_pca</code></td>
+<td><code>false</code></td>
+<td>Compute PCA on the final selected/normalized feature matrix, appending <code>meta_pc_1..meta_pc_{pca_n_components}</code> and writing a separate PCA-components output file.</td>
+</tr>
+<tr>
+<td><code>pca_n_components</code></td>
+<td><code>10</code></td>
+<td>Number of principal components to compute and retain.</td>
+</tr>
+<tr>
+<td><code>run_umap</code></td>
+<td><code>false</code></td>
+<td>Compute UMAP on the final selected/normalized feature matrix, appending <code>meta_umap_1..meta_umap_{umap_n_components}</code>. PCA and UMAP are computed independently, both on the same feature matrix.</td>
+</tr>
+<tr>
+<td><code>umap_n_components</code></td>
+<td><code>2</code></td>
+<td>Dimensionality of the UMAP embedding.</td>
+</tr>
+<tr>
+<td><code>umap_n_neighbors</code></td>
+<td><code>10</code></td>
+<td><code>umap.UMAP</code>'s local neighborhood size.</td>
+</tr>
+<tr>
+<td><code>umap_metric</code></td>
+<td><code>"cosine"</code></td>
+<td><code>umap.UMAP</code>'s distance metric.</td>
+</tr>
+<tr>
+<td><code>umap_min_dist</code></td>
+<td><code>0.1</code></td>
+<td><code>umap.UMAP</code>'s minimum embedded distance between points.</td>
+</tr>
+<tr>
+<td><code>umap_random_state</code></td>
+<td><code>42</code></td>
+<td>Seed for UMAP's fit; <code>null</code> disables seeding (faster, multithreaded, nondeterministic).</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
-single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
+single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.
+When <code>run_pca=true</code>, also writes <code>{output_root}.pca_components.parquet</code> or
+<code>{output_dir}/pca_components.parquet</code> — one row per principal component,
+with one column per feature used in the fit (named by that feature's actual
+column name, holding its loading), plus <code>meta_variance_explained</code>,
+<code>meta_cumulative_variance_explained</code>, and <code>meta_component_idx</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.featureselect<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
@@ -1789,11 +1834,55 @@ artifacts directly — no cell-level recomputation:</p>
 <td><code>null</code></td>
 <td>Minimum number of member batches that must mark a feature ok for it to be globally ok. <code>null</code> requires unanimity across batches that report on it.</td>
 </tr>
+<tr>
+<td><code>run_pca</code></td>
+<td><code>false</code></td>
+<td>Compute PCA on the final selected/normalized feature matrix, appending <code>meta_pc_1..meta_pc_{pca_n_components}</code> and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see <a href="../../configuration/#per-batch-parameter-overrides">Configuration</a>).</td>
+</tr>
+<tr>
+<td><code>pca_n_components</code></td>
+<td><code>10</code></td>
+<td>Number of principal components to compute and retain.</td>
+</tr>
+<tr>
+<td><code>run_umap</code></td>
+<td><code>false</code></td>
+<td>Compute UMAP on the final selected/normalized feature matrix, appending <code>meta_umap_1..meta_umap_{umap_n_components}</code>. PCA and UMAP are computed independently, both on the same feature matrix.</td>
+</tr>
+<tr>
+<td><code>umap_n_components</code></td>
+<td><code>2</code></td>
+<td>Dimensionality of the UMAP embedding.</td>
+</tr>
+<tr>
+<td><code>umap_n_neighbors</code></td>
+<td><code>10</code></td>
+<td><code>umap.UMAP</code>'s local neighborhood size.</td>
+</tr>
+<tr>
+<td><code>umap_metric</code></td>
+<td><code>"cosine"</code></td>
+<td><code>umap.UMAP</code>'s distance metric.</td>
+</tr>
+<tr>
+<td><code>umap_min_dist</code></td>
+<td><code>0.1</code></td>
+<td><code>umap.UMAP</code>'s minimum embedded distance between points.</td>
+</tr>
+<tr>
+<td><code>umap_random_state</code></td>
+<td><code>42</code></td>
+<td>Seed for UMAP's fit; <code>null</code> disables seeding (faster, multithreaded, nondeterministic).</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: <code>aggregate.parquet</code> (the selected, cross-batch median aggregate
 table) and <code>blocklist.parquet</code> (the combined global blocklist, columns
-<code>feature</code>, <code>n_batches</code>, <code>n_ok</code>, <code>feature_ok</code>).</p>
+<code>feature</code>, <code>n_batches</code>, <code>n_ok</code>, <code>feature_ok</code>). When <code>run_pca=true</code>, also
+writes <code>pca_components.parquet</code> — one row per principal component, with one
+column per feature used in the fit (named by that feature's actual column
+name, holding its loading), plus <code>meta_variance_explained</code>,
+<code>meta_cumulative_variance_explained</code>, and <code>meta_component_idx</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.globalfeatureselect<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nv">pipeline_dir</span><span class="o">=</span>/path/to/experiment<span class="w"> </span><span class="se">\</span>

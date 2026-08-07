@@ -696,6 +696,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#dimensionality-reduction-pca-umap" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimensionality reduction (PCA / UMAP)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
     <span class="md-ellipsis">
       Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
@@ -1776,6 +1785,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#dimensionality-reduction-pca-umap" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimensionality reduction (PCA / UMAP)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" class="md-nav__link">
     <span class="md-ellipsis">
       Single-cell scoring &amp; barcode QC (OVWT_CELLSCORES_BATCHWISE / CHECK_BARCODES)
@@ -2299,6 +2317,63 @@ overridable per batch exactly like every other parameter here — see
 </tr>
 </tbody>
 </table>
+<h3 id="dimensionality-reduction-pca-umap">Dimensionality reduction (PCA / UMAP)<a class="headerlink" href="#dimensionality-reduction-pca-umap" title="Permanent link">&para;</a></h3>
+<p>Computed by both <code>FINALIZE_FEATURE_SELECT</code> (batchwise, per batch) and
+<code>GLOBAL_FEATURE_SELECT</code> (once per active global channel), independently of
+each other, on that process's own final selected/normalized feature matrix
+-- UMAP does not run on PCA's output. See
+<a href="../cli/features/">CLI Reference: Feature Selection</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--run_pca</code></td>
+<td><code>false</code></td>
+<td>Compute PCA on the final selected/normalized feature matrix, appending <code>meta_pc_1..meta_pc_{pca_n_components}</code> and writing a separate <code>pca_components.parquet</code> (one row per component).</td>
+</tr>
+<tr>
+<td><code>--pca_n_components</code></td>
+<td><code>10</code></td>
+<td>Number of principal components to compute and retain. Arbitrary default -- tune to the dataset's actual post-selection feature count. Must be <code>&lt;= min(n_rows, n_retained_features)</code> after all-null feature columns are dropped (see <a href="../cli/features/">CLI Reference: Feature Selection</a>), or the run fails.</td>
+</tr>
+<tr>
+<td><code>--run_umap</code></td>
+<td><code>false</code></td>
+<td>Compute UMAP on the final selected/normalized feature matrix, appending <code>meta_umap_1..meta_umap_{umap_n_components}</code>.</td>
+</tr>
+<tr>
+<td><code>--umap_n_components</code></td>
+<td><code>2</code></td>
+<td>Dimensionality of the UMAP embedding.</td>
+</tr>
+<tr>
+<td><code>--umap_n_neighbors</code></td>
+<td><code>10</code></td>
+<td><code>umap.UMAP</code>'s local neighborhood size.</td>
+</tr>
+<tr>
+<td><code>--umap_metric</code></td>
+<td><code>"cosine"</code></td>
+<td><code>umap.UMAP</code>'s distance metric.</td>
+</tr>
+<tr>
+<td><code>--umap_min_dist</code></td>
+<td><code>0.1</code></td>
+<td><code>umap.UMAP</code>'s minimum embedded distance between points.</td>
+</tr>
+<tr>
+<td><code>--umap_random_state</code></td>
+<td><code>42</code></td>
+<td>Seed for UMAP's fit. <code>null</code> disables seeding, enabling faster nondeterministic multithreaded fitting (an explicit umap-learn tradeoff).</td>
+</tr>
+</tbody>
+</table>
 <h3 id="single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes">Single-cell scoring &amp; barcode QC (<code>OVWT_CELLSCORES_BATCHWISE</code> / <code>CHECK_BARCODES</code>)<a class="headerlink" href="#single-cell-scoring-barcode-qc-ovwt_cellscores_batchwise-check_barcodes" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2471,12 +2546,14 @@ per-batch identity either — though it still only reads a member batch's
 <code>run_feature_selection</code> is true (see <a href="#global-channels">Global channels</a>).</p>
 <p>Parameters shared between a per-batch process and a global-only process
 (<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
-<code>--feature_select_min_correlation</code>) are overridable per batch for their
+<code>--feature_select_min_correlation</code>, <code>--run_pca</code>, <code>--pca_n_components</code>,
+<code>--run_umap</code>, <code>--umap_n_components</code>, <code>--umap_n_neighbors</code>, <code>--umap_metric</code>,
+<code>--umap_min_dist</code>, <code>--umap_random_state</code>) are overridable per batch for their
 batchwise consumer only (<code>OVWT_BATCHWISE</code>, <code>AGGREGATE_FEATURE_TYPE_BATCHWISE</code>
-/ <code>AGGREGATE_HALF_BATCHWISE</code>, <code>BLOCKLIST_BATCHWISE</code>) — their global
-counterpart (<code>OVWT_GLOBAL</code>, the <code>_GLOBAL</code> feature-selection processes)
-always uses the plain pipeline-wide value directly, regardless of any
-batch's override.</p>
+/ <code>AGGREGATE_HALF_BATCHWISE</code>, <code>BLOCKLIST_BATCHWISE</code>,
+<code>FINALIZE_FEATURE_SELECT_BATCHWISE</code>) — their global counterpart
+(<code>OVWT_GLOBAL</code>, <code>GLOBAL_FEATURE_SELECT</code>) always uses the plain pipeline-wide
+value directly, regardless of any batch's override.</p>
 <h3 id="input_paths-required-batch-yaml-only"><code>input_paths</code>: required, batch-YAML-only<a class="headerlink" href="#input_paths-required-batch-yaml-only" title="Permanent link">&para;</a></h3>
 <p><code>input_paths</code> (the list of raw cell-score file paths for a batch) is
 <strong>required in every batch YAML and has no <code>nextflow.config</code> default at
