@@ -99,6 +99,14 @@ workflow FisseqPipeline {
         wtvvariantpool_downsample_variant_pool: params.wtvvariantpool_downsample_variant_pool,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
+        run_pca                           : BatchParams.asBool(params.run_pca),
+        pca_n_components                  : params.pca_n_components,
+        run_umap                          : BatchParams.asBool(params.run_umap),
+        umap_n_components                 : params.umap_n_components,
+        umap_n_neighbors                  : params.umap_n_neighbors,
+        umap_metric                       : params.umap_metric,
+        umap_min_dist                     : params.umap_min_dist,
+        umap_random_state                 : params.umap_random_state,
         barcode_check_min_cells           : params.barcode_check_min_cells,
         barcode_check_alpha               : params.barcode_check_alpha,
         single_cell_scores_split          : params.single_cell_scores_split,
@@ -529,8 +537,11 @@ workflow FisseqPipeline {
         .join(norm_ch_feature_selected)
         .join(combined_bl_ch)
         .map { batch_stem, agg_files, normalized_parquet, combined_bl_file ->
+            def cfg = resolvedBatchConfigs[batch_stem]
             tuple(batch_stem, agg_files, normalized_parquet.toString(), combined_bl_file,
-                  "feature_select_batchwise/${batch_stem}")
+                  "feature_select_batchwise/${batch_stem}",
+                  cfg.run_pca, cfg.pca_n_components, cfg.run_umap, cfg.umap_n_components,
+                  cfg.umap_n_neighbors, cfg.umap_metric, cfg.umap_min_dist, cfg.umap_random_state)
         }
     FINALIZE_FEATURE_SELECT_BATCHWISE(finalize_input_ch)
 
@@ -573,7 +584,14 @@ workflow FisseqPipeline {
 
         global_fs_input_ch = channels_ch
             .combine(feature_select_ready_signal)
-            .map { chan, d -> tuple(chan, batchesByChannel[chan], d, "global/${chan}/feature_select", params.global_feature_select_min_batches_ok, params.feature_select_types) }
+            .map { chan, d ->
+                tuple(chan, batchesByChannel[chan], d, "global/${chan}/feature_select",
+                      params.global_feature_select_min_batches_ok, params.feature_select_types,
+                      BatchParams.asBool(params.run_pca), params.pca_n_components,
+                      BatchParams.asBool(params.run_umap), params.umap_n_components,
+                      params.umap_n_neighbors, params.umap_metric, params.umap_min_dist,
+                      params.umap_random_state)
+            }
         GLOBAL_FEATURE_SELECT(global_fs_input_ch)
     }
 

@@ -70,6 +70,7 @@ from .config import AppConfig
 from .featureselect import pyc_feature_select
 from .normalize import Normalizer
 from .utils.constants import FEATURE_SELECTOR
+from .utils.dimreduction import compute_pca, compute_umap
 from .utils.featuretypes import join_feature_type_files
 from .utils.log import setup_logging
 from .utils.vectors import compute_impact_score
@@ -340,6 +341,34 @@ class GlobalFeatureSelectConfig(AppConfig):
     compute_impact_score : bool
         If ``True``, compute per-variant impact score (cosine distance vs
         synonymous baseline) after feature selection. Defaults to ``True``.
+    run_pca : bool
+        If ``True``, compute PCA on the final selected/normalized feature
+        matrix (see :func:`.utils.dimreduction.compute_pca`), appending
+        ``meta_pc_1..meta_pc_{pca_n_components}`` and writing a separate
+        PCA-components output file. Defaults to ``False``.
+    pca_n_components : int
+        Number of principal components to compute and retain. Arbitrary
+        default -- tune to the dataset's actual post-selection feature
+        count. Must be ``<= min(n_rows, n_retained_features)`` after
+        all-null feature columns are dropped, or the run fails. Defaults to
+        ``10``.
+    run_umap : bool
+        If ``True``, compute UMAP on the final selected/normalized feature
+        matrix (see :func:`.utils.dimreduction.compute_umap`), appending
+        ``meta_umap_1..meta_umap_{umap_n_components}``. Defaults to
+        ``False``.
+    umap_n_components : int
+        Dimensionality of the UMAP embedding. Defaults to ``2``.
+    umap_n_neighbors : int
+        ``umap.UMAP``'s local neighborhood size. Defaults to ``10``.
+    umap_metric : str
+        ``umap.UMAP``'s distance metric. Defaults to ``"cosine"``.
+    umap_min_dist : float
+        ``umap.UMAP``'s minimum embedded distance between points. Defaults
+        to ``0.1``.
+    umap_random_state : int or None
+        Seed for UMAP's fit. ``None`` disables seeding, enabling faster
+        nondeterministic multithreaded fitting. Defaults to ``42``.
     """
 
     pipeline_dir: str = MISSING
@@ -348,6 +377,14 @@ class GlobalFeatureSelectConfig(AppConfig):
     label_column: str = "meta_aa_changes"
     min_batches_ok: Optional[int] = None
     compute_impact_score: bool = True
+    run_pca: bool = False
+    pca_n_components: int = 10
+    run_umap: bool = False
+    umap_n_components: int = 2
+    umap_n_neighbors: int = 10
+    umap_metric: str = "cosine"
+    umap_min_dist: float = 0.1
+    umap_random_state: Optional[int] = 42
 
 
 _cs.store(name="global_feature_select_main", node=GlobalFeatureSelectConfig)
@@ -364,8 +401,15 @@ def main(cfg: DictConfig) -> None:
     ------------
     - ``{output_dir}/aggregate.parquet`` — the selected, cross-batch median
       aggregate table, with a ``meta_is_control`` column and (when
-      ``compute_impact_score`` is ``True``) a ``meta_impact_score`` column.
+      ``compute_impact_score`` is ``True``) a ``meta_impact_score`` column,
+      plus (when ``run_pca``/``run_umap`` is ``True``)
+      ``meta_pc_*``/``meta_umap_*`` embedding columns computed independently
+      on the same selected/normalized feature matrix (see
+      :func:`.utils.dimreduction.compute_pca`/``compute_umap``).
     - ``{output_dir}/blocklist.parquet`` — the combined global blocklist.
+    - ``{output_dir}/pca_components.parquet`` — only when ``run_pca`` is
+      ``True``: one row per principal component (see
+      :func:`.utils.dimreduction.compute_pca`).
 
     Raises
     ------
@@ -423,12 +467,42 @@ def main(cfg: DictConfig) -> None:
         logging.info("Computing impact scores")
         selected_df = compute_impact_score(selected_lf).collect()
 
+    # PCA and UMAP are computed independently, both on the same
+    # selected/normalized feature matrix -- UMAP does not run on PCA's
+    # output. selected_df is already eager here, so no collect()/lazy() is
+    # needed (unlike featureselect.py's LazyFrame equivalent).
+    pca_components_df = None
+    if gfs_cfg.run_pca:
+        logging.info("Computing PCA (%d components)", gfs_cfg.pca_n_components)
+        pca_scores_df, pca_components_df = compute_pca(
+            selected_df, gfs_cfg.label_column, gfs_cfg.pca_n_components
+        )
+        selected_df = selected_df.join(pca_scores_df, on=gfs_cfg.label_column)
+
+    if gfs_cfg.run_umap:
+        logging.info("Computing UMAP (%d components)", gfs_cfg.umap_n_components)
+        umap_scores_df = compute_umap(
+            selected_df,
+            gfs_cfg.label_column,
+            gfs_cfg.umap_n_components,
+            gfs_cfg.umap_n_neighbors,
+            gfs_cfg.umap_metric,
+            gfs_cfg.umap_min_dist,
+            gfs_cfg.umap_random_state,
+        )
+        selected_df = selected_df.join(umap_scores_df, on=gfs_cfg.label_column)
+
     agg_path = output_dir / "aggregate.parquet"
     bl_path = output_dir / "blocklist.parquet"
     logging.info("Writing aggregate to %s", agg_path)
     selected_df.write_parquet(agg_path)
     logging.info("Writing blocklist to %s", bl_path)
     bl_df.write_parquet(bl_path)
+
+    if gfs_cfg.run_pca:
+        pca_components_path = output_dir / "pca_components.parquet"
+        logging.info("Writing PCA components to %s", pca_components_path)
+        pca_components_df.write_parquet(pca_components_path)
 
     logging.info("Done")
 

@@ -11,6 +11,7 @@ import dataclasses
 import glob
 import logging
 import pathlib
+from typing import Optional
 
 import hydra
 import polars as pl
@@ -23,6 +24,7 @@ from .config import LabeledInputConfig
 from .normalize import Normalizer
 from .utils.batches import load_batches
 from .utils.constants import FEATURE_SELECTOR
+from .utils.dimreduction import compute_pca, compute_umap
 from .utils.featuretypes import join_feature_type_files
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
@@ -88,11 +90,47 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
         If ``True``, compute per-variant impact score (cosine distance vs
         synonymous baseline) after feature selection and normalization.
         Defaults to ``True``.
+    run_pca : bool
+        If ``True``, compute PCA on the final selected/normalized feature
+        matrix (see :func:`.utils.dimreduction.compute_pca`), appending
+        ``meta_pc_1..meta_pc_{pca_n_components}`` and writing a separate
+        PCA-components output file. Defaults to ``False``.
+    pca_n_components : int
+        Number of principal components to compute and retain. Arbitrary
+        default -- tune to the dataset's actual post-selection feature
+        count. Must be ``<= min(n_rows, n_retained_features)`` after
+        all-null feature columns are dropped, or the run fails. Defaults to
+        ``10``.
+    run_umap : bool
+        If ``True``, compute UMAP on the final selected/normalized feature
+        matrix (see :func:`.utils.dimreduction.compute_umap`), appending
+        ``meta_umap_1..meta_umap_{umap_n_components}``. Defaults to
+        ``False``.
+    umap_n_components : int
+        Dimensionality of the UMAP embedding. Defaults to ``2``.
+    umap_n_neighbors : int
+        ``umap.UMAP``'s local neighborhood size. Defaults to ``10``.
+    umap_metric : str
+        ``umap.UMAP``'s distance metric. Defaults to ``"cosine"``.
+    umap_min_dist : float
+        ``umap.UMAP``'s minimum embedded distance between points. Defaults
+        to ``0.1``.
+    umap_random_state : int or None
+        Seed for UMAP's fit. ``None`` disables seeding, enabling faster
+        nondeterministic multithreaded fitting. Defaults to ``42``.
     """
 
     feature_type_files: str = MISSING
     block_list_file: str = MISSING
     compute_impact_score: bool = True
+    run_pca: bool = False
+    pca_n_components: int = 10
+    run_umap: bool = False
+    umap_n_components: int = 2
+    umap_n_neighbors: int = 10
+    umap_metric: str = "cosine"
+    umap_min_dist: float = 0.1
+    umap_random_state: Optional[int] = 42
 
 
 _cs.store(name="feature_select_main", node=FinalizeFeatureSelectConfig)
@@ -118,14 +156,23 @@ def main(cfg: DictConfig) -> None:
        output features are z-score normalized to the synonymous baseline.
     6. Optionally compute impact score on the normalized features
        (:func:`.utils.vectors.compute_impact_score`).
-    7. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.
-    8. Write output.
+    7. Optionally compute PCA and/or UMAP on the selected/normalized feature
+       matrix (:func:`.utils.dimreduction.compute_pca`/``compute_umap``),
+       joining the resulting ``meta_pc_*``/``meta_umap_*`` columns back onto
+       the output by ``label_column``. PCA and UMAP are computed
+       independently, both on the same feature matrix -- UMAP does not run
+       on PCA's output.
+    8. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.
+    9. Write output (and, if ``run_pca``, a separate PCA-components file).
 
     Output path
     -----------
     - Glob input: ``{output_root}.output.parquet`` or ``{output_dir}/output.parquet``
     - Single-file input: ``{output_root}.{stem}.parquet`` or
       ``{output_dir}/{stem}.parquet``
+    - If ``run_pca``: also ``{output_root}.pca_components.parquet`` or
+      ``{output_dir}/pca_components.parquet`` -- one row per principal
+      component (see :func:`.utils.dimreduction.compute_pca`).
 
     Configuration
     -------------
@@ -182,6 +229,37 @@ def main(cfg: DictConfig) -> None:
         logging.info("Computing impact scores")
         normalized_lf = compute_impact_score(normalized_lf)
 
+    pca_components_df = None
+    if feat_cfg.run_pca or feat_cfg.run_umap:
+        # PCA/UMAP need an in-memory numpy array -- sklearn/umap-learn are
+        # not lazy-frame-aware -- so materialize once here and re-wrap as a
+        # LazyFrame afterward so the rest of main() keeps using .join()/
+        # .sink_parquet() unchanged. PCA and UMAP are computed independently
+        # on the same feature matrix, never chained.
+        normalized_df = normalized_lf.collect()
+
+        if feat_cfg.run_pca:
+            logging.info("Computing PCA (%d components)", feat_cfg.pca_n_components)
+            pca_scores_df, pca_components_df = compute_pca(
+                normalized_df, feat_cfg.label_column, feat_cfg.pca_n_components
+            )
+            normalized_df = normalized_df.join(pca_scores_df, on=feat_cfg.label_column)
+
+        if feat_cfg.run_umap:
+            logging.info("Computing UMAP (%d components)", feat_cfg.umap_n_components)
+            umap_scores_df = compute_umap(
+                normalized_df,
+                feat_cfg.label_column,
+                feat_cfg.umap_n_components,
+                feat_cfg.umap_n_neighbors,
+                feat_cfg.umap_metric,
+                feat_cfg.umap_min_dist,
+                feat_cfg.umap_random_state,
+            )
+            normalized_df = normalized_df.join(umap_scores_df, on=feat_cfg.label_column)
+
+        normalized_lf = normalized_df.lazy()
+
     logging.info("Adding queries to retrieve metadata")
     meta_lf = get_aggregate_meta_data(lf, feat_cfg.label_column)
     selected_lf = normalized_lf.join(meta_lf, on=feat_cfg.label_column)
@@ -193,6 +271,16 @@ def main(cfg: DictConfig) -> None:
 
     logging.info("Writing output to %s", out_path)
     selected_lf.sink_parquet(out_path)
+
+    if feat_cfg.run_pca:
+        if feat_cfg.output_root is not None:
+            pca_components_path = pathlib.Path(
+                f"{feat_cfg.output_root}.pca_components.parquet"
+            )
+        else:
+            pca_components_path = output_dir / "pca_components.parquet"
+        logging.info("Writing PCA components to %s", pca_components_path)
+        pca_components_df.write_parquet(pca_components_path)
 
     logging.info("Done")
 
