@@ -12,8 +12,15 @@ process FINALIZE_FEATURE_SELECT {
           val(umap_metric), val(umap_min_dist), val(umap_random_state)
 
     output:
-    // pca_components.parquet only exists when run_pca=true
-    tuple val(batch_key), path("output.parquet"), path("pca_components.parquet", optional: true)
+    // pca_components.parquet only exists when run_pca=true -- must be its
+    // own output statement, not a third element of the tuple below: Nextflow
+    // (26.04.6) does not honor per-element `optional: true` on a path()
+    // nested inside a multi-element tuple output (it still raises
+    // MissingFileException, which -- combined with errorStrategy 'ignore'
+    // above -- silently drops output.parquet too). Declared standalone like
+    // this, the optional file behaves correctly.
+    tuple val(batch_key), path("output.parquet")
+    path("pca_components.parquet", optional: true)
 
     script:
     """

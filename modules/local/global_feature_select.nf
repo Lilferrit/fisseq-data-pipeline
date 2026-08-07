@@ -27,8 +27,13 @@ process GLOBAL_FEATURE_SELECT {
           val(umap_metric), val(umap_min_dist), val(umap_random_state)
 
     output:
-    // pca_components.parquet only exists when run_pca=true
-    tuple val(chan), path("aggregate.parquet"), path("blocklist.parquet"), path("pca_components.parquet", optional: true)
+    // pca_components.parquet only exists when run_pca=true -- must be its
+    // own output statement, not another element of the tuple below: see the
+    // matching comment in finalize_feature_select.nf for why (per-element
+    // `optional: true` inside a multi-element tuple output isn't honored on
+    // this Nextflow version and would silently drop the whole tuple).
+    tuple val(chan), path("aggregate.parquet"), path("blocklist.parquet")
+    path("pca_components.parquet", optional: true)
 
     script:
     def stemsArg = "[" + batch_stems.join(',') + "]"
