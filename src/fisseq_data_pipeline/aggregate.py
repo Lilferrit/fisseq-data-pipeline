@@ -787,9 +787,7 @@ class AUROCAggregator(ReferenceBasedAggregator):
 
     _stat_suffix = "_AUROC"
 
-    def _auroc_ranks_expr(
-        self, feat: str
-    ) -> tuple[pl.Expr, pl.Expr, pl.Expr, pl.Expr]:
+    def _auroc_ranks_expr(self, feat: str) -> tuple[pl.Expr, pl.Expr, pl.Expr, pl.Expr]:
         """
         Returns ``(combined, ranks, n_group, n_ref)``: the concatenated
         ``[group_values, ref_values]`` list for this feature, its

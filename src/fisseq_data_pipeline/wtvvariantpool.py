@@ -228,7 +228,10 @@ def train_test_val_split(
 
     merged = pl.concat([wt_df, pool_df], how="vertical")
 
-    if cfg.downsample_variant_pool is not None and cfg.downsample_variant_pool is not False:
+    if (
+        cfg.downsample_variant_pool is not None
+        and cfg.downsample_variant_pool is not False
+    ):
         n = (
             cfg.downsample_variant_pool
             if not isinstance(cfg.downsample_variant_pool, bool)
@@ -374,7 +377,9 @@ def evaluate_barcode(
         ``val_auroc``, ``val_accuracy``, ``test_auroc``, ``test_accuracy``,
         ``n_cells_barcode``, ``n_cells_pool``.
     """
-    evaluate_wrapper = lambda df: evaluate(df, model, barcode_column, barcode)
+
+    def evaluate_wrapper(df):
+        return evaluate(df, model, barcode_column, barcode)
 
     train_auroc, train_accuracy = evaluate_wrapper(train)
     val_auroc, val_accuracy = evaluate_wrapper(val)

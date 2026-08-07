@@ -313,20 +313,18 @@ The integration test (`tests/integration/test_integration.py`) is session-scoped
 ### Lint & format
 
 ```bash
-# Lint (ruff)
+# Lint (ruff; the "I" rule family covers import sorting -- ruff replaces
+# isort entirely, so there is no separate isort step)
 uv run ruff check .
 
 # Format check
-uv run black --check .
+uv run ruff format --check .
 
 # Format apply
-uv run black .
-
-# Import sort (not hooked into pre-commit — run manually)
-uv run isort src/ tests/
+uv run ruff format .
 ```
 
-> **Note:** The pre-commit hook (`.pre-commit-config.yaml`) only runs `black`. `ruff` and `isort` are in dev dependencies but are **not** run automatically on commit. Run them manually before pushing.
+> **Note:** `.pre-commit-config.yaml` runs `ruff-check --fix` then `ruff-format` on commit. CI (`.github/workflows/pr-checks.yml`) runs the same two tools in check-only mode (no `--fix`) on every PR targeting `main`.
 
 ### Nextflow lint
 
@@ -653,11 +651,11 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 2. **`pandas` is a runtime dep but barely used directly.** The codebase uses Polars. `pandas` is almost certainly needed transitively by `pycytominer`. Do not assume Polars ↔ pandas interchangeability — `pycytominer.feature_select` receives a Polars DataFrame that gets converted internally.
 
-3. **Pre-commit only runs Black.** `ruff` and `isort` are in dev dependencies but not in `.pre-commit-config.yaml`. Lint and import-sort failures will not block commits. Run `uv run ruff check .` and `uv run isort src/ tests/` manually before opening a PR.
+3. **Pre-commit and CI both run ruff (`ruff-check --fix` + `ruff-format` locally; check-only in CI).** There is no isort — ruff's `I` rule family (selected in `[tool.ruff.lint]`) covers import sorting, so formatting and import order come from the same tool.
 
-4. **There is no CI for tests.** `.github/workflows/docs.yml` only deploys MkDocs to GitHub Pages on pushes to `main`. Tests are not run in CI — they must be run locally before merging.
+4. **CI runs on every PR targeting `main`.** `.github/workflows/pr-checks.yml` runs `unit-tests`, `integration-tests`, and `lint` as separate parallel jobs (skipped for draft PRs); `.github/workflows/docs.yml` separately deploys MkDocs to GitHub Pages on pushes to `main`.
 
-5. **Integration tests are slow and require Nextflow.** `tests/integration/test_integration.py` runs the full Nextflow pipeline on synthetic data using a session-scoped fixture. Skipping them (`uv run pytest tests/unit`) is standard for day-to-day development.
+5. **Integration tests are slow and require Nextflow.** `tests/integration/test_integration.py` runs the full Nextflow pipeline on synthetic data using a session-scoped fixture. Skipping them (`uv run pytest tests/unit`) is standard for day-to-day development. CI's `integration-tests` job installs Java + Nextflow so the full suite runs on every PR.
 
 6. **Global Nextflow processes glob for published files, not channel outputs.** `BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA`, and `BATCH_CORRECT_FIT` read from disk after all upstream processes finish. This means: (a) relative `pipeline_dir` paths are resolved to absolute at workflow start; (b) `publishDir` paths in upstream modules must stay in sync with the globs passed into the global calls. Since these processes run once per active global channel rather than once total, they don't glob the whole pipeline tree -- `STAGE_CHANNEL_CELLS` (`modules/local/stage_channel.nf`) first republishes each channel's member batches' `QC_FILTER`/`NORMALIZE` output into `global/<channel>/{qc_filter_cells,normalization_cells}/` (flattened to `<batch_stem>.parquet` regardless of source), and `BATCHVSBATCH_PRE`/`BATCH_CORRECT_FIT` glob that channel's `qc_filter_cells/*.parquet` while `BATCHVSBATCH_POST`/`OVWT_GLOBAL`/`ANOVA_NORMALIZED` glob that channel's `normalization_cells/*.parquet`. `GLOBAL_FEATURE_SELECT` follows the same "glob published output, not channel output" idiom but against a different tree entirely: it globs each member batch's `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly (member batches passed in as a plain `val(batch_stems)` list, not a staged directory), so it has no dependency on `STAGE_CHANNEL_CELLS`/`normalization_cells/` at all.
 
@@ -685,11 +683,28 @@ No enforced prefix convention (feat:/fix:/chore:), but verbs observed: `fix`, `u
 
 No CONTRIBUTING.md exists. Based on git history:
 
+### Starting a new task
+
+```bash
+git checkout main
+git pull                          # fast-forward main to latest
+git checkout -b <descriptive-branch-name>
+# ... make changes, commit ...
+git push -u origin <descriptive-branch-name>
+```
+
+Claude pushes the branch but does **not** open the PR — the user opens it
+themselves once the branch is pushed.
+
+### Conventions
+
 - Branch off `main`, name branches descriptively (no enforced pattern observed).
 - PR titles match commit message style: lowercase verb + `(#N)`.
 - Squash-merge or merge commits both appear in history.
-- Before merging: run `uv run pytest tests/unit`, `uv run ruff check .`, `uv run black --check .`.
-- The only automated check on `main` is docs deployment — **tests do not run in CI**.
+- Before merging: run `uv run pytest tests/unit`, `uv run ruff check .`, `uv run ruff format --check .`.
+- `.github/workflows/pr-checks.yml` runs `unit-tests`, `integration-tests`, and
+  `lint` as required checks on every PR targeting `main` (skipped for draft
+  PRs); `.github/workflows/docs.yml` separately deploys docs on push to `main`.
 
 ---
 

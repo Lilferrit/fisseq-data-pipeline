@@ -464,7 +464,12 @@ def global_channel_pipeline_outputs(tmp_path_factory):
     raw_dir = tmp_path_factory.mktemp("nf_channel_raw")
     channel_variants = {**_VARIANTS, **_EXTRA_SYNONYMOUS_VARIANTS}
     _stage_batch(
-        exp_dir, raw_dir, "batch1", seed=1, variants=channel_variants, global_channel="siteA"
+        exp_dir,
+        raw_dir,
+        "batch1",
+        seed=1,
+        variants=channel_variants,
+        global_channel="siteA",
     )
     _stage_batch(
         exp_dir,
@@ -475,7 +480,12 @@ def global_channel_pipeline_outputs(tmp_path_factory):
         global_channel=["siteA", "siteB"],
     )
     _stage_batch(
-        exp_dir, raw_dir, "batch3", seed=3, variants=channel_variants, global_channel="siteB"
+        exp_dir,
+        raw_dir,
+        "batch3",
+        seed=3,
+        variants=channel_variants,
+        global_channel="siteB",
     )
     _stage_batch(
         exp_dir, raw_dir, "batch4", seed=4, variants=channel_variants
