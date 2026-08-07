@@ -57,6 +57,17 @@ class BatchParams {
         // chain, which always uses the plain params.X default)
         'feature_select_downsample_wt',
         'feature_select_min_correlation',
+        // dimensionality reduction, batchwise (shared names with the global
+        // chain, which always uses the plain params.X default -- see
+        // workflows/fisseq.nf's GLOBAL_FEATURE_SELECT call site)
+        'run_pca',
+        'pca_n_components',
+        'run_umap',
+        'umap_n_components',
+        'umap_n_neighbors',
+        'umap_metric',
+        'umap_min_dist',
+        'umap_random_state',
         // CHECK_BARCODES
         'barcode_check_min_cells',
         'barcode_check_alpha',

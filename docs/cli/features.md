@@ -108,9 +108,22 @@ built-in blocklist, correlation threshold).
 | `feature_type_files` | **required** | Glob pattern matching per-feature-type full aggregate parquet files. |
 | `block_list_file` | **required** | Combined blocklist parquet, with `feature` and `feature_ok` columns. |
 | `compute_impact_score` | `true` | Compute per-variant impact score (cosine distance vs. synonymous baseline) after feature selection. |
+| `run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate PCA-components output file. |
+| `pca_n_components` | `10` | Number of principal components to compute and retain. |
+| `run_umap` | `false` | Compute UMAP on the final selected/normalized feature matrix, appending `meta_umap_1..meta_umap_{umap_n_components}`. PCA and UMAP are computed independently, both on the same feature matrix. |
+| `umap_n_components` | `2` | Dimensionality of the UMAP embedding. |
+| `umap_n_neighbors` | `10` | `umap.UMAP`'s local neighborhood size. |
+| `umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
+| `umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
+| `umap_random_state` | `42` | Seed for UMAP's fit; `null` disables seeding (faster, multithreaded, nondeterministic). |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
+When `run_pca=true`, also writes `{output_root}.pca_components.parquet` or
+`{output_dir}/pca_components.parquet` — one row per principal component,
+with one column per feature used in the fit (named by that feature's actual
+column name, holding its loading), plus `meta_variance_explained`,
+`meta_cumulative_variance_explained`, and `meta_component_idx`.
 
 ```bash
 uv run python -m fisseq_data_pipeline.featureselect \
@@ -146,10 +159,22 @@ artifacts directly — no cell-level recomputation:
 | `batch_stems` | **required** | List of the active group's member batch stems (only those with `run_feature_selection` enabled). |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `min_batches_ok` | `null` | Minimum number of member batches that must mark a feature ok for it to be globally ok. `null` requires unanimity across batches that report on it. |
+| `run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see [Configuration](../configuration.md#per-batch-parameter-overrides)). |
+| `pca_n_components` | `10` | Number of principal components to compute and retain. |
+| `run_umap` | `false` | Compute UMAP on the final selected/normalized feature matrix, appending `meta_umap_1..meta_umap_{umap_n_components}`. PCA and UMAP are computed independently, both on the same feature matrix. |
+| `umap_n_components` | `2` | Dimensionality of the UMAP embedding. |
+| `umap_n_neighbors` | `10` | `umap.UMAP`'s local neighborhood size. |
+| `umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
+| `umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
+| `umap_random_state` | `42` | Seed for UMAP's fit; `null` disables seeding (faster, multithreaded, nondeterministic). |
 
 **Output**: `aggregate.parquet` (the selected, cross-batch median aggregate
 table) and `blocklist.parquet` (the combined global blocklist, columns
-`feature`, `n_batches`, `n_ok`, `feature_ok`).
+`feature`, `n_batches`, `n_ok`, `feature_ok`). When `run_pca=true`, also
+writes `pca_components.parquet` — one row per principal component, with one
+column per feature used in the fit (named by that feature's actual column
+name, holding its loading), plus `meta_variance_explained`,
+`meta_cumulative_variance_explained`, and `meta_component_idx`.
 
 ```bash
 uv run python -m fisseq_data_pipeline.globalfeatureselect \

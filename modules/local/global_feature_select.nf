@@ -22,10 +22,18 @@ process GLOBAL_FEATURE_SELECT {
     publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
-    tuple val(chan), val(batch_stems), val(pipeline_dir), val(publish_subdir), val(min_batches_ok), val(feature_select_types)
+    tuple val(chan), val(batch_stems), val(pipeline_dir), val(publish_subdir), val(min_batches_ok), val(feature_select_types), \
+          val(run_pca), val(pca_n_components), val(run_umap), val(umap_n_components), val(umap_n_neighbors), \
+          val(umap_metric), val(umap_min_dist), val(umap_random_state)
 
     output:
+    // pca_components.parquet only exists when run_pca=true -- must be its
+    // own output statement, not another element of the tuple below: see the
+    // matching comment in finalize_feature_select.nf for why (per-element
+    // `optional: true` inside a multi-element tuple output isn't honored on
+    // this Nextflow version and would silently drop the whole tuple).
     tuple val(chan), path("aggregate.parquet"), path("blocklist.parquet")
+    path("pca_components.parquet", optional: true)
 
     script:
     def stemsArg = "[" + batch_stems.join(',') + "]"
@@ -38,6 +46,14 @@ process GLOBAL_FEATURE_SELECT {
         pipeline_dir=${pipeline_dir} \\
         "batch_stems=${stemsArg}" \\
         "feature_select_types=${typesArg}" \\
-        ${minArg}
+        ${minArg} \\
+        run_pca=${run_pca} \\
+        pca_n_components=${pca_n_components} \\
+        run_umap=${run_umap} \\
+        umap_n_components=${umap_n_components} \\
+        umap_n_neighbors=${umap_n_neighbors} \\
+        umap_metric=${umap_metric} \\
+        umap_min_dist=${umap_min_dist} \\
+        umap_random_state=${umap_random_state}
     """
 }

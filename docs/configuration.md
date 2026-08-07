@@ -160,6 +160,25 @@ overridable per batch exactly like every other parameter here — see
 | `--feature_select_min_correlation` | `0.5` | Minimum median Pearson `r` required for a feature to pass `BLOCKLIST`. |
 | `--global_feature_select_min_batches_ok` | `null` | `GLOBAL_FEATURE_SELECT` only: minimum number of a global channel's member batches that must mark a feature ok (in their own `FINALIZE_FEATURE_SELECT_BATCHWISE`-chain blocklist) for it to be globally ok. `null` (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning. |
 
+### Dimensionality reduction (PCA / UMAP)
+
+Computed by both `FINALIZE_FEATURE_SELECT` (batchwise, per batch) and
+`GLOBAL_FEATURE_SELECT` (once per active global channel), independently of
+each other, on that process's own final selected/normalized feature matrix
+-- UMAP does not run on PCA's output. See
+[CLI Reference: Feature Selection](cli/features.md).
+
+| Parameter | Default | Description |
+| --------- | ------- | ----------- |
+| `--run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate `pca_components.parquet` (one row per component). |
+| `--pca_n_components` | `10` | Number of principal components to compute and retain. Arbitrary default -- tune to the dataset's actual post-selection feature count. Must be `<= min(n_rows, n_retained_features)` after all-null feature columns are dropped (see [CLI Reference: Feature Selection](cli/features.md)), or the run fails. |
+| `--run_umap` | `false` | Compute UMAP on the final selected/normalized feature matrix, appending `meta_umap_1..meta_umap_{umap_n_components}`. |
+| `--umap_n_components` | `2` | Dimensionality of the UMAP embedding. |
+| `--umap_n_neighbors` | `10` | `umap.UMAP`'s local neighborhood size. |
+| `--umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
+| `--umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
+| `--umap_random_state` | `42` | Seed for UMAP's fit. `null` disables seeding, enabling faster nondeterministic multithreaded fitting (an explicit umap-learn tradeoff). |
+
 ### Single-cell scoring & barcode QC (`OVWT_CELLSCORES_BATCHWISE` / `CHECK_BARCODES`)
 
 | Parameter | Default | Description |
@@ -339,12 +358,14 @@ per-batch identity either — though it still only reads a member batch's
 
 Parameters shared between a per-batch process and a global-only process
 (`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--feature_select_downsample_wt`,
-`--feature_select_min_correlation`) are overridable per batch for their
+`--feature_select_min_correlation`, `--run_pca`, `--pca_n_components`,
+`--run_umap`, `--umap_n_components`, `--umap_n_neighbors`, `--umap_metric`,
+`--umap_min_dist`, `--umap_random_state`) are overridable per batch for their
 batchwise consumer only (`OVWT_BATCHWISE`, `AGGREGATE_FEATURE_TYPE_BATCHWISE`
-/ `AGGREGATE_HALF_BATCHWISE`, `BLOCKLIST_BATCHWISE`) — their global
-counterpart (`OVWT_GLOBAL`, the `_GLOBAL` feature-selection processes)
-always uses the plain pipeline-wide value directly, regardless of any
-batch's override.
+/ `AGGREGATE_HALF_BATCHWISE`, `BLOCKLIST_BATCHWISE`,
+`FINALIZE_FEATURE_SELECT_BATCHWISE`) — their global counterpart
+(`OVWT_GLOBAL`, `GLOBAL_FEATURE_SELECT`) always uses the plain pipeline-wide
+value directly, regardless of any batch's override.
 
 ### `input_paths`: required, batch-YAML-only
 
