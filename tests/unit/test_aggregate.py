@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -477,9 +476,7 @@ def test_auroc_neg_log_p_matches_mannwhitneyu_no_continuity(
 ) -> None:
     """No continuity correction is applied (see class docstring), so the
     matching scipy call must also disable it for exact agreement."""
-    result = (
-        m.AUROCNegLogPValueAggregator().aggregate(native_stats_df.lazy()).collect()
-    )
+    result = m.AUROCNegLogPValueAggregator().aggregate(native_stats_df.lazy()).collect()
     row = _get_row(result, label)
     group, ref = _group_and_ref(native_stats_df, label)
     expected = -np.log10(
@@ -504,9 +501,7 @@ def test_auroc_neg_log_p_n_equals_one_group() -> None:
             "f1": ref + group,
         }
     )
-    row = _get_row(
-        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
-    )
+    row = _get_row(m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
     expected = -np.log10(
         scipy.stats.mannwhitneyu(
             group,
@@ -534,9 +529,7 @@ def test_auroc_neg_log_p_loosely_tracks_continuity_corrected_default() -> None:
             "f1": ref + group,
         }
     )
-    row = _get_row(
-        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
-    )
+    row = _get_row(m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
     expected_default = -np.log10(
         scipy.stats.mannwhitneyu(
             group, ref, method="asymptotic", alternative="two-sided"
@@ -561,9 +554,7 @@ def test_auroc_neg_log_p_strong_separation_is_finite_and_large() -> None:
             "f1": ref + group,
         }
     )
-    row = _get_row(
-        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
-    )
+    row = _get_row(m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
     assert row["f1_AUROCnegLogP"] is not None
     assert np.isfinite(row["f1_AUROCnegLogP"])
     assert row["f1_AUROCnegLogP"] > 50.0
@@ -577,9 +568,7 @@ def test_auroc_neg_log_p_null_when_reference_empty() -> None:
             "f1": [1.0, 2.0],
         }
     )
-    row = _get_row(
-        m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A"
-    )
+    row = _get_row(m.AUROCNegLogPValueAggregator().aggregate(df.lazy()).collect(), "A")
     assert row["f1_AUROCnegLogP"] is None
 
 

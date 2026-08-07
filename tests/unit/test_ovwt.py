@@ -17,9 +17,10 @@ from fisseq_data_pipeline.ovwt import (
     get_feature_cols,
     profile_variant,
     read_feature_file,
+    train_test_val_split,
+    train_xgboost,
 )
 from fisseq_data_pipeline.ovwt import test_xgboost as evaluate_splits
-from fisseq_data_pipeline.ovwt import train_test_val_split, train_xgboost
 from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig, XGBoostParams
 
 

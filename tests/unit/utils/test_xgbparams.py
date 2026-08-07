@@ -1,6 +1,5 @@
 import numpy as np
 import polars as pl
-import pytest
 import xgboost as xgb
 
 from fisseq_data_pipeline.utils.xgbparams import (

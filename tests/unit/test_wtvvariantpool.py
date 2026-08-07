@@ -118,9 +118,7 @@ def test_train_test_val_split_pools_variant_rows():
 
 def test_train_test_val_split_drops_barcodes_below_min_cells():
     df = _make_cells_df({"bc1": 30, "bc2": 30, "bc3": 2}, {"A1A": 30})
-    train, test, val = train_test_val_split(
-        df, _split_cfg(min_cells_per_barcode=5)
-    )
+    train, test, val = train_test_val_split(df, _split_cfg(min_cells_per_barcode=5))
     for split in (train, test, val):
         assert "bc3" not in split.get_column(_BARCODE_COL).to_list()
 
@@ -191,9 +189,7 @@ def test_train_test_val_split_downsample_true_matches_largest_barcode():
 
 def test_train_test_val_split_downsample_int_exact_count():
     df = _make_cells_df({"bc1": 40, "bc2": 20}, {"A1A": 200})
-    train, test, val = train_test_val_split(
-        df, _split_cfg(downsample_variant_pool=50)
-    )
+    train, test, val = train_test_val_split(df, _split_cfg(downsample_variant_pool=50))
     all_rows = pl.concat([train, test, val])
     pool_count = all_rows.filter(pl.col(_BARCODE_COL) == _POOL_GROUP).height
     assert pool_count == 50

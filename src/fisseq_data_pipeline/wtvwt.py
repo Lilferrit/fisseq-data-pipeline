@@ -387,7 +387,9 @@ def evaluate_pair(
         ``train_accuracy``, ``val_auroc``, ``val_accuracy``, ``test_auroc``,
         ``test_accuracy``, ``n_cells_a``, ``n_cells_b``.
     """
-    evaluate_wrapper = lambda df: evaluate(df, model, barcode_column, barcode_a)
+
+    def evaluate_wrapper(df):
+        return evaluate(df, model, barcode_column, barcode_a)
 
     train_auroc, train_accuracy = evaluate_wrapper(train)
     val_auroc, val_accuracy = evaluate_wrapper(val)

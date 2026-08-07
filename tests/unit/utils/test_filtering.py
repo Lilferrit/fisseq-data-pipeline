@@ -110,10 +110,7 @@ def test_drop_small_groups_no_exemptions():
 def test_downsample_group_to_target_reduces_to_max_other_group():
     df = _make_group_df({"target": 100, "other_a": 20, "other_b": 30})
     result = downsample_group_to_target(df, _GROUP_COL, "target", seed=0)
-    counts = result.group_by(_GROUP_COL).len().sort(_GROUP_COL)
-    target_count = (
-        result.filter(pl.col(_GROUP_COL) == "target").height
-    )
+    target_count = result.filter(pl.col(_GROUP_COL) == "target").height
     assert target_count == 30
 
 
@@ -140,11 +137,16 @@ def test_downsample_group_to_target_reproducible_with_same_seed():
     df = _make_group_df({"target": 100, "other": 30})
     r1 = downsample_group_to_target(df, _GROUP_COL, "target", seed=7)
     r2 = downsample_group_to_target(df, _GROUP_COL, "target", seed=7)
-    assert r1.filter(pl.col(_GROUP_COL) == "target").sort(
-        "Intensity_Mean"
-    ).get_column("Intensity_Mean").to_list() == r2.filter(
-        pl.col(_GROUP_COL) == "target"
-    ).sort("Intensity_Mean").get_column("Intensity_Mean").to_list()
+    assert (
+        r1.filter(pl.col(_GROUP_COL) == "target")
+        .sort("Intensity_Mean")
+        .get_column("Intensity_Mean")
+        .to_list()
+        == r2.filter(pl.col(_GROUP_COL) == "target")
+        .sort("Intensity_Mean")
+        .get_column("Intensity_Mean")
+        .to_list()
+    )
 
 
 def test_downsample_group_to_target_total_row_count():
