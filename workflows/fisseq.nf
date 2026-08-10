@@ -11,7 +11,10 @@ nextflow.enable.dsl = 2
 // by params.run_wtvwt (default true). WTVVARIANTPOOL_BATCHWISE (per batch,
 // wildtype-barcode-vs-variant-pool) likewise branches off NORMALIZE
 // independently, gated per batch by params.run_wtvvariantpool (default
-// false).
+// false). OVWTLOBO_BATCHWISE (per batch, leave-one-barcode-out OvWT
+// generalization testing) likewise branches off NORMALIZE independently,
+// gated per batch by params.run_ovwt_lobo (default false, like
+// run_wtvvariantpool).
 // BATCHVSBATCH, OVWT_GLOBAL, ANOVA (both calls), BATCH_CORRECT_FIT/TRANSFORM,
 // and the global feature-selection branch all run once per named channel in
 // params.global_channels (default null = none run), each scoped to only the
@@ -48,6 +51,7 @@ include { OVWT_GLOBAL               } from '../modules/local/ovwt_global'
 include { OVWT_CELLSCORES_BATCHWISE } from '../modules/local/ovwt_cellscores_batchwise'
 include { WTVWT_BATCHWISE           } from '../modules/local/wtvwt_batchwise'
 include { WTVVARIANTPOOL_BATCHWISE  } from '../modules/local/wtvvariantpool_batchwise'
+include { OVWTLOBO_BATCHWISE        } from '../modules/local/ovwtlobo_batchwise'
 include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 include { BARCODE_BLOCKLIST         } from '../modules/local/barcode_blocklist'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
@@ -97,6 +101,8 @@ workflow FisseqPipeline {
         wtvvariantpool_min_cells_per_barcode  : params.wtvvariantpool_min_cells_per_barcode,
         wtvvariantpool_variant_classes        : params.wtvvariantpool_variant_classes,
         wtvvariantpool_downsample_variant_pool: params.wtvvariantpool_downsample_variant_pool,
+        ovwt_lobo_min_cells_holdout       : params.ovwt_lobo_min_cells_holdout,
+        ovwt_lobo_min_barcodes_per_variant: params.ovwt_lobo_min_barcodes_per_variant,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
         run_pca                           : BatchParams.asBool(params.run_pca),
@@ -117,6 +123,7 @@ workflow FisseqPipeline {
         run_feature_selection             : BatchParams.asBool(params.run_feature_selection),
         run_wtvwt                         : BatchParams.asBool(params.run_wtvwt),
         run_wtvvariantpool                : BatchParams.asBool(params.run_wtvvariantpool),
+        run_ovwt_lobo                     : BatchParams.asBool(params.run_ovwt_lobo),
         feature_allowlist_file            : params.feature_allowlist_file,
         feature_blocklist_file            : params.feature_blocklist_file,
         csv_schema_scan_rows              : params.csv_schema_scan_rows,
@@ -180,6 +187,7 @@ workflow FisseqPipeline {
             run_feature_selection    : BatchParams.asBool(cfg.run_feature_selection),
             run_wtvwt                : BatchParams.asBool(cfg.run_wtvwt),
             run_wtvvariantpool       : BatchParams.asBool(cfg.run_wtvvariantpool),
+            run_ovwt_lobo            : BatchParams.asBool(cfg.run_ovwt_lobo),
         ]
     }
 
@@ -302,6 +310,28 @@ workflow FisseqPipeline {
                                  resolvedBatchConfigs[batch_stem].wtvvariantpool_variant_classes,
                                  resolvedBatchConfigs[batch_stem].wtvvariantpool_downsample_variant_pool) }
     WTVVARIANTPOOL_BATCHWISE(wtvvariantpool_input_ch)
+
+    // Step 2d: OVWTLOBO — batchwise, leave-one-barcode-out OvWT generalization
+    // testing. For each non-wildtype variant, repeatedly holds out one barcode,
+    // retrains an OvWT-equivalent classifier on the rest, and scores the
+    // held-out barcode. Per-batch gated on run_ovwt_lobo (default FALSE, unlike
+    // run_wtvwt's default true -- LOBO trains many more models per batch).
+    // Independent of the ANOVA/OvWT/feature-selection chains and of
+    // WTVWT_BATCHWISE/WTVVARIANTPOOL_BATCHWISE, so it only needs norm_ch.
+    // Reuses ovwt_min_cells/ovwt_downsample_wt/max_cells_per_barcode_wt/
+    // max_cells_per_barcode_variant from resolvedBatchConfigs (already
+    // resolved above for OVWT_BATCHWISE) rather than duplicating them; both
+    // block-list values are passed as null (unfiltered), matching
+    // OVWT_BATCHWISE_UNFILTERED's call.
+    ovwtlobo_input_ch = norm_ch.join(gates_ch)
+        .filter { _batch_stem, _p, gates -> gates.run_ovwt_lobo }
+        .map { batch_stem, p, _gates ->
+            def cfg = resolvedBatchConfigs[batch_stem]
+            tuple(batch_stem, p, null, null, cfg.ovwt_min_cells, cfg.ovwt_lobo_min_cells_holdout,
+                  cfg.ovwt_lobo_min_barcodes_per_variant, cfg.ovwt_downsample_wt,
+                  cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
+        }
+    OVWTLOBO_BATCHWISE(ovwtlobo_input_ch)
 
     // ANOVA (normalized) — once per active global channel, scoped to that
     // channel's normalized cells (channel_norm_signal_ch). Its output feeds

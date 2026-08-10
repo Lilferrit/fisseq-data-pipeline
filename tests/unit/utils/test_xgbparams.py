@@ -1,15 +1,18 @@
 import numpy as np
 import polars as pl
 import xgboost as xgb
+from omegaconf import OmegaConf
 
 from fisseq_data_pipeline.utils.xgbparams import (
     XGBoostConfig,
     XGBoostParams,
+    evaluate_binary,
     get_dmatrix,
     get_dmatrix_multiclass,
     get_feature_cols,
     resolve_feature_importance,
     split_indices_stratified,
+    train_binary_xgboost,
 )
 
 
@@ -269,3 +272,110 @@ def test_xgboost_config_defaults():
     assert c.early_stopping_rounds == 5
     assert c.weigh_samples is True
     assert isinstance(c.params, XGBoostParams)
+
+
+# ---------------------------------------------------------------------------
+# train_binary_xgboost / evaluate_binary
+#
+# Shared by ovwt.py/wtvwt.py/wtvvariantpool.py/ovwtlobo.py -- exercised here
+# with generic (non-"wt_label") column/positive-value names to confirm the
+# functions are truly reusable rather than incidentally correct only for
+# ovwt.py's own naming.
+# ---------------------------------------------------------------------------
+
+
+def _make_xgb_cfg(weigh_samples: bool = True) -> OmegaConf:
+    return OmegaConf.create(
+        {
+            "random_state": 0,
+            "xgboost": {
+                "num_boost_round": 5,
+                "early_stopping_rounds": 3,
+                "weigh_samples": weigh_samples,
+                "params": {
+                    "nthread": 1,
+                    "max_depth": 2,
+                    "colsample_bytree": 1.0,
+                    "colsample_bylevel": 1.0,
+                    "colsample_bynode": 1.0,
+                    "subsample": 1.0,
+                },
+            },
+        }
+    )
+
+
+def _make_separable_df(n: int = 60) -> pl.DataFrame:
+    """Linearly separable dataset: barcode "B1" has high Intensity_Mean, "B2" low."""
+    rng = np.random.default_rng(42)
+    half = n // 2
+    return pl.DataFrame(
+        {
+            "Intensity_Mean": np.concatenate(
+                [
+                    rng.uniform(0.6, 1.0, half),  # B1
+                    rng.uniform(0.0, 0.4, half),  # B2
+                ]
+            ).tolist(),
+            "Texture_Var": rng.random(n).tolist(),
+            "barcode": ["B1"] * half + ["B2"] * half,
+        }
+    )
+
+
+def test_train_binary_xgboost_returns_booster():
+    df = _make_separable_df(n=60)
+    cfg = _make_xgb_cfg()
+    half = len(df) // 2
+    model = train_binary_xgboost(df[:half], df[half:], "barcode", "B1", cfg)
+    assert isinstance(model, xgb.Booster)
+
+
+def test_train_binary_xgboost_without_sample_weights():
+    df = _make_separable_df(n=60)
+    cfg = _make_xgb_cfg(weigh_samples=False)
+    half = len(df) // 2
+    model = train_binary_xgboost(df[:half], df[half:], "barcode", "B1", cfg)
+    assert isinstance(model, xgb.Booster)
+
+
+def test_evaluate_binary_auroc_accuracy_in_range():
+    df = _make_separable_df(n=60)
+    cfg = _make_xgb_cfg()
+    b1 = df.filter(pl.col("barcode") == "B1")
+    b2 = df.filter(pl.col("barcode") == "B2")
+    train = pl.concat([b1[:20], b2[:20]])
+    test = pl.concat([b1[20:], b2[20:]])
+    model = train_binary_xgboost(train, train, "barcode", "B1", cfg)
+    auroc, accuracy = evaluate_binary(test, model, "barcode", "B1")
+    assert 0.0 <= auroc <= 1.0
+    assert 0.0 <= accuracy <= 1.0
+
+
+def test_evaluate_binary_separable_data_high_auroc():
+    df = _make_separable_df(n=60)
+    cfg = _make_xgb_cfg()
+    b1 = df.filter(pl.col("barcode") == "B1")
+    b2 = df.filter(pl.col("barcode") == "B2")
+    train = pl.concat([b1[:20], b2[:20]])
+    test = pl.concat([b1[20:], b2[20:]])
+    model = train_binary_xgboost(train, train, "barcode", "B1", cfg)
+    auroc, _ = evaluate_binary(test, model, "barcode", "B1")
+    assert auroc > 0.9
+
+
+def test_evaluate_binary_single_class_test_set_gives_nan_auroc():
+    """Documents the known failure mode evaluate_binary's callers must avoid:
+    AUROC is undefined (NaN, with a warning, not an exception) when the test
+    set has only one class -- callers (e.g. .ovwtlobo) must ensure both
+    classes are present in whatever they pass to evaluate_binary."""
+    df = _make_separable_df(n=60)
+    cfg = _make_xgb_cfg()
+    b1 = df.filter(pl.col("barcode") == "B1")
+    b2 = df.filter(pl.col("barcode") == "B2")
+    train = pl.concat([b1[:20], b2[:20]])
+    single_class_test = b1[20:]
+    model = train_binary_xgboost(train, train, "barcode", "B1", cfg)
+    auroc, accuracy = evaluate_binary(single_class_test, model, "barcode", "B1")
+    assert np.isnan(auroc)
+    assert 0.0 <= accuracy <= 1.0

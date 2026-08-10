@@ -41,6 +41,17 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
       │           classifier per surviving wildtype barcode vs. the pool; independent
       │           of WTVWT_BATCHWISE and the ANOVA_BLOCKLIST/OvWT chain below)
       │
+      ├──► OVWTLOBO_BATCHWISE (per batch; skipped unless params.run_ovwt_lobo = true,
+      │           default FALSE like run_wtvvariantpool; leave-one-barcode-out OvWT
+      │           generalization test -- for each non-wildtype variant with >=
+      │           ovwt_lobo_min_barcodes_per_variant barcodes, holds out each barcode
+      │           in turn, retrains an OvWT-equivalent classifier on the rest, and
+      │           scores the held-out barcode; results.parquet is joinable to
+      │           OVWT_BATCHWISE's own results.parquet on variant/barcode for a
+      │           downstream generalization-gap computation; independent of
+      │           WTVWT_BATCHWISE/WTVVARIANTPOOL_BATCHWISE and the ANOVA_BLOCKLIST/OvWT
+      │           chain below)
+      │
       ├──► ANOVA (normalized)   (per active global channel)
       │           │
       │           ▼
@@ -165,6 +176,31 @@ is an exact target). Gated per batch by `params.run_wtvvariantpool`,
 **default `false`** (unlike `run_wtvwt`'s default `true`) — it only depends
 on `NORMALIZE`'s output, independent of `WTVWT_BATCHWISE` and every other
 gate.
+`OVWTLOBO_BATCHWISE` (per batch) is likewise a single, unaliased process
+(`modules/local/ovwtlobo_batchwise.nf`, wrapping
+`python -m fisseq_data_pipeline.ovwtlobo`) — a leave-one-barcode-out
+generalization test for `OVWT_BATCHWISE`'s classifiers, not a normal
+in-distribution classifier run. For each non-wildtype variant with at least
+`params.ovwt_lobo_min_barcodes_per_variant` (default `2`) barcodes, it holds
+out one barcode at a time, retrains an OvWT-equivalent binary classifier
+(via the same `utils/xgbparams.py:train_binary_xgboost` `OVWT_BATCHWISE`
+uses) on that variant's remaining barcodes plus a wildtype pool, and scores
+the held-out barcode against a wildtype test slice reserved once per batch
+(never trained on, for any fold — pairing it with the held-out barcode's own
+cells is what makes each fold's test AUROC well-defined). Variants below
+`min_barcodes_per_variant` get a `status="skipped_single_barcode"` row rather
+than being dropped; `params.ovwt_lobo_min_cells_holdout` (default `100`)
+similarly flags folds where the held-out barcode itself has too few cells.
+It reuses `ovwt_min_cells`/`ovwt_downsample_wt`/`max_cells_per_barcode_wt`/
+`max_cells_per_barcode_variant` from the `OVWT_BATCHWISE` section rather than
+duplicating them, and does not itself compute or read `OVWT_BATCHWISE`'s
+in-distribution numbers — its `results.parquet` is joinable to
+`OVWT_BATCHWISE`'s own `results.parquet` on `variant` (and `barcode`) for a
+downstream generalization-gap computation. Gated per batch by
+`params.run_ovwt_lobo`, **default `false`** (like `run_wtvvariantpool`, since
+LOBO trains many more models per batch than a single `OVWT_BATCHWISE` pass) —
+it only depends on `NORMALIZE`'s output, independent of `WTVWT_BATCHWISE`/
+`WTVVARIANTPOOL_BATCHWISE` and every other gate.
 
 **Main components:**
 - `src/fisseq_data_pipeline/` — Python package with one module per pipeline step

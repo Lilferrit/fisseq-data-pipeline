@@ -19,8 +19,6 @@ from typing import Optional, Union
 import hydra
 import numpy as np
 import polars as pl
-import sklearn.metrics
-import sklearn.utils
 import xgboost as xgb
 from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
@@ -36,10 +34,14 @@ from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
 from .utils.xgbparams import (
     XGBoostConfig,
-    get_dmatrix,
+    get_dmatrix,  # noqa: F401 -- re-exported; tests/unit/test_ovwt.py imports it from here
     get_feature_cols,
     resolve_feature_importance,
     split_indices_stratified,
+    train_binary_xgboost,
+)
+from .utils.xgbparams import (
+    evaluate_binary as evaluate,
 )
 
 
@@ -130,10 +132,11 @@ def train_xgboost(
     """
     Train an XGBoost binary classifier on a variant-vs-wildtype split.
 
-    Uses ``binary:logistic`` objective with AUC as the eval metric. Sample
-    weights are computed with :func:`sklearn.utils.compute_sample_weight`
-    when ``cfg.xgboost.weigh_samples`` is ``True``. Early stopping is applied
-    against the validation set.
+    Thin wrapper around :func:`.utils.xgbparams.train_binary_xgboost`, which
+    holds the actual fit loop shared with :mod:`.ovwtlobo` (and, in body if
+    not by call site, :mod:`.wtvwt`/:mod:`.wtvvariantpool`) -- see that
+    function for the objective/eval-metric/early-stopping/sample-weighting
+    details.
 
     Parameters
     ----------
@@ -150,64 +153,7 @@ def train_xgboost(
     xgb.Booster
         Trained XGBoost booster at the best iteration.
     """
-    label_col = cfg.label_column
-    wt_label = cfg.wt_label
-
-    y_train = train.get_column(label_col).to_numpy() == wt_label
-    sample_weight = (
-        sklearn.utils.compute_sample_weight("balanced", y_train)
-        if cfg.xgboost.weigh_samples
-        else None
-    )
-
-    dtrain = get_dmatrix(train, label_col, wt_label, weight=sample_weight)
-    deval = get_dmatrix(val, label_col, wt_label)
-
-    params = dict(cfg.xgboost.params)
-    params["objective"] = "binary:logistic"
-    params["eval_metric"] = "auc"
-    params["seed"] = cfg.random_state
-
-    return xgb.train(
-        params,
-        dtrain,
-        num_boost_round=cfg.xgboost.num_boost_round,
-        evals=[(dtrain, "train"), (deval, "eval")],
-        early_stopping_rounds=cfg.xgboost.early_stopping_rounds,
-        verbose_eval=True,
-    )
-
-
-def evaluate(
-    df: pl.DataFrame, model: xgb.Booster, label_col: str, wt_label: str
-) -> tuple[float, float]:
-    """
-    Compute AUROC and accuracy for a trained model on a DataFrame split.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Split to evaluate. Must contain ``label_col`` and the same feature
-        columns used during training.
-    model : xgb.Booster
-        Trained XGBoost booster.
-    label_col : str
-        Name of the label column.
-    wt_label : str
-        Wildtype label string passed to :func:`get_dmatrix`.
-
-    Returns
-    -------
-    tuple[float, float]
-        ``(auroc, accuracy)`` where accuracy uses a 0.5 probability threshold.
-    """
-    dmatrix = get_dmatrix(df, label_col, wt_label)
-    y_true = dmatrix.get_label()
-    y_prob = model.predict(dmatrix)
-    auroc = sklearn.metrics.roc_auc_score(y_true, y_prob)
-    accuracy = sklearn.metrics.accuracy_score(y_true, y_prob >= 0.5)
-
-    return auroc, accuracy
+    return train_binary_xgboost(train, val, cfg.label_column, cfg.wt_label, cfg)
 
 
 def test_xgboost(
@@ -247,7 +193,7 @@ def test_xgboost(
     )
 
     evaluate_wrapper = functools.partial(
-        evaluate, model=model, label_col=label_col, wt_label=wt_label
+        evaluate, model=model, label_col=label_col, positive_label=wt_label
     )
 
     train_auroc, train_accuracy = evaluate_wrapper(train)
