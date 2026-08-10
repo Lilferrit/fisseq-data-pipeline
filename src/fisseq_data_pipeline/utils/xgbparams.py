@@ -2,8 +2,10 @@
 
 Defines :class:`XGBoostParams` / :class:`XGBoostConfig` (shared Hydra sub-config),
 :func:`get_dmatrix` / :func:`get_dmatrix_multiclass` / :func:`split_indices_stratified`,
-and :func:`resolve_feature_importance`, used by :mod:`.ovwt`, :mod:`.ovwtcellscores`,
-:mod:`.batchvsbatch`, :mod:`.wtvwt`, and :mod:`.wtvvariantpool`.
+:func:`resolve_feature_importance`, and :func:`train_binary_xgboost` /
+:func:`evaluate_binary` (the shared binary fit/eval loop), used by :mod:`.ovwt`,
+:mod:`.ovwtcellscores`, :mod:`.batchvsbatch`, :mod:`.wtvwt`, :mod:`.wtvvariantpool`,
+and :mod:`.ovwtlobo`.
 """
 
 import dataclasses
@@ -11,8 +13,11 @@ from typing import Optional
 
 import numpy as np
 import polars as pl
+import sklearn.metrics
 import sklearn.model_selection
+import sklearn.utils
 import xgboost as xgb
+from omegaconf import DictConfig
 
 
 @dataclasses.dataclass
@@ -234,3 +239,106 @@ def split_indices_stratified(
         random_state=random_state,
     )
     return train_idx, test_idx, val_idx
+
+
+def train_binary_xgboost(
+    train: pl.DataFrame,
+    val: pl.DataFrame,
+    label_col: str,
+    positive_label,
+    cfg: DictConfig,
+) -> xgb.Booster:
+    """
+    Train an XGBoost binary classifier distinguishing ``positive_label`` from
+    every other value of ``label_col``.
+
+    Uses ``binary:logistic`` objective with AUC as the eval metric. Sample
+    weights are computed with :func:`sklearn.utils.compute_sample_weight`
+    when ``cfg.xgboost.weigh_samples`` is ``True``. Early stopping is applied
+    against the validation set.
+
+    Shared by every binary classifier entry point (:mod:`.ovwt`, :mod:`.wtvwt`,
+    :mod:`.wtvvariantpool`, :mod:`.ovwtlobo`) so the fit/predict loop itself is
+    defined once; consumers vary only in which column and positive value they
+    pass.
+
+    Parameters
+    ----------
+    train : pl.DataFrame
+        Training split containing feature columns and ``label_col``.
+    val : pl.DataFrame
+        Validation split used for early stopping and eval logging.
+    label_col : str
+        Name of the label column.
+    positive_label : Any
+        Value of ``label_col`` treated as the positive class.
+    cfg : DictConfig
+        Hydra config supplying ``random_state`` and the ``xgboost`` sub-config.
+
+    Returns
+    -------
+    xgb.Booster
+        Trained XGBoost booster at the best iteration.
+    """
+    y_train = train.get_column(label_col).to_numpy() == positive_label
+    sample_weight = (
+        sklearn.utils.compute_sample_weight("balanced", y_train)
+        if cfg.xgboost.weigh_samples
+        else None
+    )
+
+    dtrain = get_dmatrix(train, label_col, positive_label, weight=sample_weight)
+    deval = get_dmatrix(val, label_col, positive_label)
+
+    params = dict(cfg.xgboost.params)
+    params["objective"] = "binary:logistic"
+    params["eval_metric"] = "auc"
+    params["seed"] = cfg.random_state
+
+    return xgb.train(
+        params,
+        dtrain,
+        num_boost_round=cfg.xgboost.num_boost_round,
+        evals=[(dtrain, "train"), (deval, "eval")],
+        early_stopping_rounds=cfg.xgboost.early_stopping_rounds,
+        verbose_eval=True,
+    )
+
+
+def evaluate_binary(
+    df: pl.DataFrame, model: xgb.Booster, label_col: str, positive_label
+) -> tuple[float, float]:
+    """
+    Compute AUROC and accuracy for a trained binary model on a DataFrame split.
+
+    Shared by every binary classifier entry point (:mod:`.ovwt`, :mod:`.wtvwt`,
+    :mod:`.wtvvariantpool`, :mod:`.ovwtlobo`). AUROC is undefined (NaN, with a
+    warning rather than an exception) if ``df`` is single-class for
+    ``label_col == positive_label`` -- callers must ensure both classes are
+    present in ``df``.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Split to evaluate. Must contain ``label_col`` and the same feature
+        columns used during training.
+    model : xgb.Booster
+        Trained XGBoost booster.
+    label_col : str
+        Name of the label column.
+    positive_label : Any
+        Value of ``label_col`` treated as the positive class, passed to
+        :func:`get_dmatrix`.
+
+    Returns
+    -------
+    tuple[float, float]
+        ``(auroc, accuracy)`` where accuracy uses a 0.5 probability threshold.
+    """
+    dmatrix = get_dmatrix(df, label_col, positive_label)
+    y_true = dmatrix.get_label()
+    y_prob = model.predict(dmatrix)
+    auroc = sklearn.metrics.roc_auc_score(y_true, y_prob)
+    accuracy = sklearn.metrics.accuracy_score(y_true, y_prob >= 0.5)
+
+    return auroc, accuracy

@@ -53,6 +53,11 @@ class BatchParams {
         'wtvvariantpool_min_cells_per_barcode',
         'wtvvariantpool_variant_classes',
         'wtvvariantpool_downsample_variant_pool',
+        // OVWTLOBO_BATCHWISE (ovwt_min_cells/ovwt_downsample_wt/
+        // max_cells_per_barcode_wt/max_cells_per_barcode_variant above are
+        // reused, not duplicated here)
+        'ovwt_lobo_min_cells_holdout',
+        'ovwt_lobo_min_barcodes_per_variant',
         // feature-selection batchwise chain (shared names with the global
         // chain, which always uses the plain params.X default)
         'feature_select_downsample_wt',
@@ -81,6 +86,7 @@ class BatchParams {
         'run_feature_selection',
         'run_wtvwt',
         'run_wtvvariantpool',
+        'run_ovwt_lobo',
         // INPUT-stage tunables — naturally global, only ever settable
         // per-batch before this refactor; now also plain nextflow.config
         // pipeline-wide defaults (see nextflow.config)
