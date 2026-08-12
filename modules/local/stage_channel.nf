@@ -1,12 +1,17 @@
 nextflow.enable.dsl = 2
 
 // STAGE_CHANNEL_CELLS: republishes one batch's staged file into a per-channel
-// directory, so the *_GLOBAL processes (BATCHVSBATCH, OVWT_GLOBAL, ANOVA,
-// BATCH_CORRECT_FIT, the feature-selection _GLOBAL chain) can glob a
-// directory containing only that channel's batches, exactly as they glob
-// published output today (see AGENTS.md's "global processes glob published
-// files, not channel outputs" gotcha) -- just scoped per global channel
-// instead of to the whole pipeline_dir.
+// directory (for on-disk inspection/debugging, and as the source for the
+// *_GLOBAL processes below), scoped per global channel instead of to the
+// whole pipeline_dir. Downstream, BATCHVSBATCH/OVWT_GLOBAL/ANOVA/
+// BATCH_CORRECT_FIT consume this process's output as real Nextflow `path`
+// inputs (collected per channel via workflows/fisseq.nf's
+// perChannelSignal), NOT by re-globbing this directory from disk -- that
+// old "glob published files, not channel outputs" idiom (see AGENTS.md
+// gotcha 6) broke -resume cache invalidation, since a `val` glob string
+// only hashes the glob text itself, not the file set it resolves to. The
+// feature-selection _GLOBAL chain (GLOBAL_FEATURE_SELECT) doesn't use this
+// staging mechanism at all -- see AGENTS.md's "Global channels" section.
 // Aliased twice in workflows/fisseq.nf (as STAGE_CHANNEL_QC / STAGE_CHANNEL_NORM)
 // for the two data sources global processes consume: QC_FILTER's
 // filtered_cells (for BATCHVSBATCH_PRE/BATCH_CORRECT_FIT) and NORMALIZE's

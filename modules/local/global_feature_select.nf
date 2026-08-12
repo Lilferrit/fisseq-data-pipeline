@@ -4,25 +4,42 @@ nextflow.enable.dsl = 2
 // Runs once per active global channel. Unlike the BATCHWISE feature-selection
 // chain (FINALIZE_FEATURE_SELECT et al., which parallelize genuinely
 // expensive cell-level bootstrap work), this process needs no Nextflow-level
-// fan-out: it reads the channel's member batches' already-published BATCHWISE
-// aggregates/blocklists directly off pipeline_dir (same "glob published
-// output" idiom ANOVA_NORMALIZED/OVWT_GLOBAL already use -- see AGENTS.md),
-// looping over batch_stems in Python. params.feature_select_types is passed
-// through so that glob is filtered to the currently-configured feature
-// types -- otherwise stale per-feature-type files left behind by a prior
-// run with a larger feature_select_types (publishDir mode: 'copy' never
-// deletes them) would silently leak into the global aggregate. No path()
-// file inputs, so there is no same-named-file staging collision to design
-// around. The channel identifier is named "chan" below -- "channel" is a
-// reserved Nextflow binding (lowercase alias for the Channel class), see
-// AGENTS.md.
+// fan-out: it reuses the channel's member batches' own BATCHWISE aggregates/
+// blocklists, already produced as real Nextflow outputs earlier in this same
+// run (AGGREGATE_FEATURE_TYPE_BATCHWISE/COMBINE_BLOCKLISTS_BATCHWISE), passed
+// in as real `path` inputs (agg_files/blocklist_files) rather than re-derived
+// via a `val(pipeline_dir)` + `val(batch_stems)` Python-side glob -- the old
+// approach broke -resume cache invalidation, since a task hash built from
+// scalar batch_stems/pipeline_dir strings can't detect when the underlying
+// files' *contents* change without the batch membership itself changing (see
+// AGENTS.md gotcha 6).
+//
+// Every batch names its aggregate files "<feature_type>.parquet" and its
+// blocklist "blocklist.parquet", so staging many batches' files into one
+// task collides on basename -- resolved via `stageAs` with a single `*`,
+// which Nextflow auto-numbers by list order ("agg_input_1.parquet",
+// "agg_input_2.parquet", ...), paired with the parallel val(agg_batch_stems)/
+// val(bl_batch_stems) lists (built from the same source list in
+// workflows/fisseq.nf, so ordering matches) that tell the Python side which
+// staged file belongs to which batch. feature-type identity is no longer
+// threaded through at all: join_feature_type_files (utils/featuretypes.py)
+// joins by file content/schema, not filename, so it never needed it -- and
+// since Nextflow now only ever supplies the exact currently-configured
+// feature_select_types (there is no way for a stale on-disk file to reach
+// this process), the old "filter out stale/unconfigured feature-type files"
+// logic is gone too, not just relocated.
+//
+// The channel identifier is named "chan" below -- "channel" is a reserved
+// Nextflow binding (lowercase alias for the Channel class), see AGENTS.md.
 process GLOBAL_FEATURE_SELECT {
     errorStrategy 'ignore'
     label 'process_medium'
     publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
-    tuple val(chan), val(batch_stems), val(pipeline_dir), val(publish_subdir), val(min_batches_ok), val(feature_select_types), \
+    tuple val(chan), val(agg_batch_stems), path(agg_files, stageAs: "agg_input_*.parquet"), \
+          val(bl_batch_stems), path(blocklist_files, stageAs: "bl_input_*.parquet"), \
+          val(publish_subdir), val(min_batches_ok), \
           val(run_pca), val(pca_n_components), val(run_umap), val(umap_n_components), val(umap_n_neighbors), \
           val(umap_metric), val(umap_min_dist), val(umap_random_state)
 
@@ -36,16 +53,17 @@ process GLOBAL_FEATURE_SELECT {
     path("pca_components.parquet", optional: true)
 
     script:
-    def stemsArg = "[" + batch_stems.join(',') + "]"
+    def aggStemsArg = "[" + agg_batch_stems.collect { s -> "'${s}'" }.join(',') + "]"
+    def blStemsArg = "[" + bl_batch_stems.collect { s -> "'${s}'" }.join(',') + "]"
     def minArg = (min_batches_ok == null) ? "" : "min_batches_ok=${min_batches_ok}"
-    def typesArg = "[" + feature_select_types.join(',') + "]"
     """
     echo "Starting GLOBAL_FEATURE_SELECT for ${chan}"
     python -m fisseq_data_pipeline.globalfeatureselect \\
         output_dir=. \\
-        pipeline_dir=${pipeline_dir} \\
-        "batch_stems=${stemsArg}" \\
-        "feature_select_types=${typesArg}" \\
+        "agg_batch_stems=${aggStemsArg}" \\
+        n_agg_files=${agg_files.size()} \\
+        "bl_batch_stems=${blStemsArg}" \\
+        n_blocklist_files=${blocklist_files.size()} \\
         ${minArg} \\
         run_pca=${run_pca} \\
         pca_n_components=${pca_n_components} \\

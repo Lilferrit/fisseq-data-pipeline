@@ -59,29 +59,62 @@ def test_combine_batch_blocklists_raises_on_empty_paths() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _reconstruct_staged_paths / group_paths_by_batch
+#
+# These back main()'s translation from Nextflow's stageAs auto-numbering
+# (agg_input_1.parquet, agg_input_2.parquet, ... -- see
+# modules/local/global_feature_select.nf) back into per-batch file lists.
+# ---------------------------------------------------------------------------
+
+
+def test_reconstruct_staged_paths_numbers_from_one() -> None:
+    assert m._reconstruct_staged_paths(3, "agg_input") == [
+        "agg_input_1.parquet",
+        "agg_input_2.parquet",
+        "agg_input_3.parquet",
+    ]
+
+
+def test_reconstruct_staged_paths_empty() -> None:
+    assert m._reconstruct_staged_paths(0, "agg_input") == []
+
+
+def test_group_paths_by_batch_preserves_order_and_groups() -> None:
+    grouped = m.group_paths_by_batch(
+        ["batchA", "batchB", "batchA"], ["a1.parquet", "b1.parquet", "a2.parquet"]
+    )
+    assert list(grouped.keys()) == ["batchA", "batchB"]
+    assert grouped["batchA"] == ["a1.parquet", "a2.parquet"]
+    assert grouped["batchB"] == ["b1.parquet"]
+
+
+def test_group_paths_by_batch_raises_on_length_mismatch() -> None:
+    with pytest.raises(ValueError):
+        m.group_paths_by_batch(["batchA"], ["a1.parquet", "a2.parquet"])
+
+
+# ---------------------------------------------------------------------------
 # normalize_batch_aggregate
 # ---------------------------------------------------------------------------
 
 
-def _write_batch_aggregates(pipeline_dir, batch_stem: str) -> None:
+def _write_batch_aggregate(dir_path, filename: str = "mean.parquet") -> str:
     """A1A/A2A/A3A are Synonymous (classify_variant) and form the
     normalization reference; A1B/A1C are not."""
-    agg_dir = pipeline_dir / "feature_select_batchwise" / batch_stem / "aggregates"
-    agg_dir.mkdir(parents=True, exist_ok=True)
+    path = dir_path / filename
     pl.DataFrame(
         {
             "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
             "f1_mean": [0.0, 1.0, 4.0, 5.0, 10.0],
             "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
         }
-    ).write_parquet(agg_dir / "mean.parquet")
+    ).write_parquet(path)
+    return str(path)
 
 
 def test_normalize_batch_aggregate_normalizes_to_synonymous_baseline(tmp_path) -> None:
-    _write_batch_aggregates(tmp_path, "batchA")
-    result = m.normalize_batch_aggregate(
-        str(tmp_path), "batchA", "meta_aa_changes", ["mean"]
-    ).collect()
+    path = _write_batch_aggregate(tmp_path)
+    result = m.normalize_batch_aggregate([path], "meta_aa_changes").collect()
 
     control_f1 = np.array([0.0, 1.0, 4.0])
     f1_mean, f1_std = control_f1.mean(), control_f1.std(ddof=1)
@@ -89,58 +122,18 @@ def test_normalize_batch_aggregate_normalizes_to_synonymous_baseline(tmp_path) -
     assert row["f1_mean"][0] == pytest.approx((5.0 - f1_mean) / f1_std, abs=1e-9)
 
 
-def test_normalize_batch_aggregate_raises_on_empty_glob(tmp_path) -> None:
+def test_normalize_batch_aggregate_raises_on_empty_paths() -> None:
     with pytest.raises(ValueError):
-        m.normalize_batch_aggregate(
-            str(tmp_path), "nonexistent_batch", "meta_aa_changes", ["mean"]
-        )
+        m.normalize_batch_aggregate([], "meta_aa_changes")
 
 
 def test_normalize_batch_aggregate_drops_blocked_features(tmp_path) -> None:
-    _write_batch_aggregates(tmp_path, "batchA")
+    path = _write_batch_aggregate(tmp_path)
     result = m.normalize_batch_aggregate(
-        str(tmp_path),
-        "batchA",
-        "meta_aa_changes",
-        ["mean"],
-        blocked_features={"f2_mean"},
+        [path], "meta_aa_changes", blocked_features={"f2_mean"}
     ).collect()
     assert "f2_mean" not in result.columns
     assert "f1_mean" in result.columns
-
-
-def test_normalize_batch_aggregate_ignores_stale_unconfigured_feature_type(
-    tmp_path,
-) -> None:
-    """A feature type file present on disk (e.g. left behind by an earlier
-    run with a larger feature_select_types) but absent from the current
-    feature_select_types must not leak into the joined aggregate."""
-    _write_batch_aggregates(tmp_path, "batchA")
-    agg_dir = tmp_path / "feature_select_batchwise" / "batchA" / "aggregates"
-    pl.DataFrame(
-        {
-            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
-            "f1_AUROC": [0.0, 1.0, 4.0, 5.0, 10.0],
-        }
-    ).write_parquet(agg_dir / "AUROC.parquet")
-
-    result = m.normalize_batch_aggregate(
-        str(tmp_path), "batchA", "meta_aa_changes", ["mean"]
-    ).collect()
-    assert "f1_AUROC" not in result.columns
-    assert "f1_mean" in result.columns
-
-
-def test_normalize_batch_aggregate_raises_when_configured_types_all_missing(
-    tmp_path,
-) -> None:
-    """Only a stale, unconfigured feature type file is present -- there is
-    nothing to join for the currently-configured feature_select_types."""
-    _write_batch_aggregates(tmp_path, "batchA")
-    with pytest.raises(ValueError):
-        m.normalize_batch_aggregate(
-            str(tmp_path), "batchA", "meta_aa_changes", ["AUROC"]
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -247,24 +240,40 @@ def test_select_global_aggregate_drops_blocked_columns() -> None:
 
 # ---------------------------------------------------------------------------
 # main() — end to end
+#
+# main() reads its aggregate/blocklist inputs as bare, cwd-relative
+# filenames (agg_input_1.parquet, bl_input_1.parquet, ...) -- reconstructing
+# the names Nextflow's stageAs auto-numbering stages them under (see
+# _reconstruct_staged_paths) -- so these tests stage files directly into
+# tmp_path and chdir into it, mirroring a real task's work directory, rather
+# than building a pipeline_dir tree for main() to glob.
 # ---------------------------------------------------------------------------
 
 
-def _write_pipeline_dir(tmp_path, *, block_f2: bool = False):
-    pipeline_dir = tmp_path / "pipeline"
-    for batch_stem in ["batchA", "batchB"]:
-        _write_batch_aggregates(pipeline_dir, batch_stem)
-        bl_dir = pipeline_dir / "feature_select_batchwise" / batch_stem
-        bl_dir.mkdir(parents=True, exist_ok=True)
+def _stage_batches(work_dir, *, block_f2: bool = False):
+    """Stage one "mean" aggregate file and one blocklist file per batch
+    (batchA, batchB) into work_dir, named the way Nextflow's stageAs
+    auto-numbering would name them, and return the kwargs make_gfs_cfg needs
+    to describe that staging. Both batches carry identical aggregate data.
+    """
+    batch_stems = ["batchA", "batchB"]
+    for i, _batch_stem in enumerate(batch_stems, start=1):
+        _write_batch_aggregate(work_dir, filename=f"agg_input_{i}.parquet")
+    for i, _batch_stem in enumerate(batch_stems, start=1):
         pl.DataFrame(
             {"feature": ["f1_mean", "f2_mean"], "feature_ok": [True, not block_f2]}
-        ).write_parquet(bl_dir / "blocklist.parquet")
-    return pipeline_dir
+        ).write_parquet(work_dir / f"bl_input_{i}.parquet")
+    return dict(
+        agg_batch_stems=list(batch_stems),
+        n_agg_files=len(batch_stems),
+        bl_batch_stems=list(batch_stems),
+        n_blocklist_files=len(batch_stems),
+    )
 
 
 def make_gfs_cfg(
     tmp_path,
-    pipeline_dir,
+    staged: dict,
     *,
     min_batches_ok=None,
     compute_impact_score=None,
@@ -279,9 +288,6 @@ def make_gfs_cfg(
 ) -> OmegaConf:
     kwargs = dict(
         output_dir=str(tmp_path / "out"),
-        pipeline_dir=str(pipeline_dir),
-        batch_stems=["batchA", "batchB"],
-        feature_select_types=["mean"],
         min_batches_ok=min_batches_ok,
         run_pca=run_pca,
         pca_n_components=pca_n_components,
@@ -291,58 +297,90 @@ def make_gfs_cfg(
         umap_metric=umap_metric,
         umap_min_dist=umap_min_dist,
         umap_random_state=umap_random_state,
+        **staged,
     )
     if compute_impact_score is not None:
         kwargs["compute_impact_score"] = compute_impact_score
     return OmegaConf.structured(m.GlobalFeatureSelectConfig(**kwargs))
 
 
-def _run_gfs_main(tmp_path, pipeline_dir, **kwargs) -> pl.DataFrame:
-    """Run main() and return the written aggregate parquet."""
+def _run_gfs_main(tmp_path, monkeypatch, staged: dict, **kwargs) -> pl.DataFrame:
+    """chdir into tmp_path (where staged input files live), run main(), and
+    return the written aggregate parquet."""
+    monkeypatch.chdir(tmp_path)
     with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
         with patch(
             "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
             side_effect=lambda profiles, **_kw: profiles,
         ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir, **kwargs))
+            m.main.__wrapped__(make_gfs_cfg(tmp_path, staged, **kwargs))
     return pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
 
 
-def test_main_writes_both_outputs(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
+def test_main_writes_both_outputs(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    _run_gfs_main(tmp_path, monkeypatch, staged)
     assert (tmp_path / "out" / "aggregate.parquet").exists()
     assert (tmp_path / "out" / "blocklist.parquet").exists()
 
 
-def test_main_blocked_feature_absent_from_aggregate(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path, block_f2=True)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
-    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+def test_main_blocked_feature_absent_from_aggregate(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path, block_f2=True)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
     assert "f2_mean" not in result.columns
     assert "f1_mean" in result.columns
 
 
-def test_main_aggregate_has_one_row_per_variant(tmp_path) -> None:
+def test_main_aggregate_has_one_row_per_variant(tmp_path, monkeypatch) -> None:
     # Both batches contribute the same 5 variants (A1A/A2A/A3A/A1B/A1C) ->
     # median_across_batches collapses each to a single row.
-    pipeline_dir = _write_pipeline_dir(tmp_path)
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
+    assert len(result) == 5
+
+
+def test_main_raises_on_empty_agg_batch_stems(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    staged["agg_batch_stems"] = []
+    staged["n_agg_files"] = 0
+    monkeypatch.chdir(tmp_path)
     with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
+        with pytest.raises(ValueError):
+            m.main.__wrapped__(make_gfs_cfg(tmp_path, staged))
+
+
+def test_main_raises_on_empty_bl_batch_stems(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    staged["bl_batch_stems"] = []
+    staged["n_blocklist_files"] = 0
+    monkeypatch.chdir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        with pytest.raises(ValueError):
+            m.main.__wrapped__(make_gfs_cfg(tmp_path, staged))
+
+
+def test_main_tolerates_batch_present_in_agg_but_not_blocklist(
+    tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # batchC contributes an aggregate but (e.g. because its own
+    # blocklist-combination chain failed upstream, tolerated under
+    # errorStrategy 'ignore') no blocklist -- main() must warn and proceed
+    # using only the batches available on each side, not crash.
+    staged = _stage_batches(tmp_path)
+    _write_batch_aggregate(tmp_path, filename="agg_input_3.parquet")
+    staged["agg_batch_stems"].append("batchC")
+    staged["n_agg_files"] = 3
+    monkeypatch.chdir(tmp_path)
+    with caplog.at_level(logging.WARNING):
+        with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+            with patch(
+                "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
+                side_effect=lambda profiles, **_kw: profiles,
+            ):
+                m.main.__wrapped__(make_gfs_cfg(tmp_path, staged))
+    assert "batchC" in caplog.text
+    # batchC still contributes to the aggregate (it just isn't
+    # blocklist-filtered by its own batch's report).
     result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
     assert len(result) == 5
 
@@ -352,77 +390,47 @@ def test_main_aggregate_has_one_row_per_variant(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_main_impact_score_column_present_by_default(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
-    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+def test_main_impact_score_column_present_by_default(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
     assert IMPACT_SCORE_COL in result.columns
     assert "meta_is_control" in result.columns
 
 
-def test_main_impact_score_column_absent_when_disabled(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(
-                make_gfs_cfg(tmp_path, pipeline_dir, compute_impact_score=False)
-            )
-    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+def test_main_impact_score_column_absent_when_disabled(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged, compute_impact_score=False)
     assert IMPACT_SCORE_COL not in result.columns
 
 
-def test_main_impact_score_values_are_finite(tmp_path) -> None:
+def test_main_impact_score_values_are_finite(tmp_path, monkeypatch) -> None:
     # A1A/A2A/A3A are the synonymous control group; their normalized feature
     # vectors are non-zero, so compute_impact_score produces finite scores
     # for all rows.
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
-    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
     assert result[IMPACT_SCORE_COL].is_finite().all()
 
 
-def test_main_synonymous_median_has_zero_impact_score(tmp_path) -> None:
-    # _write_batch_aggregates' f2_mean is exactly 2x f1_mean for the
+def test_main_synonymous_median_has_zero_impact_score(tmp_path, monkeypatch) -> None:
+    # _write_batch_aggregate's f2_mean is exactly 2x f1_mean for the
     # synonymous control rows (A1A/A2A/A3A), so each control row's
     # normalized vector lies along the same direction and A2A (the middle
     # raw value) lands exactly on the control median vector -> impact
     # score 0. batchA and batchB carry identical data, so the cross-batch
     # median leaves each batch's per-variant normalized values unchanged.
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(make_gfs_cfg(tmp_path, pipeline_dir))
-    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
     median_row = result.filter(pl.col("meta_aa_changes") == "A2A")
     assert median_row[IMPACT_SCORE_COL][0] == pytest.approx(0.0, abs=1e-9)
 
 
-def _write_mismatched_pipeline_dir(tmp_path):
+def _stage_mismatched_batches(work_dir):
     """batchA and batchB deliberately diverge in all three ways this fix
     guards against: batchA carries a stray metadata column (``meta_extra``)
     batchB lacks, batchA has a feature column (``f4_mean``) batchB lacks,
     and ``f3_mean`` is blocked globally even though only batchA's blocklist
     reports on it (unanimity-among-reporters)."""
-    pipeline_dir = tmp_path / "pipeline"
-
-    agg_dir_a = pipeline_dir / "feature_select_batchwise" / "batchA" / "aggregates"
-    agg_dir_a.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
         {
             "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
@@ -432,18 +440,14 @@ def _write_mismatched_pipeline_dir(tmp_path):
             "f3_mean": [0.0, 1.0, 2.0, 3.0, 4.0],
             "f4_mean": [0.0, 1.0, 2.0, 3.0, 4.0],
         }
-    ).write_parquet(agg_dir_a / "mean.parquet")
+    ).write_parquet(work_dir / "agg_input_1.parquet")
     pl.DataFrame(
         {
             "feature": ["f1_mean", "f2_mean", "f3_mean"],
             "feature_ok": [True, True, False],
         }
-    ).write_parquet(
-        pipeline_dir / "feature_select_batchwise" / "batchA" / "blocklist.parquet"
-    )
+    ).write_parquet(work_dir / "bl_input_1.parquet")
 
-    agg_dir_b = pipeline_dir / "feature_select_batchwise" / "batchB" / "aggregates"
-    agg_dir_b.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
         {
             "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
@@ -451,31 +455,26 @@ def _write_mismatched_pipeline_dir(tmp_path):
             "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
             "f3_mean": [0.0, 1.0, 2.0, 3.0, 4.0],
         }
-    ).write_parquet(agg_dir_b / "mean.parquet")
+    ).write_parquet(work_dir / "agg_input_2.parquet")
     pl.DataFrame(
         {"feature": ["f1_mean", "f2_mean"], "feature_ok": [True, True]}
-    ).write_parquet(
-        pipeline_dir / "feature_select_batchwise" / "batchB" / "blocklist.parquet"
+    ).write_parquet(work_dir / "bl_input_2.parquet")
+
+    return dict(
+        agg_batch_stems=["batchA", "batchB"],
+        n_agg_files=2,
+        bl_batch_stems=["batchA", "batchB"],
+        n_blocklist_files=2,
     )
 
-    return pipeline_dir
 
-
-def test_main_handles_mismatched_batch_schemas(tmp_path) -> None:
+def test_main_handles_mismatched_batch_schemas(tmp_path, monkeypatch) -> None:
     # compute_impact_score=False: this test is scoped to schema-mismatch
     # handling upstream of feature selection, not the impact-score step,
     # which re-adds its own meta_is_control/meta_impact_score afterward
     # (see the "compute_impact_score" test section).
-    pipeline_dir = _write_mismatched_pipeline_dir(tmp_path)
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with patch(
-            "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
-            side_effect=lambda profiles, **_kw: profiles,
-        ):
-            m.main.__wrapped__(
-                make_gfs_cfg(tmp_path, pipeline_dir, compute_impact_score=False)
-            )
-    result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
+    staged = _stage_mismatched_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged, compute_impact_score=False)
     assert "f1_mean" in result.columns
     assert "f2_mean" in result.columns
     assert "f3_mean" not in result.columns  # globally blocked
@@ -484,49 +483,38 @@ def test_main_handles_mismatched_batch_schemas(tmp_path) -> None:
     assert [c for c in result.columns if c.startswith("meta_")] == ["meta_aa_changes"]
 
 
-def test_main_raises_on_empty_batch_stems(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    cfg = OmegaConf.structured(
-        m.GlobalFeatureSelectConfig(
-            output_dir=str(tmp_path / "out"),
-            pipeline_dir=str(pipeline_dir),
-            batch_stems=[],
-            feature_select_types=["mean"],
-        )
-    )
-    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
-        with pytest.raises(ValueError):
-            m.main.__wrapped__(cfg)
-
-
 # ---------------------------------------------------------------------------
 # PCA / UMAP — main() integration
 # ---------------------------------------------------------------------------
 
 
-def test_main_pca_off_by_default_no_pc_columns(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    result = _run_gfs_main(tmp_path, pipeline_dir)
+def test_main_pca_off_by_default_no_pc_columns(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
     assert not any(c.startswith("meta_pc_") for c in result.columns)
     assert not (tmp_path / "out" / "pca_components.parquet").exists()
 
 
-def test_main_umap_off_by_default_no_umap_columns(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    result = _run_gfs_main(tmp_path, pipeline_dir)
+def test_main_umap_off_by_default_no_umap_columns(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(tmp_path, monkeypatch, staged)
     assert not any(c.startswith("meta_umap_") for c in result.columns)
 
 
-def test_main_run_pca_adds_pc_columns(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    result = _run_gfs_main(tmp_path, pipeline_dir, run_pca=True, pca_n_components=2)
+def test_main_run_pca_adds_pc_columns(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    result = _run_gfs_main(
+        tmp_path, monkeypatch, staged, run_pca=True, pca_n_components=2
+    )
     assert "meta_pc_1" in result.columns
     assert "meta_pc_2" in result.columns
 
 
-def test_main_run_pca_writes_components_file_with_expected_schema(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    _run_gfs_main(tmp_path, pipeline_dir, run_pca=True, pca_n_components=2)
+def test_main_run_pca_writes_components_file_with_expected_schema(
+    tmp_path, monkeypatch
+) -> None:
+    staged = _stage_batches(tmp_path)
+    _run_gfs_main(tmp_path, monkeypatch, staged, run_pca=True, pca_n_components=2)
     components = pl.read_parquet(tmp_path / "out" / "pca_components.parquet")
     assert components["meta_component_idx"].to_list() == [1, 2]
     assert "meta_variance_explained" in components.columns
@@ -539,23 +527,31 @@ def test_main_run_pca_writes_components_file_with_expected_schema(tmp_path) -> N
     assert other_cols == {"f1_mean", "f2_mean"}
 
 
-def test_main_run_pca_components_file_absent_when_pca_off(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    _run_gfs_main(tmp_path, pipeline_dir, run_pca=False)
+def test_main_run_pca_components_file_absent_when_pca_off(
+    tmp_path, monkeypatch
+) -> None:
+    staged = _stage_batches(tmp_path)
+    _run_gfs_main(tmp_path, monkeypatch, staged, run_pca=False)
     assert not (tmp_path / "out" / "pca_components.parquet").exists()
 
 
-def test_main_run_umap_adds_umap_columns(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
+def test_main_run_umap_adds_umap_columns(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
     result = _run_gfs_main(
-        tmp_path, pipeline_dir, run_umap=True, umap_n_components=2, umap_n_neighbors=2
+        tmp_path,
+        monkeypatch,
+        staged,
+        run_umap=True,
+        umap_n_components=2,
+        umap_n_neighbors=2,
     )
     assert "meta_umap_1" in result.columns
     assert "meta_umap_2" in result.columns
 
 
-def test_main_umap_metric_passed_to_compute_umap(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
+def test_main_umap_metric_passed_to_compute_umap(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    monkeypatch.chdir(tmp_path)
     with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
         with patch(
             "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
@@ -574,7 +570,7 @@ def test_main_umap_metric_passed_to_compute_umap(tmp_path) -> None:
                 m.main.__wrapped__(
                     make_gfs_cfg(
                         tmp_path,
-                        pipeline_dir,
+                        staged,
                         run_umap=True,
                         umap_metric="euclidean",
                         umap_n_neighbors=2,
@@ -584,11 +580,11 @@ def test_main_umap_metric_passed_to_compute_umap(tmp_path) -> None:
     assert mock_umap.call_args.args[4] == "euclidean"
 
 
-def test_main_pca_umap_join_by_label_not_position(tmp_path) -> None:
+def test_main_pca_umap_join_by_label_not_position(tmp_path, monkeypatch) -> None:
     # compute_pca/compute_umap return scores in a different row order than
     # the aggregate's own order; main() must join by label_column, not by
     # position.
-    pipeline_dir = _write_pipeline_dir(tmp_path)
+    staged = _stage_batches(tmp_path)
     shuffled_labels = ["A1C", "A1A", "A3A", "A1B", "A2A"]
     pc_values = {label: float(i) for i, label in enumerate(shuffled_labels)}
     umap_values = {label: float(-i) for i, label in enumerate(shuffled_labels)}
@@ -615,6 +611,7 @@ def test_main_pca_umap_join_by_label_not_position(tmp_path) -> None:
         }
     )
 
+    monkeypatch.chdir(tmp_path)
     with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
         with patch(
             "fisseq_data_pipeline.featureselect.pycytominer.feature_select",
@@ -631,7 +628,7 @@ def test_main_pca_umap_join_by_label_not_position(tmp_path) -> None:
                     m.main.__wrapped__(
                         make_gfs_cfg(
                             tmp_path,
-                            pipeline_dir,
+                            staged,
                             run_pca=True,
                             pca_n_components=1,
                             run_umap=True,
@@ -647,15 +644,13 @@ def test_main_pca_umap_join_by_label_not_position(tmp_path) -> None:
         assert row["meta_umap_1"][0] == pytest.approx(expected)
 
 
-def _write_pipeline_dir_with_null_feature(tmp_path):
+def _stage_batches_with_null_feature(work_dir):
     # f3_mean is constant across the synonymous control group (A1A/A2A/A3A)
     # in both batches, so per-batch normalization stores std=None for it and
     # it normalizes to entirely null in the cross-batch median too --
     # compute_pca must drop it (with a warning) rather than fail.
-    pipeline_dir = tmp_path / "pipeline"
-    for batch_stem in ["batchA", "batchB"]:
-        agg_dir = pipeline_dir / "feature_select_batchwise" / batch_stem / "aggregates"
-        agg_dir.mkdir(parents=True, exist_ok=True)
+    batch_stems = ["batchA", "batchB"]
+    for i, _batch_stem in enumerate(batch_stems, start=1):
         pl.DataFrame(
             {
                 "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
@@ -663,35 +658,43 @@ def _write_pipeline_dir_with_null_feature(tmp_path):
                 "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
                 "f3_mean": [5.0, 5.0, 5.0, 9.0, 3.0],
             }
-        ).write_parquet(agg_dir / "mean.parquet")
-        bl_dir = pipeline_dir / "feature_select_batchwise" / batch_stem
+        ).write_parquet(work_dir / f"agg_input_{i}.parquet")
         pl.DataFrame(
             {
                 "feature": ["f1_mean", "f2_mean", "f3_mean"],
                 "feature_ok": [True, True, True],
             }
-        ).write_parquet(bl_dir / "blocklist.parquet")
-    return pipeline_dir
+        ).write_parquet(work_dir / f"bl_input_{i}.parquet")
+    return dict(
+        agg_batch_stems=list(batch_stems),
+        n_agg_files=len(batch_stems),
+        bl_batch_stems=list(batch_stems),
+        n_blocklist_files=len(batch_stems),
+    )
 
 
 def test_main_pca_all_null_feature_column_dropped_with_warning(
-    tmp_path, caplog: pytest.LogCaptureFixture
+    tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    pipeline_dir = _write_pipeline_dir_with_null_feature(tmp_path)
+    staged = _stage_batches_with_null_feature(tmp_path)
     with caplog.at_level(logging.WARNING):
-        _run_gfs_main(tmp_path, pipeline_dir, run_pca=True, pca_n_components=2)
+        _run_gfs_main(tmp_path, monkeypatch, staged, run_pca=True, pca_n_components=2)
     assert "f3_mean" in caplog.text
     components = pl.read_parquet(tmp_path / "out" / "pca_components.parquet")
     assert "f3_mean" not in components.columns
     assert {"f1_mean", "f2_mean"}.issubset(set(components.columns))
 
 
-def test_main_impact_score_unaffected_by_pca_or_umap(tmp_path) -> None:
-    pipeline_dir = _write_pipeline_dir(tmp_path)
-    baseline = _run_gfs_main(tmp_path, pipeline_dir)
+def test_main_impact_score_unaffected_by_pca_or_umap(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches(tmp_path)
+    baseline = _run_gfs_main(tmp_path, monkeypatch, staged)
+    # main() only ever writes into tmp_path / "out", so restaging the same
+    # inputs and rerunning with PCA/UMAP enabled is safe -- the second call
+    # simply overwrites that same output directory.
     with_embeddings = _run_gfs_main(
         tmp_path,
-        pipeline_dir,
+        monkeypatch,
+        staged,
         run_pca=True,
         pca_n_components=2,
         run_umap=True,

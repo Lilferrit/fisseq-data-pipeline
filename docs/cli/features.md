@@ -137,26 +137,28 @@ uv run python -m fisseq_data_pipeline.featureselect \
 
 Runs once per active global group (see
 [Configuration: Global groups](../configuration.md#global-groups)). Reuses the
-group's member batches' already-published BATCHWISE feature-selection
-artifacts directly — no cell-level recomputation:
+group's member batches' own BATCHWISE feature-selection artifacts, passed in
+as explicit staged files rather than re-derived from a pipeline directory
+path — no cell-level recomputation:
 
-1. For each member batch, joins that batch's own per-feature-type aggregate
-   files (`feature_select_batchwise/<batch>/aggregates/*.parquet`) and
-   normalizes the joined table to that batch's own synonymous baseline (this
-   serves as both batch correction and normalization).
+1. For each distinct batch named in `agg_batch_stems`, joins that batch's own
+   staged per-feature-type aggregate files and normalizes the joined table to
+   that batch's own synonymous baseline (this serves as both batch correction
+   and normalization).
 2. Concatenates every member batch's normalized table and takes the
    per-feature median, grouped by `label_column` (a variant can appear in
    more than one batch).
-3. Combines each member batch's own combined blocklist
-   (`feature_select_batchwise/<batch>/blocklist.parquet`) using an agreement
-   threshold across batches.
+3. Combines each member batch's own staged combined blocklist file (one per
+   entry in `bl_batch_stems`) using an agreement threshold across batches.
 4. Drops columns blocked by step 3 and runs `pyc_feature_select` (the same
    function `FINALIZE_FEATURE_SELECT` uses).
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
-| `pipeline_dir` | **required** | Absolute path to the pipeline's root output directory. |
-| `batch_stems` | **required** | List of the active group's member batch stems (only those with `run_feature_selection` enabled). |
+| `agg_batch_stems` | **required** | Owning batch stem for each staged aggregate file, same order/length as `n_agg_files`'s implied file list (`agg_input_1.parquet`, `agg_input_2.parquet`, ...); a batch stem may repeat, once per per-feature-type file. |
+| `n_agg_files` | **required** | Number of staged aggregate files (see `agg_batch_stems`). |
+| `bl_batch_stems` | **required** | Owning batch stem for each staged blocklist file (`bl_input_1.parquet`, ...) — one entry per batch. |
+| `n_blocklist_files` | **required** | Number of staged blocklist files (see `bl_batch_stems`). |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `min_batches_ok` | `null` | Minimum number of member batches that must mark a feature ok for it to be globally ok. `null` requires unanimity across batches that report on it. |
 | `run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see [Configuration](../configuration.md#per-batch-parameter-overrides)). |
@@ -176,11 +178,24 @@ column per feature used in the fit (named by that feature's actual column
 name, holding its loading), plus `meta_variance_explained`,
 `meta_cumulative_variance_explained`, and `meta_component_idx`.
 
+Unlike this pipeline's other CLI entry points, `globalfeatureselect` expects
+its aggregate/blocklist input files staged in the working directory under
+fixed, auto-numbered names (`agg_input_1.parquet`, `agg_input_2.parquet`,
+... / `bl_input_1.parquet`, ...) — the convention Nextflow's `stageAs`
+produces for `GLOBAL_FEATURE_SELECT` (see `modules/local/global_feature_select.nf`).
+To invoke it standalone, stage files under those names first:
+
 ```bash
+cp path/to/batch1/aggregates/mean.parquet ./agg_input_1.parquet
+cp path/to/batch2/aggregates/mean.parquet ./agg_input_2.parquet
+cp path/to/batch1/blocklist.parquet ./bl_input_1.parquet
+cp path/to/batch2/blocklist.parquet ./bl_input_2.parquet
 uv run python -m fisseq_data_pipeline.globalfeatureselect \
     output_dir=./out \
-    pipeline_dir=/path/to/experiment \
-    'batch_stems=[batch1,batch2]'
+    'agg_batch_stems=[batch1,batch2]' \
+    n_agg_files=2 \
+    'bl_batch_stems=[batch1,batch2]' \
+    n_blocklist_files=2
 ```
 
 See [API Reference: features](../api/features.md) for full function
