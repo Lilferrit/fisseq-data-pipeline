@@ -1789,19 +1789,19 @@ column name, holding its loading), plus <code>meta_variance_explained</code>,
 <h2 id="6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select">6. <code>python -m fisseq_data_pipeline.globalfeatureselect</code> (<code>GLOBAL_FEATURE_SELECT</code>)<a class="headerlink" href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" title="Permanent link">&para;</a></h2>
 <p>Runs once per active global group (see
 <a href="../../configuration/#global-groups">Configuration: Global groups</a>). Reuses the
-group's member batches' already-published BATCHWISE feature-selection
-artifacts directly — no cell-level recomputation:</p>
+group's member batches' own BATCHWISE feature-selection artifacts, passed in
+as explicit staged files rather than re-derived from a pipeline directory
+path — no cell-level recomputation:</p>
 <ol>
-<li>For each member batch, joins that batch's own per-feature-type aggregate
-   files (<code>feature_select_batchwise/&lt;batch&gt;/aggregates/*.parquet</code>) and
-   normalizes the joined table to that batch's own synonymous baseline (this
-   serves as both batch correction and normalization).</li>
+<li>For each distinct batch named in <code>agg_batch_stems</code>, joins that batch's own
+   staged per-feature-type aggregate files and normalizes the joined table to
+   that batch's own synonymous baseline (this serves as both batch correction
+   and normalization).</li>
 <li>Concatenates every member batch's normalized table and takes the
    per-feature median, grouped by <code>label_column</code> (a variant can appear in
    more than one batch).</li>
-<li>Combines each member batch's own combined blocklist
-   (<code>feature_select_batchwise/&lt;batch&gt;/blocklist.parquet</code>) using an agreement
-   threshold across batches.</li>
+<li>Combines each member batch's own staged combined blocklist file (one per
+   entry in <code>bl_batch_stems</code>) using an agreement threshold across batches.</li>
 <li>Drops columns blocked by step 3 and runs <code>pyc_feature_select</code> (the same
    function <code>FINALIZE_FEATURE_SELECT</code> uses).</li>
 </ol>
@@ -1815,14 +1815,24 @@ artifacts directly — no cell-level recomputation:</p>
 </thead>
 <tbody>
 <tr>
-<td><code>pipeline_dir</code></td>
+<td><code>agg_batch_stems</code></td>
 <td><strong>required</strong></td>
-<td>Absolute path to the pipeline's root output directory.</td>
+<td>Owning batch stem for each staged aggregate file, same order/length as <code>n_agg_files</code>'s implied file list (<code>agg_input_1.parquet</code>, <code>agg_input_2.parquet</code>, ...); a batch stem may repeat, once per per-feature-type file.</td>
 </tr>
 <tr>
-<td><code>batch_stems</code></td>
+<td><code>n_agg_files</code></td>
 <td><strong>required</strong></td>
-<td>List of the active group's member batch stems (only those with <code>run_feature_selection</code> enabled).</td>
+<td>Number of staged aggregate files (see <code>agg_batch_stems</code>).</td>
+</tr>
+<tr>
+<td><code>bl_batch_stems</code></td>
+<td><strong>required</strong></td>
+<td>Owning batch stem for each staged blocklist file (<code>bl_input_1.parquet</code>, ...) — one entry per batch.</td>
+</tr>
+<tr>
+<td><code>n_blocklist_files</code></td>
+<td><strong>required</strong></td>
+<td>Number of staged blocklist files (see <code>bl_batch_stems</code>).</td>
 </tr>
 <tr>
 <td><code>label_column</code></td>
@@ -1883,10 +1893,22 @@ writes <code>pca_components.parquet</code> — one row per principal component, 
 column per feature used in the fit (named by that feature's actual column
 name, holding its loading), plus <code>meta_variance_explained</code>,
 <code>meta_cumulative_variance_explained</code>, and <code>meta_component_idx</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.globalfeatureselect<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nv">pipeline_dir</span><span class="o">=</span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="s1">&#39;batch_stems=[batch1,batch2]&#39;</span>
+<p>Unlike this pipeline's other CLI entry points, <code>globalfeatureselect</code> expects
+its aggregate/blocklist input files staged in the working directory under
+fixed, auto-numbered names (<code>agg_input_1.parquet</code>, <code>agg_input_2.parquet</code>,
+... / <code>bl_input_1.parquet</code>, ...) — the convention Nextflow's <code>stageAs</code>
+produces for <code>GLOBAL_FEATURE_SELECT</code> (see <code>modules/local/global_feature_select.nf</code>).
+To invoke it standalone, stage files under those names first:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>cp<span class="w"> </span>path/to/batch1/aggregates/mean.parquet<span class="w"> </span>./agg_input_1.parquet
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>cp<span class="w"> </span>path/to/batch2/aggregates/mean.parquet<span class="w"> </span>./agg_input_2.parquet
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>cp<span class="w"> </span>path/to/batch1/blocklist.parquet<span class="w"> </span>./bl_input_1.parquet
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>cp<span class="w"> </span>path/to/batch2/blocklist.parquet<span class="w"> </span>./bl_input_2.parquet
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.globalfeatureselect<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="s1">&#39;agg_batch_stems=[batch1,batch2]&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="nv">n_agg_files</span><span class="o">=</span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="s1">&#39;bl_batch_stems=[batch1,batch2]&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="nv">n_blocklist_files</span><span class="o">=</span><span class="m">2</span>
 </code></pre></div>
 <p>See <a href="../../api/features/">API Reference: features</a> for full function
 documentation, including <code>pyc_feature_select</code> and <code>compute_feature_correlations</code>.</p>
