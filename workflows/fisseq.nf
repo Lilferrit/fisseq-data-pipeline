@@ -270,20 +270,27 @@ workflow FisseqPipeline {
     channel_norm_input_ch = stageChannelInput.call(norm_ch, 'normalization_cells')
     STAGE_CHANNEL_NORM(channel_norm_input_ch)
 
-    // Per-channel "wait for all this channel's batches" signal --
-    // groupTuple() buffers until the upstream channel closes, giving the
-    // same wait-for-everything property qc_signal/global_signal used to get
-    // from .collect(), just keyed per channel instead of flattened to one
-    // signal. Shared by every STAGE_CHANNEL_*/BATCH_CORRECT_TRANSFORM-derived
-    // signal below (channel_qc_signal_ch, channel_norm_signal_ch,
-    // channel_bc_signal_ch) -- all consume a (chan, batch_stem, value) source.
-    perChannelSignal = { srcCh, subdir ->
-        srcCh.map { chan, batch_stem, _f -> tuple(chan, batch_stem) }
+    // Per-channel "wait for all this channel's batches, and hand them
+    // downstream as real Nextflow path inputs" collector -- groupTuple()
+    // buffers until the upstream channel closes, giving the same
+    // wait-for-everything property qc_signal/global_signal used to get from
+    // .collect(), just keyed per channel instead of flattened to one signal.
+    // Shared by every STAGE_CHANNEL_*/BATCH_CORRECT_TRANSFORM-derived
+    // channel below (channel_qc_signal_ch, channel_norm_signal_ch,
+    // channel_bc_signal_ch) -- all consume a (chan, batch_stem, path) source
+    // and emit (chan, [path, ...]). This used to collapse to a directory
+    // *string* (`"${pipeline_dir_abs}/global/${chan}/${subdir}"`) for the
+    // global processes below to re-glob from disk -- that discarded the
+    // individual files' identity, so Nextflow's -resume cache couldn't tell
+    // when the underlying file *set* changed (see AGENTS.md gotcha 6, and
+    // the ANOVA/BATCHVSBATCH/BATCH_CORRECT_FIT/OVWT_GLOBAL call sites below,
+    // which now receive this as a real `path` input instead of a `val` glob).
+    perChannelSignal = { srcCh ->
+        srcCh.map { chan, _batch_stem, f -> tuple(chan, f) }
             .groupTuple()
-            .map { chan, _batch_stems -> tuple(chan, "${pipeline_dir_abs}/global/${chan}/${subdir}") }
     }
-    channel_qc_signal_ch = perChannelSignal.call(STAGE_CHANNEL_QC.out, 'qc_filter_cells')
-    channel_norm_signal_ch = perChannelSignal.call(STAGE_CHANNEL_NORM.out, 'normalization_cells')
+    channel_qc_signal_ch = perChannelSignal.call(STAGE_CHANNEL_QC.out)
+    channel_norm_signal_ch = perChannelSignal.call(STAGE_CHANNEL_NORM.out)
 
     // Step 2b: WTVWT — batchwise, wildtype-only pairwise barcode classification.
     // Restricted to wildtype cells; trains one binary classifier per pair of
@@ -334,9 +341,10 @@ workflow FisseqPipeline {
     OVWTLOBO_BATCHWISE(ovwtlobo_input_ch)
 
     // ANOVA (normalized) — once per active global channel, scoped to that
-    // channel's normalized cells (channel_norm_signal_ch). Its output feeds
-    // ANOVA_BLOCKLIST below.
-    ANOVA_NORMALIZED(channel_norm_signal_ch.map { chan, d -> tuple(chan, "${d}/*.parquet", "global/${chan}/anova") })
+    // channel's normalized cells (channel_norm_signal_ch, now a real
+    // per-channel path list rather than a directory glob -- see
+    // perChannelSignal above). Its output feeds ANOVA_BLOCKLIST below.
+    ANOVA_NORMALIZED(channel_norm_signal_ch.map { chan, files -> tuple(chan, files, "global/${chan}/anova") })
 
     // ANOVA_BLOCKLIST — derives a feature block-list from ANOVA_NORMALIZED's
     // p-values, once per active global channel. BATCHVSBATCH_POST and
@@ -351,9 +359,13 @@ workflow FisseqPipeline {
     // (unlike the old whole-pipeline glob, which needed
     // qc_filter/*/filtered_cells.parquet's parent-dir naming since every
     // batch shared the same filename). Unfiltered: no dependency on
-    // ANOVA_BLOCKLIST, to preserve early/parallel scheduling.
+    // ANOVA_BLOCKLIST, to preserve early/parallel scheduling. cells_files is
+    // now channel_qc_signal_ch's real per-channel path list (see
+    // perChannelSignal above); pipeline_dir_abs fills the unrelated
+    // pipeline_dir slot (unused inside batchvsbatch.nf's script -- see that
+    // module's comment).
     BATCHVSBATCH_PRE(
-        channel_qc_signal_ch.map { chan, d -> [d, "${d}/*.parquet", false, "global/${chan}/batchvsbatch/pre", null] }
+        channel_qc_signal_ch.map { chan, files -> [pipeline_dir_abs, files, false, "global/${chan}/batchvsbatch/pre", null] }
     )
 
     // Step 4: Batch-vs-batch — post batch correction (normalized cells), once
@@ -364,7 +376,7 @@ workflow FisseqPipeline {
     // own blocklist rather than cross-producting across channels.
     BATCHVSBATCH_POST(
         channel_norm_signal_ch.join(anova_blocklist_ch)
-            .map { chan, d, bl -> [d, "${d}/*.parquet", false, "global/${chan}/batchvsbatch/post", bl] }
+            .map { chan, files, bl -> [pipeline_dir_abs, files, false, "global/${chan}/batchvsbatch/post", bl] }
     )
 
     // Step 5: OvWT — batchwise, unfiltered (barcode-filtered is wired below,
@@ -437,7 +449,7 @@ workflow FisseqPipeline {
     // global run.
     OVWT_GLOBAL(
         channel_norm_signal_ch.join(anova_blocklist_ch)
-            .map { chan, d, bl -> tuple("${d}/*.parquet", bl, "global/${chan}/ovwt_global") }
+            .map { chan, files, bl -> tuple(files, bl, "global/${chan}/ovwt_global") }
     )
 
     // Step 7: Feature selection — decomposed bootstrap + per-feature-type pipeline.
@@ -580,17 +592,23 @@ workflow FisseqPipeline {
     // Unlike the old bootstrap-recompute global chain this replaces, no
     // per-channel cell staging is needed here: GLOBAL_FEATURE_SELECT reuses
     // each member batch's already-computed BATCHWISE feature-selection
-    // artifacts (feature_select_batchwise/<batch>/{aggregates,blocklist.parquet})
-    // directly off pipeline_dir, looping over batch_stems in Python -- see
-    // modules/local/global_feature_select.nf and
-    // fisseq_data_pipeline.globalfeatureselect.
+    // artifacts (agg_ch/combined_bl_ch, produced above by
+    // AGGREGATE_FEATURE_TYPE_BATCHWISE/COMBINE_BLOCKLISTS_BATCHWISE) as real
+    // Nextflow `path` inputs, scoped per channel the same way
+    // channel_qc_input_ch/channel_norm_input_ch scope STAGE_CHANNEL_CELLS
+    // above -- not re-derived from pipeline_dir/batch_stems via a Python-side
+    // glob (see modules/local/global_feature_select.nf and
+    // fisseq_data_pipeline.globalfeatureselect for why the old approach broke
+    // -resume cache invalidation).
     if (BatchParams.asBool(params.run_feature_selection)) {
-        // Batch -> channel membership is resolved once, synchronously, in
+        // Batch -> channel membership, resolved once, synchronously, in
         // Groovy (same "resolved at workflow-construction time" pattern as
-        // resolvedBatchConfigs itself) -- only batches with
-        // run_feature_selection enabled are included, since only those have
-        // feature_select_batchwise/<batch>/{aggregates,blocklist.parquet} on
-        // disk for GLOBAL_FEATURE_SELECT to read.
+        // resolvedBatchConfigs itself) -- kept purely for this diagnostic
+        // warning; the actual per-channel file wiring below is driven by
+        // agg_ch/combined_bl_ch directly, not by this map, so a channel with
+        // no member batches simply yields zero rows there (and
+        // GLOBAL_FEATURE_SELECT is never invoked for it) rather than being
+        // invoked once and failing under errorStrategy 'ignore' as before.
         def batchesByChannel = activeChannels.collectEntries { chan ->
             [chan, resolvedBatchConfigs.findAll { _batch_stem, cfg ->
                 (cfg.global_channel ?: []).contains(chan) && BatchParams.asBool(cfg.run_feature_selection)
@@ -600,23 +618,38 @@ workflow FisseqPipeline {
             if (batch_stems.isEmpty()) {
                 log.warn "Global channel '${chan}' has no member batches with " +
                     "run_feature_selection enabled -- GLOBAL_FEATURE_SELECT will " +
-                    "have nothing to read for this channel."
+                    "not run for this channel."
             }
         }
 
-        // Single-element signal that fires once every batch's BATCHWISE
-        // feature selection (aggregates + blocklist) has been published --
-        // same "collect -> map to pipeline_dir_abs" idiom as before, just
-        // gated on combined_bl_ch (the last batchwise feature-select
-        // artifact) instead of qc_ch/norm_ch.
-        feature_select_ready_signal = combined_bl_ch.map { batch_stem, _bl -> batch_stem }.collect()
-            .map { _batch_stems -> pipeline_dir_abs }
+        // Scope agg_ch/combined_bl_ch to each active channel's member
+        // batches (already all run_feature_selection=true by construction,
+        // since both descend from norm_ch_feature_selected -- no need to
+        // re-check that gate here), then groupTuple() per channel into
+        // parallel (batch_stem, file) lists -- mirrors
+        // channel_qc_input_ch/channel_norm_input_ch's stageChannelInput
+        // idiom above, adapted for agg_ch's extra feature_type element
+        // (dropped: join_feature_type_files joins by file content/schema,
+        // not filename, so feature_type identity isn't needed downstream).
+        channel_agg_input_ch = agg_ch.combine(channels_ch)
+            .filter { batch_stem, _ft, _f, chan -> chan in (resolvedBatchConfigs[batch_stem].global_channel ?: []) }
+            .map { batch_stem, _ft, f, chan -> tuple(chan, batch_stem, f) }
+            .groupTuple()
+            // (chan, [batch_stem, ...], [agg_file, ...])
+        channel_bl_input_ch = combined_bl_ch.combine(channels_ch)
+            .filter { batch_stem, _bl, chan -> chan in (resolvedBatchConfigs[batch_stem].global_channel ?: []) }
+            .map { batch_stem, bl, chan -> tuple(chan, batch_stem, bl) }
+            .groupTuple()
+            // (chan, [batch_stem, ...], [blocklist_file, ...])
 
-        global_fs_input_ch = channels_ch
-            .combine(feature_select_ready_signal)
-            .map { chan, d ->
-                tuple(chan, batchesByChannel[chan], d, "global/${chan}/feature_select",
-                      params.global_feature_select_min_batches_ok, params.feature_select_types,
+        // .join(), not .combine(): both sides are already collapsed to
+        // exactly one row per channel by the groupTuple()s above -- same
+        // justification as anova_blocklist_ch's joins elsewhere in this
+        // workflow.
+        global_fs_input_ch = channel_agg_input_ch.join(channel_bl_input_ch)
+            .map { chan, agg_batch_stems, agg_files, bl_batch_stems, bl_files ->
+                tuple(chan, agg_batch_stems, agg_files, bl_batch_stems, bl_files,
+                      "global/${chan}/feature_select", params.global_feature_select_min_batches_ok,
                       BatchParams.asBool(params.run_pca), params.pca_n_components,
                       BatchParams.asBool(params.run_umap), params.umap_n_components,
                       params.umap_n_neighbors, params.umap_metric, params.umap_min_dist,
@@ -633,7 +666,7 @@ workflow FisseqPipeline {
     // Step 1: fit centroid batch correction, once per channel, scoped to
     // that channel's own QC-filtered batches (channel_qc_signal_ch).
     fit_out = BATCH_CORRECT_FIT(
-        channel_qc_signal_ch.map { chan, d -> tuple(chan, "${d}/*.parquet", "global/${chan}/batch_correction/fit") }
+        channel_qc_signal_ch.map { chan, files -> tuple(chan, files, "global/${chan}/batch_correction/fit") }
     ).fit_outputs  // (chan, stats_vb, centroids)
 
     // Step 2: apply batch correction, once per (channel, batch) pair -- a
@@ -655,13 +688,13 @@ workflow FisseqPipeline {
     bc_ch = BATCH_CORRECT_TRANSFORM.out.corrected  // (chan, batch_stem, corrected_parquet)
 
     // Per-channel "wait for all this channel's batch-correction tasks"
-    // signal -- same perChannelSignal() as channel_qc_signal_ch/
+    // collector -- same perChannelSignal() as channel_qc_signal_ch/
     // channel_norm_signal_ch above, applied to BATCH_CORRECT_TRANSFORM's
     // own output.
-    channel_bc_signal_ch = perChannelSignal.call(bc_ch, 'batch_correction/cells')
+    channel_bc_signal_ch = perChannelSignal.call(bc_ch)
 
     // Step 3: ANOVA on batch-corrected cells, once per active global channel.
     ANOVA_BATCH_CORRECTED(
-        channel_bc_signal_ch.map { chan, d -> tuple(chan, "${d}/*.parquet", "global/${chan}/batch_correction/anova") }
+        channel_bc_signal_ch.map { chan, files -> tuple(chan, files, "global/${chan}/batch_correction/anova") }
     )
 }

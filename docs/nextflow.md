@@ -60,7 +60,7 @@ Every process wraps one `python -m fisseq_data_pipeline.<module>` invocation (se
 | `INPUT` | `input.nf` | `python -m fisseq_data_pipeline.input` | per config file, always (`<pipeline_dir>/configs/` is mandatory) |
 | `QC_FILTER` | `qc_filter.nf` | `python -m fisseq_data_pipeline.qcfilter` | per batch |
 | `NORMALIZE` | `normalize.nf` | `python -m fisseq_data_pipeline.normalize` | per batch |
-| `STAGE_CHANNEL_CELLS` (aliased `_QC` / `_NORM`) | `stage_channel.nf` | (no Python wrapper — republishes a staged file) | per (active global channel × member batch); stages that batch's `QC_FILTER`/`NORMALIZE` output into `global/<channel>/{qc_filter_cells,normalization_cells}/` so the global processes below can glob a channel-scoped directory |
+| `STAGE_CHANNEL_CELLS` (aliased `_QC` / `_NORM`) | `stage_channel.nf` | (no Python wrapper — republishes a staged file) | per (active global channel × member batch); stages that batch's `QC_FILTER`/`NORMALIZE` output into `global/<channel>/{qc_filter_cells,normalization_cells}/` (for on-disk inspection) and, via `workflows/fisseq.nf`'s `perChannelSignal`, feeds the global processes below a real per-channel `path` list (not a re-globbed directory) |
 | `BATCHVSBATCH` (aliased `_PRE` / `_POST`) | `batchvsbatch.nf` | `python -m fisseq_data_pipeline.batchvsbatch` | per active global channel, twice (`params.global_channels`, default none run); `_PRE` unfiltered, `_POST` filtered against `ANOVA_BLOCKLIST` |
 | `OVWT_BATCHWISE` (aliased `_UNFILTERED` / `_BARCODE_FILTERED`) | `ovwt_batchwise.nf` | `python -m fisseq_data_pipeline.ovwt` | per batch, twice (`FisseqPipeline`); `_UNFILTERED` has no dependency on `ANOVA_BLOCKLIST`/`BARCODE_BLOCKLIST` and is optional (`params.run_ovwt`), `_BARCODE_FILTERED` depends on that batch's `BARCODE_BLOCKLIST` output and is optional (`params.run_barcode_filtered_ovwt`). A third alias, `_FEATURE_FILTERED` (gated by `params.run_feature_filtered_ovwt`), was removed once `ANOVA_BLOCKLIST` became per-channel. |
 | `OVWT_GLOBAL` | `ovwt_global.nf` | `python -m fisseq_data_pipeline.ovwt` | per active global channel (`params.global_channels`, default none run); always feature-filtered against `ANOVA_BLOCKLIST` |
@@ -84,7 +84,7 @@ Every process wraps one `python -m fisseq_data_pipeline.<module>` invocation (se
 "Aliased" processes are declared once and invoked twice in `workflows/fisseq.nf` via
 `include { X as Y }` (Nextflow forbids calling one process twice under its own name
 in a single workflow) — see [Architecture](architecture.md) for what each aliased
-invocation does differently (which cells glob, which `publishDir` subpath).
+invocation does differently (which cells path list, which `publishDir` subpath).
 
 ### `INPUT` stage
 
@@ -133,18 +133,30 @@ per batch, which features are reproducible enough to keep. In
 `GLOBAL_FEATURE_SELECT` is a separate, much simpler branch, run once per
 active channel in `params.global_channels` (default `null` = none active).
 Unlike the batchwise branch, it does no bootstrap recomputation from cells: it
-reuses each member batch's already-published `feature_select_batchwise/<batch>/`
-aggregates and blocklist directly off `pipeline_dir`, so it needs no
-Nextflow-level fan-out — the whole "join per-feature-type files, normalize to
-that batch's synonymous baseline, take the cross-batch median, combine
-blocklists by batch-agreement threshold, run pycytominer selection" sequence
-runs as one Python invocation per channel. Batch → channel membership (only
-batches with `run_feature_selection` enabled) is resolved once in Groovy from
-`resolvedBatchConfigs`, the same way `resolvedBatchConfigs` itself is built —
-see [Configuration: Global channels](configuration.md#global-channels) for the
-parameter reference and output layout. `BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA`
-(both calls), and `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` all likewise
-run once per active channel.
+reuses each member batch's already-produced `AGGREGATE_FEATURE_TYPE_BATCHWISE`/
+`COMBINE_BLOCKLISTS_BATCHWISE` outputs (`agg_ch`/`combined_bl_ch`), scoped to
+that channel and grouped per batch via `.groupTuple()` into real Nextflow
+`path` inputs — not re-derived from `pipeline_dir` + a batch-stem list via a
+Python-side glob, since a task hash built from those scalars alone couldn't
+detect when the underlying files' contents changed without the batch list
+itself changing. Every batch's aggregate/blocklist files share the same
+basename across batches, so `modules/local/global_feature_select.nf` stages
+them via `stageAs` auto-numbering (`agg_input_1.parquet`, ...), paired with
+parallel `agg_batch_stems`/`bl_batch_stems` lists so the Python side can
+still group each staged file back to its owning batch — the whole "join
+per-feature-type files, normalize to that batch's synonymous baseline, take
+the cross-batch median, combine blocklists by batch-agreement threshold, run
+pycytominer selection" sequence still runs as one Python invocation per
+channel. Batch → channel membership (only batches with `run_feature_selection`
+enabled) is still resolved once in Groovy from `resolvedBatchConfigs` for
+diagnostic logging (warning when a channel has no member batches), but the
+actual per-channel file wiring is driven directly by `agg_ch`/`combined_bl_ch`
+— see [Configuration: Global channels](configuration.md#global-channels) for
+the parameter reference and output layout. `BATCHVSBATCH`, `OVWT_GLOBAL`,
+`ANOVA` (both calls), and `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM` all
+likewise run once per active channel, each now similarly receiving that
+channel's staged cells as a real `path` list rather than a directory glob
+(see `workflows/fisseq.nf`'s `perChannelSignal`).
 
 ## Parameters, pipeline directory layout, and per-batch overrides
 

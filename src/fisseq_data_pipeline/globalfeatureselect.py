@@ -4,40 +4,50 @@ Hydra entry point backing the Nextflow process ``GLOBAL_FEATURE_SELECT``. Runs
 once per active ``global_channel``, reusing the already-computed BATCHWISE
 feature-selection artifacts (:mod:`.aggregatefeaturetype`,
 :mod:`.combineblocklists`) for that channel's member batches instead of
-recomputing anything from raw cells:
+recomputing anything from raw cells. Unlike an earlier version of this
+module, those artifacts arrive as explicit staged files (``agg_files``/
+``blocklist_files``, paired with parallel ``agg_batch_stems``/
+``bl_batch_stems`` lists identifying which batch each staged file belongs
+to) rather than being re-derived from a ``pipeline_dir`` + ``batch_stems``
+glob — see ``modules/local/global_feature_select.nf``'s comment for why (the
+old glob-from-disk approach broke Nextflow ``-resume`` cache invalidation,
+since a task hash built from scalar strings can't detect when the
+underlying files' contents change without the batch list itself changing):
 
-1. Combine each member batch's own combined blocklist
-   (``feature_select_batchwise/<batch>/blocklist.parquet``) using an
-   agreement threshold (see :func:`combine_batch_blocklists`). This runs
-   first, before any per-batch aggregate is touched, so the resulting
-   globally-blocked feature set can be dropped from each batch up front.
-2. For each member batch, join its per-feature-type aggregate files
-   (``feature_select_batchwise/<batch>/aggregates/<feature_type>.parquet``,
-   filtered to the currently-configured ``feature_select_types`` — a batch's
-   ``aggregates/`` directory can otherwise carry stale files for feature
-   types no longer configured, left behind by an earlier run's larger
-   ``feature_select_types`` since ``publishDir mode: 'copy'`` never deletes
-   them), drop step 1's globally-blocked columns, and normalize the joined
-   table to its own synonymous baseline (see
-   :func:`normalize_batch_aggregate`) — this is both the batch-correction
-   step and the normalization step.
+1. Combine each member batch's own combined blocklist file (one per entry in
+   ``bl_batch_stems``) using an agreement threshold (see
+   :func:`combine_batch_blocklists`). This runs first, before any per-batch
+   aggregate is touched, so the resulting globally-blocked feature set can be
+   dropped from each batch up front.
+2. For each distinct batch in ``agg_batch_stems``, join that batch's own
+   staged per-feature-type aggregate files, drop step 1's globally-blocked
+   columns, and normalize the joined table to its own synonymous baseline
+   (see :func:`normalize_batch_aggregate`) — this is both the
+   batch-correction step and the normalization step. A batch's set of
+   aggregate files reflects whichever ``AGGREGATE_FEATURE_TYPE`` Nextflow
+   tasks actually succeeded for it (that process runs ``errorStrategy
+   'ignore'``, so a failed per-feature-type task simply never contributes a
+   file, rather than aborting the run) — there is no "stale leftover file"
+   case to defend against anymore, since Nextflow only ever stages the
+   current run's actual outputs.
 3. Concatenate every member batch's normalized table and take the
    per-feature median, grouped by ``label_column`` (see
    :func:`median_across_batches`), since the same variant can appear in more
    than one batch. Dropping the blocklist in step 2 is not sufficient on its
-   own to make every batch's table concat-safe: each batch's
-   ``aggregates/`` directory reflects whichever ``AGGREGATE_FEATURE_TYPE``
-   Nextflow tasks actually succeeded for that batch (that process runs
-   ``errorStrategy 'ignore'``, so a failed per-feature-type task silently
-   drops its output file rather than aborting the run) and may also contain
-   stale files from an earlier pipeline version. So batches can legitimately
+   own to make every batch's table concat-safe: batches can legitimately
    disagree on which feature columns exist at all (e.g. one has ``_MAD``
    where another has ``_mean``/``_std`` for the same feature, or is missing
-   ``_AUROC``/``_KS`` entirely). :func:`median_across_batches` handles this
-   defensively: it intersects each batch's feature columns down to the set
-   common to all of them (logging a warning listing what got dropped per
-   batch) and keeps only ``label_column`` among metadata columns, before
-   concatenating.
+   ``_AUROC``/``_KS`` entirely, per the per-batch task-failure tolerance in
+   step 2). :func:`median_across_batches` handles this defensively: it
+   intersects each batch's feature columns down to the set common to all of
+   them (logging a warning listing what got dropped per batch) and keeps
+   only ``label_column`` among metadata columns, before concatenating. In
+   the same spirit, a batch entirely absent from ``agg_batch_stems`` (every
+   one of its per-feature-type tasks failed) or from ``bl_batch_stems`` (its
+   blocklist-combination chain failed) is simply excluded from that half of
+   the computation, with a warning logged — not treated as a hard failure of
+   the whole channel, matching this module's existing "warn, don't crash"
+   philosophy for other per-batch asymmetries.
 4. Drop columns blocked by step 1's blocklist (typically a no-op by this
    point, since step 2 already dropped them per batch; kept as
    defense-in-depth for direct callers) and run
@@ -55,10 +65,9 @@ blocklist.
 """
 
 import dataclasses
-import glob
 import logging
 import pathlib
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 import hydra
 import polars as pl
@@ -78,11 +87,75 @@ from .utils.vectors import compute_impact_score
 _cs = ConfigStore.instance()
 
 
+def _reconstruct_staged_paths(n: int, prefix: str) -> List[str]:
+    """
+    Reconstruct the filenames produced by Nextflow's ``stageAs`` auto-
+    numbering for a ``path(list, stageAs: "<prefix>_*.parquet")`` input.
+
+    Nextflow numbers files 1-indexed, in the same order as the list it
+    received (verified empirically against the pipeline's pinned Nextflow
+    version) -- so this is a pure name reconstruction, not a filesystem
+    glob, and its output is guaranteed to line up positionally with the
+    paired batch-stem list that was zipped from the same source list in
+    ``workflows/fisseq.nf``.
+
+    Parameters
+    ----------
+    n : int
+        Number of staged files.
+    prefix : str
+        The ``stageAs`` pattern's literal prefix (e.g. ``"agg_input"`` for
+        ``"agg_input_*.parquet"``).
+
+    Returns
+    -------
+    list[str]
+        ``[f"{prefix}_1.parquet", f"{prefix}_2.parquet", ..., f"{prefix}_{n}.parquet"]``.
+    """
+    return [f"{prefix}_{i}.parquet" for i in range(1, n + 1)]
+
+
+def group_paths_by_batch(
+    batch_stems: List[str], paths: List[str]
+) -> Dict[str, List[str]]:
+    """
+    Group two parallel, same-length ``(batch_stem, path)`` lists into one
+    ordered path list per distinct batch stem.
+
+    Parameters
+    ----------
+    batch_stems : list[str]
+        Each path's owning batch stem, same order and length as ``paths``.
+        A batch stem may repeat (e.g. once per per-feature-type aggregate
+        file).
+    paths : list[str]
+        The paths to group.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Maps each distinct batch stem (in first-occurrence order) to the
+        ordered list of paths belonging to it.
+
+    Raises
+    ------
+    ValueError
+        If ``batch_stems`` and ``paths`` are not the same length.
+    """
+    if len(batch_stems) != len(paths):
+        raise ValueError(
+            "batch_stems and paths must be the same length, got "
+            f"{len(batch_stems)} and {len(paths)}"
+        )
+    grouped: Dict[str, List[str]] = {}
+    for stem, path in zip(batch_stems, paths):
+        grouped.setdefault(stem, []).append(path)
+    return grouped
+
+
 def normalize_batch_aggregate(
-    pipeline_dir: str,
-    batch_stem: str,
+    paths: List[str],
     label_column: str,
-    feature_select_types: Iterable[str],
     blocked_features: Optional[Iterable[str]] = None,
 ) -> pl.LazyFrame:
     """
@@ -91,27 +164,14 @@ def normalize_batch_aggregate(
 
     Parameters
     ----------
-    pipeline_dir : str
-        Absolute path to the pipeline's root output directory.
-    batch_stem : str
-        The batch's identifier (matches ``feature_select_batchwise/<batch_stem>``).
+    paths : list[str]
+        Paths to this batch's own staged per-feature-type aggregate files
+        (one per successfully-completed ``AGGREGATE_FEATURE_TYPE`` Nextflow
+        task for this batch — see :func:`main`, which groups the process's
+        ``agg_files``/``agg_batch_stems`` inputs by batch before calling
+        this function). Must be non-empty.
     label_column : str
         Name of the column identifying variant labels.
-    feature_select_types : Iterable[str]
-        The currently-configured feature types (e.g. ``mean``, ``median``,
-        ``MAD``, ``std``, ``KS``, ``QQ``, ``AUROC`` — see
-        :data:`fisseq_data_pipeline.aggregate._AGGREGATORS`). Only aggregate
-        files whose stem (``<feature_type>.parquet``) is in this set are
-        joined; any other file present in the batch's ``aggregates/``
-        directory (e.g. a stale file for a feature type no longer
-        configured, left behind by an earlier run's larger
-        ``feature_select_types`` since ``AGGREGATE_FEATURE_TYPE``'s
-        ``publishDir mode: 'copy'`` never deletes removed outputs) is
-        ignored. A configured type missing its file for this batch (e.g. its
-        ``AGGREGATE_FEATURE_TYPE`` task failed under ``errorStrategy
-        'ignore'``) is likewise silently skipped — see
-        :func:`median_across_batches` for how cross-batch column mismatches
-        are handled downstream.
     blocked_features : Iterable[str] or None
         Feature column names to drop before normalization (e.g. the
         globally-blocked set from :func:`combine_batch_blocklists`). Names
@@ -128,22 +188,10 @@ def normalize_batch_aggregate(
     Raises
     ------
     ValueError
-        If no per-feature-type aggregate files matching
-        ``feature_select_types`` are found for this batch.
+        If ``paths`` is empty.
     """
-    glob_pattern = (
-        f"{pipeline_dir}/feature_select_batchwise/{batch_stem}/aggregates/*.parquet"
-    )
-    allowed_types = set(feature_select_types)
-    paths = sorted(
-        p for p in glob.glob(glob_pattern) if pathlib.Path(p).stem in allowed_types
-    )
     if not paths:
-        raise ValueError(
-            f"No per-feature-type aggregate files matching feature_select_types="
-            f"{sorted(allowed_types)!r} found for batch {batch_stem!r} "
-            f"(glob pattern: {glob_pattern!r})"
-        )
+        raise ValueError("paths must be non-empty")
     agg_df = join_feature_type_files(paths, label_column)
     if blocked_features:
         agg_df = agg_df.drop([c for c in blocked_features if c in agg_df.columns])
@@ -316,21 +364,28 @@ class GlobalFeatureSelectConfig(AppConfig):
 
     Attributes
     ----------
-    pipeline_dir : str
-        Absolute path to the pipeline's root output directory. Required.
-    batch_stems : list[str]
-        The active group's member batch stems (only those with
-        ``run_feature_selection`` enabled, i.e. the ones that actually have
-        ``feature_select_batchwise/<batch>/...`` on disk). Required,
-        non-empty.
-    feature_select_types : list[str]
-        The currently-configured feature types (e.g. ``mean``, ``median``,
-        ``MAD``, ``std``, ``KS``, ``QQ``, ``AUROC`` — mirrors the
-        pipeline-wide ``feature_select_types`` Nextflow param). Used to
-        filter each member batch's ``aggregates/`` directory down to files
-        for these types, so stale files for feature types no longer
-        configured (left behind by an earlier run) are ignored — see
-        :func:`normalize_batch_aggregate`. Required.
+    agg_batch_stems : list[str]
+        The owning batch stem for each entry in ``agg_files``, same order,
+        same length (``len(agg_batch_stems) == n_agg_files``). A batch stem
+        may repeat (once per successfully-completed per-feature-type
+        aggregate); see :func:`main`, which groups these back into one file
+        list per distinct batch before calling
+        :func:`normalize_batch_aggregate`. Required, non-empty.
+    n_agg_files : int
+        Number of staged aggregate files. The Nextflow process stages them
+        as ``agg_input_1.parquet``, ``agg_input_2.parquet``, ... in the same
+        order as ``agg_batch_stems`` (see
+        ``modules/local/global_feature_select.nf``'s ``stageAs`` pattern).
+        Required.
+    bl_batch_stems : list[str]
+        The owning batch stem for each entry in ``blocklist_files``, same
+        order, same length (``len(bl_batch_stems) == n_blocklist_files``).
+        One entry per batch (a batch's combined blocklist is a single file).
+        Required, non-empty.
+    n_blocklist_files : int
+        Number of staged blocklist files, analogous to ``n_agg_files`` —
+        staged as ``bl_input_1.parquet``, ``bl_input_2.parquet``, ... in the
+        same order as ``bl_batch_stems``. Required.
     label_column : str
         Name of the column identifying variant labels. Defaults to
         ``meta_aa_changes``.
@@ -371,9 +426,10 @@ class GlobalFeatureSelectConfig(AppConfig):
         nondeterministic multithreaded fitting. Defaults to ``42``.
     """
 
-    pipeline_dir: str = MISSING
-    batch_stems: List[str] = MISSING
-    feature_select_types: List[str] = MISSING
+    agg_batch_stems: List[str] = MISSING
+    n_agg_files: int = MISSING
+    bl_batch_stems: List[str] = MISSING
+    n_blocklist_files: int = MISSING
     label_column: str = "meta_aa_changes"
     min_batches_ok: Optional[int] = None
     compute_impact_score: bool = True
@@ -414,10 +470,12 @@ def main(cfg: DictConfig) -> None:
     Raises
     ------
     ValueError
-        If ``batch_stems`` is empty, if any member batch is missing its
-        BATCHWISE aggregate or blocklist files, or if no feature column is
-        common to every member batch's aggregate (see
-        :func:`median_across_batches`).
+        If ``agg_batch_stems``/``bl_batch_stems`` is empty, or if no feature
+        column is common to every contributing batch's aggregate (see
+        :func:`median_across_batches`). A batch present in ``agg_batch_stems``
+        but absent from ``bl_batch_stems`` (or vice versa) is *not* an error
+        -- it is dropped from that half of the computation, with a warning
+        logged (see the module docstring's step 3).
     """
     gfs_cfg: GlobalFeatureSelectConfig = OmegaConf.to_object(cfg)
 
@@ -426,34 +484,51 @@ def main(cfg: DictConfig) -> None:
     gfs_cfg.output_dir = output_dir
     setup_logging(gfs_cfg, "global_feature_select")
 
-    if not gfs_cfg.batch_stems:
-        raise ValueError("batch_stems must be a non-empty list")
+    if not gfs_cfg.agg_batch_stems:
+        raise ValueError("agg_batch_stems must be a non-empty list")
+    if not gfs_cfg.bl_batch_stems:
+        raise ValueError("bl_batch_stems must be a non-empty list")
+
+    # Reverse Nextflow's stageAs auto-numbering (agg_input_1.parquet,
+    # agg_input_2.parquet, ... / bl_input_1.parquet, ...), which is
+    # guaranteed to follow the same order as the paired
+    # agg_batch_stems/bl_batch_stems lists -- see
+    # modules/local/global_feature_select.nf.
+    agg_paths = _reconstruct_staged_paths(gfs_cfg.n_agg_files, "agg_input")
+    bl_paths = _reconstruct_staged_paths(gfs_cfg.n_blocklist_files, "bl_input")
+    agg_paths_by_batch = group_paths_by_batch(gfs_cfg.agg_batch_stems, agg_paths)
+
+    agg_batch_set = set(agg_paths_by_batch)
+    bl_batch_set = set(gfs_cfg.bl_batch_stems)
+    if agg_batch_set != bl_batch_set:
+        logging.warning(
+            "Batches contributing aggregates and batches contributing "
+            "blocklists disagree (likely a per-batch Nextflow task failure "
+            "somewhere upstream, tolerated under errorStrategy 'ignore') -- "
+            "only in agg_batch_stems: %s; only in bl_batch_stems: %s. "
+            "Proceeding with the batches available on each side.",
+            sorted(agg_batch_set - bl_batch_set),
+            sorted(bl_batch_set - agg_batch_set),
+        )
 
     logging.info("Combining per-batch blocklists")
-    bl_paths = [
-        f"{gfs_cfg.pipeline_dir}/feature_select_batchwise/{stem}/blocklist.parquet"
-        for stem in gfs_cfg.batch_stems
-    ]
     bl_df = combine_batch_blocklists(bl_paths, gfs_cfg.min_batches_ok)
     blocked_features = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
 
+    distinct_batches = list(agg_paths_by_batch.keys())
     logging.info(
-        "Normalizing per-batch aggregates for %d batch(es)", len(gfs_cfg.batch_stems)
+        "Normalizing per-batch aggregates for %d batch(es)", len(distinct_batches)
     )
     batch_lfs = [
         normalize_batch_aggregate(
-            gfs_cfg.pipeline_dir,
-            stem,
-            gfs_cfg.label_column,
-            gfs_cfg.feature_select_types,
-            blocked_features,
+            agg_paths_by_batch[stem], gfs_cfg.label_column, blocked_features
         )
-        for stem in gfs_cfg.batch_stems
+        for stem in distinct_batches
     ]
 
     logging.info("Computing cross-batch median aggregate")
     agg_df = median_across_batches(
-        batch_lfs, gfs_cfg.label_column, batch_labels=gfs_cfg.batch_stems
+        batch_lfs, gfs_cfg.label_column, batch_labels=distinct_batches
     )
 
     logging.info("Running pycytominer feature selection")

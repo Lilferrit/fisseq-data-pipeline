@@ -225,9 +225,10 @@ only that channel's member batches), producing two independently-corrected
 copies of the batch's cells, one under each channel's own subtree.
 
 `GLOBAL_FEATURE_SELECT` additionally requires a member batch to have its own
-`run_feature_selection` enabled — it reads that batch's
+`run_feature_selection` enabled — it consumes that batch's own BATCHWISE
 `feature_select_batchwise/<batch_stem>/{aggregates,blocklist.parquet}`
-directly, so a batch with `run_feature_selection: false` contributes to
+outputs (as real Nextflow inputs, not a disk re-read), so a batch with
+`run_feature_selection: false` contributes to
 `BATCHVSBATCH`/`OVWT_GLOBAL`/`ANOVA`/`BATCH_CORRECT_FIT`+`TRANSFORM` for its
 channel(s) but not to `GLOBAL_FEATURE_SELECT`.
 
