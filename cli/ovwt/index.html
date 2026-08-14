@@ -1503,16 +1503,22 @@
 feature-filtered, and barcode-filtered invocations, and <code>OVWT_GLOBAL</code>, always
 feature-filtered) trains a separate XGBoost binary classifier for each
 non-wildtype variant, treating the task as "this variant vs. wildtype." An
-80/10/10 train/test/val split (stratified by label) is shared across all
-variants. Wildtype cells can be downsampled to reduce class imbalance.
-Results (per-variant AUROC and accuracy on train/val/test splits) and all
-trained models are serialized to disk. <code>feature_block_list_file</code> (see
-<a href="../anovablocklist/">ANOVA Block-list</a>) optionally excludes features (columns)
-with a significant batch effect before splitting/training.
-<code>barcode_block_list_file</code> (see <a href="../barcodeblocklist/">Barcode Block-list</a>)
-optionally excludes cells (rows) whose barcode scored anomalously before
-splitting/training. The two are independent and additive -- either, both, or
-neither may be set.</p>
+80/10/10 train/test/val split is shared across all variants, stratified by
+barcode rather than by label -- since each barcode maps to exactly one
+variant label on this dataset, this is a finer-grained refinement of a
+label-stratified split, and additionally guarantees (where cell counts allow)
+that every barcode is represented across train/test/val. Wildtype cells can
+be downsampled to reduce class imbalance; when a barcode column is available,
+this downsampling is stratified across wildtype barcodes to preserve their
+relative proportions as much as possible, rather than sampling wildtype cells
+uniformly. Results (per-variant AUROC and accuracy on train/val/test splits,
+plus per-barcode test AUROC) and all trained models are serialized to disk.
+<code>feature_block_list_file</code> (see <a href="../anovablocklist/">ANOVA Block-list</a>)
+optionally excludes features (columns) with a significant batch effect before
+splitting/training. <code>barcode_block_list_file</code> (see
+<a href="../barcodeblocklist/">Barcode Block-list</a>) optionally excludes cells (rows)
+whose barcode scored anomalously before splitting/training. The two are
+independent and additive -- either, both, or neither may be set.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>
@@ -1570,6 +1576,11 @@ neither may be set.</p>
 <td>Cap cells per non-wildtype barcode, analogous to <code>max_cells_per_barcode_wt</code>. <code>null</code> disables the cap.</td>
 </tr>
 <tr>
+<td><code>min_cells_per_barcode</code></td>
+<td><code>null</code></td>
+<td>Drop any barcode (wildtype or variant, no exemption) with fewer than this many cells. <code>null</code> disables the filter. Should be set to roughly <code>10</code> or higher: the split is barcode-stratified, and <code>sklearn.model_selection.train_test_split(stratify=...)</code> requires every stratum to have enough members for 80/10/10 splitting -- undersized barcodes make it raise. Applied before <code>min_cells</code>.</td>
+</tr>
+<tr>
 <td><code>save_splits</code></td>
 <td><code>true</code></td>
 <td>Write lightweight train/test/val index files (row position + source file) to <code>output_dir</code>.</td>
@@ -1587,7 +1598,7 @@ neither may be set.</p>
 <tr>
 <td><code>barcode_column</code></td>
 <td><code>"meta_barcode"</code></td>
-<td>Column in <code>input_file</code> identifying each cell's barcode, used to apply <code>barcode_block_list_file</code>.</td>
+<td>Column in <code>input_file</code> identifying each cell's barcode. Required to be present in <code>input_file</code>: used to apply <code>barcode_block_list_file</code> and <code>min_cells_per_barcode</code>/<code>max_cells_per_barcode_*</code>, to barcode-stratify the train/test/val split and WT downsampling, and to compute per-barcode test AUROC.</td>
 </tr>
 <tr>
 <td><code>xgboost.num_boost_round</code></td>
@@ -1619,8 +1630,12 @@ neither may be set.</p>
 <h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>{output_dir}/results.parquet</code> — per-variant <code>train_auroc</code>, <code>val_auroc</code>,
-  <code>test_auroc</code>, <code>train_accuracy</code>, <code>val_accuracy</code>, <code>test_accuracy</code>, plus per-variant
-  metadata columns</li>
+  <code>test_auroc</code>, <code>train_accuracy</code>, <code>val_accuracy</code>, <code>test_accuracy</code>,
+  <code>median_barcode_test_auroc</code> (median AUROC across the variant's test-split
+  barcodes, each scored against all wildtype cells; <code>null</code> if the variant has
+  no scoreable barcode in the test split), <code>barcode_test_aurocs</code> (the
+  underlying per-barcode <code>{barcode, auroc}</code> pairs as a list of structs;
+  <code>null</code> under the same conditions), plus per-variant metadata columns</li>
 <li><code>{output_dir}/models.pkl</code> — dictionary of trained <code>xgb.Booster</code> objects keyed by
   variant label</li>
 <li><code>{output_dir}/{train,test,val}_index.parquet</code> — data-split index files (only
