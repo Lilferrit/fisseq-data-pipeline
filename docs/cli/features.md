@@ -182,11 +182,22 @@ path — no cell-level recomputation:
 
 **Output**: `aggregate.parquet` (the selected, cross-batch median aggregate
 table) and `blocklist.parquet` (the combined global blocklist, columns
-`feature`, `n_batches`, `n_ok`, `feature_ok`). When `run_pca=true`, also
-writes `pca_components.parquet` — one row per principal component, with one
-column per feature used in the fit (named by that feature's actual column
-name, holding its loading), plus `meta_variance_explained`,
-`meta_cumulative_variance_explained`, and `meta_component_idx`.
+`feature`, `n_batches`, `n_ok`, `feature_ok`). Always also writes one
+`aggregate_{feature_type}.parquet` file per aggregate feature type present in
+the cross-batch median aggregate (e.g. `aggregate_mean.parquet`,
+`aggregate_KS.parquet`, `aggregate_KSnegLogP.parquet`, ... — one of `mean`,
+`median`, `MAD`, `std`, `KS`, `signedKS`, `QQ`, `AUROC`, `KSnegLogP`,
+`AUROCnegLogP`, whichever are present), containing `label_column` plus that
+feature type's columns from the cross-batch median aggregate — captured after
+per-batch normalization and cross-batch medianing but before the global
+blocklist is (re-)applied and before pycytominer feature selection. Because
+feature selection can only ever drop columns, each of these files' columns
+are a superset of that feature type's columns in `aggregate.parquet`. When
+`run_pca=true`, also writes `pca_components.parquet` — one row per principal
+component, with one column per feature used in the fit (named by that
+feature's actual column name, holding its loading), plus
+`meta_variance_explained`, `meta_cumulative_variance_explained`, and
+`meta_component_idx`.
 
 Unlike this pipeline's other CLI entry points, `globalfeatureselect` expects
 its aggregate/blocklist input files staged in the working directory under

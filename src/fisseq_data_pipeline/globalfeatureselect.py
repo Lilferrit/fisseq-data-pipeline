@@ -48,20 +48,34 @@ underlying files' contents change without the batch list itself changing):
    the computation, with a warning logged — not treated as a hard failure of
    the whole channel, matching this module's existing "warn, don't crash"
    philosophy for other per-batch asymmetries.
-4. Drop columns blocked by step 1's blocklist (typically a no-op by this
+4. Classify step 3's output columns by aggregate feature type (matched by
+   suffix against the aggregators in :data:`.aggregate._AGGREGATORS`, e.g.
+   ``_mean``, ``_KS``, ``_KSnegLogP`` — see
+   :func:`classify_features_by_type`) and write one
+   ``aggregate_{feature_type}.parquet`` file per feature type present,
+   containing ``label_column`` plus that type's columns from step 3's
+   cross-batch median aggregate — i.e. before the blocklist is (re-)dropped
+   and before :func:`select_global_aggregate`'s pycytominer feature
+   selection. Because feature selection can only ever drop feature columns,
+   each of these per-type files' columns are, by construction, a superset of
+   that feature type's columns in the final ``aggregate.parquet``.
+5. Drop columns blocked by step 1's blocklist (typically a no-op by this
    point, since step 2 already dropped them per batch; kept as
    defense-in-depth for direct callers) and run
    :func:`fisseq_data_pipeline.featureselect.pyc_feature_select` (see
    :func:`select_global_aggregate`).
-5. Optionally (``compute_impact_score``, default ``True``) re-derive
+6. Optionally (``compute_impact_score``, default ``True``) re-derive
    ``meta_is_control`` via :func:`.aggregate.variant_classification` — lost
    in step 3's metadata collapse — and compute each variant's cosine-distance
    impact score against the control median (see
    :func:`.utils.vectors.compute_impact_score`), the same measure the
    BATCHWISE ``FINALIZE_FEATURE_SELECT`` stage computes.
 
-Writes exactly two outputs: the selected aggregate table and the combined
-blocklist.
+Writes the selected aggregate table, the combined blocklist, one
+``aggregate_{feature_type}.parquet`` file per aggregate feature type present
+in the cross-batch median aggregate (see step 4 and
+:func:`classify_features_by_type`), and, when ``run_pca`` is ``True``, a PCA
+components table.
 """
 
 import dataclasses
@@ -74,7 +88,7 @@ import polars as pl
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
-from .aggregate import variant_classification
+from .aggregate import _AGGREGATORS, variant_classification
 from .config import AppConfig
 from .featureselect import pyc_feature_select
 from .normalize import Normalizer
@@ -284,6 +298,56 @@ def median_across_batches(
     )
 
 
+def classify_features_by_type(
+    columns: Iterable[str], suffixes: Iterable[str]
+) -> Dict[str, List[str]]:
+    """
+    Bucket column names by aggregate feature type, matched by suffix.
+
+    Each column is assigned to the *longest* suffix (from ``suffixes``) it
+    ends with -- this disambiguates suffixes that are string-prefixes of one
+    another (e.g. ``_KS`` vs. ``_KSnegLogP``, ``_AUROC`` vs.
+    ``_AUROCnegLogP``): a column named ``foo_bar_KSnegLogP`` must classify
+    as ``KSnegLogP``, not ``KS``. Matching is by ``str.endswith``, not
+    substring containment.
+
+    Parameters
+    ----------
+    columns : Iterable[str]
+        Candidate feature column names (e.g. every non-label column of a
+        cross-batch median aggregate table).
+    suffixes : Iterable[str]
+        Known aggregator statistic suffixes, each including its leading
+        underscore (e.g. ``"_mean"``, ``"_KSnegLogP"`` -- see
+        ``BaseAggregator._stat_suffix`` on the classes in
+        :data:`.aggregate._AGGREGATORS`). Duplicates and empty strings are
+        ignored.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Maps each suffix that matched at least one column, with its leading
+        underscore stripped (e.g. ``"mean"``, ``"KSnegLogP"``), to the list
+        of matching column names, in the order they appeared in ``columns``.
+        A suffix with no matching column is omitted. A column matching no
+        known suffix is excluded from the result entirely (logged at
+        ``DEBUG``).
+    """
+    ordered_suffixes = sorted({s for s in suffixes if s}, key=len, reverse=True)
+    result: Dict[str, List[str]] = {}
+    for col in columns:
+        matched = next((s for s in ordered_suffixes if col.endswith(s)), None)
+        if matched is None:
+            logging.debug(
+                "Column %r does not match any known aggregate feature-type "
+                "suffix; excluding from per-feature-type output",
+                col,
+            )
+            continue
+        result.setdefault(matched.removeprefix("_"), []).append(col)
+    return result
+
+
 def combine_batch_blocklists(
     paths: List[str], min_batches_ok: Optional[int]
 ) -> pl.DataFrame:
@@ -462,6 +526,16 @@ def main(cfg: DictConfig) -> None:
       ``meta_pc_*``/``meta_umap_*`` embedding columns computed independently
       on the same selected/normalized feature matrix (see
       :func:`.utils.dimreduction.compute_pca`/``compute_umap``).
+    - ``{output_dir}/aggregate_{feature_type}.parquet`` — one file per
+      aggregate feature type present in the cross-batch median aggregate
+      (e.g. ``mean``, ``median``, ``MAD``, ``std``, ``KS``, ``signedKS``,
+      ``QQ``, ``AUROC``, ``KSnegLogP``, ``AUROCnegLogP`` — see
+      :func:`classify_features_by_type`), each containing ``label_column``
+      plus that feature type's columns from :func:`median_across_batches`'s
+      output, before the global blocklist is (re-)applied and before
+      pycytominer feature selection runs. Because feature selection can only
+      drop columns, each file's columns are a superset of that feature
+      type's columns in ``aggregate.parquet``.
     - ``{output_dir}/blocklist.parquet`` — the combined global blocklist.
     - ``{output_dir}/pca_components.parquet`` — only when ``run_pca`` is
       ``True``: one row per principal component (see
@@ -530,6 +604,19 @@ def main(cfg: DictConfig) -> None:
     agg_df = median_across_batches(
         batch_lfs, gfs_cfg.label_column, batch_labels=distinct_batches
     )
+
+    per_type = classify_features_by_type(
+        [c for c in agg_df.columns if c != gfs_cfg.label_column],
+        [cls._stat_suffix for cls in _AGGREGATORS.values()],
+    )
+    for type_name, cols in per_type.items():
+        per_type_path = output_dir / f"aggregate_{type_name}.parquet"
+        logging.info(
+            "Writing per-feature-type aggregate (%d cols) to %s",
+            len(cols),
+            per_type_path,
+        )
+        agg_df.select([gfs_cfg.label_column, *cols]).write_parquet(per_type_path)
 
     logging.info("Running pycytominer feature selection")
     selected_df = select_global_aggregate(agg_df, bl_df)

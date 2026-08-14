@@ -9,6 +9,7 @@ import pytest
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.globalfeatureselect as m
+from fisseq_data_pipeline.aggregate import _AGGREGATORS
 from fisseq_data_pipeline.utils.constants import IMPACT_SCORE_COL
 
 # ---------------------------------------------------------------------------
@@ -239,6 +240,58 @@ def test_select_global_aggregate_drops_blocked_columns() -> None:
 
 
 # ---------------------------------------------------------------------------
+# classify_features_by_type
+# ---------------------------------------------------------------------------
+
+
+def test_classify_features_by_type_longest_match_KS_vs_KSnegLogP() -> None:
+    result = m.classify_features_by_type(
+        ["foo_bar_KSnegLogP", "foo_KS"], ["_KS", "_KSnegLogP"]
+    )
+    assert result == {"KSnegLogP": ["foo_bar_KSnegLogP"], "KS": ["foo_KS"]}
+
+
+def test_classify_features_by_type_longest_match_AUROC_vs_AUROCnegLogP() -> None:
+    result = m.classify_features_by_type(
+        ["f1_AUROCnegLogP", "f1_AUROC"], ["_AUROC", "_AUROCnegLogP"]
+    )
+    assert result == {"AUROCnegLogP": ["f1_AUROCnegLogP"], "AUROC": ["f1_AUROC"]}
+
+
+def test_classify_features_by_type_excludes_unmatched_columns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        result = m.classify_features_by_type(["f1_mean", "meta_something"], ["_mean"])
+    assert result == {"mean": ["f1_mean"]}
+    assert "meta_something" in caplog.text
+
+
+def test_classify_features_by_type_empty_columns_returns_empty_dict() -> None:
+    assert m.classify_features_by_type([], ["_mean", "_KS"]) == {}
+
+
+def test_classify_features_by_type_empty_suffixes_returns_empty_dict() -> None:
+    assert m.classify_features_by_type(["f1_mean"], []) == {}
+
+
+def test_classify_features_by_type_omits_suffixes_with_no_matches() -> None:
+    result = m.classify_features_by_type(["f1_mean"], ["_mean", "_KS", "_AUROC"])
+    assert list(result.keys()) == ["mean"]
+
+
+def test_classify_features_by_type_preserves_column_order_within_bucket() -> None:
+    result = m.classify_features_by_type(["f2_mean", "f1_mean", "f3_mean"], ["_mean"])
+    assert result["mean"] == ["f2_mean", "f1_mean", "f3_mean"]
+
+
+def test_classify_features_by_type_duplicate_suffixes_deduped() -> None:
+    assert m.classify_features_by_type(["f1_mean"], ["_mean", "_mean"]) == {
+        "mean": ["f1_mean"]
+    }
+
+
+# ---------------------------------------------------------------------------
 # main() — end to end
 #
 # main() reads its aggregate/blocklist inputs as bare, cwd-relative
@@ -262,6 +315,62 @@ def _stage_batches(work_dir, *, block_f2: bool = False):
     for i, _batch_stem in enumerate(batch_stems, start=1):
         pl.DataFrame(
             {"feature": ["f1_mean", "f2_mean"], "feature_ok": [True, not block_f2]}
+        ).write_parquet(work_dir / f"bl_input_{i}.parquet")
+    return dict(
+        agg_batch_stems=list(batch_stems),
+        n_agg_files=len(batch_stems),
+        bl_batch_stems=list(batch_stems),
+        n_blocklist_files=len(batch_stems),
+    )
+
+
+def _write_batch_aggregate_multi_type(dir_path, filename: str = "multi.parquet") -> str:
+    """Like _write_batch_aggregate, but spans multiple aggregate feature
+    types -- including both suffix-prefix-collision pairs (_KS/_KSnegLogP,
+    _AUROC/_AUROCnegLogP) -- to exercise classify_features_by_type's
+    longest-match logic through the full main() path. A1A/A2A/A3A are
+    Synonymous (classify_variant) and form the normalization reference;
+    A1B/A1C are not. Every column's control triple has nonzero std, so
+    normalization never hits the all-null-column path."""
+    path = dir_path / filename
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+            "f1_mean": [0.0, 1.0, 4.0, 5.0, 10.0],
+            "f2_mean": [0.0, 2.0, 8.0, 6.0, 12.0],
+            "f1_KS": [0.1, 0.2, 0.3, 0.9, 0.8],
+            "f1_KSnegLogP": [1.0, 1.5, 2.0, 5.0, 6.0],
+            "f1_AUROC": [0.5, 0.6, 0.55, 0.9, 0.95],
+            "f1_AUROCnegLogP": [0.0, 0.1, 0.2, 3.0, 4.0],
+        }
+    ).write_parquet(path)
+    return str(path)
+
+
+def _stage_batches_multi_type(work_dir, *, blocked: tuple = ()) -> dict:
+    """Like _stage_batches, but with per-batch aggregates spanning multiple
+    aggregate feature types (see _write_batch_aggregate_multi_type). `blocked`
+    names feature columns to mark feature_ok=False in every batch's
+    blocklist, so select_global_aggregate drops them from aggregate.parquet
+    while the per-type files -- captured before the blocklist is
+    (re-)applied -- must still retain them."""
+    batch_stems = ["batchA", "batchB"]
+    all_features = [
+        "f1_mean",
+        "f2_mean",
+        "f1_KS",
+        "f1_KSnegLogP",
+        "f1_AUROC",
+        "f1_AUROCnegLogP",
+    ]
+    for i, _batch_stem in enumerate(batch_stems, start=1):
+        _write_batch_aggregate_multi_type(work_dir, filename=f"agg_input_{i}.parquet")
+    for i, _batch_stem in enumerate(batch_stems, start=1):
+        pl.DataFrame(
+            {
+                "feature": all_features,
+                "feature_ok": [f not in blocked for f in all_features],
+            }
         ).write_parquet(work_dir / f"bl_input_{i}.parquet")
     return dict(
         agg_batch_stems=list(batch_stems),
@@ -383,6 +492,122 @@ def test_main_tolerates_batch_present_in_agg_but_not_blocklist(
     # blocklist-filtered by its own batch's report).
     result = pl.read_parquet(tmp_path / "out" / "aggregate.parquet")
     assert len(result) == 5
+
+
+# ---------------------------------------------------------------------------
+# aggregate_{feature_type}.parquet — main() integration
+# ---------------------------------------------------------------------------
+
+
+def test_main_writes_one_file_per_present_feature_type(tmp_path, monkeypatch) -> None:
+    staged = _stage_batches_multi_type(tmp_path)
+    _run_gfs_main(tmp_path, monkeypatch, staged)
+    out = tmp_path / "out"
+
+    for type_name in ("mean", "KS", "KSnegLogP", "AUROC", "AUROCnegLogP"):
+        assert (out / f"aggregate_{type_name}.parquet").exists()
+
+    mean_df = pl.read_parquet(out / "aggregate_mean.parquet")
+    assert set(mean_df.columns) == {"meta_aa_changes", "f1_mean", "f2_mean"}
+    ks_df = pl.read_parquet(out / "aggregate_KS.parquet")
+    assert set(ks_df.columns) == {"meta_aa_changes", "f1_KS"}
+    ksneglogp_df = pl.read_parquet(out / "aggregate_KSnegLogP.parquet")
+    assert set(ksneglogp_df.columns) == {"meta_aa_changes", "f1_KSnegLogP"}
+    auroc_df = pl.read_parquet(out / "aggregate_AUROC.parquet")
+    assert set(auroc_df.columns) == {"meta_aa_changes", "f1_AUROC"}
+    aurocneglogp_df = pl.read_parquet(out / "aggregate_AUROCnegLogP.parquet")
+    assert set(aurocneglogp_df.columns) == {"meta_aa_changes", "f1_AUROCnegLogP"}
+
+
+def test_main_per_type_columns_union_equals_median_aggregate_columns(
+    tmp_path, monkeypatch
+) -> None:
+    staged = _stage_batches_multi_type(tmp_path)
+    _run_gfs_main(tmp_path, monkeypatch, staged)
+    out = tmp_path / "out"
+
+    union_cols = set()
+    for p in sorted(out.glob("aggregate_*.parquet")):
+        union_cols |= set(pl.read_parquet(p).columns) - {"meta_aa_changes"}
+    assert union_cols == {
+        "f1_mean",
+        "f2_mean",
+        "f1_KS",
+        "f1_KSnegLogP",
+        "f1_AUROC",
+        "f1_AUROCnegLogP",
+    }
+
+
+def _stage_batches_correlated_features(work_dir):
+    """Stage two batches whose f1_KS column is an exact positive multiple of
+    f1_mean (2x). Per-column z-score normalization is affine, so this
+    correlation survives normalize_batch_aggregate/median_across_batches
+    intact -- real (unmocked) pycytominer correlation_threshold filtering
+    (inside select_global_aggregate's pyc_feature_select call) is then
+    guaranteed to drop one of the two columns, giving an observable
+    pyc_feature_select-driven difference between agg_df (captured into the
+    aggregate_{type}.parquet files) and the final aggregate.parquet -- unlike
+    the global blocklist, which is already applied per batch by
+    normalize_batch_aggregate, well before the per-type split point (so a
+    blocklist-only difference is never observable there)."""
+    batch_stems = ["batchA", "batchB"]
+    for i, _batch_stem in enumerate(batch_stems, start=1):
+        pl.DataFrame(
+            {
+                "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+                "f1_mean": [0.0, 1.0, 4.0, 5.0, 10.0],
+                "f1_KS": [0.0, 2.0, 8.0, 10.0, 20.0],
+            }
+        ).write_parquet(work_dir / f"agg_input_{i}.parquet")
+    for i, _batch_stem in enumerate(batch_stems, start=1):
+        pl.DataFrame(
+            {"feature": ["f1_mean", "f1_KS"], "feature_ok": [True, True]}
+        ).write_parquet(work_dir / f"bl_input_{i}.parquet")
+    return dict(
+        agg_batch_stems=list(batch_stems),
+        n_agg_files=len(batch_stems),
+        bl_batch_stems=list(batch_stems),
+        n_blocklist_files=len(batch_stems),
+    )
+
+
+def test_main_per_type_files_are_superset_of_final_aggregate_columns(
+    tmp_path, monkeypatch
+) -> None:
+    # f1_mean and f1_KS are perfectly correlated -> pycytominer's real (not
+    # mocked) correlation_threshold filter drops one of them inside
+    # select_global_aggregate, so the final aggregate.parquet ends up with
+    # strictly fewer feature columns than agg_df had. The dropped column
+    # must still be present in its aggregate_{type}.parquet file, since that
+    # file is captured before select_global_aggregate runs.
+    staged = _stage_batches_correlated_features(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    with patch("fisseq_data_pipeline.globalfeatureselect.setup_logging"):
+        m.main.__wrapped__(make_gfs_cfg(tmp_path, staged))
+    out = tmp_path / "out"
+    result = pl.read_parquet(out / "aggregate.parquet")
+
+    # Sanity check the correlation actually triggered a real drop -- one of
+    # the two columns is missing from the final aggregate.
+    result_features = {"f1_mean", "f1_KS"} & set(result.columns)
+    assert len(result_features) == 1
+
+    final_by_type = m.classify_features_by_type(
+        [c for c in result.columns if c != "meta_aa_changes"],
+        [cls._stat_suffix for cls in _AGGREGATORS.values()],
+    )
+    for type_name, final_cols in final_by_type.items():
+        per_type_cols = set(
+            pl.read_parquet(out / f"aggregate_{type_name}.parquet").columns
+        )
+        assert set(final_cols) <= per_type_cols
+
+    # The specific column pycytominer dropped is still present in its own
+    # per-type file, even though it's gone from the final aggregate.
+    dropped = ({"f1_mean", "f1_KS"} - result_features).pop()
+    dropped_type = "mean" if dropped == "f1_mean" else "KS"
+    assert dropped in pl.read_parquet(out / f"aggregate_{dropped_type}.parquet").columns
 
 
 # ---------------------------------------------------------------------------
