@@ -1560,7 +1560,8 @@ into stratified 50/50 pseudo-replicate halves across
 <code>params.feature_select_bootstrap_reps</code> replicates; each half is
 aggregated per feature type (via <a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>),
 correlated against its partner half, and a per-feature blocklist is derived from
-the median correlation across all bootstrap replicates. The final stage joins the
+a Fisher-z-averaged correlation estimate (with a paired precision/quality gate)
+across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.</p>
 <p>A separate, much simpler GLOBAL entry point (§6 below) runs once per active
@@ -1638,8 +1639,15 @@ feature type.</p>
 </code></pre></div>
 <h2 id="3-python-m-fisseq_data_pipelineblocklist-blocklist">3. <code>python -m fisseq_data_pipeline.blocklist</code> (<code>BLOCKLIST</code>)<a class="headerlink" href="#3-python-m-fisseq_data_pipelineblocklist-blocklist" title="Permanent link">&para;</a></h2>
 <p>The one intentional cross-bootstrap synchronization point: gathers every bootstrap
-replicate's correlation table for one feature type and computes each feature's
-median <code>r</code> across replicates.</p>
+replicate's correlation table for one feature type and, for each feature,
+Fisher-z-transforms every replicate's <code>r</code> (<code>z = arctanh(clip(r, -1+eps, 1-eps))</code>),
+averages in z-space, and back-transforms to a point estimate
+(<code>r_est = tanh(mean(z))</code>) plus its standard error
+(<code>se_z = std(z, ddof=1) / sqrt(n_replicates)</code>). A feature is marked <code>feature_ok</code>
+only if it clears two independent gates: a <strong>magnitude gate</strong> (<code>r_est</code> vs
+<code>minimum_correlation</code>) and a <strong>quality/precision gate</strong> (<code>se_z</code> vs <code>max_se_z</code>). A
+feature with fewer than 2 usable replicates has <code>se_z = null</code> and automatically
+fails the quality gate — a single replicate can't support a precision claim.</p>
 <table>
 <thead>
 <tr>
@@ -1657,15 +1665,21 @@ median <code>r</code> across replicates.</p>
 <tr>
 <td><code>minimum_correlation</code></td>
 <td><code>0.5</code></td>
-<td>Minimum median Pearson <code>r</code> required for a feature to pass.</td>
+<td>Magnitude gate: minimum Fisher-z-averaged Pearson <code>r</code> estimate (<code>r_est</code>) required for a feature to pass. Must be paired with <code>max_se_z</code>'s quality gate — this threshold alone is not sufficient for <code>feature_ok</code>.</td>
+</tr>
+<tr>
+<td><code>max_se_z</code></td>
+<td><code>0.0884</code></td>
+<td>Quality/precision gate: maximum acceptable standard error of the mean Fisher-z estimate (<code>se_z</code>) across bootstrap replicates. Calibrated for the pipeline's default <code>bootstrap_reps=10</code> (<code>se_z = 0.2 / t_crit(df=9, 0.975) ≈ 0.0884</code>, targeting a ~95% CI half-width of ~0.15 in <code>r</code> near <code>r=0.5</code>). If <code>bootstrap_reps</code> is ever changed from its default, rescale by roughly <code>sqrt(10 / new_bootstrap_reps)</code>, or re-derive from scratch via the retroactive replicate-resampling check.</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Output</strong>: <code>blocklist.parquet</code> (columns: <code>feature</code>, <code>median_r</code>, <code>feature_ok</code>).</p>
+<p><strong>Output</strong>: <code>blocklist.parquet</code> (columns: <code>feature</code>, <code>r_est</code>, <code>se_z</code>, <code>n_replicates</code>, <code>feature_ok</code>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.blocklist<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="s1">&#39;correlation_files=out/correlations/mean/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nv">minimum_correlation</span><span class="o">=</span><span class="m">0</span>.5
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nv">minimum_correlation</span><span class="o">=</span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nv">max_se_z</span><span class="o">=</span><span class="m">0</span>.0884
 </code></pre></div>
 <h2 id="4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists">4. <code>python -m fisseq_data_pipeline.combineblocklists</code> (<code>COMBINE_BLOCKLISTS</code>)<a class="headerlink" href="#4-python-m-fisseq_data_pipelinecombineblocklists-combine_blocklists" title="Permanent link">&para;</a></h2>
 <p>Concatenates every feature type's blocklist into one combined blocklist (a plain

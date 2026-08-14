@@ -2354,7 +2354,12 @@ overridable per batch exactly like every other parameter here — see
 <tr>
 <td><code>--feature_select_min_correlation</code></td>
 <td><code>0.5</code></td>
-<td>Minimum median Pearson <code>r</code> required for a feature to pass <code>BLOCKLIST</code>.</td>
+<td><code>BLOCKLIST</code>'s magnitude gate: minimum Fisher-z-averaged Pearson <code>r</code> estimate required for a feature to pass. Paired with the quality/precision gate below (<code>--feature_select_max_se_z</code>) that a feature must also clear.</td>
+</tr>
+<tr>
+<td><code>--feature_select_max_se_z</code></td>
+<td><code>0.0884</code></td>
+<td><code>BLOCKLIST</code>'s quality/precision gate: maximum acceptable standard error of the mean Fisher-z estimate across bootstrap replicates. Calibrated for the default <code>--feature_select_bootstrap_reps=10</code> (see <a href="../cli/features/#3-python-m-fisseq_data_pipelineblocklist-blocklist">CLI Reference: blocklist</a>); rescale by roughly <code>sqrt(10 / new_bootstrap_reps)</code> if that changes.</td>
 </tr>
 <tr>
 <td><code>--global_feature_select_min_batches_ok</code></td>
@@ -2595,7 +2600,7 @@ per-batch identity either — though it still only reads a member batch's
 <code>run_feature_selection</code> is true (see <a href="#global-channels">Global channels</a>).</p>
 <p>Parameters shared between a per-batch process and a global-only process
 (<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
-<code>--feature_select_min_correlation</code>, <code>--run_pca</code>, <code>--pca_n_components</code>,
+<code>--feature_select_min_correlation</code>, <code>--feature_select_max_se_z</code>, <code>--run_pca</code>, <code>--pca_n_components</code>,
 <code>--run_umap</code>, <code>--umap_n_components</code>, <code>--umap_n_neighbors</code>, <code>--umap_metric</code>,
 <code>--umap_min_dist</code>, <code>--umap_random_state</code>) are overridable per batch for their
 batchwise consumer only (<code>OVWT_BATCHWISE</code>, <code>AGGREGATE_FEATURE_TYPE_BATCHWISE</code>
