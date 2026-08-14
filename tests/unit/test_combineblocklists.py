@@ -26,10 +26,22 @@ def test_main_concatenates_disjoint_features(tmp_path) -> None:
     bl_dir = tmp_path / "bl"
     bl_dir.mkdir()
     pl.DataFrame(
-        {"feature": ["f1_mean"], "median_r": [0.9], "feature_ok": [True]}
+        {
+            "feature": ["f1_mean"],
+            "r_est": [0.9],
+            "se_z": [0.01],
+            "n_replicates": [10],
+            "feature_ok": [True],
+        }
     ).write_parquet(bl_dir / "mean.parquet")
     pl.DataFrame(
-        {"feature": ["f1_std"], "median_r": [0.3], "feature_ok": [False]}
+        {
+            "feature": ["f1_std"],
+            "r_est": [0.3],
+            "se_z": [0.05],
+            "n_replicates": [10],
+            "feature_ok": [False],
+        }
     ).write_parquet(bl_dir / "std.parquet")
 
     with patch("fisseq_data_pipeline.combineblocklists.setup_logging"):

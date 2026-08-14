@@ -7,7 +7,8 @@ into stratified 50/50 pseudo-replicate halves across
 `params.feature_select_bootstrap_reps` replicates; each half is
 aggregated per feature type (via [`python -m fisseq_data_pipeline.aggregatefeaturetype`](aggregate.md)),
 correlated against its partner half, and a per-feature blocklist is derived from
-the median correlation across all bootstrap replicates. The final stage joins the
+a Fisher-z-averaged correlation estimate (with a paired precision/quality gate)
+across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.
 
@@ -59,21 +60,30 @@ uv run python -m fisseq_data_pipeline.correlatefeatures \
 ## 3. `python -m fisseq_data_pipeline.blocklist` (`BLOCKLIST`)
 
 The one intentional cross-bootstrap synchronization point: gathers every bootstrap
-replicate's correlation table for one feature type and computes each feature's
-median `r` across replicates.
+replicate's correlation table for one feature type and, for each feature,
+Fisher-z-transforms every replicate's `r` (`z = arctanh(clip(r, -1+eps, 1-eps))`),
+averages in z-space, and back-transforms to a point estimate
+(`r_est = tanh(mean(z))`) plus its standard error
+(`se_z = std(z, ddof=1) / sqrt(n_replicates)`). A feature is marked `feature_ok`
+only if it clears two independent gates: a **magnitude gate** (`r_est` vs
+`minimum_correlation`) and a **quality/precision gate** (`se_z` vs `max_se_z`). A
+feature with fewer than 2 usable replicates has `se_z = null` and automatically
+fails the quality gate — a single replicate can't support a precision claim.
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
 | `correlation_files` | **required** | Glob pattern matching all bootstrap-replicate correlation parquet files for one feature type. |
-| `minimum_correlation` | `0.5` | Minimum median Pearson `r` required for a feature to pass. |
+| `minimum_correlation` | `0.5` | Magnitude gate: minimum Fisher-z-averaged Pearson `r` estimate (`r_est`) required for a feature to pass. Must be paired with `max_se_z`'s quality gate — this threshold alone is not sufficient for `feature_ok`. |
+| `max_se_z` | `0.0884` | Quality/precision gate: maximum acceptable standard error of the mean Fisher-z estimate (`se_z`) across bootstrap replicates. Calibrated for the pipeline's default `bootstrap_reps=10` (`se_z = 0.2 / t_crit(df=9, 0.975) ≈ 0.0884`, targeting a ~95% CI half-width of ~0.15 in `r` near `r=0.5`). If `bootstrap_reps` is ever changed from its default, rescale by roughly `sqrt(10 / new_bootstrap_reps)`, or re-derive from scratch via the retroactive replicate-resampling check. |
 
-**Output**: `blocklist.parquet` (columns: `feature`, `median_r`, `feature_ok`).
+**Output**: `blocklist.parquet` (columns: `feature`, `r_est`, `se_z`, `n_replicates`, `feature_ok`).
 
 ```bash
 uv run python -m fisseq_data_pipeline.blocklist \
     output_dir=./out \
     'correlation_files=out/correlations/mean/*.parquet' \
-    minimum_correlation=0.5
+    minimum_correlation=0.5 \
+    max_se_z=0.0884
 ```
 
 ## 4. `python -m fisseq_data_pipeline.combineblocklists` (`COMBINE_BLOCKLISTS`)

@@ -61,6 +61,16 @@ _FEATURE_COLS = [
 # them -- making the filtered and unfiltered OvWT/batch-vs-batch runs
 # indistinguishable for test purposes. 0.5 blocks 4 of the 5 features,
 # exercising a non-trivial (some blocked, some not) split.
+#
+# feature_select_max_se_z's default (0.0884) is calibrated for
+# feature_select_bootstrap_reps=10 (see BlocklistConfig's docstring); at this
+# fixture's reduced bootstrap_reps=3, se_z inflates by roughly sqrt(10/3) and
+# this small synthetic dataset's replicate-to-replicate correlation noise is
+# high enough that the plain rescaled value can still zero out every
+# feature for some batches (BLOCKLIST's quality gate is deliberately strict).
+# 0.4 is chosen empirically to leave a non-trivial (some ok, some not) split
+# for every batch these params are used with, while still exercising the
+# quality gate (not just rubber-stamping every feature).
 _NF_PARAMS = [
     "--barcode_count_threshold",
     "3",
@@ -76,6 +86,8 @@ _NF_PARAMS = [
     "2",
     "--feature_select_bootstrap_reps",
     "3",
+    "--feature_select_max_se_z",
+    "0.4",
     "--anova_blocklist_pvalue_threshold",
     "0.5",
     "--wtvwt_min_cells_per_barcode",

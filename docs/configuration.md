@@ -166,7 +166,8 @@ overridable per batch exactly like every other parameter here — see
 | `--feature_select_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (the default subset of `aggregate.py`'s aggregators; `signedKS` is also available but not enabled by default). |
 | `--feature_select_bootstrap_reps` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
 | `--feature_select_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields). |
-| `--feature_select_min_correlation` | `0.5` | Minimum median Pearson `r` required for a feature to pass `BLOCKLIST`. |
+| `--feature_select_min_correlation` | `0.5` | `BLOCKLIST`'s magnitude gate: minimum Fisher-z-averaged Pearson `r` estimate required for a feature to pass. Paired with the quality/precision gate below (`--feature_select_max_se_z`) that a feature must also clear. |
+| `--feature_select_max_se_z` | `0.0884` | `BLOCKLIST`'s quality/precision gate: maximum acceptable standard error of the mean Fisher-z estimate across bootstrap replicates. Calibrated for the default `--feature_select_bootstrap_reps=10` (see [CLI Reference: blocklist](cli/features.md#3-python-m-fisseq_data_pipelineblocklist-blocklist)); rescale by roughly `sqrt(10 / new_bootstrap_reps)` if that changes. |
 | `--global_feature_select_min_batches_ok` | `null` | `GLOBAL_FEATURE_SELECT` only: minimum number of a global channel's member batches that must mark a feature ok (in their own `FINALIZE_FEATURE_SELECT_BATCHWISE`-chain blocklist) for it to be globally ok. `null` (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning. |
 
 ### Dimensionality reduction (PCA / UMAP)
@@ -370,7 +371,7 @@ per-batch identity either — though it still only reads a member batch's
 
 Parameters shared between a per-batch process and a global-only process
 (`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--feature_select_downsample_wt`,
-`--feature_select_min_correlation`, `--run_pca`, `--pca_n_components`,
+`--feature_select_min_correlation`, `--feature_select_max_se_z`, `--run_pca`, `--pca_n_components`,
 `--run_umap`, `--umap_n_components`, `--umap_n_neighbors`, `--umap_metric`,
 `--umap_min_dist`, `--umap_random_state`) are overridable per batch for their
 batchwise consumer only (`OVWT_BATCHWISE`, `AGGREGATE_FEATURE_TYPE_BATCHWISE`
