@@ -1902,11 +1902,22 @@ path — no cell-level recomputation:</p>
 </table>
 <p><strong>Output</strong>: <code>aggregate.parquet</code> (the selected, cross-batch median aggregate
 table) and <code>blocklist.parquet</code> (the combined global blocklist, columns
-<code>feature</code>, <code>n_batches</code>, <code>n_ok</code>, <code>feature_ok</code>). When <code>run_pca=true</code>, also
-writes <code>pca_components.parquet</code> — one row per principal component, with one
-column per feature used in the fit (named by that feature's actual column
-name, holding its loading), plus <code>meta_variance_explained</code>,
-<code>meta_cumulative_variance_explained</code>, and <code>meta_component_idx</code>.</p>
+<code>feature</code>, <code>n_batches</code>, <code>n_ok</code>, <code>feature_ok</code>). Always also writes one
+<code>aggregate_{feature_type}.parquet</code> file per aggregate feature type present in
+the cross-batch median aggregate (e.g. <code>aggregate_mean.parquet</code>,
+<code>aggregate_KS.parquet</code>, <code>aggregate_KSnegLogP.parquet</code>, ... — one of <code>mean</code>,
+<code>median</code>, <code>MAD</code>, <code>std</code>, <code>KS</code>, <code>signedKS</code>, <code>QQ</code>, <code>AUROC</code>, <code>KSnegLogP</code>,
+<code>AUROCnegLogP</code>, whichever are present), containing <code>label_column</code> plus that
+feature type's columns from the cross-batch median aggregate — captured after
+per-batch normalization and cross-batch medianing but before the global
+blocklist is (re-)applied and before pycytominer feature selection. Because
+feature selection can only ever drop columns, each of these files' columns
+are a superset of that feature type's columns in <code>aggregate.parquet</code>. When
+<code>run_pca=true</code>, also writes <code>pca_components.parquet</code> — one row per principal
+component, with one column per feature used in the fit (named by that
+feature's actual column name, holding its loading), plus
+<code>meta_variance_explained</code>, <code>meta_cumulative_variance_explained</code>, and
+<code>meta_component_idx</code>.</p>
 <p>Unlike this pipeline's other CLI entry points, <code>globalfeatureselect</code> expects
 its aggregate/blocklist input files staged in the working directory under
 fixed, auto-numbered names (<code>agg_input_1.parquet</code>, <code>agg_input_2.parquet</code>,
