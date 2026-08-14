@@ -51,6 +51,17 @@ process GLOBAL_FEATURE_SELECT {
     // this Nextflow version and would silently drop the whole tuple).
     tuple val(chan), path("aggregate.parquet"), path("blocklist.parquet")
     path("pca_components.parquet", optional: true)
+    // aggregate_{feature_type}.parquet: one file per aggregate feature type
+    // present in the cross-batch median aggregate
+    // (globalfeatureselect.classify_features_by_type), always attempted --
+    // no config toggle. Glob "aggregate_*.parquet" cannot collide with
+    // "aggregate.parquet" above (no underscore follows "aggregate" there).
+    // Own output statement for the same tuple/optional reason as
+    // pca_components.parquet above. Marked optional as defense-in-depth for
+    // the degenerate case where no column in the cross-batch median
+    // aggregate matches a known aggregator suffix -- unreachable in normal
+    // pipeline operation but possible for a direct/non-Nextflow caller.
+    path("aggregate_*.parquet", optional: true)
 
     script:
     def aggStemsArg = "[" + agg_batch_stems.collect { s -> "'${s}'" }.join(',') + "]"
