@@ -81,6 +81,18 @@ class OvwtConfig(LabeledInputConfig):
         Maximum cells allowed for any single non-wildtype barcode, analogous
         to ``max_cells_per_barcode_wt``. ``None`` disables this cap. Defaults
         to ``None``.
+    min_cells_per_barcode : int or None
+        Minimum number of cells a barcode must have to be retained. Applies
+        uniformly to both wildtype and variant barcodes (unlike ``min_cells``,
+        which only ever drops variants and always keeps wildtype). ``None``
+        disables the filter. Defaults to ``None``. Should be set to roughly
+        ``10`` or higher when the barcode-stratified split is going to
+        succeed reliably: the split stratifies on barcode (see
+        :func:`train_test_val_split`), and
+        ``sklearn.model_selection.train_test_split(stratify=...)`` requires
+        every stratum to have enough members to place at least one row in
+        each of train/test/val -- barcodes left too small by this filter
+        make the split raise.
     save_splits : bool
         If ``True``, write lightweight train/test/val index files to
         ``output_dir``. Each file records the original row position and source
@@ -113,6 +125,7 @@ class OvwtConfig(LabeledInputConfig):
     downsample_wt: Union[bool, int] = True
     max_cells_per_barcode_wt: Optional[int] = None
     max_cells_per_barcode_variant: Optional[int] = None
+    min_cells_per_barcode: Optional[int] = None
     save_splits: bool = True
     feature_block_list_file: Optional[str] = None
     barcode_block_list_file: Optional[str] = None
@@ -156,6 +169,87 @@ def train_xgboost(
     return train_binary_xgboost(train, val, cfg.label_column, cfg.wt_label, cfg)
 
 
+def _per_barcode_test_auroc(
+    test: pl.DataFrame,
+    model: xgb.Booster,
+    label_col: str,
+    wt_label: str,
+    barcode_col: str,
+    variant: str,
+) -> tuple[Optional[float], Optional[list[dict]]]:
+    """
+    Compute per-barcode test AUROC for one variant vs. wildtype.
+
+    For each barcode carrying variant ``variant`` in ``test``, scores a
+    variant-barcode-vs-wildtype AUROC using every wildtype row plus only the
+    rows of that one barcode. A barcode is skipped (silently -- callers get
+    ``None``/an empty contribution rather than an exception) if either class
+    would have 0 rows in that subset, or if the variant side has exactly 1
+    cell: AUROC on 1-vs-N is technically defined but too noisy on a single
+    cell to be a meaningful per-barcode score.
+
+    Parameters
+    ----------
+    test : pl.DataFrame
+        Test split containing feature columns, ``label_col``, and
+        ``barcode_col``.
+    model : xgb.Booster
+        Trained XGBoost booster.
+    label_col : str
+        Name of the label column.
+    wt_label : str
+        Label string identifying wildtype rows.
+    barcode_col : str
+        Name of the column identifying each cell's barcode.
+    variant : str
+        Variant label to score barcodes for.
+
+    Returns
+    -------
+    tuple[float or None, list[dict] or None]
+        ``(median_auroc, per_barcode)`` where ``per_barcode`` is a list of
+        ``{"barcode": str, "auroc": float}`` dicts, one per barcode that
+        wasn't skipped. Both are ``None`` if ``barcode_col`` isn't present
+        in ``test`` or if every candidate barcode was skipped.
+    """
+    if barcode_col not in test.columns:
+        return None, None
+
+    variant_barcodes = (
+        test.filter(pl.col(label_col) == variant)
+        .get_column(barcode_col)
+        .unique()
+        .to_list()
+    )
+
+    per_barcode: dict = {}
+    for barcode in variant_barcodes:
+        subset = test.filter(
+            (pl.col(label_col) == wt_label)
+            | ((pl.col(label_col) == variant) & (pl.col(barcode_col) == barcode))
+        )
+        wt_n = (subset.get_column(label_col) == wt_label).sum()
+        variant_n = (subset.get_column(label_col) == variant).sum()
+        if wt_n == 0 or variant_n == 0 or variant_n == 1:
+            continue
+        auroc, _ = evaluate(
+            subset.drop(barcode_col),
+            model=model,
+            label_col=label_col,
+            positive_label=wt_label,
+        )
+        per_barcode[barcode] = auroc
+
+    if not per_barcode:
+        return None, None
+
+    median_auroc = float(np.median(list(per_barcode.values())))
+    barcode_test_aurocs = [
+        {"barcode": barcode, "auroc": auroc} for barcode, auroc in per_barcode.items()
+    ]
+    return median_auroc, barcode_test_aurocs
+
+
 def test_xgboost(
     model: xgb.Booster,
     train: pl.DataFrame,
@@ -175,18 +269,35 @@ def test_xgboost(
     val : pl.DataFrame
         Validation split.
     test : pl.DataFrame
-        Held-out test split.
+        Held-out test split. May carry ``cfg.barcode_column`` (it's dropped
+        internally before the full-split AUROC/accuracy are computed); when
+        present, it's also used to compute per-barcode test AUROC via
+        :func:`_per_barcode_test_auroc`.
     cfg : DictConfig
-        Hydra config supplying ``label_column`` and ``wt_label``.
+        Hydra config supplying ``label_column``, ``wt_label``, and
+        ``barcode_column``.
 
     Returns
     -------
     dict
         Dictionary with keys ``variant``, ``train_auroc``, ``train_accuracy``,
-        ``val_auroc``, ``val_accuracy``, ``test_auroc``, ``test_accuracy``.
+        ``val_auroc``, ``val_accuracy``, ``test_auroc``, ``test_accuracy``,
+        ``median_barcode_test_auroc``, and ``barcode_test_aurocs``.
+
+        ``median_barcode_test_auroc`` (``float`` or ``None``) is the median
+        AUROC across the variant's test-split barcodes (``None`` if
+        ``cfg.barcode_column`` isn't present on ``test`` or no barcode
+        qualified for scoring). ``barcode_test_aurocs`` (``list[dict]`` or
+        ``None``) holds the underlying per-barcode ``{"barcode", "auroc"}``
+        pairs as a list of structs rather than a python dict: Polars
+        serializes ``List(Struct)`` columns to parquet cleanly, while a
+        dict-valued column ends up as opaque Object-dtype data. Readers that
+        want dict semantics back can do e.g.
+        ``{d["barcode"]: d["auroc"] for d in row}`` at read time.
     """
     label_col = cfg.label_column
     wt_label = cfg.wt_label
+    barcode_col = cfg.barcode_column
 
     variant = next(
         v for v in train.get_column(label_col).unique().to_list() if v != wt_label
@@ -198,7 +309,12 @@ def test_xgboost(
 
     train_auroc, train_accuracy = evaluate_wrapper(train)
     val_auroc, val_accuracy = evaluate_wrapper(val)
-    test_auroc, test_accuracy = evaluate_wrapper(test)
+    test_for_eval = test.drop(barcode_col) if barcode_col in test.columns else test
+    test_auroc, test_accuracy = evaluate_wrapper(test_for_eval)
+
+    median_barcode_test_auroc, barcode_test_aurocs = _per_barcode_test_auroc(
+        test, model, label_col, wt_label, barcode_col, variant
+    )
 
     return {
         "variant": variant,
@@ -208,6 +324,8 @@ def test_xgboost(
         "val_accuracy": val_accuracy,
         "test_auroc": test_auroc,
         "test_accuracy": test_accuracy,
+        "median_barcode_test_auroc": median_barcode_test_auroc,
+        "barcode_test_aurocs": barcode_test_aurocs,
     }
 
 
@@ -305,12 +423,30 @@ def downsample_wildtype(
     wt_label: str,
     seed: int,
     n: Optional[int] = None,
+    barcode_column: Optional[str] = None,
 ) -> pl.DataFrame:
     """
     Downsample wildtype rows to a target count.
 
     If the wildtype group is larger than the target, a random sample of
     wildtype rows is drawn without replacement.
+
+    When ``barcode_column`` is supplied and present in ``data_df``, the draw
+    is stratified by wildtype barcode: if barcode B currently holds fraction
+    ``p_B`` of the wildtype pool, roughly ``p_B * target`` of its cells are
+    kept, so WT barcode proportions are preserved as much as possible rather
+    than sampled uniformly across all wildtype cells. Because the same
+    fraction is applied to every barcode and that fraction is always
+    ``<= 1``, a barcode's per-barcode target is automatically capped at its
+    own cell count -- a barcode smaller than its proportional target simply
+    keeps all its cells, no extra clamping needed. Rounding each per-barcode
+    target to the nearest integer can leave the final wildtype count off the
+    requested target by up to (number of wildtype barcodes) cells; this is
+    accepted as negligible relative to typical target sizes rather than
+    corrected with a largest-remainder adjustment.
+
+    When ``barcode_column`` is ``None`` or absent from ``data_df``, this
+    falls back to the previous uniform-sampling behavior.
 
     Parameters
     ----------
@@ -325,6 +461,10 @@ def downsample_wildtype(
     n : int or None
         Target wildtype count. If ``None``, the target is the size of the
         largest non-wildtype variant group.
+    barcode_column : str or None
+        Name of the column identifying each cell's barcode. If ``None`` or
+        not present in ``data_df``, sampling is uniform across wildtype rows
+        (the original behavior). Defaults to ``None``.
 
     Returns
     -------
@@ -332,7 +472,37 @@ def downsample_wildtype(
         DataFrame with wildtype rows downsampled, or unchanged if already
         at or below the target.
     """
-    return downsample_group_to_target(data_df, label_col, wt_label, seed, n=n)
+    if barcode_column is None or barcode_column not in data_df.columns:
+        return downsample_group_to_target(data_df, label_col, wt_label, seed, n=n)
+
+    wt_df = data_df.filter(pl.col(label_col) == wt_label)
+    other_df = data_df.filter(pl.col(label_col) != wt_label)
+    wt_n = len(wt_df)
+    if wt_n == 0:
+        return data_df
+
+    if n is None:
+        target = other_df.group_by(label_col).len().get_column("len").max()
+    else:
+        target = n
+
+    if target is None or wt_n <= target:
+        return data_df
+
+    fraction = target / wt_n
+    barcode_targets = wt_df.group_by(barcode_column).len().with_columns(
+        (pl.col("len") * fraction).round(0).cast(pl.Int64).alias("__target__")
+    )
+    shuffled = wt_df.sample(fraction=1.0, shuffle=True, seed=seed).join(
+        barcode_targets.select([barcode_column, "__target__"]),
+        on=barcode_column,
+        how="left",
+    )
+    row_in_barcode = pl.int_range(pl.len()).over(barcode_column)
+    kept_wt = shuffled.filter(row_in_barcode < pl.col("__target__")).drop(
+        "__target__"
+    )
+    return pl.concat([other_df, kept_wt])
 
 
 def filter_min_cells(
@@ -373,6 +543,45 @@ def filter_min_cells(
     return data_df.filter(
         (pl.col(label_col) == wt_label) | pl.col(label_col).is_in(keep_labels)
     )
+
+
+def filter_min_cells_per_barcode(
+    data_df: pl.DataFrame,
+    barcode_column: str,
+    min_cells: int,
+) -> pl.DataFrame:
+    """
+    Remove barcodes with fewer than ``min_cells`` cells.
+
+    Unlike :func:`filter_min_cells`, there is no wildtype exemption here --
+    a wildtype barcode with too few cells is dropped exactly like an
+    undersized variant barcode would be. This uniform treatment is required
+    by barcode-stratified splitting (see :func:`train_test_val_split`), which
+    needs every retained barcode to have enough cells to place at least one
+    row in each of train/test/val.
+
+    Parameters
+    ----------
+    data_df : pl.DataFrame
+        DataFrame containing all variant and wildtype rows, including
+        ``barcode_column``.
+    barcode_column : str
+        Name of the column identifying each cell's barcode.
+    min_cells : int
+        Minimum number of cells a barcode must have to be retained.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with rows from undersized barcodes removed.
+    """
+    barcode_counts = data_df.group_by(barcode_column).len()
+    keep_barcodes = (
+        barcode_counts.filter(pl.col("len") >= min_cells)
+        .get_column(barcode_column)
+        .to_list()
+    )
+    return data_df.filter(pl.col(barcode_column).is_in(keep_barcodes))
 
 
 def _exclude_blocked_barcodes(
@@ -417,8 +626,20 @@ def train_test_val_split(
     Split a feature DataFrame into train, test, and validation sets.
 
     Optionally filters small variant groups via :func:`filter_min_cells` and
+    undersized barcodes via :func:`filter_min_cells_per_barcode`, and
     downsamples wildtype via :func:`downsample_wildtype` before splitting.
-    The 80/10/10 split is stratified by label.
+    The 80/10/10 split is stratified by barcode (see
+    :func:`.utils.xgbparams.split_indices_stratified`), which -- since every
+    barcode maps to exactly one label -- is a finer-grained refinement of a
+    label-stratified split.
+
+    Filters run in this order, each while ``barcode_column`` is still
+    present so a variant that empties out purely as a side effect of an
+    earlier filter is correctly excluded by a later one:
+    :func:`_exclude_blocked_barcodes`, then the per-barcode cap
+    (:func:`downsample_per_barcode`), then
+    :func:`filter_min_cells_per_barcode`, then column-narrowing, then
+    :func:`filter_min_cells`, then :func:`downsample_wildtype`.
 
     Parameters
     ----------
@@ -426,20 +647,21 @@ def train_test_val_split(
         Full feature DataFrame containing feature columns and ``cfg.label_column``.
     cfg : DictConfig
         Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
-        ``min_cells``, ``downsample_wt``, ``max_cells_per_barcode_wt``,
-        ``max_cells_per_barcode_variant``, ``random_state``,
-        ``feature_block_list_file``, ``barcode_block_list_file``, and
-        ``barcode_column``.
+        ``min_cells``, ``min_cells_per_barcode``, ``downsample_wt``,
+        ``max_cells_per_barcode_wt``, ``max_cells_per_barcode_variant``,
+        ``random_state``, ``feature_block_list_file``,
+        ``barcode_block_list_file``, and ``barcode_column``.
 
     Returns
     -------
     tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
         ``(train, test, val)`` DataFrames, each containing feature columns,
-        the label column, and a ``__row_idx__`` column recording the 0-based
-        row position of each cell in the original ``data_df`` argument (before
-        any filtering or downsampling). Callers that do not need the index
-        should drop ``__row_idx__`` before passing splits to model-training
-        functions.
+        the label column, ``cfg.barcode_column``, and a ``__row_idx__``
+        column recording the 0-based row position of each cell in the
+        original ``data_df`` argument (before any filtering or
+        downsampling). Callers that do not need the index or the barcode
+        column should drop both -- ``__row_idx__`` and ``cfg.barcode_column``
+        -- before passing splits to model-training functions.
     """
     label_col = cfg.label_column
     if cfg.feature_cols is not None:
@@ -472,7 +694,14 @@ def train_test_val_split(
         max_cells_wt=cfg.max_cells_per_barcode_wt,
         max_cells_variant=cfg.max_cells_per_barcode_variant,
     )
-    select_cols = feature_cols + [label_col]
+    # min_cells_per_barcode applied here too, immediately after the
+    # per-barcode cap and while barcode_column is still present, for the
+    # same downstream-exclusion reason as the two filters above.
+    if cfg.min_cells_per_barcode is not None:
+        data_df = filter_min_cells_per_barcode(
+            data_df, cfg.barcode_column, cfg.min_cells_per_barcode
+        )
+    select_cols = feature_cols + [label_col, cfg.barcode_column]
     data_df = data_df.select(select_cols + ["__row_idx__"])
     data_df = data_df.filter(pl.col(label_col).is_not_null())
 
@@ -482,13 +711,18 @@ def train_test_val_split(
     if cfg.downsample_wt is not False and cfg.downsample_wt != 0:
         n = cfg.downsample_wt if not isinstance(cfg.downsample_wt, bool) else None
         data_df = downsample_wildtype(
-            data_df, label_col, cfg.wt_label, cfg.random_state, n=n
+            data_df,
+            label_col,
+            cfg.wt_label,
+            cfg.random_state,
+            n=n,
+            barcode_column=cfg.barcode_column,
         )
 
     data_df = data_df.with_row_index("__idx__")
-    labels = data_df.get_column(label_col).to_numpy()
+    barcodes = data_df.get_column(cfg.barcode_column).to_numpy()
 
-    train_idx, test_idx, val_idx = split_indices_stratified(labels, cfg.random_state)
+    train_idx, test_idx, val_idx = split_indices_stratified(barcodes, cfg.random_state)
 
     def select_rows(idx: np.ndarray) -> pl.DataFrame:
         return data_df.filter(pl.col("__idx__").is_in(idx)).select(
@@ -630,9 +864,13 @@ def main(cfg: DictConfig) -> None:
             ).write_parquet(index_path)
             logging.info("Wrote %s index to %s", name, index_path)
 
-    train_all = train_all.drop("__row_idx__")
+    # train/val never need the barcode column downstream, so it's dropped
+    # here alongside __row_idx__. test keeps its barcode column -- profile_variant
+    # -> test_xgboost consumes it for per-barcode AUROC before dropping it
+    # internally just before the full-split evaluate() call.
+    train_all = train_all.drop(["__row_idx__", cfg.barcode_column])
     test_all = test_all.drop("__row_idx__")
-    val_all = val_all.drop("__row_idx__")
+    val_all = val_all.drop(["__row_idx__", cfg.barcode_column])
 
     results = []
     models = {}

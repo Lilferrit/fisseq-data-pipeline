@@ -3,6 +3,7 @@ from unittest.mock import patch
 import numpy as np
 import polars as pl
 import pytest
+import sklearn.metrics
 from omegaconf import OmegaConf
 
 import fisseq_data_pipeline.ovwt as m
@@ -13,6 +14,7 @@ from fisseq_data_pipeline.ovwt import (
     downsample_per_barcode,
     downsample_wildtype,
     filter_min_cells,
+    filter_min_cells_per_barcode,
     get_dmatrix,
     get_feature_cols,
     profile_variant,
@@ -29,16 +31,25 @@ def _make_df(
     label_column: str = "label",
     wt_label: str = "WT",
     variant_label: str = "V1",
+    include_barcode: bool = True,
 ) -> pl.DataFrame:
+    # Each label maps to a single barcode ("bc_<label>") so barcode-stratified
+    # splitting degenerates to the old label-stratified behavior -- this keeps
+    # every existing size/ratio assertion built on this helper valid unchanged.
+    # include_barcode=False is for callers (e.g. get_dmatrix tests) that treat
+    # every non-label column as a feature and must not see a string column.
     rng = np.random.default_rng(0)
     labels = [wt_label] * (n // 2) + [variant_label] * (n // 2)
-    return pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(n).tolist(),
-            "Texture_Var": rng.random(n).tolist(),
-            label_column: labels,
-        }
-    )
+    data = {
+        "Intensity_Mean": rng.random(n).tolist(),
+        "Texture_Var": rng.random(n).tolist(),
+        label_column: labels,
+    }
+    if include_barcode:
+        data["meta_barcode"] = [f"bc_{wt_label}"] * (n // 2) + [
+            f"bc_{variant_label}"
+        ] * (n // 2)
+    return pl.DataFrame(data)
 
 
 def _split_cfg(label_column: str = "label") -> OmegaConf:
@@ -49,6 +60,7 @@ def _split_cfg(label_column: str = "label") -> OmegaConf:
             "random_state": 0,
             "feature_cols": None,
             "min_cells": None,
+            "min_cells_per_barcode": None,
             "downsample_wt": False,
             "max_cells_per_barcode_wt": None,
             "max_cells_per_barcode_variant": None,
@@ -100,40 +112,40 @@ def test_get_feature_cols_all_columns_match():
 
 
 def test_get_dmatrix_label_values():
-    df = _make_df(n=10)
+    df = _make_df(n=10, include_barcode=False)
     dm = get_dmatrix(df, "label", "WT")
     assert set(dm.get_label()) == {0.0, 1.0}
 
 
 def test_get_dmatrix_wt_label_is_true():
-    df = _make_df(n=10)
+    df = _make_df(n=10, include_barcode=False)
     dm = get_dmatrix(df, "label", "WT")
     # 5 WT rows → 5 True (1.0) labels
     assert dm.get_label().sum() == 5.0
 
 
 def test_get_dmatrix_shape():
-    df = _make_df(n=20)
+    df = _make_df(n=20, include_barcode=False)
     dm = get_dmatrix(df, "label", "WT")
     assert dm.num_row() == 20
     assert dm.num_col() == 2  # Intensity_Mean, Texture_Var
 
 
 def test_get_dmatrix_with_weights():
-    df = _make_df(n=10)
+    df = _make_df(n=10, include_barcode=False)
     weights = np.full(10, 2.0)
     dm = get_dmatrix(df, "label", "WT", weight=weights)
     np.testing.assert_array_equal(dm.get_weight(), weights)
 
 
 def test_get_dmatrix_no_weights_by_default():
-    df = _make_df(n=10)
+    df = _make_df(n=10, include_barcode=False)
     dm = get_dmatrix(df, "label", "WT")
     assert len(dm.get_weight()) == 0
 
 
 def test_get_dmatrix_inf_replaced_with_nan():
-    df = _make_df(n=10)
+    df = _make_df(n=10, include_barcode=False)
     df = df.with_columns(pl.lit(float("inf")).alias("Inf_Feature"))
     # Should not raise; inf values are coerced to nan (missing)
     dm = get_dmatrix(df, "label", "WT")
@@ -141,7 +153,7 @@ def test_get_dmatrix_inf_replaced_with_nan():
 
 
 def test_get_dmatrix_neg_inf_replaced_with_nan():
-    df = _make_df(n=10)
+    df = _make_df(n=10, include_barcode=False)
     df = df.with_columns(pl.lit(float("-inf")).alias("NegInf_Feature"))
     dm = get_dmatrix(df, "label", "WT")
     assert dm.num_row() == 10
@@ -196,16 +208,26 @@ def test_read_feature_file_unsupported_extension(tmp_path):
 
 
 def _make_multilabel_df(wt_count: int, variant_counts: dict[str, int]) -> pl.DataFrame:
-    """Build a DataFrame with WT rows and multiple named variants."""
+    """
+    Build a DataFrame with WT rows and multiple named variants.
+
+    Each label maps to a single barcode ("bc_<label>"), matching the
+    barcode-is-a-function-of-label invariant, so callers that don't care
+    about barcodes (most usages of this helper) are unaffected and callers
+    that feed this into ``train_test_val_split`` get barcode-stratified
+    splitting that's equivalent to the old label-stratified behavior.
+    """
     rng = np.random.default_rng(0)
-    rows: dict[str, list] = {"Intensity_Mean": [], "label": []}
+    rows: dict[str, list] = {"Intensity_Mean": [], "label": [], "meta_barcode": []}
     for _ in range(wt_count):
         rows["Intensity_Mean"].append(rng.random())
         rows["label"].append("WT")
+        rows["meta_barcode"].append("bc_WT")
     for label, n in variant_counts.items():
         for _ in range(n):
             rows["Intensity_Mean"].append(rng.random())
             rows["label"].append(label)
+            rows["meta_barcode"].append(f"bc_{label}")
     return pl.DataFrame(rows)
 
 
@@ -266,6 +288,72 @@ def test_downsample_wildtype_integer_no_op_when_wt_equals_target():
     df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 30})
     result = downsample_wildtype(df, "label", "WT", seed=0, n=50)
     assert (result.get_column("label") == "WT").sum() == 50
+
+
+# ---------------------------------------------------------------------------
+# downsample_wildtype -- barcode-stratified
+# ---------------------------------------------------------------------------
+
+
+def test_downsample_wildtype_barcode_column_none_uses_uniform_behavior():
+    # Default barcode_column=None reproduces the exact uniform-sampling
+    # assertion already covered above.
+    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30, "V2": 20})
+    result = downsample_wildtype(df, "label", "WT", seed=0, barcode_column=None)
+    assert (result.get_column("label") == "WT").sum() == 30
+
+
+def test_downsample_wildtype_barcode_column_missing_falls_back_to_uniform():
+    # _make_multilabel_df's frame has no "meta_barcode" column at all.
+    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30})
+    result = downsample_wildtype(
+        df, "label", "WT", seed=0, barcode_column="meta_barcode"
+    )
+    assert (result.get_column("label") == "WT").sum() == 30
+
+
+def test_downsample_wildtype_stratified_preserves_barcode_proportions():
+    # WT pool: bc1 holds 80%, bc2 holds 20%. Target (max variant group) = 30,
+    # so fraction = 0.3 -- expect roughly bc1=24, bc2=6.
+    df = _make_per_barcode_df({"bc1": 80, "bc2": 20}, {"bc_v1": 30})
+    result = downsample_wildtype(
+        df, "label", "WT", seed=0, barcode_column="meta_barcode"
+    )
+    counts = result.filter(pl.col("label") == "WT").group_by("meta_barcode").len()
+    bc1_n = counts.filter(pl.col("meta_barcode") == "bc1")["len"][0]
+    bc2_n = counts.filter(pl.col("meta_barcode") == "bc2")["len"][0]
+    assert abs(bc1_n - 24) <= 1
+    assert abs(bc2_n - 6) <= 1
+    assert bc1_n + bc2_n == (result.get_column("label") == "WT").sum()
+
+
+def test_downsample_wildtype_stratified_tiny_barcode_keeps_its_cell():
+    # bc_tiny has 1 cell; fraction = target/wt_n = 70/100 = 0.7, so
+    # round(1 * 0.7) == 1 -- the barcode's single cell is kept, not dropped.
+    df = _make_per_barcode_df({"bc_tiny": 1, "bc_big": 99}, {"bc_v1": 70})
+    result = downsample_wildtype(
+        df, "label", "WT", seed=0, barcode_column="meta_barcode"
+    )
+    tiny_count = result.filter(
+        (pl.col("label") == "WT") & (pl.col("meta_barcode") == "bc_tiny")
+    ).height
+    assert tiny_count == 1
+
+
+def test_downsample_wildtype_stratified_no_op_when_wt_already_smaller():
+    df = _make_per_barcode_df({"bc1": 5, "bc2": 5}, {"bc_v1": 30})
+    result = downsample_wildtype(
+        df, "label", "WT", seed=0, barcode_column="meta_barcode"
+    )
+    assert (result.get_column("label") == "WT").sum() == 10
+
+
+def test_downsample_wildtype_stratified_preserves_all_variant_rows():
+    df = _make_per_barcode_df({"bc1": 80, "bc2": 20}, {"bc_v1": 30})
+    result = downsample_wildtype(
+        df, "label", "WT", seed=0, barcode_column="meta_barcode"
+    )
+    assert (result.get_column("label") == "V1").sum() == 30
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +500,85 @@ def test_filter_min_cells_row_count():
 
 
 # ---------------------------------------------------------------------------
+# filter_min_cells_per_barcode
+# ---------------------------------------------------------------------------
+
+
+def test_filter_min_cells_per_barcode_drops_variant_barcodes_below_threshold():
+    df = _make_per_barcode_df({"bc1": 10}, {"bc_v1": 8, "bc_v2": 2})
+    result = filter_min_cells_per_barcode(df, "meta_barcode", min_cells=5)
+    barcodes = set(result.get_column("meta_barcode").to_list())
+    assert barcodes == {"bc1", "bc_v1"}
+
+
+def test_filter_min_cells_per_barcode_drops_wt_barcodes_too():
+    # No WT exemption, unlike filter_min_cells: an undersized WT barcode is
+    # dropped exactly like an undersized variant barcode.
+    df = _make_per_barcode_df({"bc_wt_small": 2, "bc_wt_big": 10}, {"bc_v1": 10})
+    result = filter_min_cells_per_barcode(df, "meta_barcode", min_cells=5)
+    barcodes = set(result.get_column("meta_barcode").to_list())
+    assert barcodes == {"bc_wt_big", "bc_v1"}
+    assert (result.get_column("label") == "WT").sum() == 10
+
+
+def test_filter_min_cells_per_barcode_retains_barcodes_at_threshold():
+    df = _make_per_barcode_df({"bc1": 5}, {"bc_v1": 5})
+    result = filter_min_cells_per_barcode(df, "meta_barcode", min_cells=5)
+    assert len(result) == len(df)
+
+
+def test_filter_min_cells_per_barcode_no_op_when_all_pass():
+    df = _make_per_barcode_df({"bc1": 10}, {"bc_v1": 8})
+    result = filter_min_cells_per_barcode(df, "meta_barcode", min_cells=5)
+    assert len(result) == len(df)
+
+
+def test_train_test_val_split_min_cells_per_barcode_can_push_variant_below_min_cells():
+    # V1's only barcode has 5 cells -- below min_cells_per_barcode=8, so it's
+    # dropped entirely, which then also drops V1 below min_cells=5 (same
+    # "downstream effect" pattern as the barcode-block-list/per-barcode-cap
+    # tests above, but driven by min_cells_per_barcode instead).
+    rng = np.random.default_rng(0)
+    df = pl.DataFrame(
+        {
+            "Intensity_Mean": rng.random(15).tolist(),
+            "label": ["WT"] * 10 + ["V1"] * 5,
+            "meta_barcode": ["bc_wt"] * 10 + ["bc_v1"] * 5,
+        }
+    )
+    cfg = OmegaConf.create(
+        {
+            "label_column": "label",
+            "wt_label": "WT",
+            "random_state": 0,
+            "feature_cols": None,
+            "min_cells": 5,
+            "min_cells_per_barcode": 8,
+            "downsample_wt": False,
+            "max_cells_per_barcode_wt": None,
+            "max_cells_per_barcode_variant": None,
+            "feature_block_list_file": None,
+            "barcode_block_list_file": None,
+            "barcode_column": "meta_barcode",
+        }
+    )
+    train, test, val = train_test_val_split(df, cfg)
+    for split in (train, test, val):
+        assert "V1" not in split["label"].to_list()
+
+
+def test_train_test_val_split_min_cells_per_barcode_none_disables_filter():
+    df = _make_per_barcode_df({"bc1": 10}, {"bc_v1": 10})
+    cfg = _split_cfg()
+    assert cfg.min_cells_per_barcode is None
+    train, test, val = train_test_val_split(df, cfg)
+    all_barcodes = set()
+    for split in (train, test, val):
+        all_barcodes.update(split["meta_barcode"].to_list())
+    assert all_barcodes == {"bc1", "bc_v1"}
+
+
+# ---------------------------------------------------------------------------
 # train_test_val_split
 # ---------------------------------------------------------------------------
 
@@ -446,6 +613,7 @@ def test_train_test_val_split_excludes_non_feature_columns():
             "Intensity_Mean",
             "Texture_Var",
             "label",
+            "meta_barcode",
             "__row_idx__",
         }
 
@@ -478,6 +646,7 @@ def test_train_test_val_split_row_idx_excludes_filtered_rows():
             "random_state": 0,
             "feature_cols": None,
             "min_cells": 10,
+            "min_cells_per_barcode": None,
             "downsample_wt": False,
             "max_cells_per_barcode_wt": None,
             "max_cells_per_barcode_variant": None,
@@ -509,6 +678,27 @@ def test_train_test_val_split_preserves_class_ratio():
         n_wt = counts.filter(pl.col("label") == "WT")["count"][0]
         n_v1 = counts.filter(pl.col("label") == "V1")["count"][0]
         assert n_wt == n_v1
+
+
+def test_train_test_val_split_every_barcode_represented():
+    df = _make_per_barcode_df(
+        {"bc_wt1": 12, "bc_wt2": 12}, {"bc_v1": 12, "bc_v2": 12}
+    )
+    cfg = _split_cfg()
+    train, test, val = train_test_val_split(df, cfg)
+    all_barcodes = set()
+    for split in (train, test, val):
+        all_barcodes.update(split["meta_barcode"].to_list())
+    assert all_barcodes == {"bc_wt1", "bc_wt2", "bc_v1", "bc_v2"}
+
+
+def test_train_test_val_split_barcode_too_small_raises():
+    # bc_v1 has only 1 cell -- too few for sklearn's stratified split, which
+    # should raise rather than silently dropping it.
+    df = _make_per_barcode_df({"bc_wt": 20}, {"bc_v1": 1})
+    cfg = _split_cfg()
+    with pytest.raises(ValueError):
+        train_test_val_split(df, cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -631,9 +821,11 @@ def test_train_test_val_split_barcode_block_list_file_excludes_cells(tmp_path):
     train, test, val = train_test_val_split(df, cfg)
     all_idx = set()
     for split in (train, test, val):
-        # meta_barcode is not a feature column, so it's dropped from the
-        # returned splits -- only the row-level effect is observable here.
-        assert "meta_barcode" not in split.columns
+        # meta_barcode is not a feature column, but splits carry it through
+        # (needed for barcode-stratified splitting and per-barcode scoring)
+        # -- only its blocked-barcode row-level effect is checked here.
+        assert "meta_barcode" in split.columns
+        assert "bc_blocked" not in split["meta_barcode"].to_list()
         all_idx.update(split["__row_idx__"].to_list())
     assert all_idx.isdisjoint(original_blocked_idx)
     assert len(all_idx) == len(df) - len(original_blocked_idx)
@@ -702,6 +894,7 @@ def test_train_test_val_split_barcode_filter_can_push_variant_below_min_cells(
             "random_state": 0,
             "feature_cols": None,
             "min_cells": 5,
+            "min_cells_per_barcode": None,
             "downsample_wt": False,
             "max_cells_per_barcode_wt": None,
             "max_cells_per_barcode_variant": None,
@@ -731,6 +924,7 @@ def test_train_test_val_split_max_cells_per_barcode_wt_caps_total_wt_rows():
             "random_state": 0,
             "feature_cols": None,
             "min_cells": None,
+            "min_cells_per_barcode": None,
             "downsample_wt": False,
             "max_cells_per_barcode_wt": 10,
             "max_cells_per_barcode_variant": None,
@@ -763,6 +957,7 @@ def test_train_test_val_split_max_cells_per_barcode_variant_can_push_variant_bel
             "random_state": 0,
             "feature_cols": None,
             "min_cells": 5,
+            "min_cells_per_barcode": None,
             "downsample_wt": False,
             "max_cells_per_barcode_wt": None,
             "max_cells_per_barcode_variant": 3,
@@ -787,6 +982,7 @@ def _make_xgb_cfg(weigh_samples: bool = True) -> OmegaConf:
             "label_column": "label",
             "wt_label": "WT",
             "random_state": 0,
+            "barcode_column": "meta_barcode",
             "xgboost": {
                 "num_boost_round": 5,
                 "early_stopping_rounds": 3,
@@ -867,8 +1063,21 @@ def test_test_xgboost_result_keys(trained_model_and_splits):
         "val_accuracy",
         "test_auroc",
         "test_accuracy",
+        "median_barcode_test_auroc",
+        "barcode_test_aurocs",
     }
     assert set(result.keys()) == expected_keys
+
+
+def test_test_xgboost_no_barcode_column_gives_none_per_barcode_fields(
+    trained_model_and_splits,
+):
+    # _make_separable_df's splits carry no barcode column, so the per-barcode
+    # fields must fall back to None rather than raising.
+    model, train, val, test, cfg = trained_model_and_splits
+    result = evaluate_splits(model, train, val, test, cfg)
+    assert result["median_barcode_test_auroc"] is None
+    assert result["barcode_test_aurocs"] is None
 
 
 def test_test_xgboost_variant_name(trained_model_and_splits):
@@ -895,6 +1104,104 @@ def test_test_xgboost_separable_data_high_auroc(trained_model_and_splits):
     model, train, val, test, cfg = trained_model_and_splits
     result = evaluate_splits(model, train, val, test, cfg)
     assert result["train_auroc"] > 0.9
+
+
+# ---------------------------------------------------------------------------
+# test_xgboost -- per-barcode test AUROC
+# ---------------------------------------------------------------------------
+
+
+def _make_barcode_test_split(n_per_barcode: int = 8) -> pl.DataFrame:
+    """WT (single barcode) + V1 split across 3 barcodes, for scoring tests."""
+    rng = np.random.default_rng(1)
+    n_wt = n_per_barcode * 3
+    wt = pl.DataFrame(
+        {
+            "Intensity_Mean": rng.uniform(0.6, 1.0, n_wt).tolist(),
+            "Texture_Var": rng.random(n_wt).tolist(),
+            "label": ["WT"] * n_wt,
+            "meta_barcode": ["bc_wt"] * n_wt,
+        }
+    )
+    variant_frames = [
+        pl.DataFrame(
+            {
+                "Intensity_Mean": rng.uniform(0.0, 0.4, n_per_barcode).tolist(),
+                "Texture_Var": rng.random(n_per_barcode).tolist(),
+                "label": ["V1"] * n_per_barcode,
+                "meta_barcode": [bc] * n_per_barcode,
+            }
+        )
+        for bc in ("bc_v1", "bc_v2", "bc_v3")
+    ]
+    return pl.concat([wt] + variant_frames)
+
+
+def _fit_separable_model(cfg):
+    base = _make_separable_df(n=60)
+    wt = base.filter(pl.col("label") == "WT")
+    v1 = base.filter(pl.col("label") == "V1")
+    train = pl.concat([wt[:20], v1[:20]])
+    val = pl.concat([wt[20:25], v1[20:25]])
+    model = train_xgboost(train, val, cfg)
+    return model, train, val
+
+
+def test_test_xgboost_per_barcode_scoring_matches_independent_computation():
+    cfg = _make_xgb_cfg()
+    model, train, val = _fit_separable_model(cfg)
+    test = _make_barcode_test_split()
+
+    expected = {}
+    for bc in ("bc_v1", "bc_v2", "bc_v3"):
+        subset = test.filter(
+            (pl.col("label") == "WT")
+            | ((pl.col("label") == "V1") & (pl.col("meta_barcode") == bc))
+        ).drop("meta_barcode")
+        dmatrix = get_dmatrix(subset, "label", "WT")
+        y_true = dmatrix.get_label()
+        y_prob = model.predict(dmatrix)
+        expected[bc] = sklearn.metrics.roc_auc_score(y_true, y_prob)
+
+    result = evaluate_splits(model, train, val, test, cfg)
+
+    assert result["median_barcode_test_auroc"] == pytest.approx(
+        float(np.median(list(expected.values())))
+    )
+    got = {d["barcode"]: d["auroc"] for d in result["barcode_test_aurocs"]}
+    assert got.keys() == expected.keys()
+    for bc, auroc in expected.items():
+        assert got[bc] == pytest.approx(auroc)
+
+
+def test_test_xgboost_per_barcode_none_when_variant_absent_from_test():
+    cfg = _make_xgb_cfg()
+    model, train, val = _fit_separable_model(cfg)
+    base = _make_separable_df(n=60)
+    wt = base.filter(pl.col("label") == "WT")
+    test = wt[25:30].with_columns(pl.lit("bc_wt").alias("meta_barcode"))
+
+    result = evaluate_splits(model, train, val, test, cfg)
+    assert result["median_barcode_test_auroc"] is None
+    assert result["barcode_test_aurocs"] is None
+
+
+def test_test_xgboost_per_barcode_none_when_all_barcodes_single_cell():
+    cfg = _make_xgb_cfg()
+    model, train, val = _fit_separable_model(cfg)
+    base = _make_separable_df(n=60)
+    wt = base.filter(pl.col("label") == "WT")
+    v1 = base.filter(pl.col("label") == "V1")
+
+    wt_test = wt[25:30].with_columns(pl.lit("bc_wt").alias("meta_barcode"))
+    v1_singles = v1[25:28].with_columns(
+        pl.Series("meta_barcode", ["bc_a", "bc_b", "bc_c"])
+    )
+    test = pl.concat([wt_test, v1_singles])
+
+    result = evaluate_splits(model, train, val, test, cfg)
+    assert result["median_barcode_test_auroc"] is None
+    assert result["barcode_test_aurocs"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -975,6 +1282,8 @@ def test_profile_variant_result_keys(profile_variant_splits):
         "val_accuracy",
         "test_auroc",
         "test_accuracy",
+        "median_barcode_test_auroc",
+        "barcode_test_aurocs",
     }
     assert set(result.keys()) == expected_keys
 
