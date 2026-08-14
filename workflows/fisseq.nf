@@ -105,6 +105,7 @@ workflow FisseqPipeline {
         ovwt_lobo_min_barcodes_per_variant: params.ovwt_lobo_min_barcodes_per_variant,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_min_correlation    : params.feature_select_min_correlation,
+        feature_select_max_se_z           : params.feature_select_max_se_z,
         run_pca                           : BatchParams.asBool(params.run_pca),
         pca_n_components                  : params.pca_n_components,
         run_umap                          : BatchParams.asBool(params.run_umap),
@@ -553,7 +554,8 @@ workflow FisseqPipeline {
         // (batch_stem, feature_type, [correlation_file, ...])  (N = params.feature_select_bootstrap_reps)
         .map { batch_stem, feature_type, correlation_files ->
             tuple(batch_stem, feature_type, correlation_files, "feature_select_batchwise/${batch_stem}",
-                  resolvedBatchConfigs[batch_stem].feature_select_min_correlation)
+                  resolvedBatchConfigs[batch_stem].feature_select_min_correlation,
+                  resolvedBatchConfigs[batch_stem].feature_select_max_se_z)
         }
     BLOCKLIST_BATCHWISE(blocklist_input_ch)
     bl_ch = BLOCKLIST_BATCHWISE.out  // (batch_stem, feature_type, blocklist_file)
