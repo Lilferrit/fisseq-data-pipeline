@@ -4,16 +4,22 @@
 feature-filtered, and barcode-filtered invocations, and `OVWT_GLOBAL`, always
 feature-filtered) trains a separate XGBoost binary classifier for each
 non-wildtype variant, treating the task as "this variant vs. wildtype." An
-80/10/10 train/test/val split (stratified by label) is shared across all
-variants. Wildtype cells can be downsampled to reduce class imbalance.
-Results (per-variant AUROC and accuracy on train/val/test splits) and all
-trained models are serialized to disk. `feature_block_list_file` (see
-[ANOVA Block-list](anovablocklist.md)) optionally excludes features (columns)
-with a significant batch effect before splitting/training.
-`barcode_block_list_file` (see [Barcode Block-list](barcodeblocklist.md))
-optionally excludes cells (rows) whose barcode scored anomalously before
-splitting/training. The two are independent and additive -- either, both, or
-neither may be set.
+80/10/10 train/test/val split is shared across all variants, stratified by
+barcode rather than by label -- since each barcode maps to exactly one
+variant label on this dataset, this is a finer-grained refinement of a
+label-stratified split, and additionally guarantees (where cell counts allow)
+that every barcode is represented across train/test/val. Wildtype cells can
+be downsampled to reduce class imbalance; when a barcode column is available,
+this downsampling is stratified across wildtype barcodes to preserve their
+relative proportions as much as possible, rather than sampling wildtype cells
+uniformly. Results (per-variant AUROC and accuracy on train/val/test splits,
+plus per-barcode test AUROC) and all trained models are serialized to disk.
+`feature_block_list_file` (see [ANOVA Block-list](anovablocklist.md))
+optionally excludes features (columns) with a significant batch effect before
+splitting/training. `barcode_block_list_file` (see
+[Barcode Block-list](barcodeblocklist.md)) optionally excludes cells (rows)
+whose barcode scored anomalously before splitting/training. The two are
+independent and additive -- either, both, or neither may be set.
 
 ## Config fields
 
@@ -30,10 +36,11 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
 | `max_cells_per_barcode_wt` | `null` | Cap cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count, independently of every other barcode. `null` disables the cap. Applied before `min_cells` and `downsample_wt`. |
 | `max_cells_per_barcode_variant` | `null` | Cap cells per non-wildtype barcode, analogous to `max_cells_per_barcode_wt`. `null` disables the cap. |
+| `min_cells_per_barcode` | `null` | Drop any barcode (wildtype or variant, no exemption) with fewer than this many cells. `null` disables the filter. Should be set to roughly `10` or higher: the split is barcode-stratified, and `sklearn.model_selection.train_test_split(stratify=...)` requires every stratum to have enough members for 80/10/10 splitting -- undersized barcodes make it raise. Applied before `min_cells`. |
 | `save_splits` | `true` | Write lightweight train/test/val index files (row position + source file) to `output_dir`. |
 | `feature_block_list_file` | `null` | (renamed from `block_list_file`) Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.anovablocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
 | `barcode_block_list_file` | `null` | Optional path to a parquet file with `barcode` (str) and `barcode_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.barcodeblocklist`'s output). Cells whose `barcode_column` value is blocked are excluded (dropped as rows) before splitting/training. |
-| `barcode_column` | `"meta_barcode"` | Column in `input_file` identifying each cell's barcode, used to apply `barcode_block_list_file`. |
+| `barcode_column` | `"meta_barcode"` | Column in `input_file` identifying each cell's barcode. Required to be present in `input_file`: used to apply `barcode_block_list_file` and `min_cells_per_barcode`/`max_cells_per_barcode_*`, to barcode-stratify the train/test/val split and WT downsampling, and to compute per-barcode test AUROC. |
 | `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
 | `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
 | `xgboost.weigh_samples` | `true` | Use balanced sample weights to handle class imbalance. |
@@ -43,8 +50,12 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 ## Output files
 
 - `{output_dir}/results.parquet` — per-variant `train_auroc`, `val_auroc`,
-  `test_auroc`, `train_accuracy`, `val_accuracy`, `test_accuracy`, plus per-variant
-  metadata columns
+  `test_auroc`, `train_accuracy`, `val_accuracy`, `test_accuracy`,
+  `median_barcode_test_auroc` (median AUROC across the variant's test-split
+  barcodes, each scored against all wildtype cells; `null` if the variant has
+  no scoreable barcode in the test split), `barcode_test_aurocs` (the
+  underlying per-barcode `{barcode, auroc}` pairs as a list of structs;
+  `null` under the same conditions), plus per-variant metadata columns
 - `{output_dir}/models.pkl` — dictionary of trained `xgb.Booster` objects keyed by
   variant label
 - `{output_dir}/{train,test,val}_index.parquet` — data-split index files (only
