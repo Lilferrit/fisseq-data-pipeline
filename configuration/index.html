@@ -2146,6 +2146,11 @@ overridable per batch exactly like every other parameter here — see
 <td><code>'top'</code> keeps the highest-cell-count variants; <code>'random'</code> keeps a seeded random sample.</td>
 </tr>
 <tr>
+<td><code>--qc_variant_allow_list_file</code></td>
+<td><code>null</code></td>
+<td>Optional: path to a Parquet file with a <code>label_column</code> column of variants that bypass the <code>qc_n_variants</code> cap entirely (not counted against it). Entries absent from the data are ignored. Ignored with a warning if <code>qc_n_variants</code> is <code>null</code>.</td>
+</tr>
+<tr>
 <td><code>--qc_downsample_amounts</code></td>
 <td><code>null</code></td>
 <td>Optional single float <code>(0, 1]</code>/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). <code>null</code> disables it. A genuine multi-element <em>list</em> is only settable via a batch YAML override or by editing the Groovy list literal in <code>nextflow.config</code> directly — a bare <code>--qc_downsample_amounts</code> CLI flag only supports a single scalar.</td>
@@ -2247,6 +2252,11 @@ overridable per batch exactly like every other parameter here — see
 <td><code>--max_cells_per_barcode_variant</code></td>
 <td><code>null</code></td>
 <td>Optional cap on cells per non-wildtype barcode, analogous to <code>--max_cells_per_barcode_wt</code>. <code>null</code> disables the cap.</td>
+</tr>
+<tr>
+<td><code>--ovwt_min_cells_per_barcode</code></td>
+<td><code>null</code></td>
+<td>Optional: minimum cells a barcode (wildtype or variant, no exemption) must have to be retained; <code>null</code> disables the filter. Should be set to roughly <code>10</code> or higher — the OvWT split is barcode-stratified and undersized barcodes make it raise.</td>
 </tr>
 </tbody>
 </table>
@@ -2599,7 +2609,8 @@ per-batch identity either — though it still only reads a member batch's
 <code>feature_select_batchwise/</code> output if that batch's own resolved
 <code>run_feature_selection</code> is true (see <a href="#global-channels">Global channels</a>).</p>
 <p>Parameters shared between a per-batch process and a global-only process
-(<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--feature_select_downsample_wt</code>,
+(<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--ovwt_min_cells_per_barcode</code>,
+<code>--feature_select_downsample_wt</code>,
 <code>--feature_select_min_correlation</code>, <code>--feature_select_max_se_z</code>, <code>--run_pca</code>, <code>--pca_n_components</code>,
 <code>--run_umap</code>, <code>--umap_n_components</code>, <code>--umap_n_neighbors</code>, <code>--umap_metric</code>,
 <code>--umap_min_dist</code>, <code>--umap_random_state</code>) are overridable per batch for their

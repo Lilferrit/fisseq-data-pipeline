@@ -1533,7 +1533,9 @@ sequential filters:</p>
 restricted to at most <code>n_variants</code> distinct variants — either the
 highest-cell-count variants (<code>variant_downsample_mode: "top"</code>, the default)
 or a seeded random sample (<code>"random"</code>) — before the three filters above run.
-Every other class passes through untouched.</p>
+Every other class passes through untouched. If <code>variant_allow_list_file</code> is
+also set, variants it lists bypass the <code>n_variants</code> cap entirely and aren't
+counted against it.</p>
 <p>If <code>downsample_amounts</code> is set (a single float/int, or a list of them),
 <code>filtered_cells.parquet</code> is additionally augmented with reproducibly-
 downsampled "pseudo variant" rows for QC/calibration purposes, built from
@@ -1612,6 +1614,11 @@ not <code>downsample_amounts</code> is set.</p>
 <td><code>variant_downsample_mode</code></td>
 <td><code>"top"</code></td>
 <td><code>"top"</code> keeps the highest-cell-count variants; <code>"random"</code> keeps a seeded random sample.</td>
+</tr>
+<tr>
+<td><code>variant_allow_list_file</code></td>
+<td><code>null</code></td>
+<td>Optional: path to a Parquet file with a <code>cfg.label_column</code> column of variants that bypass the <code>n_variants</code> cap entirely and aren't counted against it. Entries absent from the data are ignored. Meaningless (ignored, with a warning) if <code>n_variants</code> is unset.</td>
 </tr>
 <tr>
 <td><code>downsample_amounts</code></td>
