@@ -16,22 +16,27 @@ import yaml
 # ---------------------------------------------------------------------------
 
 # 10 WT barcodes × 20 cells = 200 WT cells
-# 5 A1A barcodes × 6 cells = 30 Synonymous cells  (A→A at position 1)
-# 5 M1K barcodes × 6 cells = 30 Single Missense cells
-# 5 M1K:downsampled-half barcodes x 6 cells = 30 tagged Single Missense cells,
-# which must pool with the untagged M1K rows under meta_aa_changes == "M1K"
-# once qcfilter.py's filter_columns strips the ":downsampled-half" tag.
-# WT gets more cells/barcode than the other variants: wtvwt.py stratifies
-# its 80/10/10 split on individual barcode (finer-grained than ovwt.py's
-# per-variant stratification), and sklearn's stratified split requires at
-# least 2 members per class in every split -- 6 cells/barcode reliably
-# triggers "least populated class has only 1 member" once carved into a 10%
-# slice, while 20 does not.
+# 5 A1A barcodes × 10 cells = 50 Synonymous cells  (A→A at position 1)
+# 5 M1K barcodes × 10 cells = 50 Single Missense cells
+# 5 M1K:downsampled-half barcodes x 10 cells = 50 tagged Single Missense
+# cells, which must pool with the untagged M1K rows under
+# meta_aa_changes == "M1K" once qcfilter.py's filter_columns strips the
+# ":downsampled-half" tag (giving M1K 10 pooled barcodes x 10 cells).
+# Every barcode class (WT and non-WT alike) needs >= 10 cells: ovwt.py
+# stratifies its 80/10/10 split on individual barcode across *all* rows fed
+# into a given variant-vs-WT model (a finer-grained version of a
+# label-stratified split -- see OvwtConfig.min_cells_per_barcode's
+# docstring), and sklearn's two-stage stratified split needs >= 2 members
+# surviving into the 10% slice from each barcode class for that split to
+# succeed; empirically that requires >= 10 members per class going in.
+# --ovwt_downsample_wt=100 (see _NF_PARAMS/_OVWT_NF_PARAMS below) keeps this
+# true for the WT side too: 200 WT cells stratified-downsampled to 100 over
+# 10 barcodes gives exactly 10 cells/barcode.
 _VARIANTS = {
     "WT": ("bc_wt_{i:02d}", 10, 20),
-    "A1A": ("bc_syn_{i:02d}", 5, 6),
-    "M1K": ("bc_mis_{i:02d}", 5, 6),
-    "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 6),
+    "A1A": ("bc_syn_{i:02d}", 5, 10),
+    "M1K": ("bc_mis_{i:02d}", 5, 10),
+    "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 10),
 }
 
 # GLOBAL_FEATURE_SELECT's normalize_batch_aggregate fits a per-batch
@@ -40,10 +45,11 @@ _VARIANTS = {
 # makes std (ddof=1) undefined, nulling every feature. The channeled fixture
 # below needs its own synonymous label(s) beyond the shared _VARIANTS' lone
 # "A1A"; counts/prefix mirror "A1A" so the existing barcode/variant count
-# thresholds are satisfied the same way.
+# thresholds (and the >= 10 cells/barcode floor explained above) are
+# satisfied the same way.
 _EXTRA_SYNONYMOUS_VARIANTS = {
-    "A2A": ("bc_syn2_{i:02d}", 5, 6),
-    "A3A": ("bc_syn3_{i:02d}", 5, 6),
+    "A2A": ("bc_syn2_{i:02d}", 5, 10),
+    "A3A": ("bc_syn3_{i:02d}", 5, 10),
 }
 
 _FEATURE_COLS = [
@@ -78,8 +84,10 @@ _NF_PARAMS = [
     "3",
     "--ovwt_min_cells",
     "25",
+    # 100 over 10 WT barcodes = 10 cells/barcode -- see _VARIANTS' comment
+    # above for why this must stay >= 10.
     "--ovwt_downsample_wt",
-    "50",
+    "100",
     "--batchvsbatch_min_cells",
     "50",
     "--batchvsbatch_min_batches",
@@ -102,12 +110,12 @@ _OVWT_NF_PARAMS = [
     "--ovwt_min_cells",
     "25",
     "--ovwt_downsample_wt",
-    "50",
+    "100",
 ]
 
-# run_single_cell_scores / run_check_barcodes: barcode_check_min_cells is dropped
-# to 2 (default 10) since this synthetic dataset only has 6 cells per
-# barcode, and single_cell_scores_split=train (rather than the default
+# run_single_cell_scores / run_check_barcodes: barcode_check_min_cells is
+# dropped to 2 (default 10) since this synthetic dataset only has 10 cells
+# per barcode, and single_cell_scores_split=train (rather than the default
 # test) is used to keep more cells per barcode after the 80/10/10 split so
 # CHECK_BARCODES has enough per-barcode samples to compare.
 _CHECK_BARCODES_NF_PARAMS = _NF_PARAMS + [
@@ -322,9 +330,9 @@ def test_pipeline_tagged_variant_pools_with_base(pipeline_outputs, batch_stem):
     df = pl.read_parquet(exp_dir / "qc_filter" / batch_stem / "filtered_cells.parquet")
     m1k = df.filter(pl.col("meta_aa_changes") == "M1K")
     # Both the untagged (bc_mis_*) and tagged (bc_mis_tag_*) M1K groups are
-    # 5 barcodes x 6 cells = 30 cells each in _write_batch, so pooling both
-    # under one meta_aa_changes group yields 60 cells.
-    assert m1k.shape[0] == 60
+    # 5 barcodes x 10 cells = 50 cells each in _write_batch, so pooling both
+    # under one meta_aa_changes group yields 100 cells.
+    assert m1k.shape[0] == 100
 
     tags = set(m1k["meta_variant_tag"].to_list())
     assert tags == {None, "downsampled-half"}

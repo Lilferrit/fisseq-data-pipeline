@@ -104,6 +104,7 @@ overridable per batch exactly like every other parameter here — see
 | `--qc_n_variants` | `null` | Optional: restricts `qc_variant_downsample_classes` to at most this many distinct variants, before QC thresholding. `null` disables it. |
 | `--qc_variant_downsample_classes` | `['Single Missense']` | Classes eligible for the `qc_n_variants` restriction. |
 | `--qc_variant_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count variants; `'random'` keeps a seeded random sample. |
+| `--qc_variant_allow_list_file` | `null` | Optional: path to a Parquet file with a `label_column` column of variants that bypass the `qc_n_variants` cap entirely (not counted against it). Entries absent from the data are ignored. Ignored with a warning if `qc_n_variants` is `null`. |
 | `--qc_downsample_amounts` | `null` | Optional single float `(0, 1]`/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). `null` disables it. A genuine multi-element *list* is only settable via a batch YAML override or by editing the Groovy list literal in `nextflow.config` directly — a bare `--qc_downsample_amounts` CLI flag only supports a single scalar. |
 | `--qc_downsample_classes` | `['Synonymous', 'Single Missense']` | Classes eligible for `qc_downsample_amounts` pseudo-variant generation. |
 | `--qc_downsample_seed` | `0` | Seed for the deterministic downsample selection, shared by `qc_downsample_amounts` and `qc_variant_downsample_mode="random"`. |
@@ -135,6 +136,7 @@ overridable per batch exactly like every other parameter here — see
 | `--ovwt_downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
 | `--max_cells_per_barcode_wt` | `null` | Optional cap on cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count. `null` disables the cap. |
 | `--max_cells_per_barcode_variant` | `null` | Optional cap on cells per non-wildtype barcode, analogous to `--max_cells_per_barcode_wt`. `null` disables the cap. |
+| `--ovwt_min_cells_per_barcode` | `null` | Optional: minimum cells a barcode (wildtype or variant, no exemption) must have to be retained; `null` disables the filter. Should be set to roughly `10` or higher — the OvWT split is barcode-stratified and undersized barcodes make it raise. |
 
 ### Wildtype-vs-wildtype pairwise barcode classification (`WTVWT_BATCHWISE`)
 
@@ -370,7 +372,8 @@ per-batch identity either — though it still only reads a member batch's
 `run_feature_selection` is true (see [Global channels](#global-channels)).
 
 Parameters shared between a per-batch process and a global-only process
-(`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--feature_select_downsample_wt`,
+(`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--ovwt_min_cells_per_barcode`,
+`--feature_select_downsample_wt`,
 `--feature_select_min_correlation`, `--feature_select_max_se_z`, `--run_pca`, `--pca_n_components`,
 `--run_umap`, `--umap_n_components`, `--umap_n_neighbors`, `--umap_metric`,
 `--umap_min_dist`, `--umap_random_state`) are overridable per batch for their

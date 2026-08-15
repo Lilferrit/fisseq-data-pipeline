@@ -25,7 +25,7 @@ process OVWT_BATCHWISE {
     publishDir { "${params.pipeline_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(normalized_parquet), val(feature_block_list_file), val(barcode_block_list_file), val(publish_subdir), val(ovwt_min_cells), val(ovwt_downsample_wt), val(max_cells_per_barcode_wt), val(max_cells_per_barcode_variant)
+    tuple val(batch_stem), path(normalized_parquet), val(feature_block_list_file), val(barcode_block_list_file), val(publish_subdir), val(ovwt_min_cells), val(ovwt_downsample_wt), val(max_cells_per_barcode_wt), val(max_cells_per_barcode_variant), val(ovwt_min_cells_per_barcode)
 
     output:
     tuple val(batch_stem), path("results.parquet"), path("models.pkl"), path("test_index.parquet"), path("train_index.parquet")
@@ -41,6 +41,7 @@ process OVWT_BATCHWISE {
         downsample_wt=${ovwt_downsample_wt} \\
         max_cells_per_barcode_wt=${max_cells_per_barcode_wt} \\
         max_cells_per_barcode_variant=${max_cells_per_barcode_variant} \\
+        min_cells_per_barcode=${ovwt_min_cells_per_barcode} \\
         feature_block_list_file=${feature_block_list_file} \\
         barcode_block_list_file=${barcode_block_list_file}
     """

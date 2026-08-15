@@ -95,6 +95,14 @@ class QcFilterConfig(AppConfig):
         ``"top"`` keeps the ``n_variants`` variants with the highest cell
         count (ties broken alphabetically); ``"random"`` keeps a seeded
         random sample of ``n_variants`` variants. Defaults to ``"top"``.
+    variant_allow_list_file : Optional[str]
+        Optional path to a Parquet file with a ``label_column`` column of
+        variants that bypass the ``n_variants`` cap entirely and aren't
+        counted against it (see :func:`select_variants`). Entries not
+        present in the data are silently ignored. Meaningless if
+        ``n_variants`` is unset -- in that case it is ignored with a
+        warning, since the two fields are set independently. Defaults to
+        ``None`` (disabled).
     downsample_amounts : Any
         A single float/int, or a list of floats/ints. Each item generates
         reproducibly downsampled "pseudo variant" rows (see
@@ -126,6 +134,7 @@ class QcFilterConfig(AppConfig):
         default_factory=lambda: list(VARIANT_DOWNSAMPLE_CLASSES)
     )
     variant_downsample_mode: str = "top"
+    variant_allow_list_file: Optional[str] = None
     downsample_amounts: Any = None
     downsample_classes: List[str] = dataclasses.field(
         default_factory=lambda: list(DOWNSAMPLE_CLASSES)
@@ -276,6 +285,7 @@ def select_variants(
     n_variants: int,
     mode: str,
     seed: int,
+    variant_allow_list_file: Optional[str] = None,
 ) -> pl.LazyFrame:
     """
     Restrict rows whose classified ``cfg.label_column`` value is in
@@ -289,6 +299,16 @@ def select_variants(
       alphabetically ascending on ``cfg.label_column``. Fully deterministic.
     - ``"random"``: keep a seeded-random sample of `n_variants` distinct
       variants from the eligible pool. Deterministic given `seed`.
+
+    If `variant_allow_list_file` is set, it must point to a Parquet file
+    with a ``cfg.label_column`` column. The eligible pool is partitioned
+    before the `mode` logic runs: rows whose ``cfg.label_column`` value
+    appears in that file pass through unconditionally and are *not* counted
+    against `n_variants`; the remaining eligible rows go through the
+    existing top/random selection, capped at `n_variants`. Allow-list
+    entries absent from the data are silently ignored (a left-semi join
+    handles this naturally). If every eligible variant is allow-listed,
+    `n_variants` has no effect for this run and a warning is logged.
 
     Runs upstream of :func:`add_qc_queries`, so ``barcode_counts``/
     ``variants_per_barcode`` reflect the post-selection population.
@@ -318,7 +338,34 @@ def select_variants(
         pl.col("_variant_class").is_in(variant_downsample_classes)
     )
 
-    counts = eligible.group_by(cfg.label_column).agg(pl.len().alias("_n_cells"))
+    if variant_allow_list_file is not None:
+        allow_list_lf = (
+            pl.read_parquet(variant_allow_list_file)
+            .select(cfg.label_column)
+            .unique()
+            .lazy()
+        )
+        allow_listed = eligible.join(allow_list_lf, on=cfg.label_column, how="semi")
+        selection_pool = eligible.join(allow_list_lf, on=cfg.label_column, how="anti")
+
+        n_eligible_variants = (
+            eligible.select(pl.col(cfg.label_column).n_unique()).collect().item()
+        )
+        n_pool_variants = (
+            selection_pool.select(pl.col(cfg.label_column).n_unique()).collect().item()
+        )
+        if n_eligible_variants > 0 and n_pool_variants == 0:
+            logging.warning(
+                "All %d eligible variant(s) matched variant_allow_list_file; "
+                "n_variants=%d has no effect for this run",
+                n_eligible_variants,
+                n_variants,
+            )
+    else:
+        allow_listed = None
+        selection_pool = eligible
+
+    counts = selection_pool.group_by(cfg.label_column).agg(pl.len().alias("_n_cells"))
     if mode == "top":
         selected = (
             counts.sort(["_n_cells", cfg.label_column], descending=[True, False])
@@ -333,10 +380,14 @@ def select_variants(
             .select(cfg.label_column)
         )
 
-    eligible_kept = eligible.join(selected, on=cfg.label_column, how="inner")
-    return pl.concat([non_eligible, eligible_kept], how="vertical_relaxed").drop(
-        "_variant_class"
-    )
+    selection_kept = selection_pool.join(selected, on=cfg.label_column, how="inner")
+
+    parts = [non_eligible]
+    if allow_listed is not None:
+        parts.append(allow_listed)
+    parts.append(selection_kept)
+
+    return pl.concat(parts, how="vertical_relaxed").drop("_variant_class")
 
 
 def add_downsampled_pseudo_variants(
@@ -539,6 +590,8 @@ def main(cfg: DictConfig) -> None:
     3. If ``n_variants`` is set, restrict ``variant_downsample_classes`` to
        at most ``n_variants`` distinct variants via :func:`select_variants`
        (``"top"`` or ``"random"`` mode); otherwise skip this step entirely.
+       If ``variant_allow_list_file`` is also set, variants it lists bypass
+       the ``n_variants`` cap entirely and aren't counted against it.
     4. Apply edit-distance, barcode-count, and variant-count filters via
        :func:`add_qc_queries`.
     5. If ``downsample_amounts`` is set (a single float/int, or a list of
@@ -594,9 +647,15 @@ def main(cfg: DictConfig) -> None:
             n_variants=qc_cfg.n_variants,
             mode=qc_cfg.variant_downsample_mode,
             seed=qc_cfg.downsample_seed,
+            variant_allow_list_file=qc_cfg.variant_allow_list_file,
         )
     else:
         logging.info("n_variants not set; skipping variant-level selection")
+        if qc_cfg.variant_allow_list_file is not None:
+            logging.warning(
+                "variant_allow_list_file is set but n_variants is None; there "
+                "is no n_variants cap to bypass, so the allow-list is ignored"
+            )
 
     combined_lf, barcode_count_lf, variants_per_barcode_lf = add_qc_queries(
         combined_lf, cfg

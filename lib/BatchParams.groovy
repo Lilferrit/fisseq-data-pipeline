@@ -33,6 +33,7 @@ class BatchParams {
         'qc_n_variants',
         'qc_variant_downsample_classes',
         'qc_variant_downsample_mode',
+        'qc_variant_allow_list_file',
         'qc_downsample_amounts',
         'qc_downsample_classes',
         'qc_downsample_seed',
@@ -43,6 +44,7 @@ class BatchParams {
         // workflows/fisseq.nf)
         'ovwt_min_cells',
         'ovwt_downsample_wt',
+        'ovwt_min_cells_per_barcode',
         'max_cells_per_barcode_wt',
         'max_cells_per_barcode_variant',
         // WTVWT_BATCHWISE

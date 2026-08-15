@@ -16,7 +16,9 @@ If `n_variants` is set, variants whose classified label is in
 restricted to at most `n_variants` distinct variants — either the
 highest-cell-count variants (`variant_downsample_mode: "top"`, the default)
 or a seeded random sample (`"random"`) — before the three filters above run.
-Every other class passes through untouched.
+Every other class passes through untouched. If `variant_allow_list_file` is
+also set, variants it lists bypass the `n_variants` cap entirely and aren't
+counted against it.
 
 If `downsample_amounts` is set (a single float/int, or a list of them),
 `filtered_cells.parquet` is additionally augmented with reproducibly-
@@ -49,6 +51,7 @@ Extends the common `output_dir` / `output_root` / `log_level` fields (see
 | `n_variants` | `null` | Optional: restricts `variant_downsample_classes` to at most this many distinct variants, before QC thresholding. `null` (default) disables this. |
 | `variant_downsample_classes` | `["Single Missense"]` | Classes eligible for the `n_variants` restriction. |
 | `variant_downsample_mode` | `"top"` | `"top"` keeps the highest-cell-count variants; `"random"` keeps a seeded random sample. |
+| `variant_allow_list_file` | `null` | Optional: path to a Parquet file with a `cfg.label_column` column of variants that bypass the `n_variants` cap entirely and aren't counted against it. Entries absent from the data are ignored. Meaningless (ignored, with a warning) if `n_variants` is unset. |
 | `downsample_amounts` | `null` | Optional: a single float/int, or a list of floats/ints. A float in `(0, 1]` keeps that fraction of each eligible variant's cells as a pseudo-variant group; an int keeps that many cells (skipping variants with fewer cells than that). Each amount gets its own `meta_variant_tag = "downsample-{amount}"`. `null` (default) disables this. |
 | `downsample_classes` | `["Synonymous", "Single Missense"]` | Classes eligible for `downsample_amounts` pseudo-variant generation. |
 | `downsample_seed` | `0` | Seed for deterministic selection, shared by `downsample_amounts` and `variant_downsample_mode="random"`. |

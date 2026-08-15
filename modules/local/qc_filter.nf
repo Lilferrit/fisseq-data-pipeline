@@ -5,6 +5,8 @@ nextflow.enable.dsl = 2
 // Before those QC thresholds run, if params.qc_n_variants is set,
 // qc_variant_downsample_classes is restricted to at most that many distinct
 // variants (qc_variant_downsample_mode: "top" by cell count, or "random").
+// If params.qc_variant_allow_list_file is also set, variants it lists
+// bypass that cap entirely and aren't counted against it.
 // After QC thresholding, if params.qc_downsample_amounts is set,
 // filtered_cells.parquet is also augmented with reproducibly-downsampled
 // pseudo-variant rows (one distinctly-tagged group per amount) built only
@@ -21,7 +23,8 @@ process QC_FILTER {
     tuple val(batch_stem), path(input_file), val(barcode_count_threshold), \
           val(variant_barcode_count_threshold), val(edit_distance_threshold), \
           val(qc_n_variants), val(qc_variant_downsample_classes), val(qc_variant_downsample_mode), \
-          val(qc_downsample_amounts), val(qc_downsample_classes), val(qc_downsample_seed)
+          val(qc_variant_allow_list_file), val(qc_downsample_amounts), val(qc_downsample_classes), \
+          val(qc_downsample_seed)
 
     output:
     tuple val(batch_stem), \
@@ -58,6 +61,7 @@ process QC_FILTER {
         n_variants=${qc_n_variants} \\
         variant_downsample_classes=${variantClassesArg} \\
         variant_downsample_mode=${qc_variant_downsample_mode} \\
+        variant_allow_list_file=${qc_variant_allow_list_file} \\
         downsample_amounts=${amountsArg} \\
         downsample_classes=${downsampleClassesArg} \\
         downsample_seed=${qc_downsample_seed}

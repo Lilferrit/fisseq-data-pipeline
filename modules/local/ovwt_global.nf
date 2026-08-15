@@ -32,6 +32,7 @@ process OVWT_GLOBAL {
         downsample_wt=${params.ovwt_downsample_wt} \\
         max_cells_per_barcode_wt=${params.max_cells_per_barcode_wt} \\
         max_cells_per_barcode_variant=${params.max_cells_per_barcode_variant} \\
+        min_cells_per_barcode=${params.ovwt_min_cells_per_barcode} \\
         feature_block_list_file=${feature_block_list_file}
     """
 }
