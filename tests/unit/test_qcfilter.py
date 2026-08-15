@@ -640,6 +640,115 @@ class TestSelectVariants:
                 seed=0,
             ).collect()
 
+    def test_allow_listed_variants_bypass_cap(self, cfg, tmp_path):
+        df = _make_filtered_df(
+            [f"bc{i}" for i in range(10)],
+            ["M1K"] * 5 + ["M2L"] * 3 + ["M3Q"] * 2,
+            cfg=cfg,
+        )
+        allow_list_path = tmp_path / "allow_list.parquet"
+        pl.DataFrame({"meta_aa_changes": ["M3Q"]}).write_parquet(allow_list_path)
+
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=1,
+            mode="top",
+            seed=0,
+            variant_allow_list_file=str(allow_list_path),
+        ).collect()
+
+        # M3Q is allow-listed and passes through despite having the fewest
+        # cells; top-1 among the remaining {M1K, M2L} keeps M1K (highest
+        # count).
+        assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M3Q"}
+
+    def test_allow_listed_not_counted_against_cap(self, cfg, tmp_path):
+        variants = [f"M{i}K" for i in range(7)]
+        barcodes = [f"bc{i}" for i in range(7)]
+        df = _make_filtered_df(barcodes, variants, cfg=cfg)
+        allow_list_path = tmp_path / "allow_list.parquet"
+        pl.DataFrame({"meta_aa_changes": variants[:2]}).write_parquet(allow_list_path)
+
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=3,
+            mode="top",
+            seed=0,
+            variant_allow_list_file=str(allow_list_path),
+        ).collect()
+
+        # 2 allow-listed + 3 kept by the n_variants=3 cap on the remaining 5
+        # non-allow-listed variants = 5 distinct variants, not 3.
+        assert result["meta_aa_changes"].n_unique() == 5
+        assert set(variants[:2]) <= set(result["meta_aa_changes"].to_list())
+
+    def test_allow_list_entries_not_in_data_are_ignored(self, cfg, tmp_path):
+        df = _make_filtered_df(["bc0", "bc1"], ["M1K", "M2L"], cfg=cfg)
+        allow_list_path = tmp_path / "allow_list.parquet"
+        pl.DataFrame({"meta_aa_changes": ["M1K", "M99Z"]}).write_parquet(allow_list_path)
+
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=1,
+            mode="top",
+            seed=0,
+            variant_allow_list_file=str(allow_list_path),
+        ).collect()
+
+        # M99Z isn't in the data, so it's silently dropped -- no phantom
+        # rows and no error. M1K (allow-listed) and M2L (only remaining
+        # eligible variant, kept under the n_variants=1 cap) both survive.
+        assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M2L"}
+        assert result.shape[0] == 2
+
+    def test_all_eligible_allow_listed_is_noop_with_warning(self, cfg, tmp_path, caplog):
+        df = _make_filtered_df(["bc0", "bc1"], ["M1K", "M2L"], cfg=cfg)
+        allow_list_path = tmp_path / "allow_list.parquet"
+        pl.DataFrame({"meta_aa_changes": ["M1K", "M2L"]}).write_parquet(allow_list_path)
+
+        with caplog.at_level("WARNING"):
+            result = select_variants(
+                df.lazy(),
+                cfg,
+                variant_downsample_classes=("Single Missense",),
+                n_variants=1,
+                mode="top",
+                seed=0,
+                variant_allow_list_file=str(allow_list_path),
+            ).collect()
+
+        assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M2L"}
+        assert any("allow_list" in rec.message for rec in caplog.records)
+
+    def test_random_mode_with_allow_list(self, cfg, tmp_path):
+        df = _make_filtered_df(
+            [f"bc{i}" for i in range(6)],
+            ["M1K", "M2L", "M3Q", "M4R", "M5S", "M6T"],
+            cfg=cfg,
+        )
+        allow_list_path = tmp_path / "allow_list.parquet"
+        pl.DataFrame({"meta_aa_changes": ["M1K", "M2L"]}).write_parquet(allow_list_path)
+
+        result = select_variants(
+            df.lazy(),
+            cfg,
+            variant_downsample_classes=("Single Missense",),
+            n_variants=2,
+            mode="random",
+            seed=0,
+            variant_allow_list_file=str(allow_list_path),
+        ).collect()
+
+        variants = set(result["meta_aa_changes"].to_list())
+        assert {"M1K", "M2L"} <= variants
+        assert len(variants) == 4  # 2 allow-listed + 2 randomly selected
+
 
 # ---------------------------------------------------------------------------
 # main() — downsample_amounts / n_variants
@@ -957,3 +1066,56 @@ def test_main_variant_downsample_classes_configurable(tmp_path):
     # Both A1A/A2A are Synonymous and tied at 3 cells each; alphabetical
     # tie-break keeps A1A only.
     assert set(result["meta_aa_changes"].to_list()) == {"A1A"}
+
+
+def test_main_variant_allow_list_file_bypasses_cap(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(
+        source,
+        [f"bc{i}" for i in range(6)],
+        ["M1K", "M2L", "M2L", "M3Q", "M3Q", "M3Q"],
+    )
+    allow_list_path = tmp_path / "allow_list.parquet"
+    pl.DataFrame({"meta_aa_changes": ["M1K"]}).write_parquet(allow_list_path)
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        n_variants=1,
+        variant_allow_list_file=str(allow_list_path),
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    # M1K is allow-listed and passes through even though it has the fewest
+    # cells; top-1 among the remaining {M2L, M3Q} keeps M3Q.
+    assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M3Q"}
+
+
+def test_main_variant_allow_list_ignored_when_n_variants_none(tmp_path, caplog):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(6)], ["M1K"] * 3 + ["M2L"] * 3)
+
+    allow_list_path = tmp_path / "allow_list.parquet"
+    pl.DataFrame({"meta_aa_changes": ["M1K"]}).write_parquet(allow_list_path)
+
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+        variant_allow_list_file=str(allow_list_path),
+    )
+
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"), caplog.at_level("WARNING"):
+        m.main.__wrapped__(qc_cfg)
+
+    result = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert set(result["meta_aa_changes"].to_list()) == {"M1K", "M2L"}
+    assert any("variant_allow_list_file" in rec.message for rec in caplog.records)

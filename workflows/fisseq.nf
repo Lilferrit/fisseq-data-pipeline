@@ -87,12 +87,14 @@ workflow FisseqPipeline {
         qc_n_variants                     : params.qc_n_variants,
         qc_variant_downsample_classes     : params.qc_variant_downsample_classes,
         qc_variant_downsample_mode        : params.qc_variant_downsample_mode,
+        qc_variant_allow_list_file        : params.qc_variant_allow_list_file,
         qc_downsample_amounts             : params.qc_downsample_amounts,
         qc_downsample_classes             : params.qc_downsample_classes,
         qc_downsample_seed                : params.qc_downsample_seed,
         barcode_blocklist_pvalue_threshold: params.barcode_blocklist_pvalue_threshold,
         ovwt_min_cells                    : params.ovwt_min_cells,
         ovwt_downsample_wt                : params.ovwt_downsample_wt,
+        ovwt_min_cells_per_barcode        : params.ovwt_min_cells_per_barcode,
         max_cells_per_barcode_wt          : params.max_cells_per_barcode_wt,
         max_cells_per_barcode_variant     : params.max_cells_per_barcode_variant,
         wtvwt_min_cells_per_barcode       : params.wtvwt_min_cells_per_barcode,
@@ -222,8 +224,8 @@ workflow FisseqPipeline {
         def cfg = resolvedBatchConfigs[batch_stem]
         tuple(batch_stem, f, cfg.barcode_count_threshold, cfg.variant_barcode_count_threshold,
               cfg.edit_distance_threshold, cfg.qc_n_variants, cfg.qc_variant_downsample_classes,
-              cfg.qc_variant_downsample_mode, cfg.qc_downsample_amounts, cfg.qc_downsample_classes,
-              cfg.qc_downsample_seed)
+              cfg.qc_variant_downsample_mode, cfg.qc_variant_allow_list_file, cfg.qc_downsample_amounts,
+              cfg.qc_downsample_classes, cfg.qc_downsample_seed)
     }
     qc_ch = QC_FILTER(qc_input_ch).qc_outputs
 
@@ -397,7 +399,7 @@ workflow FisseqPipeline {
         .map { batch_stem, p, _gates ->
             def cfg = resolvedBatchConfigs[batch_stem]
             tuple(batch_stem, p, null, null, "ovwt_batchwise", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
-                  cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
+                  cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant, cfg.ovwt_min_cells_per_barcode)
         }
     OVWT_BATCHWISE_UNFILTERED(ovwt_unfiltered_input_ch)
 
@@ -441,7 +443,7 @@ workflow FisseqPipeline {
             .map { batch_stem, p, bl ->
                 def cfg = resolvedBatchConfigs[batch_stem]
                 tuple(batch_stem, p, null, bl, "ovwt_batchwise_barcode_filtered", cfg.ovwt_min_cells, cfg.ovwt_downsample_wt,
-                      cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant)
+                      cfg.max_cells_per_barcode_wt, cfg.max_cells_per_barcode_variant, cfg.ovwt_min_cells_per_barcode)
             }
     )
 
