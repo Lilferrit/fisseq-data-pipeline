@@ -5,6 +5,9 @@ Hydra entry point backing the Nextflow processes ``AGGREGATE_FEATURE_TYPE`` and
 aggregation) and stage 2b (per-pseudo-replicate-half aggregation). Also supports
 optionally downsampling control (wildtype) rows before aggregation via
 ``downsample_wt``/``seed`` — see :func:`fisseq_data_pipeline.aggregate.downsample_control`.
+Also supports the optional per-barcode aggregation mode
+(``per_barcode``/``barcode_column``) — see
+:meth:`fisseq_data_pipeline.aggregate.BaseAggregator._native_aggregate_feature_batch`.
 """
 
 import dataclasses
@@ -19,6 +22,7 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 from .aggregate import aggregate, downsample_control
 from .config import LabeledInputConfig
 from .utils.batches import load_batches
+from .utils.constants import META_BARCODE_COL
 from .utils.log import setup_logging
 from .utils.splits import filter_by_index_file
 
@@ -54,12 +58,29 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
     seed : int
         Random seed for the ``downsample_wt`` draw. Ignored when
         ``downsample_wt`` is ``None``. Defaults to ``0``.
+    per_barcode : bool
+        If ``True``, compute each feature's statistic per (variant,
+        barcode) first, then reduce to one value per variant by taking the
+        median across that variant's barcodes, instead of pooling all of a
+        variant's cells directly. Reference-based aggregators still
+        compare every (variant, barcode) group against the SAME full
+        control pool — the reference frame is per-feature, not per
+        barcode, and is unaffected by this flag. When used for
+        ``AGGREGATE_HALF``, both halves of every bootstrap replicate must
+        use the same setting, or the correlation stability check stops
+        being apples-to-apples. Defaults to ``False``.
+    barcode_column : str
+        Column identifying the barcode a cell was measured from. Only
+        consulted when ``per_barcode`` is ``True``. Defaults to
+        ``utils.constants.META_BARCODE_COL`` (``"meta_barcode"``).
     """
 
     aggregator: str = MISSING
     index_file: Optional[str] = None
     downsample_wt: Optional[Union[float, int]] = None
     seed: int = 0
+    per_barcode: bool = False
+    barcode_column: str = META_BARCODE_COL
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
@@ -102,7 +123,9 @@ def main(cfg: DictConfig) -> None:
             aggregator=mean \\
             index_file=./half1.parquet \\
             downsample_wt=0.5 \\
-            seed=1
+            seed=1 \\
+            per_barcode=true \\
+            barcode_column=meta_barcode
     """
     ft_cfg: FeatureTypeAggregateConfig = OmegaConf.to_object(cfg)
 
@@ -140,6 +163,8 @@ def main(cfg: DictConfig) -> None:
         lf,
         label_col=ft_cfg.label_column,
         aggregator_name=ft_cfg.aggregator,
+        per_barcode=ft_cfg.per_barcode,
+        barcode_column=ft_cfg.barcode_column,
     )
 
     if ft_cfg.output_root is not None:

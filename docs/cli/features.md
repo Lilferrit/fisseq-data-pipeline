@@ -47,6 +47,9 @@ feature type.
 | `half1_file` | **required** | First half's per-feature-type aggregate parquet. |
 | `half2_file` | **required** | Second half's per-feature-type aggregate parquet. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
+| `bootstrap_variant_downsample` | `null` | Optional: randomly sample this many variants from the set present in both halves before computing correlations, independently per bootstrap replicate — adds variant-subsampling variance on top of the half-split randomness. `null` disables it (every joint variant is used, prior behavior). If the requested count exceeds the number of joint variants, all of them are used instead (logged once as a warning). Distinct from `feature_select_downsample_wt` (cell-level control-row downsampling at aggregation time, a different lever) — this subsamples *variants*, at *correlation* time. |
+| `bootstrap_idx` | `0` | This replicate's bootstrap-loop index. Combined with `seed` (`seed + bootstrap_idx * 1000`) to derive a per-replicate seed for `bootstrap_variant_downsample`, deliberately independent of `GENERATE_SPLIT`'s own per-replicate seed. Ignored when `bootstrap_variant_downsample` is `null`. |
+| `seed` | `0` | Base seed combined with `bootstrap_idx` to derive the per-replicate variant-downsample seed. Ignored when `bootstrap_variant_downsample` is `null`. |
 
 **Output**: `correlations.parquet` (columns: `feature`, `r`, `r_squared`, `p_value`).
 
@@ -54,8 +57,16 @@ feature type.
 uv run python -m fisseq_data_pipeline.correlatefeatures \
     output_dir=./out \
     half1_file=out/half1.mean.parquet \
-    half2_file=out/half2.mean.parquet
+    half2_file=out/half2.mean.parquet \
+    bootstrap_variant_downsample=50 \
+    bootstrap_idx=3 \
+    seed=0
 ```
+
+In the Nextflow pipeline, `bootstrap_variant_downsample` is driven by
+`params.feature_select_bootstrap_variant_downsample` (see
+[Parameters](../configuration.md#parameters)); `bootstrap_idx` is the loop index Nextflow
+already threads through `CORRELATE_FEATURES` for the output filename.
 
 ## 3. `python -m fisseq_data_pipeline.blocklist` (`BLOCKLIST`)
 
@@ -64,27 +75,52 @@ replicate's correlation table for one feature type and, for each feature,
 Fisher-z-transforms every replicate's `r` (`z = arctanh(clip(r, -1+eps, 1-eps))`),
 averages in z-space, and back-transforms to a point estimate
 (`r_est = tanh(mean(z))`) plus its standard error
-(`se_z = std(z, ddof=1) / sqrt(n_replicates)`). A feature is marked `feature_ok`
-only if it clears two independent gates: a **magnitude gate** (`r_est` vs
-`minimum_correlation`) and a **quality/precision gate** (`se_z` vs `max_se_z`). A
-feature with fewer than 2 usable replicates has `se_z = null` and automatically
-fails the quality gate — a single replicate can't support a precision claim.
+(`se_z = std(z, ddof=1) / sqrt(n_replicates)`). A feature is marked `feature_ok` if
+its **precision-adjusted** estimate (`adjusted_r`) clears `minimum_correlation`.
+`adjusted_r` applies an optional lower-confidence-bound adjustment controlled by
+`se_multiplier`:
+
+- `se_multiplier` is `None`: `adjusted_r = r_est` (no penalty; gates on the raw
+  point estimate alone).
+- `se_multiplier` is a float (default `1.0`): the adjustment is applied **in
+  Fisher-z space**, not directly on `r_est` — `adjusted_z = z_mean -
+  se_multiplier * se_z`, then `adjusted_r = tanh(adjusted_z)`. This is deliberate:
+  `se_z` is the standard error of the mean **Fisher-z** estimate, whose sampling
+  distribution is approximately symmetric and unbounded, so a z-space shift is
+  well-defined; `r` is bounded to `[-1, 1]`, so subtracting a z-space-derived
+  quantity directly from `r_est` mixes units and can behave oddly near `r =
+  ±1`. Larger `se_multiplier` is stricter.
+
+A feature with fewer than 2 usable replicates has `se_z = null`, so (whenever
+`se_multiplier` is set) `adjusted_r` is also `null` and the feature fails
+automatically — a single replicate can't support a precision claim.
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
 | `correlation_files` | **required** | Glob pattern matching all bootstrap-replicate correlation parquet files for one feature type. |
-| `minimum_correlation` | `0.5` | Magnitude gate: minimum Fisher-z-averaged Pearson `r` estimate (`r_est`) required for a feature to pass. Must be paired with `max_se_z`'s quality gate — this threshold alone is not sufficient for `feature_ok`. |
-| `max_se_z` | `0.0884` | Quality/precision gate: maximum acceptable standard error of the mean Fisher-z estimate (`se_z`) across bootstrap replicates. Calibrated for the pipeline's default `bootstrap_reps=10` (`se_z = 0.2 / t_crit(df=9, 0.975) ≈ 0.0884`, targeting a ~95% CI half-width of ~0.15 in `r` near `r=0.5`). If `bootstrap_reps` is ever changed from its default, rescale by roughly `sqrt(10 / new_bootstrap_reps)`, or re-derive from scratch via the retroactive replicate-resampling check. |
+| `minimum_correlation` | `0.5` | Magnitude gate: minimum precision-adjusted correlation estimate (`adjusted_r`) required for a feature to pass. |
+| `se_multiplier` | `1.0` | Precision/confidence adjustment applied in Fisher-z space before the magnitude gate (see above). `null` disables the adjustment entirely (gates on raw `r_est`). |
 
-**Output**: `blocklist.parquet` (columns: `feature`, `r_est`, `se_z`, `n_replicates`, `feature_ok`).
+**Output**: `blocklist.parquet` (columns: `feature`, `r_est`, `se_z`, `n_replicates`, `adjusted_r`, `feature_ok`).
 
 ```bash
 uv run python -m fisseq_data_pipeline.blocklist \
     output_dir=./out \
     'correlation_files=out/correlations/mean/*.parquet' \
     minimum_correlation=0.5 \
-    max_se_z=0.0884
+    se_multiplier=1.0
 ```
+
+**Migration note (from `max_se_z`)**: earlier pipeline versions used a two-gate
+strategy — `feature_ok` required both `r_est >= minimum_correlation` *and* an
+independent quality gate `se_z <= max_se_z` (default `max_se_z=0.0884`). That field
+has been **removed** (a Hydra config or batch YAML still setting `max_se_z` will
+now error, not be silently ignored) in favor of the single lower-confidence-bound
+criterion above. `minimum_correlation=0.5, se_multiplier=1.0` is a rough behavioral
+match to the old `minimum_correlation=0.5, max_se_z=0.0884` default at around
+`bootstrap_reps≈5`-ish — these are genuinely different criteria, not a
+reparameterization of the same one, so revalidate against your own
+`bootstrap_reps` and data rather than assuming parity.
 
 ## 4. `python -m fisseq_data_pipeline.combineblocklists` (`COMBINE_BLOCKLISTS`)
 

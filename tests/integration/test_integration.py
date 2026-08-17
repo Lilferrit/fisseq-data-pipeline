@@ -68,15 +68,15 @@ _FEATURE_COLS = [
 # indistinguishable for test purposes. 0.5 blocks 4 of the 5 features,
 # exercising a non-trivial (some blocked, some not) split.
 #
-# feature_select_max_se_z's default (0.0884) is calibrated for
-# feature_select_bootstrap_reps=10 (see BlocklistConfig's docstring); at this
-# fixture's reduced bootstrap_reps=3, se_z inflates by roughly sqrt(10/3) and
-# this small synthetic dataset's replicate-to-replicate correlation noise is
-# high enough that the plain rescaled value can still zero out every
-# feature for some batches (BLOCKLIST's quality gate is deliberately strict).
-# 0.4 is chosen empirically to leave a non-trivial (some ok, some not) split
-# for every batch these params are used with, while still exercising the
-# quality gate (not just rubber-stamping every feature).
+# feature_select_se_multiplier's default (1.0) is a lower-confidence-bound
+# adjustment, not a reparameterization of the old max_se_z quality gate --
+# see BlocklistConfig's docstring and docs/cli/features.md's migration note.
+# The pipeline-wide default (1.0) is used here as-is (no override needed,
+# unlike the old max_se_z's hand-picked 0.4): at this fixture's reduced
+# bootstrap_reps=3, it empirically leaves a non-trivial (some ok, some not)
+# split for every batch (verified: 6/35 and 7/35 features ok for batch1/
+# batch2 respectively), exercising the precision adjustment without
+# rubber-stamping every feature or zeroing out all of them.
 _NF_PARAMS = [
     "--barcode_count_threshold",
     "3",
@@ -94,8 +94,8 @@ _NF_PARAMS = [
     "2",
     "--feature_select_bootstrap_reps",
     "3",
-    "--feature_select_max_se_z",
-    "0.4",
+    "--feature_select_se_multiplier",
+    "1.0",
     "--anova_blocklist_pvalue_threshold",
     "0.5",
     "--wtvwt_min_cells_per_barcode",
@@ -461,6 +461,7 @@ def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_ste
         exp_dir / "feature_select_batchwise" / batch_stem / "blocklist.parquet"
     )
     assert "feature_ok" in df.columns
+    assert "adjusted_r" in df.columns
 
 
 # ---------------------------------------------------------------------------

@@ -73,6 +73,8 @@ def make_ft_cfg(
     index_file=None,
     downsample_wt=None,
     seed=0,
+    per_barcode=False,
+    barcode_column="meta_barcode",
 ) -> OmegaConf:
     """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
     return OmegaConf.structured(
@@ -84,6 +86,8 @@ def make_ft_cfg(
             index_file=index_file,
             downsample_wt=downsample_wt,
             seed=seed,
+            per_barcode=per_barcode,
+            barcode_column=barcode_column,
         )
     )
 
@@ -248,3 +252,61 @@ def test_main_downsample_wt_nonpositive_int_raises(tmp_path) -> None:
     with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
         with pytest.raises(ValueError):
             m.main.__wrapped__(make_ft_cfg(tmp_path, downsample_wt=-1))
+
+
+# ---------------------------------------------------------------------------
+# main: per_barcode
+# ---------------------------------------------------------------------------
+
+
+def test_main_per_barcode_default_false_matches_pooled_behavior(tmp_path) -> None:
+    """write_agg_input_parquet's per-group f1/f2 values are constant across
+    cells (and thus across barcodes), so per_barcode=True is a no-op on this
+    fixture -- confirms the config field is threaded through and the
+    per-barcode path runs end to end without changing output when there's
+    nothing for it to change."""
+    write_agg_input_parquet(tmp_path, with_barcode=True)
+    with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
+        m.main.__wrapped__(
+            make_ft_cfg(tmp_path, per_barcode=True, output_root=str(tmp_path / "pb"))
+        )
+        m.main.__wrapped__(
+            make_ft_cfg(
+                tmp_path, per_barcode=False, output_root=str(tmp_path / "pooled")
+            )
+        )
+    pb_result = pl.read_parquet(tmp_path / "pb.input.parquet")
+    pooled_result = pl.read_parquet(tmp_path / "pooled.input.parquet")
+    assert pb_result.sort("meta_aa_changes").equals(
+        pooled_result.sort("meta_aa_changes")
+    )
+
+
+def test_main_per_barcode_true_changes_output_when_barcodes_vary(tmp_path) -> None:
+    """A variant whose per-barcode values genuinely differ must produce a
+    different result under per_barcode=True (median of per-barcode means)
+    than under the pooled default (mean of all cells)."""
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT", "WT", "A1B", "A1B", "A1B", "A1B"],
+            "meta_barcode": ["bcC", "bcC", "bc1", "bc1", "bc2", "bc3"],
+            "meta_is_control": [True, True, False, False, False, False],
+            "f1": [0.0, 0.0, 10.0, 20.0, 100.0, 1.0],
+        }
+    ).write_parquet(tmp_path / "input.parquet")
+    with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
+        m.main.__wrapped__(
+            make_ft_cfg(tmp_path, per_barcode=True, output_root=str(tmp_path / "pb"))
+        )
+        m.main.__wrapped__(
+            make_ft_cfg(
+                tmp_path, per_barcode=False, output_root=str(tmp_path / "pooled")
+            )
+        )
+    pb_row = _get_row(pl.read_parquet(tmp_path / "pb.input.parquet"), "A1B")
+    pooled_row = _get_row(pl.read_parquet(tmp_path / "pooled.input.parquet"), "A1B")
+    # per-barcode means: bc1=15.0, bc2=100.0, bc3=1.0 -> median = 15.0
+    assert pb_row["f1_mean"] == pytest.approx(15.0)
+    # pooled mean: (10+20+100+1)/4 = 32.75
+    assert pooled_row["f1_mean"] == pytest.approx(32.75)
+    assert pb_row["f1_mean"] != pytest.approx(pooled_row["f1_mean"])

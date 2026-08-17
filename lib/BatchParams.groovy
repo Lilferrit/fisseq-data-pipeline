@@ -64,6 +64,16 @@ class BatchParams {
         // chain, which always uses the plain params.X default)
         'feature_select_downsample_wt',
         'feature_select_min_correlation',
+        'feature_select_se_multiplier',
+        // feature-selection batchwise chain, AGGREGATE_FEATURE_TYPE_BATCHWISE
+        // / AGGREGATE_HALF_BATCHWISE only -- no global counterpart, since
+        // GLOBAL_FEATURE_SELECT reuses already-computed batchwise aggregates
+        // rather than re-aggregating from cells
+        'feature_select_per_barcode',
+        'feature_select_barcode_column',
+        // feature-selection batchwise chain, CORRELATE_FEATURES_BATCHWISE
+        // only -- same "no global counterpart" reasoning as above
+        'feature_select_bootstrap_variant_downsample',
         // dimensionality reduction, batchwise (shared names with the global
         // chain, which always uses the plain params.X default -- see
         // workflows/fisseq.nf's GLOBAL_FEATURE_SELECT call site)

@@ -9,6 +9,12 @@ per-feature-type aggregation entry point used by the feature-selection branch
 optional control (wildtype) downsampling via ``downsample_wt``/``seed``, lives in
 :mod:`.aggregatefeaturetype`, which imports :func:`aggregate` and
 :func:`downsample_control` from this module.
+
+An optional per-barcode aggregation mode (``per_barcode``/``barcode_column``)
+computes each aggregator's statistic per (variant, barcode) first, then
+reduces to one value per variant by taking the median across that variant's
+barcodes, instead of pooling all of a variant's cells directly. See
+:meth:`BaseAggregator._native_aggregate_feature_batch`.
 """
 
 import abc
@@ -27,7 +33,12 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 from .config import LabeledInputConfig
 from .normalize import Normalizer
 from .utils.batches import load_batches
-from .utils.constants import CONTROL_COLUMN, CONTROL_COLUMN_NAME, FEATURE_SELECTOR
+from .utils.constants import (
+    CONTROL_COLUMN,
+    CONTROL_COLUMN_NAME,
+    FEATURE_SELECTOR,
+    META_BARCODE_COL,
+)
 from .utils.log import setup_logging
 from .utils.metadata import get_aggregate_meta_data
 from .utils.variant import classify_variant
@@ -53,12 +64,28 @@ class AggregateConfig(LabeledInputConfig):
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
         ``False`` are excluded from aggregation. Defaults to ``None`` (no
         features blocked).
+    per_barcode : bool
+        If ``True``, compute each feature's statistic per (variant, barcode)
+        first, then reduce to one value per variant by taking the median
+        across that variant's barcodes, instead of pooling all of a
+        variant's cells directly. Reference-based aggregators (KS,
+        signedKS, QQ, AUROC, ...) still compare every (variant, barcode)
+        group against the SAME full control pool — the reference frame is
+        built per feature from all control rows, not per barcode, and is
+        unaffected by this flag. Defaults to ``False`` (pool all of a
+        variant's cells directly — prior behavior, unchanged).
+    barcode_column : str
+        Column identifying the barcode a cell was measured from. Only
+        consulted when ``per_barcode`` is ``True``. Defaults to
+        ``utils.constants.META_BARCODE_COL`` (``"meta_barcode"``).
     """
 
     aggregator: str = MISSING
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
     compute_impact_score: bool = True
+    per_barcode: bool = False
+    barcode_column: str = META_BARCODE_COL
 
 
 _cs = ConfigStore.instance()
@@ -124,6 +151,15 @@ class BaseAggregator(abc.ABC):
     block_list : set[str] or None
         Aggregated output column names to skip (e.g. ``"f1_KS"``). Blocked
         statistics are not computed. Defaults to ``None``.
+    per_barcode : bool
+        If ``True``, compute each feature's statistic per (variant,
+        barcode) first, then reduce to one value per variant by taking the
+        median across that variant's barcodes — see
+        :meth:`_native_aggregate_feature_batch`. Defaults to ``False``.
+    barcode_column : str
+        Column identifying the barcode a cell was measured from. Only
+        consulted when ``per_barcode`` is ``True``. Defaults to
+        ``utils.constants.META_BARCODE_COL``.
     """
 
     _stat_suffix: ClassVar[str]
@@ -132,9 +168,13 @@ class BaseAggregator(abc.ABC):
         self,
         label_col: str = "meta_aa_changes",
         block_list: Optional[set[str]] = None,
+        per_barcode: bool = False,
+        barcode_column: str = META_BARCODE_COL,
     ) -> None:
         self.label_col = label_col
         self.block_list = block_list
+        self.per_barcode = per_barcode
+        self.barcode_column = barcode_column
 
     def _feature_columns(self, lf: pl.LazyFrame) -> list[str]:
         return [
@@ -176,21 +216,40 @@ class BaseAggregator(abc.ABC):
     ) -> pl.LazyFrame:
         """
         Shared group_by/select boilerplate: group non-control rows by
-        ``self.label_col`` into per-label list columns, then select
-        ``exprs`` (one aliased native-Polars-expression per feature)
-        against those list columns. Stays entirely in Arrow — no Python
-        boxing.
+        ``self.label_col`` (or, when ``self.per_barcode`` is ``True``, by
+        ``[self.label_col, self.barcode_column]``) into per-group list
+        columns, then select ``exprs`` (one aliased native-Polars-expression
+        per feature) against those list columns. Stays entirely in Arrow —
+        no Python boxing.
 
         ``reference_lf``, if given, is the single-row
         :meth:`ReferenceBasedAggregator._reference_lf` output; it's
-        cross-joined onto the per-label list frame so every variant-group
-        row also carries each feature's ``{feat}_ref`` reference list
-        column. A single-row cross join only broadcasts the reference row
-        onto every existing group row — it does not multiply row count.
+        cross-joined onto the per-group list frame so every group row also
+        carries each feature's ``{feat}_ref`` reference list column. A
+        single-row cross join only broadcasts the reference row onto every
+        existing group row — it does not multiply row count. This is
+        unchanged by ``per_barcode``: the reference pool is built once from
+        the full control pool, per feature, not per barcode, so every
+        (variant, barcode) group is compared against the same reference
+        either way.
+
+        When ``self.per_barcode`` is ``True``, the per-(variant, barcode)
+        result above is a second-stage input, not the final output: it's
+        reduced to one row per variant by grouping on ``self.label_col``
+        alone and taking the median of each ``{feat}{self._stat_suffix}``
+        column across that variant's barcodes. Polars' ``median()`` skips
+        null values within a group (e.g. a barcode with too few cells to
+        support a given statistic) rather than propagating them, unless
+        every barcode for a variant is null.
         """
+        group_keys = (
+            [self.label_col, self.barcode_column]
+            if self.per_barcode
+            else [self.label_col]
+        )
         variant_lists = (
             lf.filter(~CONTROL_COLUMN)
-            .group_by(self.label_col)
+            .group_by(group_keys)
             .agg([pl.col(f) for f in feature_cols])
         )
         if reference_lf is not None:
@@ -198,7 +257,13 @@ class BaseAggregator(abc.ABC):
         prep_exprs = [e for feat in feature_cols for e in self._prep_exprs(feat)]
         if prep_exprs:
             variant_lists = variant_lists.with_columns(prep_exprs)
-        return variant_lists.select([self.label_col] + exprs)
+        result = variant_lists.select(group_keys + exprs)
+        if self.per_barcode:
+            stat_cols = [f"{feat}{self._stat_suffix}" for feat in feature_cols]
+            result = result.group_by(self.label_col).agg(
+                [pl.col(c).median().alias(c) for c in stat_cols]
+            )
+        return result
 
     def _prep_exprs(self, feat: str) -> list[pl.Expr]:
         """
@@ -286,6 +351,13 @@ class ReferenceBasedAggregator(BaseAggregator):
         on it drops all three in one pass — the same set
         :meth:`BaseAggregator._native_clean` drops from per-group list
         columns.
+
+        Deliberately unaware of ``per_barcode``: the reference pool is
+        built once from the full control pool regardless of whether
+        variant groups are being split by barcode downstream — every
+        (variant, barcode) group compares against the same reference as
+        the pooled (non-per-barcode) path would. Do not "fix" this to
+        filter by barcode.
         """
         exprs = [
             pl.col(f).filter(pl.col(f).is_finite()).implode().alias(f"{f}_ref")
@@ -662,8 +734,10 @@ class QQCorrelationAggregator(ReferenceBasedAggregator):
         label_col: str = "meta_aa_changes",
         n_quantiles: int = 100,
         block_list: Optional[set[str]] = None,
+        per_barcode: bool = False,
+        barcode_column: str = META_BARCODE_COL,
     ) -> None:
-        super().__init__(label_col, block_list)
+        super().__init__(label_col, block_list, per_barcode, barcode_column)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
     @staticmethod
@@ -1115,6 +1189,8 @@ def aggregate(
     label_col: str,
     aggregator_name: str,
     block_list: Optional[set[str]] = None,
+    per_barcode: bool = False,
+    barcode_column: str = META_BARCODE_COL,
 ) -> pl.LazyFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
@@ -1137,6 +1213,14 @@ def aggregate(
         statistics are not computed and do not appear in the output. Names
         that do not match any aggregated output are silently ignored. Defaults
         to ``None``.
+    per_barcode : bool
+        If ``True``, compute each feature's statistic per (variant, barcode)
+        first, then reduce to one value per variant by median across
+        barcodes. See :class:`BaseAggregator`. Defaults to ``False``.
+    barcode_column : str
+        Column identifying the barcode a cell was measured from. Only
+        consulted when ``per_barcode`` is ``True``. Defaults to
+        ``utils.constants.META_BARCODE_COL``.
 
     Returns
     -------
@@ -1149,7 +1233,12 @@ def aggregate(
             f"Unknown aggregator {aggregator_name!r}. Choose from: {sorted(valid)}"
         )
 
-    agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
+    agg = _AGGREGATORS[aggregator_name](
+        label_col=label_col,
+        block_list=block_list,
+        per_barcode=per_barcode,
+        barcode_column=barcode_column,
+    )
     return agg.aggregate(lf)
 
 
@@ -1214,6 +1303,8 @@ def main(cfg: DictConfig) -> None:
             label_col=agg_cfg.label_column,
             aggregator_name=agg_cfg.aggregator,
             block_list=block_list,
+            per_barcode=agg_cfg.per_barcode,
+            barcode_column=agg_cfg.barcode_column,
         ),
         agg_cfg.label_column,
     )

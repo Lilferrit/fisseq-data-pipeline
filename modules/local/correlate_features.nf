@@ -10,7 +10,7 @@ process CORRELATE_FEATURES {
     publishDir { "${params.pipeline_dir}/${publish_subdir}/correlations/${feature_type}" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(bootstrap_idx), val(feature_type), path(half1_agg), path(half2_agg), val(publish_subdir)
+    tuple val(batch_key), val(bootstrap_idx), val(feature_type), path(half1_agg), path(half2_agg), val(publish_subdir), val(bootstrap_variant_downsample)
 
     output:
     tuple val(batch_key), val(feature_type), val(bootstrap_idx), path("bootstrap_${bootstrap_idx}.parquet")
@@ -22,7 +22,9 @@ process CORRELATE_FEATURES {
         output_dir=. \\
         half1_file=${half1_agg} \\
         half2_file=${half2_agg} \\
-        label_column=meta_aa_changes
+        label_column=meta_aa_changes \\
+        bootstrap_idx=${bootstrap_idx} \\
+        bootstrap_variant_downsample=${bootstrap_variant_downsample}
     mv correlations.parquet bootstrap_${bootstrap_idx}.parquet
     """
 }
