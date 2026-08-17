@@ -68,15 +68,15 @@ _FEATURE_COLS = [
 # indistinguishable for test purposes. 0.5 blocks 4 of the 5 features,
 # exercising a non-trivial (some blocked, some not) split.
 #
-# feature_select_se_multiplier's default (1.0) is a lower-confidence-bound
-# adjustment, not a reparameterization of the old max_se_z quality gate --
-# see BlocklistConfig's docstring and docs/cli/features.md's migration note.
-# The pipeline-wide default (1.0) is used here as-is (no override needed,
-# unlike the old max_se_z's hand-picked 0.4): at this fixture's reduced
-# bootstrap_reps=3, it empirically leaves a non-trivial (some ok, some not)
-# split for every batch (verified: 6/35 and 7/35 features ok for batch1/
-# batch2 respectively), exercising the precision adjustment without
-# rubber-stamping every feature or zeroing out all of them.
+# --feature_select_wt_null_bootstraps is reduced from the pipeline-wide
+# default (25) purely for test runtime -- WT_NULL_AGGREGATE draws two
+# disjoint control-pool splits per bootstrap per WT-null feature type, so
+# this fixture's total task count scales directly with it. 3 is small enough
+# to run fast while still exercising the Tukey-fence gate (see
+# test_feature_correlations_have_feature_ok_column below) across more than
+# one replicate -- unlike the old Fisher-z gate's se_multiplier, the WT-null
+# Tukey fence has no separate strictness knob to tune here (see
+# docs/cli/features.md's migration note).
 _NF_PARAMS = [
     "--barcode_count_threshold",
     "3",
@@ -92,10 +92,8 @@ _NF_PARAMS = [
     "50",
     "--batchvsbatch_min_batches",
     "2",
-    "--feature_select_bootstrap_reps",
+    "--feature_select_wt_null_bootstraps",
     "3",
-    "--feature_select_se_multiplier",
-    "1.0",
     "--anova_blocklist_pvalue_threshold",
     "0.5",
     "--wtvwt_min_cells_per_barcode",
@@ -460,8 +458,21 @@ def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_ste
     df = pl.read_parquet(
         exp_dir / "feature_select_batchwise" / batch_stem / "blocklist.parquet"
     )
-    assert "feature_ok" in df.columns
-    assert "adjusted_r" in df.columns
+    assert set(df.columns) == {
+        "feature",
+        "feature_ok",
+        "null_mean",
+        "threshold",
+        "n_bootstraps",
+    }
+    # Passthrough feature types (mean/median/MAD/std, not in the default
+    # feature_select_wt_null_types) are unconditionally ok with null audit
+    # columns; WT-null feature types (KS/QQ/AUROC) carry a real null_mean.
+    passthrough = df.filter(pl.col("feature").str.ends_with("_mean"))
+    assert passthrough["feature_ok"].all()
+    assert passthrough["null_mean"].null_count() == passthrough.height
+    wt_null = df.filter(pl.col("feature").str.ends_with("_KS"))
+    assert wt_null["null_mean"].null_count() < wt_null.height
 
 
 # ---------------------------------------------------------------------------
@@ -519,8 +530,8 @@ def global_channel_pipeline_outputs(tmp_path_factory):
         # blocklist before a feature counts as globally ok. Each channel here
         # has only 2 member batches, and the batchwise blocklist's per-feature
         # reproducibility check is noisy on this small synthetic dataset
-        # (feature_select_bootstrap_reps=3, 6 cells/barcode) -- unanimity can
-        # land on zero globally-ok features by chance of which 2 batches
+        # (feature_select_wt_null_bootstraps=3, 6 cells/barcode) -- unanimity
+        # can land on zero globally-ok features by chance of which 2 batches
         # share a channel. Relaxing to "1 of 2" keeps this fixture robust to
         # that per-batch noise without weakening the unanimity default itself.
         extra_params=["--global_feature_select_min_batches_ok", "1"],

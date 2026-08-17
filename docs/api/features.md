@@ -2,11 +2,11 @@
 
 See [CLI Reference: Feature Selection](../cli/features.md) for usage.
 
-::: fisseq_data_pipeline.generatesplit
+::: fisseq_data_pipeline.wtnullaggregate
 
-::: fisseq_data_pipeline.correlatefeatures
+::: fisseq_data_pipeline.wtnullblocklist
 
-::: fisseq_data_pipeline.blocklist
+::: fisseq_data_pipeline.passthroughblocklist
 
 ::: fisseq_data_pipeline.combineblocklists
 

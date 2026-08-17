@@ -8,8 +8,8 @@ nextflow.enable.dsl = 2
 // per-instance identity to vary a downsample seed by -- so seed is fixed
 // when params.feature_select_downsample_wt is set. per_barcode/barcode_column
 // are a plain flag/column name, not a randomization knob, so they need no
-// per-instance variation either -- but they must match AGGREGATE_HALF's
-// setting for the same batch, or the correlation stability check stops being
+// per-instance variation either -- but they must match WT_NULL_AGGREGATE's
+// setting for the same batch, or the WT-null reproducibility check stops being
 // apples-to-apples (both are resolved from the same
 // resolvedBatchConfigs[batch_stem] entry in the workflow, so this is
 // automatic).

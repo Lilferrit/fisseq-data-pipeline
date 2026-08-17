@@ -1030,9 +1030,7 @@ def test_per_barcode_mean_matches_numpy_median_of_barcode_means(
     per_barcode_df: pl.DataFrame,
 ) -> None:
     result = (
-        m.MeanAggregator(per_barcode=True)
-        .aggregate(per_barcode_df.lazy())
-        .collect()
+        m.MeanAggregator(per_barcode=True).aggregate(per_barcode_df.lazy()).collect()
     )
     for variant in ("V1", "V2"):
         barcode_means = [
@@ -1049,9 +1047,7 @@ def test_per_barcode_mean_matches_numpy_median_of_barcode_means(
 def test_per_barcode_ks_matches_scipy_median_of_barcode_ks(
     per_barcode_df: pl.DataFrame,
 ) -> None:
-    result = (
-        m.KSAggregator(per_barcode=True).aggregate(per_barcode_df.lazy()).collect()
-    )
+    result = m.KSAggregator(per_barcode=True).aggregate(per_barcode_df.lazy()).collect()
     ref = per_barcode_df.filter(pl.col("meta_is_control"))["f1"].to_list()
     for variant in ("V1", "V2"):
         barcode_ks = [
@@ -1071,9 +1067,7 @@ def test_per_barcode_ks_matches_scipy_median_of_barcode_ks(
 def test_per_barcode_false_is_unchanged(simple_df: pl.DataFrame) -> None:
     """Explicit per_barcode=False must match the (default) pooled behavior."""
     pooled = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
-    explicit = (
-        m.MeanAggregator(per_barcode=False).aggregate(simple_df.lazy()).collect()
-    )
+    explicit = m.MeanAggregator(per_barcode=False).aggregate(simple_df.lazy()).collect()
     assert pooled.sort("meta_aa_changes").equals(explicit.sort("meta_aa_changes"))
 
 
@@ -1085,7 +1079,9 @@ def test_per_barcode_single_barcode_per_variant_equals_pooled() -> None:
             "meta_aa_changes": ["WT"] * 10 + ["A"] * 5 + ["B"] * 5,
             "meta_barcode": ["bcC"] * 10 + ["bcA"] * 5 + ["bcB"] * 5,
             "meta_is_control": [True] * 10 + [False] * 5 + [False] * 5,
-            "f1": [0.0] * 10 + [1.0, 2.0, 3.0, 4.0, 5.0] + [10.0, 20.0, 30.0, 40.0, 50.0],
+            "f1": [0.0] * 10
+            + [1.0, 2.0, 3.0, 4.0, 5.0]
+            + [10.0, 20.0, 30.0, 40.0, 50.0],
         }
     )
     for agg_cls in (m.MeanAggregator, m.KSAggregator):
@@ -1153,9 +1149,15 @@ def test_main_per_barcode_true_runs_end_to_end(tmp_path):
     per_barcode=False (default) output bit-for-bit on this fixture."""
     write_agg_input_parquet(tmp_path, with_barcode=True)
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
-        m.main.__wrapped__(make_agg_cfg(tmp_path, per_barcode=True, output_root=str(tmp_path / "pb")))
+        m.main.__wrapped__(
+            make_agg_cfg(tmp_path, per_barcode=True, output_root=str(tmp_path / "pb"))
+        )
     with patch("fisseq_data_pipeline.aggregate.setup_logging"):
-        m.main.__wrapped__(make_agg_cfg(tmp_path, per_barcode=False, output_root=str(tmp_path / "pooled")))
+        m.main.__wrapped__(
+            make_agg_cfg(
+                tmp_path, per_barcode=False, output_root=str(tmp_path / "pooled")
+            )
+        )
     per_barcode_result = pl.read_parquet(str(tmp_path / "pb.input.parquet"))
     pooled_result = pl.read_parquet(str(tmp_path / "pooled.input.parquet"))
     # Compare only the aggregated stat columns -- metadata columns like
@@ -1966,3 +1968,57 @@ def test_downsample_control_different_seeds_draw_different_samples() -> None:
         .to_list()
     )
     assert kept1 != kept2
+
+
+# ---------------------------------------------------------------------------
+# split_control_pool
+# ---------------------------------------------------------------------------
+
+
+def test_split_control_pool_halves_disjoint_and_cover_control_pool() -> None:
+    df = _control_df(n_control=20)
+    h1, h2 = m.split_control_pool(df.lazy(), seed=1)
+    h1_ids = set(h1.collect()["row_id"].to_list())
+    h2_ids = set(h2.collect()["row_id"].to_list())
+    assert h1_ids.isdisjoint(h2_ids)
+    assert h1_ids | h2_ids == set(range(20))
+
+
+def test_split_control_pool_drops_non_control_rows() -> None:
+    df = _control_df(n_control=10, n_variant=3)
+    h1, h2 = m.split_control_pool(df.lazy(), seed=1)
+    assert h1.collect()[CONTROL_COLUMN_NAME].all()
+    assert h2.collect()[CONTROL_COLUMN_NAME].all()
+    assert (h1.collect().height + h2.collect().height) == 10
+
+
+def test_split_control_pool_roughly_even_halves() -> None:
+    df = _control_df(n_control=20)
+    h1, h2 = m.split_control_pool(df.lazy(), seed=1)
+    assert h1.collect().height == 10
+    assert h2.collect().height == 10
+
+
+def test_split_control_pool_odd_pool_extra_row_goes_to_h2() -> None:
+    df = _control_df(n_control=9)
+    h1, h2 = m.split_control_pool(df.lazy(), seed=1)
+    assert h1.collect().height == 4
+    assert h2.collect().height == 5
+
+
+def test_split_control_pool_seed_is_deterministic() -> None:
+    df = _control_df(n_control=20)
+    h1a, _ = m.split_control_pool(df.lazy(), seed=7)
+    h1b, _ = m.split_control_pool(df.lazy(), seed=7)
+    assert set(h1a.collect()["row_id"].to_list()) == set(
+        h1b.collect()["row_id"].to_list()
+    )
+
+
+def test_split_control_pool_different_seeds_draw_different_halves() -> None:
+    df = _control_df(n_control=20)
+    h1a, _ = m.split_control_pool(df.lazy(), seed=1)
+    h1b, _ = m.split_control_pool(df.lazy(), seed=2)
+    assert set(h1a.collect()["row_id"].to_list()) != set(
+        h1b.collect()["row_id"].to_list()
+    )

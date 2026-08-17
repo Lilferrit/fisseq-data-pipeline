@@ -70,7 +70,6 @@ def make_ft_cfg(
     *,
     output_root=None,
     aggregator="mean",
-    index_file=None,
     downsample_wt=None,
     seed=0,
     per_barcode=False,
@@ -83,7 +82,6 @@ def make_ft_cfg(
             output_root=output_root,
             input_file=str(tmp_path / "input.parquet"),
             aggregator=aggregator,
-            index_file=index_file,
             downsample_wt=downsample_wt,
             seed=seed,
             per_barcode=per_barcode,
@@ -105,59 +103,13 @@ def test_main_output_has_only_label_and_stat_columns(tmp_path) -> None:
     assert set(result.columns) == {"meta_aa_changes", "f1_mean", "f2_mean"}
 
 
-def test_main_index_file_none_aggregates_all_rows(tmp_path) -> None:
+def test_main_aggregates_all_non_control_rows(tmp_path) -> None:
     write_agg_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
         m.main.__wrapped__(make_ft_cfg(tmp_path))
     result = pl.read_parquet(tmp_path / "out" / "input.parquet")
     # All four groups (WT is control and excluded; A1A, A2A, A1B remain).
     assert set(result["meta_aa_changes"].to_list()) == {"A1A", "A2A", "A1B"}
-
-
-def test_main_index_file_filters_rows(tmp_path) -> None:
-    # Custom dataset (unlike write_agg_input_parquet, whose per-group values
-    # are constant, which would make a single-row filter indistinguishable
-    # from the full-group aggregate): A1B has three distinct f1 values, so
-    # filtering to a subset changes the aggregated mean.
-    pl.DataFrame(
-        {
-            "meta_aa_changes": ["WT", "WT", "A1B", "A1B", "A1B"],
-            "meta_is_control": [True, True, False, False, False],
-            "f1": [0.0, 0.0, 10.0, 20.0, 30.0],
-        }
-    ).write_parquet(tmp_path / "input.parquet")
-    # Row index 2 is the first A1B row (f1=10.0); rows 0-1 are WT.
-    idx_path = tmp_path / "half1.parquet"
-    pl.DataFrame({"tmp_cell_idx": [2]}).write_parquet(idx_path)
-
-    with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
-        m.main.__wrapped__(
-            make_ft_cfg(
-                tmp_path,
-                index_file=str(idx_path),
-                output_root=str(tmp_path / "filtered"),
-            )
-        )
-    filtered_result = pl.read_parquet(tmp_path / "filtered.input.parquet")
-
-    with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
-        m.main.__wrapped__(
-            make_ft_cfg(tmp_path, output_root=str(tmp_path / "unfiltered"))
-        )
-    unfiltered_result = pl.read_parquet(tmp_path / "unfiltered.input.parquet")
-
-    # Filtering to a single A1B row means only that A1B row contributes, and
-    # its single-cell mean must equal the raw feature value at that row exactly.
-    assert set(filtered_result["meta_aa_changes"].to_list()) == {"A1B"}
-    filtered_row = filtered_result.filter(pl.col("meta_aa_changes") == "A1B").row(
-        0, named=True
-    )
-    assert filtered_row["f1_mean"] == pytest.approx(10.0)
-
-    unfiltered_row = unfiltered_result.filter(pl.col("meta_aa_changes") == "A1B").row(
-        0, named=True
-    )
-    assert filtered_row["f1_mean"] != pytest.approx(unfiltered_row["f1_mean"])
 
 
 def test_main_output_root_naming(tmp_path) -> None:
