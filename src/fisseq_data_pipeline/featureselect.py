@@ -2,9 +2,9 @@
 
 Hydra entry point backing the Nextflow process ``FINALIZE_FEATURE_SELECT``: joins
 per-feature-type aggregates (per-feature-type aggregation itself lives in
-:mod:`.aggregatefeaturetype`, run as ``AGGREGATE_HALF``), applies the combined
-blocklist (from :mod:`.combineblocklists`), and runs pycytominer feature
-selection.
+:mod:`.aggregatefeaturetype`, run as ``AGGREGATE_FEATURE_TYPE``), applies the
+combined blocklist (from :mod:`.combineblocklists`), and runs pycytominer
+feature selection.
 """
 
 import dataclasses

@@ -69,11 +69,10 @@ Every process wraps one `python -m fisseq_data_pipeline.<module>` invocation (se
 | `CHECK_BARCODES` | `check_barcodes.nf` | `python -m fisseq_data_pipeline.checkbarcodes` | per batch, optional (`params.run_check_barcodes`, which also forces `run_single_cell_scores` on) |
 | `BARCODE_BLOCKLIST` | `barcode_blocklist.nf` | `python -m fisseq_data_pipeline.barcodeblocklist` | per batch, requires both `params.run_check_barcodes` and `params.run_barcode_filtered_ovwt` true (the latter does not force the former on); consumes that batch's `CHECK_BARCODES` output; `FisseqPipeline` only |
 | `AGGREGATE_FEATURE_TYPE` (`_BATCHWISE`) | `aggregate_feature_type.nf` | `python -m fisseq_data_pipeline.aggregatefeaturetype` | per batch × feature type |
-| `GENERATE_SPLIT` (`_BATCHWISE`) | `generate_split.nf` | `python -m fisseq_data_pipeline.generatesplit` | per batch × bootstrap replicate |
-| `AGGREGATE_HALF` (`_BATCHWISE`) | `aggregate_half.nf` | `python -m fisseq_data_pipeline.aggregatefeaturetype` (with `index_file`) | per batch × bootstrap × feature type × half |
-| `CORRELATE_FEATURES` (`_BATCHWISE`) | `correlate_features.nf` | `python -m fisseq_data_pipeline.correlatefeatures` | per batch × bootstrap × feature type |
-| `BLOCKLIST` (`_BATCHWISE`) | `blocklist.nf` | `python -m fisseq_data_pipeline.blocklist` | per batch × feature type — gathers all bootstrap replicates |
-| `COMBINE_BLOCKLISTS` (`_BATCHWISE`) | `combine_blocklists.nf` | `python -m fisseq_data_pipeline.combineblocklists` | per batch — gathers all feature types |
+| `WT_NULL_AGGREGATE` (`_BATCHWISE`) | `wt_null_aggregate.nf` | `python -m fisseq_data_pipeline.wtnullaggregate` | per batch × bootstrap × feature type in `params.feature_select_wt_null_types` |
+| `WT_NULL_BLOCKLIST` (`_BATCHWISE`) | `wt_null_blocklist.nf` | `python -m fisseq_data_pipeline.wtnullblocklist` | per batch × feature type in `params.feature_select_wt_null_types` — gathers all bootstrap replicates |
+| `PASSTHROUGH_BLOCKLIST` (`_BATCHWISE`) | `passthrough_blocklist.nf` | `python -m fisseq_data_pipeline.passthroughblocklist` | per batch × feature type NOT in `params.feature_select_wt_null_types` |
+| `COMBINE_BLOCKLISTS` (`_BATCHWISE`) | `combine_blocklists.nf` | `python -m fisseq_data_pipeline.combineblocklists` | per batch — gathers all feature types (both branches above) |
 | `FINALIZE_FEATURE_SELECT` (`_BATCHWISE`) | `finalize_feature_select.nf` | `python -m fisseq_data_pipeline.featureselect` | per batch |
 | `GLOBAL_FEATURE_SELECT` | `global_feature_select.nf` | `python -m fisseq_data_pipeline.globalfeatureselect` | per active global channel (`params.global_channels`, default none run); reuses each member batch's `FINALIZE_FEATURE_SELECT_BATCHWISE`-chain aggregates/blocklist directly, no cell-level recomputation |
 | `BATCH_CORRECT_FIT` | `batch_correct_fit.nf` | `python -m fisseq_data_pipeline.batchcorrect` | per active global channel, waits for that channel's `STAGE_CHANNEL_QC` batches |
@@ -110,24 +109,33 @@ for why.
 
 ### Feature-selection channel wiring
 
-The BATCHWISE feature-selection branch (`AGGREGATE_FEATURE_TYPE` →
-`GENERATE_SPLIT` → `AGGREGATE_HALF` → `CORRELATE_FEATURES` → `BLOCKLIST` →
-`COMBINE_BLOCKLISTS` → `FINALIZE_FEATURE_SELECT`, all per batch) is the most
-complex part of the DAG — a bootstrap-correlation pipeline that determines,
-per batch, which features are reproducible enough to keep. In
-`workflows/fisseq.nf`:
+The BATCHWISE feature-selection branch (`AGGREGATE_FEATURE_TYPE` → one of
+two reproducibility-gate branches, per feature type → `COMBINE_BLOCKLISTS` →
+`FINALIZE_FEATURE_SELECT`, all per batch) is the most complex part of the
+DAG — it determines, per batch, which features are reproducible enough to
+keep. In `workflows/fisseq.nf`:
 
-- `feature_types_ch` (`Channel.fromList(params.feature_select_types)`) and `bootstrap_ch`
-  (`Channel.of(1..params.feature_select_bootstrap_reps)`) are crossed via `.combine()` to fan out one
-  task per (feature type, bootstrap replicate).
-- Each `GENERATE_SPLIT` output is expanded into two per-half tuples via
-  `.flatMap()`, then re-paired after `AGGREGATE_HALF` via
-  `.groupTuple(by: [batch_stem, bootstrap_idx, feature_type])` before correlation.
-- `BLOCKLIST`'s `.groupTuple(by: [batch_stem, feature_type])` is the pipeline's only
-  cross-bootstrap synchronization point — it gathers all `params.feature_select_bootstrap_reps`
-  correlation replicates for one feature type before computing a Fisher-z-averaged
-  correlation estimate with an optional lower-confidence-bound precision adjustment
-  (`se_multiplier`).
+- `feature_types_ch` (`Channel.fromList(params.feature_select_types)`) feeds
+  `AGGREGATE_FEATURE_TYPE_BATCHWISE`, producing `agg_ch` — one full aggregate
+  per (batch, feature type), regardless of which reproducibility-gate branch
+  that feature type is routed to below.
+- **WT-null branch**: `wt_null_types_ch`
+  (`Channel.fromList(params.feature_select_wt_null_types)`) and `bootstrap_ch`
+  (`Channel.of(1..params.feature_select_wt_null_bootstraps)`) are crossed via
+  `.combine()` to fan out one `WT_NULL_AGGREGATE` task per (feature type,
+  bootstrap replicate). `WT_NULL_BLOCKLIST`'s
+  `.groupTuple(by: [batch_stem, feature_type])` is the pipeline's only
+  cross-bootstrap synchronization point for these feature types — it gathers
+  all `params.feature_select_wt_null_bootstraps` replicates for one feature
+  type before applying the upper Tukey fence.
+- **Passthrough branch**: `agg_ch` is filtered down to feature types NOT in
+  `params.feature_select_wt_null_types` and fed directly to
+  `PASSTHROUGH_BLOCKLIST` — no bootstrap fan-out, no cell-level
+  recomputation, since it reuses the aggregate `AGGREGATE_FEATURE_TYPE`
+  already produced.
+- Both branches' blocklists are merged with `.mix()` before
+  `COMBINE_BLOCKLISTS` — every configured feature type produces exactly one
+  blocklist file, via whichever branch it was routed to.
 - This whole branch is per-batch gated on that batch's resolved
   `run_feature_selection`; it does not depend on `params.global_channels` at all.
 

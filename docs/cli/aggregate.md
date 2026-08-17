@@ -6,12 +6,14 @@ Cell-level aggregation is implemented as two Hydra entry points across two modul
   cell-level data to one row per variant, then normalizes the result to a
   synonymous-variant baseline and attaches per-variant metadata. Not wired into
   the Nextflow pipeline directly.
-- **`python -m fisseq_data_pipeline.aggregatefeaturetype`** (Nextflow processes
-  `AGGREGATE_FEATURE_TYPE` and `AGGREGATE_HALF`) — a leaner version used by the
-  feature-selection branch: runs a single aggregator, writes only
+- **`python -m fisseq_data_pipeline.aggregatefeaturetype`** (Nextflow process
+  `AGGREGATE_FEATURE_TYPE`) — a leaner version used by the feature-selection
+  branch: runs a single aggregator, writes only
   `[label_column] + <stat columns>`, with no normalizer, metadata join, or impact
   score. Imports `aggregate()` and `downsample_control()` from
-  `fisseq_data_pipeline.aggregate`.
+  `fisseq_data_pipeline.aggregate`. The WT-null bootstrap branch's per-replicate
+  aggregation (`WT_NULL_AGGREGATE`) is a separate entry point,
+  `fisseq_data_pipeline.wtnullaggregate` — see [Feature Selection](features.md#1-python-m-fisseq_data_pipelinewtnullaggregate-wt_null_aggregate).
 
 Both accept `input_file` as a glob pattern (via `load_batches`) or a concrete
 single-file path.
@@ -81,10 +83,9 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `input_file` | **required** | Glob pattern or path to cell-level data. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `aggregator` | **required** | One of the eight aggregators above. |
-| `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `python -m fisseq_data_pipeline.generatesplit`) restricting aggregation to a pseudo-replicate half. |
 | `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
 | `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |
-| `per_barcode` | `false` | Compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes. When used for `AGGREGATE_HALF`, both halves of every bootstrap replicate must use the same setting, or the correlation stability check stops being apples-to-apples. |
+| `per_barcode` | `false` | Compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes. Must match `WT_NULL_AGGREGATE`'s setting for the same batch, or the WT-null reproducibility check stops being apples-to-apples. |
 | `barcode_column` | `"meta_barcode"` | Column identifying the barcode a cell was measured from. Only consulted when `per_barcode` is `true`. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
@@ -95,7 +96,6 @@ uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
     output_dir=./out \
     input_file=data/normalized.parquet \
     aggregator=mean \
-    index_file=./half1.parquet \
     downsample_wt=0.5 \
     seed=1 \
     per_barcode=true \
@@ -103,16 +103,16 @@ uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
 ```
 
 In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_select_downsample_wt`
-(see [Parameters](../configuration.md#parameters)) — `AGGREGATE_HALF` derives a distinct seed per
-`(bootstrap_idx, half_num)` so each pseudo-replicate half draws an independent wildtype
-subsample, which is what lets the bootstrap comparison test feature reproducibility against
-different WT samples rather than reusing one fixed sample everywhere. `AGGREGATE_FEATURE_TYPE`
-(the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
-identity to vary by. `per_barcode`/`barcode_column` are driven by
+(see [Parameters](../configuration.md#parameters)); `AGGREGATE_FEATURE_TYPE` (the full,
+un-split aggregation) uses a fixed seed, since it runs once per batch/feature type with no
+repeated per-instance identity to vary by — unlike `WT_NULL_AGGREGATE`, which derives a
+distinct seed per `(bootstrap_idx, half_num)` so each split half of each bootstrap replicate
+draws an independent wildtype subsample (see
+[Feature Selection](features.md#1-python-m-fisseq_data_pipelinewtnullaggregate-wt_null_aggregate)).
+`per_barcode`/`barcode_column` are driven by
 `params.feature_select_per_barcode`/`params.feature_select_barcode_column` and are passed
-identically to both `AGGREGATE_FEATURE_TYPE` and `AGGREGATE_HALF` for a given batch (resolved
-from the same per-batch config), so both halves of every bootstrap replicate always use the
-same mode.
+identically to both `AGGREGATE_FEATURE_TYPE` and `WT_NULL_AGGREGATE` for a given batch (resolved
+from the same per-batch config), so both always use the same mode.
 
 See [API Reference: aggregate](../api/aggregate.md) for full function
 documentation, including the `BaseAggregator` class hierarchy.

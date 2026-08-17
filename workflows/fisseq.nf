@@ -56,10 +56,9 @@ include { CHECK_BARCODES            } from '../modules/local/check_barcodes'
 include { BARCODE_BLOCKLIST         } from '../modules/local/barcode_blocklist'
 include { ANOVA_BLOCKLIST           } from '../modules/local/anova_blocklist'
 include { AGGREGATE_FEATURE_TYPE as AGGREGATE_FEATURE_TYPE_BATCHWISE } from '../modules/local/aggregate_feature_type'
-include { GENERATE_SPLIT        as GENERATE_SPLIT_BATCHWISE          } from '../modules/local/generate_split'
-include { AGGREGATE_HALF        as AGGREGATE_HALF_BATCHWISE          } from '../modules/local/aggregate_half'
-include { CORRELATE_FEATURES    as CORRELATE_FEATURES_BATCHWISE      } from '../modules/local/correlate_features'
-include { BLOCKLIST              as BLOCKLIST_BATCHWISE              } from '../modules/local/blocklist'
+include { WT_NULL_AGGREGATE      as WT_NULL_AGGREGATE_BATCHWISE      } from '../modules/local/wt_null_aggregate'
+include { WT_NULL_BLOCKLIST      as WT_NULL_BLOCKLIST_BATCHWISE      } from '../modules/local/wt_null_blocklist'
+include { PASSTHROUGH_BLOCKLIST  as PASSTHROUGH_BLOCKLIST_BATCHWISE  } from '../modules/local/passthrough_blocklist'
 include { COMBINE_BLOCKLISTS     as COMBINE_BLOCKLISTS_BATCHWISE     } from '../modules/local/combine_blocklists'
 include { FINALIZE_FEATURE_SELECT as FINALIZE_FEATURE_SELECT_BATCHWISE } from '../modules/local/finalize_feature_select'
 include { GLOBAL_FEATURE_SELECT     } from '../modules/local/global_feature_select'
@@ -72,6 +71,22 @@ workflow FisseqPipeline {
     // Validate required parameters (must be inside workflow in DSL2)
     if (params.pipeline_dir == null) {
         error "ERROR: --pipeline_dir is required.\n  Usage: nextflow run fisseq.nf --pipeline_dir /path/to/data"
+    }
+
+    // Fail fast on the removed Fisher-z-correlation reproducibility params
+    // (replaced by the WT-null bootstrap gate -- see docs/cli/features.md's
+    // migration note) rather than silently ignoring them if still set.
+    def removedFeatureSelectParams = [
+        feature_select_bootstrap_reps              : 'feature_select_wt_null_bootstraps',
+        feature_select_min_correlation              : null,
+        feature_select_se_multiplier                : null,
+        feature_select_bootstrap_variant_downsample : null,
+    ]
+    removedFeatureSelectParams.each { oldName, newName ->
+        if (params.containsKey(oldName)) {
+            def suggestion = newName ? " -- use --${newName} instead" : " and has no replacement (the WT-null bootstrap gate has no equivalent knob)"
+            error "ERROR: --${oldName} was removed${suggestion}"
+        }
     }
 
     // Pipeline-wide defaults for every batch-overridable key (see
@@ -108,9 +123,7 @@ workflow FisseqPipeline {
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
         feature_select_per_barcode        : BatchParams.asBool(params.feature_select_per_barcode),
         feature_select_barcode_column     : params.feature_select_barcode_column,
-        feature_select_bootstrap_variant_downsample: params.feature_select_bootstrap_variant_downsample,
-        feature_select_min_correlation    : params.feature_select_min_correlation,
-        feature_select_se_multiplier      : params.feature_select_se_multiplier,
+        feature_select_wt_null_tukey_multiplier: params.feature_select_wt_null_tukey_multiplier,
         run_pca                           : BatchParams.asBool(params.run_pca),
         pca_n_components                  : params.pca_n_components,
         run_umap                          : BatchParams.asBool(params.run_umap),
@@ -460,22 +473,50 @@ workflow FisseqPipeline {
 
     // Step 7: Feature selection — decomposed bootstrap + per-feature-type pipeline.
     // Stage 1: per-feature-type full aggregation (replaces MultiAggregator).
-    // Stage 2a-2d: per-bootstrap pseudo-replicate split -> per-half aggregation
-    //   -> correlation -> per-feature-type blocklist (gathered over bootstraps).
-    // Stage 3: combine per-feature-type blocklists.
+    // Stage 2: per-feature-type reproducibility gate, one of two branches:
+    //   - WT-null bootstrap (feature_select_wt_null_types): per bootstrap,
+    //     split the control pool into two disjoint halves and compute the
+    //     aggregator between them (WT_NULL_AGGREGATE), then gather every
+    //     bootstrap and apply an upper Tukey fence (WT_NULL_BLOCKLIST).
+    //   - Passthrough (every other configured feature type): no
+    //     reproducibility computation, every feature marked ok
+    //     (PASSTHROUGH_BLOCKLIST), reusing stage 1's aggregate directly.
+    // Stage 3: combine both branches' per-feature-type blocklists.
     // Stage 4: join stage-1 aggregates, apply combined blocklist, pycytominer select.
     // The batchwise portion is per-batch gated on that batch's resolved
     // run_feature_selection (via norm_ch_feature_selected below); the global
     // sub-branch runs once per active global channel, gated on
     // params.run_feature_selection. feature_select_types/
-    // feature_select_bootstrap_reps are pipeline-wide-only -- they determine
-    // shared fan-out cardinality, not a per-batch scalar -- so
-    // feature_types_ch/bootstrap_ch are built unconditionally, outside any gate.
+    // feature_select_wt_null_types/feature_select_wt_null_bootstraps are
+    // pipeline-wide-only -- they determine shared fan-out cardinality and
+    // DAG shape, not a per-batch scalar -- so feature_types_ch/
+    // wt_null_types/bootstrap_ch are built unconditionally, outside any gate.
     feature_types_ch = channel.fromList(params.feature_select_types)
-    // Explicit cast: Nextflow CLI overrides (e.g. --feature_select_bootstrap_reps 3)
-    // arrive as Strings and silently produce a bogus/huge range if left
-    // uncoerced in a Groovy IntRange (1..params.feature_select_bootstrap_reps).
-    bootstrap_ch = channel.of(1..(params.feature_select_bootstrap_reps as int))
+
+    // Validate feature_select_wt_null_types once, here, before it's used to
+    // build any channel: must be a strict subset of feature_select_types,
+    // and none of its entries may be a summary-statistic aggregator (no
+    // reference distribution to compare against, so WT-null is ill-defined).
+    def wtNullIneligibleTypes = ["mean", "median", "MAD", "std"] as Set
+    params.feature_select_wt_null_types.each { t ->
+        if (!(t in params.feature_select_types)) {
+            error "ERROR: feature_select_wt_null_types entry '${t}' is not in feature_select_types"
+        }
+        if (t in wtNullIneligibleTypes) {
+            error "ERROR: feature_select_wt_null_types entry '${t}' is a summary-statistic " +
+                "aggregator (mean/median/MAD/std) -- WT-null reproducibility is ill-defined " +
+                "for it; remove it from feature_select_wt_null_types (it is still feature-" +
+                "selected via PASSTHROUGH_BLOCKLIST + pycytominer in FINALIZE_FEATURE_SELECT)"
+        }
+    }
+    def wtNullTypesSet = params.feature_select_wt_null_types as Set
+    wt_null_types_ch = channel.fromList(params.feature_select_wt_null_types)
+
+    // Explicit cast: Nextflow CLI overrides (e.g.
+    // --feature_select_wt_null_bootstraps 3) arrive as Strings and silently
+    // produce a bogus/huge range if left uncoerced in a Groovy IntRange
+    // (1..params.feature_select_wt_null_bootstraps).
+    bootstrap_ch = channel.of(1..(params.feature_select_wt_null_bootstraps as int))
 
     // --- Batchwise --- (per-batch gated on run_feature_selection; norm_ch is
     // filtered once, independently, here -- every downstream groupTuple/
@@ -497,78 +538,57 @@ workflow FisseqPipeline {
     AGGREGATE_FEATURE_TYPE_BATCHWISE(agg_input_ch)
     agg_ch = AGGREGATE_FEATURE_TYPE_BATCHWISE.out  // (batch_stem, feature_type, agg_file)
 
-    // Stage 2a: one 50/50 split per (batch, bootstrap replicate).
-    split_input_ch = norm_ch_feature_selected
+    // Stage 2, WT-null branch: one bootstrap replicate per (batch,
+    // wt-null-eligible feature type, bootstrap_idx). Crossing
+    // norm_ch_feature_selected with wt_null_types_ch/bootstrap_ch (instead
+    // of feature_types_ch) means only the configured WT-null subset ever
+    // reaches WT_NULL_AGGREGATE -- no filtering needed downstream.
+    wt_null_input_ch = norm_ch_feature_selected
         .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
+        .combine(wt_null_types_ch)
         .combine(bootstrap_ch)
-        .map { batch_stem, cells_glob, bootstrap_idx ->
-            tuple(batch_stem, cells_glob, bootstrap_idx, "feature_select_batchwise/${batch_stem}")
-        }
-    GENERATE_SPLIT_BATCHWISE(split_input_ch)
-    split_ch = GENERATE_SPLIT_BATCHWISE.out  // (batch_stem, bootstrap_idx, half1_file, half2_file)
-
-    // Stage 2b: expand each split into two per-half tuples, cross with feature
-    // types, and re-attach the batch's normalized-cells file via
-    // .combine(norm_ch_feature_selected, by: 0) (keyed on batch_stem —
-    // norm_ch_feature_selected has exactly one entry per surviving
-    // batch_stem, so this is a per-batch broadcast, not a fan-out).
-    // NOTE: .join() is NOT a broadcast operator — for a many-to-one key
-    // relationship like this one it silently keeps only one match per key
-    // and drops the rest, which starves all downstream stages. Only use
-    // .join() where both sides are already collapsed to exactly one item
-    // per key (see the finalize-stage joins below).
-    half_ch = split_ch.flatMap { batch_stem, bootstrap_idx, half1, half2 ->
-        [
-            tuple(batch_stem, bootstrap_idx, 1, half1),
-            tuple(batch_stem, bootstrap_idx, 2, half2),
-        ]
-    }
-    agg_half_input_ch = half_ch
-        .combine(feature_types_ch)
-        // (batch_stem, bootstrap_idx, half_num, index_file, feature_type)
-        .combine(norm_ch_feature_selected, by: 0)
-        // (batch_stem, bootstrap_idx, half_num, index_file, feature_type, normalized_parquet)
-        .map { batch_stem, bootstrap_idx, half_num, index_file, feature_type, normalized_parquet ->
-            tuple(batch_stem, bootstrap_idx, half_num, index_file, feature_type,
-                  normalized_parquet.toString(), "feature_select_batchwise/${batch_stem}",
+        .map { batch_stem, cells_glob, feature_type, bootstrap_idx ->
+            tuple(batch_stem, feature_type, bootstrap_idx, cells_glob,
+                  "feature_select_batchwise/${batch_stem}",
                   resolvedBatchConfigs[batch_stem].feature_select_downsample_wt,
                   resolvedBatchConfigs[batch_stem].feature_select_per_barcode,
                   resolvedBatchConfigs[batch_stem].feature_select_barcode_column)
         }
-    AGGREGATE_HALF_BATCHWISE(agg_half_input_ch)
-    half_agg_ch = AGGREGATE_HALF_BATCHWISE.out
-    // (batch_stem, bootstrap_idx, feature_type, half_num, half_agg_file)
+    WT_NULL_AGGREGATE_BATCHWISE(wt_null_input_ch)
+    wt_null_ch = WT_NULL_AGGREGATE_BATCHWISE.out
+    // (batch_stem, feature_type, bootstrap_idx, wt_null_file)
 
-    // Stage 2c: group by (batch_stem, bootstrap_idx, feature_type) — exactly 2
-    // per group — pair by half_num (not arrival order) before correlating.
-    corr_input_ch = half_agg_ch
-        .groupTuple(by: [0, 1, 2])
-        // (batch_stem, bootstrap_idx, feature_type, [half_num,half_num], [half_agg_file,half_agg_file])
-        .map { batch_stem, bootstrap_idx, feature_type, half_nums, half_files ->
-            def pairs = [half_nums, half_files].transpose().sort { pair -> pair[0] }
-            tuple(batch_stem, bootstrap_idx, feature_type, pairs[0][1], pairs[1][1],
-                  "feature_select_batchwise/${batch_stem}",
-                  resolvedBatchConfigs[batch_stem].feature_select_bootstrap_variant_downsample)
-        }
-    CORRELATE_FEATURES_BATCHWISE(corr_input_ch)
-    corr_ch = CORRELATE_FEATURES_BATCHWISE.out  // (batch_stem, feature_type, bootstrap_idx, correlation_file)
-
-    // Stage 2d: group by (batch_stem, feature_type) — gathers all bootstrap
+    // Group by (batch_stem, feature_type) — gathers all bootstrap
     // replicates. THE one intentional synchronization point, scoped to this
-    // stage only.
-    blocklist_input_ch = corr_ch
-        .map { batch_stem, feature_type, _bootstrap_idx, correlation_file ->
-            tuple(batch_stem, feature_type, correlation_file)
+    // branch only.
+    wt_null_bl_input_ch = wt_null_ch
+        .map { batch_stem, feature_type, _bootstrap_idx, wt_null_file ->
+            tuple(batch_stem, feature_type, wt_null_file)
         }
         .groupTuple(by: [0, 1])
-        // (batch_stem, feature_type, [correlation_file, ...])  (N = params.feature_select_bootstrap_reps)
-        .map { batch_stem, feature_type, correlation_files ->
-            tuple(batch_stem, feature_type, correlation_files, "feature_select_batchwise/${batch_stem}",
-                  resolvedBatchConfigs[batch_stem].feature_select_min_correlation,
-                  resolvedBatchConfigs[batch_stem].feature_select_se_multiplier)
+        // (batch_stem, feature_type, [wt_null_file, ...])  (N = params.feature_select_wt_null_bootstraps)
+        .map { batch_stem, feature_type, wt_null_files ->
+            tuple(batch_stem, feature_type, wt_null_files, "feature_select_batchwise/${batch_stem}",
+                  resolvedBatchConfigs[batch_stem].feature_select_wt_null_tukey_multiplier)
         }
-    BLOCKLIST_BATCHWISE(blocklist_input_ch)
-    bl_ch = BLOCKLIST_BATCHWISE.out  // (batch_stem, feature_type, blocklist_file)
+    WT_NULL_BLOCKLIST_BATCHWISE(wt_null_bl_input_ch)
+    wt_null_bl_ch = WT_NULL_BLOCKLIST_BATCHWISE.out  // (batch_stem, feature_type, blocklist_file)
+
+    // Stage 2, passthrough branch: feature types NOT in
+    // feature_select_wt_null_types. Filters the ALREADY-computed stage-1
+    // agg_ch (every configured feature type) down to just this subset --
+    // no cell-level recomputation, unlike the WT-null branch above.
+    passthrough_input_ch = agg_ch
+        .filter { batch_stem, feature_type, _agg_file -> !(feature_type in wtNullTypesSet) }
+        .map { batch_stem, feature_type, agg_file ->
+            tuple(batch_stem, feature_type, agg_file, "feature_select_batchwise/${batch_stem}")
+        }
+    PASSTHROUGH_BLOCKLIST_BATCHWISE(passthrough_input_ch)
+    passthrough_bl_ch = PASSTHROUGH_BLOCKLIST_BATCHWISE.out  // (batch_stem, feature_type, blocklist_file)
+
+    // Merge both branches -- every configured feature type produces exactly
+    // one blocklist file, via whichever branch it was routed to above.
+    bl_ch = wt_null_bl_ch.mix(passthrough_bl_ch)  // (batch_stem, feature_type, blocklist_file)
 
     // Stage 3: group by batch_stem — gathers all feature types.
     combine_bl_input_ch = bl_ch

@@ -48,12 +48,15 @@ NORMALIZE        (per batch)   ← z-score fit on WT control cells
      │                                         └──► OVWT_BATCHWISE (barcode-filtered)  (per batch)
      └──► Feature selection, batchwise (per batch; always runs unless
                               params.run_feature_selection = false for that batch):
-            AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
-            GENERATE_SPLIT              (per bootstrap replicate)    │
-              └─► AGGREGATE_HALF        (per bootstrap × feature type × half)
-                    └─► CORRELATE_FEATURES (per bootstrap × feature type)
-                          └─► BLOCKLIST  (gathers all bootstrap replicates per feature type — the one sync point)
-                                └─► COMBINE_BLOCKLISTS (gathers all feature types) ┘
+            AGGREGATE_FEATURE_TYPE      (per feature type)  ─────────────────┐
+              ├─► [feature type in feature_select_wt_null_types]             │
+              │     WT_NULL_AGGREGATE   (per bootstrap × feature type)       │
+              │       └─► WT_NULL_BLOCKLIST (gathers all bootstrap           │
+              │             replicates per feature type — the one sync pt)   │
+              └─► [feature type NOT in feature_select_wt_null_types]         │
+                    PASSTHROUGH_BLOCKLIST (no bootstrap, reuses the          │
+                          AGGREGATE_FEATURE_TYPE output above directly)      │
+                                └─► COMBINE_BLOCKLISTS (gathers both branches, all feature types) ┘
                                       └─► FINALIZE_FEATURE_SELECT (joins AGGREGATE_FEATURE_TYPE outputs + combined blocklist)
                                             │
                                             ▼
@@ -174,7 +177,7 @@ is enabled.
 | OvWT cell scoring | `ovwtcellscores.py` | `OVWT_CELLSCORES_BATCHWISE` | `cell_scores.parquet` |
 | Barcode-outlier check | `checkbarcodes.py` | `CHECK_BARCODES` | `results.parquet` (per-variant pairwise Tukey HSD across barcodes) |
 | Barcode block-list | `barcodeblocklist.py` | `BARCODE_BLOCKLIST` | `barcode_blocklist.parquet` (per batch) |
-| Feature selection (batchwise) | `aggregate.py`, `featureselect.py` | `AGGREGATE_FEATURE_TYPE`, `GENERATE_SPLIT`, `AGGREGATE_HALF`, `CORRELATE_FEATURES`, `BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-batch per-variant aggregate) |
+| Feature selection (batchwise) | `aggregate.py`, `wtnullaggregate.py`, `wtnullblocklist.py`, `passthroughblocklist.py`, `featureselect.py` | `AGGREGATE_FEATURE_TYPE`, `WT_NULL_AGGREGATE`, `WT_NULL_BLOCKLIST`, `PASSTHROUGH_BLOCKLIST`, `COMBINE_BLOCKLISTS`, `FINALIZE_FEATURE_SELECT` | `output.parquet` (final per-batch per-variant aggregate) |
 | Feature selection (global) | `globalfeatureselect.py` | `GLOBAL_FEATURE_SELECT` | `aggregate.parquet` (cross-batch median aggregate, pycytominer-selected), `blocklist.parquet` (combined global blocklist) |
 | Batch correction | `batchcorrect.py` | `BATCH_CORRECT_FIT`, `BATCH_CORRECT_TRANSFORM` | `stats_vb.parquet`, `centroids.parquet`, corrected cells |
 | Batch-effect assessment | `anova.py` | `ANOVA` (normalized and batch-corrected) | `anova.parquet` |
@@ -265,10 +268,9 @@ and `input/` folders:
     barcode_blocklist.parquet # columns: barcode, p_adj (median), barcode_ok
   feature_select_batchwise/<batch>/
     aggregates/<feature_type>.parquet                                     # stage 1
-    splits/bootstrap_<n>/half{1,2}.parquet                                # stage 2a
-    half_aggregates/bootstrap_<n>/<feature_type>/half{1,2}.parquet        # stage 2b
-    correlations/<feature_type>/bootstrap_<n>.parquet                     # stage 2c
-    blocklists/<feature_type>.parquet                                     # stage 2d
+    wt_null/bootstrap_<n>/<feature_type>/bootstrap_<n>.parquet            # stage 2, WT-null branch
+                                                                          # (feature types in feature_select_wt_null_types only)
+    blocklists/<feature_type>.parquet                                     # stage 2 (both branches)
     blocklist.parquet                                                    # stage 3 (combined)
     output.parquet                                                       # stage 4 (final)
   global/<channel>/              # one subtree per channel in params.global_channels
@@ -301,6 +303,6 @@ and `input/` folders:
 
 `global/<channel>/feature_select/` reuses each member batch's already-published
 `feature_select_batchwise/<batch>/{aggregates,blocklist.parquet}` directly — it
-does not glob `normalization_cells/` and has no `splits/`, `half_aggregates/`,
-`correlations/`, or `blocklists/` subtree of its own (those only exist per
-batch, under `feature_select_batchwise/<batch>/`, above).
+does not glob `normalization_cells/` and has no `wt_null/` or `blocklists/`
+subtree of its own (those only exist per batch, under
+`feature_select_batchwise/<batch>/`, above).

@@ -5,10 +5,13 @@ KS, signedKS, QQ, AUROC) and the Hydra entry point backing standalone per-varian
 aggregation
 (normalizes to synonymous baseline and attaches metadata). The lean
 per-feature-type aggregation entry point used by the feature-selection branch
-(Nextflow processes ``AGGREGATE_FEATURE_TYPE`` and ``AGGREGATE_HALF``), including
-optional control (wildtype) downsampling via ``downsample_wt``/``seed``, lives in
+(Nextflow process ``AGGREGATE_FEATURE_TYPE``), including optional control
+(wildtype) downsampling via ``downsample_wt``/``seed``, lives in
 :mod:`.aggregatefeaturetype`, which imports :func:`aggregate` and
-:func:`downsample_control` from this module.
+:func:`downsample_control` from this module. The WT-null bootstrap branch's
+per-replicate aggregation (Nextflow process ``WT_NULL_AGGREGATE``) lives in
+:mod:`.wtnullaggregate`, which additionally imports :func:`split_control_pool`
+from this module.
 
 An optional per-barcode aggregation mode (``per_barcode``/``barcode_column``)
 computes each aggregator's statistic per (variant, barcode) first, then
@@ -1168,6 +1171,48 @@ def downsample_control(
         ["_tmp_row_idx", "_rank"]
     )
     return pl.concat([non_control, downsampled_control])
+
+
+def split_control_pool(
+    lf: pl.LazyFrame, seed: int
+) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+    """
+    Reproducibly split a LazyFrame's control (wildtype) rows into two
+    disjoint halves.
+
+    Non-control rows are dropped from both outputs -- this is purely a
+    control-pool split, used by the WT-null bootstrap reproducibility check
+    (:mod:`.wtnullaggregate`), which only ever needs the control pool. Uses
+    the same seeded hash-and-rank idiom as :func:`downsample_control`
+    (deterministic given ``seed``, no full materialization up front, no
+    external stratified-split dependency): each control row gets a seeded
+    hash of a fresh row index, rows are ranked by that hash, and the lower
+    half of ranks becomes ``h1`` while the upper half becomes ``h2``.
+    Unstratified, unlike the old ``GENERATE_SPLIT``'s
+    ``sklearn.model_selection.train_test_split`` -- there are no variant
+    labels to stratify by once the frame is restricted to control rows.
+
+    Parameters
+    ----------
+    lf : pl.LazyFrame
+        Cell-level LazyFrame containing a boolean ``CONTROL_COLUMN`` column.
+    seed : int
+        Random seed for the split.
+
+    Returns
+    -------
+    tuple[pl.LazyFrame, pl.LazyFrame]
+        ``(h1, h2)``: two disjoint LazyFrames that together cover the full
+        control pool (an odd-sized pool's extra row goes to ``h2``).
+    """
+    control = lf.filter(CONTROL_COLUMN).with_row_index("_tmp_row_idx")
+    ranked = control.with_columns(
+        pl.col("_tmp_row_idx").hash(seed=seed).rank(method="ordinal").alias("_rank"),
+    )
+    half_size = (pl.len() / 2).floor()
+    h1 = ranked.filter(pl.col("_rank") <= half_size).drop(["_tmp_row_idx", "_rank"])
+    h2 = ranked.filter(pl.col("_rank") > half_size).drop(["_tmp_row_idx", "_rank"])
+    return h1, h2
 
 
 _AGGREGATORS: dict[str, type[BaseAggregator]] = {

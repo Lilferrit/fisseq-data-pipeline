@@ -1,13 +1,12 @@
 """Lean per-feature-type cell-level aggregation.
 
-Hydra entry point backing the Nextflow processes ``AGGREGATE_FEATURE_TYPE`` and
-``AGGREGATE_HALF`` — shared by the feature-selection pipeline's stage 1 (full
-aggregation) and stage 2b (per-pseudo-replicate-half aggregation). Also supports
-optionally downsampling control (wildtype) rows before aggregation via
-``downsample_wt``/``seed`` — see :func:`fisseq_data_pipeline.aggregate.downsample_control`.
-Also supports the optional per-barcode aggregation mode
-(``per_barcode``/``barcode_column``) — see
-:meth:`fisseq_data_pipeline.aggregate.BaseAggregator._native_aggregate_feature_batch`.
+Hydra entry point backing the Nextflow process ``AGGREGATE_FEATURE_TYPE`` — the
+feature-selection pipeline's stage 1 (full, per-feature-type aggregation).
+Also supports optionally downsampling control (wildtype) rows before
+aggregation via ``downsample_wt``/``seed`` — see
+:func:`fisseq_data_pipeline.aggregate.downsample_control`. Also supports the
+optional per-barcode aggregation mode (``per_barcode``/``barcode_column``) —
+see :meth:`fisseq_data_pipeline.aggregate.BaseAggregator._native_aggregate_feature_batch`.
 """
 
 import dataclasses
@@ -24,7 +23,6 @@ from .config import LabeledInputConfig
 from .utils.batches import load_batches
 from .utils.constants import META_BARCODE_COL
 from .utils.log import setup_logging
-from .utils.splits import filter_by_index_file
 
 _cs = ConfigStore.instance()
 
@@ -35,8 +33,8 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
     Hydra structured configuration for the lean per-feature-type aggregation
     entry point.
 
-    Shared by the feature-selection pipeline's stage 1 (full aggregation)
-    and stage 2b (per-pseudo-replicate-half aggregation).
+    Backs the feature-selection pipeline's stage 1 (full, per-feature-type
+    aggregation).
 
     Attributes
     ----------
@@ -44,12 +42,6 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         A concrete key in ``fisseq_data_pipeline.aggregate._AGGREGATORS``
         (``mean``, ``median``, ``MAD``, ``std``, ``KS``, ``signedKS``, ``QQ``,
         ``AUROC``). Required.
-    index_file : str or None
-        Optional path to a single-column ``TMP_IDX_COL`` parquet file (as
-        written by :func:`fisseq_data_pipeline.generatesplit.main`)
-        naming a subset of cell-level rows to aggregate over (e.g. one
-        pseudo-replicate half). When ``None``, all rows are aggregated.
-        Defaults to ``None``.
     downsample_wt : float, int, or None
         Optional downsampling of control (wildtype) rows before aggregation.
         A float in ``(0, 1)`` keeps that fraction of control rows; an int
@@ -65,10 +57,10 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         variant's cells directly. Reference-based aggregators still
         compare every (variant, barcode) group against the SAME full
         control pool — the reference frame is per-feature, not per
-        barcode, and is unaffected by this flag. When used for
-        ``AGGREGATE_HALF``, both halves of every bootstrap replicate must
-        use the same setting, or the correlation stability check stops
-        being apples-to-apples. Defaults to ``False``.
+        barcode, and is unaffected by this flag. Must match
+        ``WT_NULL_AGGREGATE``'s setting for the same batch, or the
+        WT-null reproducibility check stops being apples-to-apples.
+        Defaults to ``False``.
     barcode_column : str
         Column identifying the barcode a cell was measured from. Only
         consulted when ``per_barcode`` is ``True``. Defaults to
@@ -76,7 +68,6 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
     """
 
     aggregator: str = MISSING
-    index_file: Optional[str] = None
     downsample_wt: Optional[Union[float, int]] = None
     seed: int = 0
     per_barcode: bool = False
@@ -94,9 +85,8 @@ def main(cfg: DictConfig) -> None:
     Hydra entry point: aggregate cell-level features for one feature type.
 
     ``input_file`` is interpreted as a glob pattern via :func:`load_batches`
-    (a concrete non-glob path is a single-file pattern). Rows are optionally
-    filtered to ``index_file`` via :func:`.utils.splits.filter_by_index_file`.
-    Runs the configured single aggregator via
+    (a concrete non-glob path is a single-file pattern). Runs the configured
+    single aggregator via
     :func:`fisseq_data_pipeline.aggregate.aggregate` and writes a lean output
     containing only ``[label_column] + <feature type's stat columns>`` — no
     normalizer, no metadata join, no impact score (those happen once, later,
@@ -121,7 +111,6 @@ def main(cfg: DictConfig) -> None:
             output_dir=./out \\
             input_file=data/normalized.parquet \\
             aggregator=mean \\
-            index_file=./half1.parquet \\
             downsample_wt=0.5 \\
             seed=1 \\
             per_barcode=true \\
@@ -136,9 +125,6 @@ def main(cfg: DictConfig) -> None:
 
     logging.info("Loading input from %s", ft_cfg.input_file)
     lf, output_stem = load_batches(ft_cfg.input_file)
-
-    logging.info("Filtering by index_file=%s", ft_cfg.index_file)
-    lf = filter_by_index_file(lf, ft_cfg.index_file)
 
     if ft_cfg.downsample_wt is not None:
         if isinstance(ft_cfg.downsample_wt, float) and not (

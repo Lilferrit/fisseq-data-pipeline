@@ -161,18 +161,17 @@ overridable per batch exactly like every other parameter here — see
 | `--ovwt_lobo_min_cells_holdout` | `100` | Minimum cells the held-out barcode itself must have for its fold to be scored. `--ovwt_min_cells` (above) is reused for the remaining held-in training-pool threshold, not duplicated here. |
 | `--ovwt_lobo_min_barcodes_per_variant` | `2` | Minimum distinct barcodes a variant must have for LOBO to be applicable. Variants below this get a `status="skipped_single_barcode"` output row rather than being dropped. |
 
-### Feature selection (bootstrap + aggregation + correlation)
+### Feature selection (WT-null bootstrap reproducibility gate)
 
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
 | `--feature_select_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (the default subset of `aggregate.py`'s aggregators; `signedKS` is also available but not enabled by default). |
-| `--feature_select_bootstrap_reps` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
-| `--feature_select_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields). |
-| `--feature_select_per_barcode` | `false` | Optional per-barcode aggregation mode for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes, instead of pooling all of a variant's cells directly. Applied identically to both halves of every bootstrap replicate. See [CLI Reference: aggregate](cli/aggregate.md#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields). |
+| `--feature_select_wt_null_types` | `["KS", "QQ", "AUROC"]` | Strict subset of `--feature_select_types` that uses the WT-null bootstrap reproducibility gate (`WT_NULL_AGGREGATE`/`WT_NULL_BLOCKLIST`). Every other configured feature type is auto-approved by `PASSTHROUGH_BLOCKLIST` (no reproducibility computation) — this is the default fate of the summary-statistic aggregators (`mean`, `median`, `MAD`, `std`), since they have no reference distribution to compare against. Validated at workflow start: an entry not also in `--feature_select_types`, or one of `mean`/`median`/`MAD`/`std`, fails fast with a clear error. |
+| `--feature_select_wt_null_bootstraps` | `25` | Number of WT-null bootstrap replicates. Was `--feature_select_bootstrap_reps` (the old Fisher-z-correlation bootstrap count) — renamed, not repurposed in place, since it now counts a different thing; the old name errors if set. |
+| `--feature_select_downsample_wt` | `null` | Optional wildtype downsample for `WT_NULL_AGGREGATE`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `WT_NULL_AGGREGATE` seeds each `(bootstrap_idx, half_num)` independently so every split half of every bootstrap replicate draws a different WT subsample. See [CLI Reference: features](cli/features.md#1-python-m-fisseq_data_pipelinewtnullaggregate-wt_null_aggregate). |
+| `--feature_select_per_barcode` | `false` | Optional per-barcode aggregation mode for `WT_NULL_AGGREGATE`/`AGGREGATE_FEATURE_TYPE`: compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes, instead of pooling all of a variant's cells directly. Applied identically by both. See [CLI Reference: aggregate](cli/aggregate.md#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields). |
 | `--feature_select_barcode_column` | `"meta_barcode"` | Column identifying the barcode a cell was measured from. Only consulted when `--feature_select_per_barcode` is `true`. |
-| `--feature_select_bootstrap_variant_downsample` | `null` | Optional: randomly sample this many variants from the set present in both halves before `CORRELATE_FEATURES` computes each bootstrap replicate's correlation, independently per replicate. `null` disables it (every joint variant used, prior behavior). Distinct from `--feature_select_downsample_wt` (cell-level, at aggregation time) — this subsamples variants, at correlation time. See [CLI Reference: features](cli/features.md#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features). |
-| `--feature_select_min_correlation` | `0.5` | `BLOCKLIST`'s magnitude gate: minimum precision-adjusted correlation estimate (`adjusted_r`) required for a feature to pass. |
-| `--feature_select_se_multiplier` | `1.0` | `BLOCKLIST`'s precision/confidence adjustment: `adjusted_r` penalizes the Fisher-z-averaged estimate by this many standard errors **in Fisher-z space** before comparing to `--feature_select_min_correlation` (a lower-confidence-bound criterion). `null` disables the adjustment (gates on the raw estimate). See [CLI Reference: blocklist](cli/features.md#3-python-m-fisseq_data_pipelineblocklist-blocklist) for the full design rationale and the migration note from the removed `--feature_select_max_se_z` two-gate strategy. |
+| `--feature_select_wt_null_tukey_multiplier` | `1.5` | `WT_NULL_BLOCKLIST`'s IQR multiplier for the upper reproducibility fence: a feature is blocked if its null mean exceeds `Q1(null means) + multiplier * IQR(null means)`. **Anchored on Q1, not the conventional Q3** — see [CLI Reference: features](cli/features.md#2-python-m-fisseq_data_pipelinewtnullblocklist-wt_null_blocklist) for why this is a deliberately stricter cutoff than a textbook Tukey upper fence. |
 | `--global_feature_select_min_batches_ok` | `null` | `GLOBAL_FEATURE_SELECT` only: minimum number of a global channel's member batches that must mark a feature ok (in their own `FINALIZE_FEATURE_SELECT_BATCHWISE`-chain blocklist) for it to be globally ok. `null` (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning. |
 
 ### Dimensionality reduction (PCA / UMAP)
@@ -341,16 +340,18 @@ than per batch — `BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA` (both calls),
 `GLOBAL_FEATURE_SELECT`. Params consumed only by those
 processes — `--global_channels`, `--batchvsbatch_min_cells`,
 `--batchvsbatch_min_batches`, `--anova_blocklist_pvalue_threshold`,
-`--feature_select_types`, `--feature_select_bootstrap_reps`,
+`--feature_select_types`, `--feature_select_wt_null_types`,
+`--feature_select_wt_null_bootstraps`,
 `--global_feature_select_min_batches_ok` — have no batch
 to attach a per-batch override to, so they stay pipeline-wide-only.
-(`--feature_select_types` and `--feature_select_bootstrap_reps` specifically
-determine shared fan-out *cardinality* — how many feature-type/bootstrap
-tasks exist at all — not a per-batch scalar value, so letting them vary per
-batch would require a much larger restructuring than a simple value
-override. `--global_feature_select_min_batches_ok` is inherently a
-channel-level agreement threshold across batches, with no per-batch meaning
-at all.)
+(`--feature_select_types`, `--feature_select_wt_null_types`, and
+`--feature_select_wt_null_bootstraps` specifically determine shared fan-out
+*cardinality and DAG shape* — how many feature-type/bootstrap tasks exist at
+all, and which of the two reproducibility-gate branches each feature type is
+routed to — not a per-batch scalar value, so letting them vary per batch
+would require a much larger restructuring than a simple value override.
+`--global_feature_select_min_batches_ok` is inherently a channel-level
+agreement threshold across batches, with no per-batch meaning at all.)
 
 Every other `nextflow.config` parameter — including the gating booleans
 `--run_ovwt`, `--run_single_cell_scores`, `--run_check_barcodes`,
@@ -375,20 +376,19 @@ per-batch identity either — though it still only reads a member batch's
 `run_feature_selection` is true (see [Global channels](#global-channels)).
 `--feature_select_per_barcode` and `--feature_select_barcode_column` are also
 per-batch overridable, but only for `AGGREGATE_FEATURE_TYPE_BATCHWISE` /
-`AGGREGATE_HALF_BATCHWISE` — unlike the params in the next paragraph, they
+`WT_NULL_AGGREGATE_BATCHWISE` — unlike the params in the next paragraph, they
 have no global counterpart to be shared with, since `GLOBAL_FEATURE_SELECT`
 reuses already-computed batchwise aggregates rather than re-aggregating from
-cells. `--feature_select_bootstrap_variant_downsample` is likewise per-batch
-overridable for `CORRELATE_FEATURES_BATCHWISE` only, same reasoning.
+cells.
 
 Parameters shared between a per-batch process and a global-only process
 (`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--ovwt_min_cells_per_barcode`,
 `--feature_select_downsample_wt`,
-`--feature_select_min_correlation`, `--feature_select_se_multiplier`, `--run_pca`, `--pca_n_components`,
+`--feature_select_wt_null_tukey_multiplier`, `--run_pca`, `--pca_n_components`,
 `--run_umap`, `--umap_n_components`, `--umap_n_neighbors`, `--umap_metric`,
 `--umap_min_dist`, `--umap_random_state`) are overridable per batch for their
 batchwise consumer only (`OVWT_BATCHWISE`, `AGGREGATE_FEATURE_TYPE_BATCHWISE`
-/ `AGGREGATE_HALF_BATCHWISE`, `BLOCKLIST_BATCHWISE`,
+/ `WT_NULL_AGGREGATE_BATCHWISE`, `WT_NULL_BLOCKLIST_BATCHWISE`,
 `FINALIZE_FEATURE_SELECT_BATCHWISE`) — their global counterpart
 (`OVWT_GLOBAL`, `GLOBAL_FEATURE_SELECT`) always uses the plain pipeline-wide
 value directly, regardless of any batch's override.
