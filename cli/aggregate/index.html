@@ -1514,6 +1514,15 @@
 </ul>
 <p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
 single-file path.</p>
+<p>Both also support an optional <strong>per-barcode aggregation mode</strong>
+(<code>per_barcode</code>/<code>barcode_column</code>): instead of pooling all of a variant's cells
+directly, each aggregator's statistic is computed per (variant, barcode)
+first, then reduced to one value per variant by taking the median across that
+variant's barcodes. Reference-based aggregators (<code>KS</code>, <code>signedKS</code>, <code>QQ</code>,
+<code>AUROC</code>, ...) still compare every (variant, barcode) group against the SAME
+full control pool — the reference frame is built once per feature, not per
+barcode, so this mode changes only the variant-side grouping, not what each
+group is compared against.</p>
 <h2 id="aggregators">Aggregators<a class="headerlink" href="#aggregators" title="Permanent link">&para;</a></h2>
 <p>Eight strategies are available via the <code>aggregator</code> field — there is <strong>no</strong>
 <code>"multi"</code>/combined option; combining feature types happens in Nextflow by running
@@ -1604,6 +1613,16 @@ single-file path.</p>
 <td><code>true</code></td>
 <td>Append an impact score column derived from variant classification.</td>
 </tr>
+<tr>
+<td><code>per_barcode</code></td>
+<td><code>false</code></td>
+<td>Compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes, instead of pooling all of a variant's cells directly.</td>
+</tr>
+<tr>
+<td><code>barcode_column</code></td>
+<td><code>"meta_barcode"</code></td>
+<td>Column identifying the barcode a cell was measured from. Only consulted when <code>per_barcode</code> is <code>true</code>.</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
@@ -1655,6 +1674,16 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <td><code>0</code></td>
 <td>Random seed for the <code>downsample_wt</code> draw. Ignored when <code>downsample_wt</code> is <code>null</code>.</td>
 </tr>
+<tr>
+<td><code>per_barcode</code></td>
+<td><code>false</code></td>
+<td>Compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes. When used for <code>AGGREGATE_HALF</code>, both halves of every bootstrap replicate must use the same setting, or the correlation stability check stops being apples-to-apples.</td>
+</tr>
+<tr>
+<td><code>barcode_column</code></td>
+<td><code>"meta_barcode"</code></td>
+<td>Column identifying the barcode a cell was measured from. Only consulted when <code>per_barcode</code> is <code>true</code>.</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
@@ -1665,7 +1694,9 @@ single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>mean<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nv">index_file</span><span class="o">=</span>./half1.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">seed</span><span class="o">=</span><span class="m">1</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">seed</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nv">per_barcode</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nv">barcode_column</span><span class="o">=</span>meta_barcode
 </code></pre></div>
 <p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>seed</code> are driven by <code>params.feature_select_downsample_wt</code>
 (see <a href="../../configuration/#parameters">Parameters</a>) — <code>AGGREGATE_HALF</code> derives a distinct seed per
@@ -1673,7 +1704,11 @@ single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. <code>AGGREGATE_FEATURE_TYPE</code>
 (the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
-identity to vary by.</p>
+identity to vary by. <code>per_barcode</code>/<code>barcode_column</code> are driven by
+<code>params.feature_select_per_barcode</code>/<code>params.feature_select_barcode_column</code> and are passed
+identically to both <code>AGGREGATE_FEATURE_TYPE</code> and <code>AGGREGATE_HALF</code> for a given batch (resolved
+from the same per-batch config), so both halves of every bootstrap replicate always use the
+same mode.</p>
 <p>See <a href="../../api/aggregate/">API Reference: aggregate</a> for full function
 documentation, including the <code>BaseAggregator</code> class hierarchy.</p>
 

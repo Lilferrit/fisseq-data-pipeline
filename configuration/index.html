@@ -2362,14 +2362,29 @@ overridable per batch exactly like every other parameter here — see
 <td>Optional wildtype downsample for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: a float <code>(0, 1)</code> keeps that fraction of control rows, an int keeps that many, <code>null</code> disables it. <code>AGGREGATE_HALF</code> seeds each <code>(bootstrap_idx, half_num)</code> independently so every pseudo-replicate half draws a different WT subsample. See <a href="../cli/aggregate/#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields">CLI Reference: aggregate</a>.</td>
 </tr>
 <tr>
-<td><code>--feature_select_min_correlation</code></td>
-<td><code>0.5</code></td>
-<td><code>BLOCKLIST</code>'s magnitude gate: minimum Fisher-z-averaged Pearson <code>r</code> estimate required for a feature to pass. Paired with the quality/precision gate below (<code>--feature_select_max_se_z</code>) that a feature must also clear.</td>
+<td><code>--feature_select_per_barcode</code></td>
+<td><code>false</code></td>
+<td>Optional per-barcode aggregation mode for <code>AGGREGATE_HALF</code>/<code>AGGREGATE_FEATURE_TYPE</code>: compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes, instead of pooling all of a variant's cells directly. Applied identically to both halves of every bootstrap replicate. See <a href="../cli/aggregate/#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields">CLI Reference: aggregate</a>.</td>
 </tr>
 <tr>
-<td><code>--feature_select_max_se_z</code></td>
-<td><code>0.0884</code></td>
-<td><code>BLOCKLIST</code>'s quality/precision gate: maximum acceptable standard error of the mean Fisher-z estimate across bootstrap replicates. Calibrated for the default <code>--feature_select_bootstrap_reps=10</code> (see <a href="../cli/features/#3-python-m-fisseq_data_pipelineblocklist-blocklist">CLI Reference: blocklist</a>); rescale by roughly <code>sqrt(10 / new_bootstrap_reps)</code> if that changes.</td>
+<td><code>--feature_select_barcode_column</code></td>
+<td><code>"meta_barcode"</code></td>
+<td>Column identifying the barcode a cell was measured from. Only consulted when <code>--feature_select_per_barcode</code> is <code>true</code>.</td>
+</tr>
+<tr>
+<td><code>--feature_select_bootstrap_variant_downsample</code></td>
+<td><code>null</code></td>
+<td>Optional: randomly sample this many variants from the set present in both halves before <code>CORRELATE_FEATURES</code> computes each bootstrap replicate's correlation, independently per replicate. <code>null</code> disables it (every joint variant used, prior behavior). Distinct from <code>--feature_select_downsample_wt</code> (cell-level, at aggregation time) — this subsamples variants, at correlation time. See <a href="../cli/features/#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features">CLI Reference: features</a>.</td>
+</tr>
+<tr>
+<td><code>--feature_select_min_correlation</code></td>
+<td><code>0.5</code></td>
+<td><code>BLOCKLIST</code>'s magnitude gate: minimum precision-adjusted correlation estimate (<code>adjusted_r</code>) required for a feature to pass.</td>
+</tr>
+<tr>
+<td><code>--feature_select_se_multiplier</code></td>
+<td><code>1.0</code></td>
+<td><code>BLOCKLIST</code>'s precision/confidence adjustment: <code>adjusted_r</code> penalizes the Fisher-z-averaged estimate by this many standard errors <strong>in Fisher-z space</strong> before comparing to <code>--feature_select_min_correlation</code> (a lower-confidence-bound criterion). <code>null</code> disables the adjustment (gates on the raw estimate). See <a href="../cli/features/#3-python-m-fisseq_data_pipelineblocklist-blocklist">CLI Reference: blocklist</a> for the full design rationale and the migration note from the removed <code>--feature_select_max_se_z</code> two-gate strategy.</td>
 </tr>
 <tr>
 <td><code>--global_feature_select_min_batches_ok</code></td>
@@ -2607,11 +2622,18 @@ true" rules) rather than a workflow-scope <code>if</code>. <code>--run_feature_s
 instead, gated on <code>params.run_feature_selection</code>, since that process has no
 per-batch identity either — though it still only reads a member batch's
 <code>feature_select_batchwise/</code> output if that batch's own resolved
-<code>run_feature_selection</code> is true (see <a href="#global-channels">Global channels</a>).</p>
+<code>run_feature_selection</code> is true (see <a href="#global-channels">Global channels</a>).
+<code>--feature_select_per_barcode</code> and <code>--feature_select_barcode_column</code> are also
+per-batch overridable, but only for <code>AGGREGATE_FEATURE_TYPE_BATCHWISE</code> /
+<code>AGGREGATE_HALF_BATCHWISE</code> — unlike the params in the next paragraph, they
+have no global counterpart to be shared with, since <code>GLOBAL_FEATURE_SELECT</code>
+reuses already-computed batchwise aggregates rather than re-aggregating from
+cells. <code>--feature_select_bootstrap_variant_downsample</code> is likewise per-batch
+overridable for <code>CORRELATE_FEATURES_BATCHWISE</code> only, same reasoning.</p>
 <p>Parameters shared between a per-batch process and a global-only process
 (<code>--ovwt_min_cells</code>, <code>--ovwt_downsample_wt</code>, <code>--ovwt_min_cells_per_barcode</code>,
 <code>--feature_select_downsample_wt</code>,
-<code>--feature_select_min_correlation</code>, <code>--feature_select_max_se_z</code>, <code>--run_pca</code>, <code>--pca_n_components</code>,
+<code>--feature_select_min_correlation</code>, <code>--feature_select_se_multiplier</code>, <code>--run_pca</code>, <code>--pca_n_components</code>,
 <code>--run_umap</code>, <code>--umap_n_components</code>, <code>--umap_n_neighbors</code>, <code>--umap_metric</code>,
 <code>--umap_min_dist</code>, <code>--umap_random_state</code>) are overridable per batch for their
 batchwise consumer only (<code>OVWT_BATCHWISE</code>, <code>AGGREGATE_FEATURE_TYPE_BATCHWISE</code>
