@@ -4,14 +4,15 @@ nextflow.enable.dsl = 2
 // intentional cross-bootstrap synchronization point: gathers every bootstrap
 // replicate's CORRELATE_FEATURES output for one (batch or global, feature
 // type), and marks each feature ok/blocked by a Fisher-z-averaged correlation
-// estimate with a paired precision/quality gate.
+// estimate with an optional lower-confidence-bound precision adjustment
+// (se_multiplier).
 process BLOCKLIST {
     errorStrategy 'ignore'
     label 'process_low'
     publishDir { "${params.pipeline_dir}/${publish_subdir}/blocklists" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir), val(minimum_correlation), val(max_se_z)
+    tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir), val(minimum_correlation), val(se_multiplier)
 
     output:
     tuple val(batch_key), val(feature_type), path("${feature_type}.parquet")
@@ -23,7 +24,7 @@ process BLOCKLIST {
         output_dir=. \\
         "correlation_files=*.parquet" \\
         minimum_correlation=${minimum_correlation} \\
-        max_se_z=${max_se_z}
+        se_multiplier=${se_multiplier}
     mv blocklist.parquet ${feature_type}.parquet
     """
 }

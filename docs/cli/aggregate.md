@@ -16,6 +16,16 @@ Cell-level aggregation is implemented as two Hydra entry points across two modul
 Both accept `input_file` as a glob pattern (via `load_batches`) or a concrete
 single-file path.
 
+Both also support an optional **per-barcode aggregation mode**
+(`per_barcode`/`barcode_column`): instead of pooling all of a variant's cells
+directly, each aggregator's statistic is computed per (variant, barcode)
+first, then reduced to one value per variant by taking the median across that
+variant's barcodes. Reference-based aggregators (`KS`, `signedKS`, `QQ`,
+`AUROC`, ...) still compare every (variant, barcode) group against the SAME
+full control pool — the reference frame is built once per feature, not per
+barcode, so this mode changes only the variant-side grouping, not what each
+group is compared against.
+
 ## Aggregators
 
 Eight strategies are available via the `aggregator` field — there is **no**
@@ -48,6 +58,8 @@ Extends `LabeledInputConfig` (adds `input_file`, `label_column`) plus the
 | `save_normalizer` | `true` | Write the synonymous-baseline normalizer. |
 | `block_list_file` | `null` | Parquet with `feature` and `feature_ok` columns; blocked features are skipped. |
 | `compute_impact_score` | `true` | Append an impact score column derived from variant classification. |
+| `per_barcode` | `false` | Compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes, instead of pooling all of a variant's cells directly. |
+| `barcode_column` | `"meta_barcode"` | Column identifying the barcode a cell was measured from. Only consulted when `per_barcode` is `true`. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.{ext}` or `{output_dir}/{filename}`. Plus
@@ -72,6 +84,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `python -m fisseq_data_pipeline.generatesplit`) restricting aggregation to a pseudo-replicate half. |
 | `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
 | `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |
+| `per_barcode` | `false` | Compute each statistic per (variant, barcode) first, then reduce to one value per variant by median across barcodes. When used for `AGGREGATE_HALF`, both halves of every bootstrap replicate must use the same setting, or the correlation stability check stops being apples-to-apples. |
+| `barcode_column` | `"meta_barcode"` | Column identifying the barcode a cell was measured from. Only consulted when `per_barcode` is `true`. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
@@ -83,7 +97,9 @@ uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
     aggregator=mean \
     index_file=./half1.parquet \
     downsample_wt=0.5 \
-    seed=1
+    seed=1 \
+    per_barcode=true \
+    barcode_column=meta_barcode
 ```
 
 In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_select_downsample_wt`
@@ -92,7 +108,11 @@ In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_s
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. `AGGREGATE_FEATURE_TYPE`
 (the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
-identity to vary by.
+identity to vary by. `per_barcode`/`barcode_column` are driven by
+`params.feature_select_per_barcode`/`params.feature_select_barcode_column` and are passed
+identically to both `AGGREGATE_FEATURE_TYPE` and `AGGREGATE_HALF` for a given batch (resolved
+from the same per-batch config), so both halves of every bootstrap replicate always use the
+same mode.
 
 See [API Reference: aggregate](../api/aggregate.md) for full function
 documentation, including the `BaseAggregator` class hierarchy.

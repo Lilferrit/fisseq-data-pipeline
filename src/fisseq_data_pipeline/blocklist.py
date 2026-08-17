@@ -1,8 +1,9 @@
 """Per-feature-type bootstrap blocklist generation.
 
 Hydra entry point backing the Nextflow process ``BLOCKLIST``: derives a
-per-feature blocklist from a Fisher-z-averaged correlation estimate (with a
-paired precision/quality gate) across bootstrap replicates (outputs of
+per-feature blocklist from a Fisher-z-averaged correlation estimate, with an
+optional lower-confidence-bound precision adjustment (``se_multiplier``),
+across bootstrap replicates (outputs of
 :func:`fisseq_data_pipeline.correlatefeatures.main`), part of the bootstrap
 feature-selection pipeline.
 """
@@ -11,6 +12,7 @@ import dataclasses
 import glob
 import logging
 import pathlib
+from typing import Optional
 
 import hydra
 import polars as pl
@@ -42,28 +44,42 @@ class BlocklistConfig(AppConfig):
         files for one feature type (outputs of
         :func:`fisseq_data_pipeline.correlatefeatures.main`). Required.
     minimum_correlation : float
-        Magnitude gate: minimum Fisher-z-averaged Pearson *r* estimate
-        (``r_est``) across bootstrap replicates required for a feature to
-        pass. A feature must also clear the quality gate (``max_se_z``) to be
-        marked ``feature_ok`` -- this threshold alone is not sufficient.
-        Defaults to ``0.5``.
-    max_se_z : float
-        Quality/precision gate: maximum acceptable standard error of the mean
-        Fisher-z estimate (``se_z``) across bootstrap replicates. The default
-        ``0.0884`` is calibrated for the pipeline's default
-        ``bootstrap_reps=10`` (``se_z = 0.2 / t_crit(df=9, 0.975) ~= 0.0884``),
-        targeting a ~95% CI half-width of ~0.15 in *r* near ``r=0.5``. If
-        ``bootstrap_reps`` is ever changed from its default, rescale this
-        value by roughly ``sqrt(10 / new_bootstrap_reps)``, or re-derive it
-        from scratch via the retroactive replicate-resampling check. A
-        feature with fewer than 2 usable (non-null) replicates has
-        ``se_z = null`` and automatically fails this gate -- a single
-        replicate can't support a precision claim. Defaults to ``0.0884``.
+        Magnitude gate: minimum adjusted correlation estimate
+        (``adjusted_r`` -- see ``se_multiplier``) required for a feature to
+        pass. Defaults to ``0.5``.
+    se_multiplier : float or None
+        Precision/confidence adjustment applied in Fisher-z space before the
+        magnitude gate: a feature's Fisher-z-averaged correlation estimate
+        is penalized by ``se_multiplier`` standard errors before being
+        compared to ``minimum_correlation``, giving an approximate
+        lower-confidence-bound criterion (larger ``se_multiplier`` ->
+        stricter). ``None`` disables the adjustment entirely and gates on
+        the raw ``r_est`` point estimate -- NOT equivalent to the old
+        two-gate ``max_se_z`` strategy's pass/fail semantics; it drops the
+        precision requirement rather than replacing it with an
+        unconditional pass. Defaults to ``1.0``.
+
+        IMPORTANT design note: the subtraction happens in Fisher-z space
+        (``adjusted_z = z_mean - se_multiplier * se_z``, then
+        ``adjusted_r = tanh(adjusted_z)``), NOT directly on ``r_est``
+        (``adjusted_r = r_est - se_multiplier * se_z``). This is
+        deliberate: ``se_z`` is the standard error of the mean Fisher-z
+        estimate, whose sampling distribution is approximately symmetric
+        and unbounded, so a z-space shift is well-defined; ``r`` is bounded
+        to ``[-1, 1]``, so subtracting a z-space-derived quantity directly
+        from ``r_est`` mixes units and can behave oddly near ``r = +/-1``.
+        If the r-space alternative is wanted instead, it is a one-line
+        change in ``main()`` (see the comment there).
+
+        A feature with fewer than 2 usable (non-null) replicates has
+        ``se_z = null``, so ``adjusted_r`` (when ``se_multiplier`` is not
+        ``None``) is also ``null`` and the feature automatically fails --
+        a single replicate can't support a precision claim.
     """
 
     correlation_files: str = MISSING
     minimum_correlation: float = 0.5
-    max_se_z: float = 0.0884
+    se_multiplier: Optional[float] = 1.0
 
 
 _cs.store(name="blocklist_main", node=BlocklistConfig)
@@ -82,17 +98,16 @@ def main(cfg: DictConfig) -> None:
     every replicate's ``r`` (``z = arctanh(clip(r, -1+eps, 1-eps))``),
     averages in z-space, and back-transforms to get a point estimate
     (``r_est = tanh(mean(z))``) plus its standard error
-    (``se_z = std(z, ddof=1) / sqrt(n_replicates)``). A feature is marked
-    ``feature_ok`` only if it clears both an independent magnitude gate
-    (``r_est >= minimum_correlation``) and a quality/precision gate
-    (``se_z`` is defined and ``<= max_se_z``); a feature with fewer than 2
-    usable replicates has ``se_z = null`` and fails the quality gate
-    automatically.
+    (``se_z = std(z, ddof=1) / sqrt(n_replicates)``). The precision-adjusted
+    ``adjusted_r`` (see ``BlocklistConfig.se_multiplier``) is then compared
+    to ``minimum_correlation`` to decide ``feature_ok``; a feature with
+    fewer than 2 usable replicates has ``se_z = null`` and (when
+    ``se_multiplier`` is set) fails automatically.
 
     Output file
     -----------
     - ``{output_dir}/blocklist.parquet`` with columns ``feature``,
-      ``r_est``, ``se_z``, ``n_replicates``, ``feature_ok``.
+      ``r_est``, ``se_z``, ``n_replicates``, ``adjusted_r``, ``feature_ok``.
 
     Raises
     ------
@@ -132,15 +147,31 @@ def main(cfg: DictConfig) -> None:
             .otherwise(pl.col("_std_z") / pl.col("n_replicates").cast(pl.Float64).sqrt())
             .alias("se_z")
         )
-        .with_columns(
-            (
-                (pl.col("r_est") >= bl_cfg.minimum_correlation)
-                & pl.col("se_z").is_not_null()
-                & (pl.col("se_z") <= bl_cfg.max_se_z)
-            ).alias("feature_ok")
-        )
-        .select("feature", "r_est", "se_z", "n_replicates", "feature_ok")
     )
+
+    # adjusted_r: se_multiplier=None -> raw r_est passthrough (no precision
+    # penalty). Otherwise, the lower-confidence-bound adjustment is applied
+    # in FISHER-Z SPACE -- see BlocklistConfig.se_multiplier's docstring for
+    # the z-space-vs-r-space design rationale. One-line r-space alternative
+    # instead:
+    #     blocklist_df = blocklist_df.with_columns(
+    #         (pl.col("r_est") - bl_cfg.se_multiplier * pl.col("se_z")).alias("adjusted_r")
+    #     )
+    if bl_cfg.se_multiplier is None:
+        blocklist_df = blocklist_df.with_columns(pl.col("r_est").alias("adjusted_r"))
+    else:
+        blocklist_df = blocklist_df.with_columns(
+            (pl.col("_z_mean") - bl_cfg.se_multiplier * pl.col("se_z"))
+            .tanh()
+            .alias("adjusted_r")
+        )
+
+    blocklist_df = blocklist_df.with_columns(
+        (
+            pl.col("adjusted_r").is_not_null()
+            & (pl.col("adjusted_r") >= bl_cfg.minimum_correlation)
+        ).alias("feature_ok")
+    ).select("feature", "r_est", "se_z", "n_replicates", "adjusted_r", "feature_ok")
 
     out_path = output_dir / "blocklist.parquet"
     logging.info("Writing blocklist to %s", out_path)

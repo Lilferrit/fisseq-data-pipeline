@@ -16,7 +16,7 @@ process AGGREGATE_HALF {
     publishDir { "${params.pipeline_dir}/${publish_subdir}/half_aggregates/bootstrap_${bootstrap_idx}/${feature_type}" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(bootstrap_idx), val(half_num), path(index_file), val(feature_type), val(cells_glob), val(publish_subdir), val(downsample_wt)
+    tuple val(batch_key), val(bootstrap_idx), val(half_num), path(index_file), val(feature_type), val(cells_glob), val(publish_subdir), val(downsample_wt), val(per_barcode), val(barcode_column)
 
     output:
     tuple val(batch_key), val(bootstrap_idx), val(feature_type), val(half_num), path("half${half_num}_agg.parquet")
@@ -31,7 +31,9 @@ process AGGREGATE_HALF {
         aggregator=${feature_type} \\
         index_file=${index_file} \\
         downsample_wt=${downsample_wt} \\
-        seed=${(bootstrap_idx as int) * 2 + half_num}
+        seed=${(bootstrap_idx as int) * 2 + half_num} \\
+        per_barcode=${per_barcode} \\
+        barcode_column=${barcode_column}
     mv ${feature_type}.*.parquet half${half_num}_agg.parquet
     """
 }

@@ -986,6 +986,190 @@ def test_aggregate_unknown_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# per_barcode aggregation mode
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def per_barcode_df() -> pl.DataFrame:
+    """
+    2 variants x 3 barcodes x 20 cells/barcode, plus a 100-cell control pool.
+    Per-barcode offsets are distinct so a median-of-per-barcode-stats result
+    is distinguishable from a pooled-cells result.
+    """
+    rng = np.random.default_rng(0)
+    variant_offsets = {"V1": 1.0, "V2": 2.0}
+    barcode_offsets = {"bc1": 0.0, "bc2": 0.5, "bc3": -0.5}
+
+    rows_label, rows_barcode, rows_control, rows_f1 = [], [], [], []
+    for variant, v_off in variant_offsets.items():
+        for barcode, b_off in barcode_offsets.items():
+            vals = rng.normal(v_off + b_off, 1.0, 20)
+            rows_label.extend([variant] * 20)
+            rows_barcode.extend([barcode] * 20)
+            rows_control.extend([False] * 20)
+            rows_f1.extend(vals.tolist())
+
+    ctrl_vals = rng.normal(0.0, 1.0, 100)
+    rows_label.extend(["WT"] * 100)
+    rows_barcode.extend(["bcC"] * 100)
+    rows_control.extend([True] * 100)
+    rows_f1.extend(ctrl_vals.tolist())
+
+    return pl.DataFrame(
+        {
+            "meta_aa_changes": rows_label,
+            "meta_barcode": rows_barcode,
+            "meta_is_control": rows_control,
+            "f1": rows_f1,
+        }
+    )
+
+
+def test_per_barcode_mean_matches_numpy_median_of_barcode_means(
+    per_barcode_df: pl.DataFrame,
+) -> None:
+    result = (
+        m.MeanAggregator(per_barcode=True)
+        .aggregate(per_barcode_df.lazy())
+        .collect()
+    )
+    for variant in ("V1", "V2"):
+        barcode_means = [
+            per_barcode_df.filter(
+                (pl.col("meta_aa_changes") == variant)
+                & (pl.col("meta_barcode") == barcode)
+            )["f1"].mean()
+            for barcode in ("bc1", "bc2", "bc3")
+        ]
+        row = _get_row(result, variant)
+        assert row["f1_mean"] == pytest.approx(np.median(barcode_means))
+
+
+def test_per_barcode_ks_matches_scipy_median_of_barcode_ks(
+    per_barcode_df: pl.DataFrame,
+) -> None:
+    result = (
+        m.KSAggregator(per_barcode=True).aggregate(per_barcode_df.lazy()).collect()
+    )
+    ref = per_barcode_df.filter(pl.col("meta_is_control"))["f1"].to_list()
+    for variant in ("V1", "V2"):
+        barcode_ks = [
+            scipy.stats.ks_2samp(
+                per_barcode_df.filter(
+                    (pl.col("meta_aa_changes") == variant)
+                    & (pl.col("meta_barcode") == barcode)
+                )["f1"].to_list(),
+                ref,
+            ).statistic
+            for barcode in ("bc1", "bc2", "bc3")
+        ]
+        row = _get_row(result, variant)
+        assert row["f1_KS"] == pytest.approx(np.median(barcode_ks))
+
+
+def test_per_barcode_false_is_unchanged(simple_df: pl.DataFrame) -> None:
+    """Explicit per_barcode=False must match the (default) pooled behavior."""
+    pooled = m.MeanAggregator().aggregate(simple_df.lazy()).collect()
+    explicit = (
+        m.MeanAggregator(per_barcode=False).aggregate(simple_df.lazy()).collect()
+    )
+    assert pooled.sort("meta_aa_changes").equals(explicit.sort("meta_aa_changes"))
+
+
+def test_per_barcode_single_barcode_per_variant_equals_pooled() -> None:
+    """One barcode per variant: median-of-one-value collapses to the pooled
+    result, for both a plain and a reference-based aggregator."""
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 10 + ["A"] * 5 + ["B"] * 5,
+            "meta_barcode": ["bcC"] * 10 + ["bcA"] * 5 + ["bcB"] * 5,
+            "meta_is_control": [True] * 10 + [False] * 5 + [False] * 5,
+            "f1": [0.0] * 10 + [1.0, 2.0, 3.0, 4.0, 5.0] + [10.0, 20.0, 30.0, 40.0, 50.0],
+        }
+    )
+    for agg_cls in (m.MeanAggregator, m.KSAggregator):
+        pooled = agg_cls(per_barcode=False).aggregate(df.lazy()).collect()
+        per_bc = agg_cls(per_barcode=True).aggregate(df.lazy()).collect()
+        assert pooled.sort("meta_aa_changes").equals(per_bc.sort("meta_aa_changes"))
+
+
+def test_per_barcode_single_cell_barcode_no_crash() -> None:
+    """A variant with one barcode holding a single cell, mixed among barcodes
+    with more cells, must not crash; a null per-barcode stat (e.g. QQ's
+    constant-single-value-group null) is skipped by the barcode-median
+    reduction, not propagated, since not every barcode is null."""
+    df = pl.DataFrame(
+        {
+            "meta_aa_changes": ["WT"] * 20 + ["A"] * 6 + ["A"] * 1,
+            "meta_barcode": ["bcC"] * 20 + ["bc1"] * 6 + ["bc2"] * 1,
+            "meta_is_control": [True] * 20 + [False] * 6 + [False] * 1,
+            "f1": list(np.linspace(-1, 1, 20)) + [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] + [7.0],
+        }
+    )
+    result = m.QQCorrelationAggregator(per_barcode=True).aggregate(df.lazy()).collect()
+    row = _get_row(result, "A")
+    # bc2 has a single cell (constant quantile profile -> null QQ for that
+    # barcode); bc1's QQ value survives the median reduction, so the overall
+    # result must not be null.
+    assert row["f1_QQ"] is not None
+
+
+def test_per_barcode_reference_pool_unaffected(per_barcode_df: pl.DataFrame) -> None:
+    """The single-row reference pool ReferenceBasedAggregator._reference_lf
+    builds from the full control pool is identical whether or not
+    per_barcode is set: it's built once, per feature, from the same
+    CONTROL_COLUMN-filtered rows either way -- _reference_lf itself takes
+    no per_barcode argument at all, so a (variant, barcode) group and a
+    pooled variant group are always compared against the same reference."""
+    feature_cols = ["f1"]
+    ref_for_pooled = m.ReferenceBasedAggregator._reference_lf(
+        per_barcode_df.lazy(), feature_cols
+    ).collect()
+    ref_for_per_barcode = m.ReferenceBasedAggregator._reference_lf(
+        per_barcode_df.lazy(), feature_cols
+    ).collect()
+    assert ref_for_pooled.equals(ref_for_per_barcode)
+    expected_ref = per_barcode_df.filter(pl.col("meta_is_control"))["f1"].to_list()
+    assert ref_for_pooled["f1_ref"][0].to_list() == expected_ref
+
+
+def test_qq_correlation_aggregator_per_barcode_kwargs_forwarded() -> None:
+    agg = m.QQCorrelationAggregator(
+        per_barcode=True, barcode_column="meta_barcode", n_quantiles=50
+    )
+    assert agg.per_barcode is True
+    assert agg.barcode_column == "meta_barcode"
+    assert len(agg.quantile_points) == 50
+
+
+def test_main_per_barcode_true_runs_end_to_end(tmp_path):
+    """write_agg_input_parquet's per-group f1/f2 values are constant across
+    cells (and thus across barcodes too), so a per-barcode-then-median
+    reduction is mathematically a no-op vs. the pooled default here --
+    this exercises the full per_barcode=True main() path (config plumbing,
+    group-by-barcode, group-by-label median reduction, normalization,
+    metadata join) end to end and confirms it agrees with the
+    per_barcode=False (default) output bit-for-bit on this fixture."""
+    write_agg_input_parquet(tmp_path, with_barcode=True)
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path, per_barcode=True, output_root=str(tmp_path / "pb")))
+    with patch("fisseq_data_pipeline.aggregate.setup_logging"):
+        m.main.__wrapped__(make_agg_cfg(tmp_path, per_barcode=False, output_root=str(tmp_path / "pooled")))
+    per_barcode_result = pl.read_parquet(str(tmp_path / "pb.input.parquet"))
+    pooled_result = pl.read_parquet(str(tmp_path / "pooled.input.parquet"))
+    # Compare only the aggregated stat columns -- metadata columns like
+    # meta_barcode_counts carry a list[struct] whose element order isn't
+    # guaranteed deterministic across runs and is irrelevant here.
+    cols = ["meta_aa_changes", "f1_mean", "f2_mean"]
+    assert (
+        per_barcode_result.select(cols)
+        .sort("meta_aa_changes")
+        .equals(pooled_result.select(cols).sort("meta_aa_changes"))
+    )
+
+
+# ---------------------------------------------------------------------------
 # main()
 # ---------------------------------------------------------------------------
 
@@ -998,6 +1182,8 @@ def make_agg_cfg(
     aggregator="mean",
     block_list_file=None,
     compute_impact_score=True,
+    per_barcode=False,
+    barcode_column="meta_barcode",
 ) -> OmegaConf:
     """Return a DictConfig for AggregateConfig with sensible test defaults."""
     return OmegaConf.structured(
@@ -1009,6 +1195,8 @@ def make_agg_cfg(
             aggregator=aggregator,
             block_list_file=block_list_file,
             compute_impact_score=compute_impact_score,
+            per_barcode=per_barcode,
+            barcode_column=barcode_column,
         )
     )
 

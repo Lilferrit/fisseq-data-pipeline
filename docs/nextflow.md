@@ -126,7 +126,8 @@ per batch, which features are reproducible enough to keep. In
 - `BLOCKLIST`'s `.groupTuple(by: [batch_stem, feature_type])` is the pipeline's only
   cross-bootstrap synchronization point — it gathers all `params.feature_select_bootstrap_reps`
   correlation replicates for one feature type before computing a Fisher-z-averaged
-  correlation estimate with a paired magnitude/precision gate.
+  correlation estimate with an optional lower-confidence-bound precision adjustment
+  (`se_multiplier`).
 - This whole branch is per-batch gated on that batch's resolved
   `run_feature_selection`; it does not depend on `params.global_channels` at all.
 

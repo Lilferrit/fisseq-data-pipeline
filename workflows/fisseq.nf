@@ -106,8 +106,11 @@ workflow FisseqPipeline {
         ovwt_lobo_min_cells_holdout       : params.ovwt_lobo_min_cells_holdout,
         ovwt_lobo_min_barcodes_per_variant: params.ovwt_lobo_min_barcodes_per_variant,
         feature_select_downsample_wt      : params.feature_select_downsample_wt,
+        feature_select_per_barcode        : BatchParams.asBool(params.feature_select_per_barcode),
+        feature_select_barcode_column     : params.feature_select_barcode_column,
+        feature_select_bootstrap_variant_downsample: params.feature_select_bootstrap_variant_downsample,
         feature_select_min_correlation    : params.feature_select_min_correlation,
-        feature_select_max_se_z           : params.feature_select_max_se_z,
+        feature_select_se_multiplier      : params.feature_select_se_multiplier,
         run_pca                           : BatchParams.asBool(params.run_pca),
         pca_n_components                  : params.pca_n_components,
         run_umap                          : BatchParams.asBool(params.run_umap),
@@ -487,7 +490,9 @@ workflow FisseqPipeline {
         .combine(feature_types_ch)
         .map { batch_stem, cells_glob, feature_type ->
             tuple(batch_stem, cells_glob, feature_type, "feature_select_batchwise/${batch_stem}",
-                  resolvedBatchConfigs[batch_stem].feature_select_downsample_wt)
+                  resolvedBatchConfigs[batch_stem].feature_select_downsample_wt,
+                  resolvedBatchConfigs[batch_stem].feature_select_per_barcode,
+                  resolvedBatchConfigs[batch_stem].feature_select_barcode_column)
         }
     AGGREGATE_FEATURE_TYPE_BATCHWISE(agg_input_ch)
     agg_ch = AGGREGATE_FEATURE_TYPE_BATCHWISE.out  // (batch_stem, feature_type, agg_file)
@@ -526,7 +531,9 @@ workflow FisseqPipeline {
         .map { batch_stem, bootstrap_idx, half_num, index_file, feature_type, normalized_parquet ->
             tuple(batch_stem, bootstrap_idx, half_num, index_file, feature_type,
                   normalized_parquet.toString(), "feature_select_batchwise/${batch_stem}",
-                  resolvedBatchConfigs[batch_stem].feature_select_downsample_wt)
+                  resolvedBatchConfigs[batch_stem].feature_select_downsample_wt,
+                  resolvedBatchConfigs[batch_stem].feature_select_per_barcode,
+                  resolvedBatchConfigs[batch_stem].feature_select_barcode_column)
         }
     AGGREGATE_HALF_BATCHWISE(agg_half_input_ch)
     half_agg_ch = AGGREGATE_HALF_BATCHWISE.out
@@ -540,7 +547,8 @@ workflow FisseqPipeline {
         .map { batch_stem, bootstrap_idx, feature_type, half_nums, half_files ->
             def pairs = [half_nums, half_files].transpose().sort { pair -> pair[0] }
             tuple(batch_stem, bootstrap_idx, feature_type, pairs[0][1], pairs[1][1],
-                  "feature_select_batchwise/${batch_stem}")
+                  "feature_select_batchwise/${batch_stem}",
+                  resolvedBatchConfigs[batch_stem].feature_select_bootstrap_variant_downsample)
         }
     CORRELATE_FEATURES_BATCHWISE(corr_input_ch)
     corr_ch = CORRELATE_FEATURES_BATCHWISE.out  // (batch_stem, feature_type, bootstrap_idx, correlation_file)
@@ -557,7 +565,7 @@ workflow FisseqPipeline {
         .map { batch_stem, feature_type, correlation_files ->
             tuple(batch_stem, feature_type, correlation_files, "feature_select_batchwise/${batch_stem}",
                   resolvedBatchConfigs[batch_stem].feature_select_min_correlation,
-                  resolvedBatchConfigs[batch_stem].feature_select_max_se_z)
+                  resolvedBatchConfigs[batch_stem].feature_select_se_multiplier)
         }
     BLOCKLIST_BATCHWISE(blocklist_input_ch)
     bl_ch = BLOCKLIST_BATCHWISE.out  // (batch_stem, feature_type, blocklist_file)
