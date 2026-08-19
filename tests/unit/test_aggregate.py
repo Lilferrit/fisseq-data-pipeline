@@ -952,6 +952,73 @@ def test_reference_pool_still_collected_for_reference_based_aggregators(
 
 
 # ---------------------------------------------------------------------------
+# null_statistic_transform / WT-null eligibility
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "agg_cls", [m.MeanAggregator, m.MedianAggregator, m.StdAggregator, m.KSAggregator]
+)
+def test_null_statistic_transform_identity(agg_cls) -> None:
+    result = pl.DataFrame({"x": [0.3]}).select(
+        agg_cls().null_statistic_transform(pl.col("x")).alias("x")
+    )["x"][0]
+    assert result == pytest.approx(0.3)
+
+
+def test_null_statistic_transform_signedks_is_absolute_value() -> None:
+    agg = m.SignedKSAggregator()
+    for value, expected in [(-0.4, 0.4), (0.4, 0.4)]:
+        result = pl.DataFrame({"x": [value]}).select(
+            agg.null_statistic_transform(pl.col("x")).alias("x")
+        )["x"][0]
+        assert result == pytest.approx(expected)
+
+
+def test_null_statistic_transform_qq_is_one_minus_value() -> None:
+    agg = m.QQCorrelationAggregator()
+    for value, expected in [(1.0, 0.0), (0.7, 0.3), (-0.2, 1.2)]:
+        result = pl.DataFrame({"x": [value]}).select(
+            agg.null_statistic_transform(pl.col("x")).alias("x")
+        )["x"][0]
+        assert result == pytest.approx(expected)
+
+
+def test_null_statistic_transform_auroc_is_absolute_deviation_from_half() -> None:
+    agg = m.AUROCAggregator()
+    for value, expected in [(0.5, 0.0), (0.9, 0.4), (0.1, 0.4)]:
+        result = pl.DataFrame({"x": [value]}).select(
+            agg.null_statistic_transform(pl.col("x")).alias("x")
+        )["x"][0]
+        assert result == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "agg_cls",
+    [m.MADAggregator, m.KSNegLogPValueAggregator, m.AUROCNegLogPValueAggregator],
+)
+def test_null_statistic_transform_raises_for_ineligible_aggregators(agg_cls) -> None:
+    with pytest.raises(NotImplementedError):
+        agg_cls().null_statistic_transform(pl.col("x"))
+
+
+def test_is_null_eligible_matches_expected_set() -> None:
+    eligible = {"mean", "median", "std", "KS", "signedKS", "QQ", "AUROC"}
+    ineligible = {"MAD", "KSnegLogP", "AUROCnegLogP"}
+    for name in eligible:
+        assert m.is_null_eligible(name) is True
+    for name in ineligible:
+        assert m.is_null_eligible(name) is False
+    assert m.is_null_eligible("not_a_real_aggregator") is False
+
+
+def test_null_eligible_aggregator_names_matches_expected_set() -> None:
+    assert m.null_eligible_aggregator_names() == sorted(
+        ["mean", "median", "std", "KS", "signedKS", "QQ", "AUROC"]
+    )
+
+
+# ---------------------------------------------------------------------------
 # aggregate() function
 # ---------------------------------------------------------------------------
 
@@ -983,6 +1050,35 @@ def test_aggregate_unknown_raises() -> None:
     ).lazy()
     with pytest.raises(ValueError, match="Unknown aggregator"):
         m.aggregate(lf, label_col="meta_aa_changes", aggregator_name="bogus")
+
+
+def test_null_comparison_statistic_unknown_aggregator_raises() -> None:
+    lf = pl.DataFrame({"meta_is_control": [True], "f1": [1.0]}).lazy()
+    with pytest.raises(ValueError, match="Unknown aggregator"):
+        m.null_comparison_statistic(
+            lf,
+            lf,
+            label_col="meta_wt_null_group",
+            label_value="wt_null",
+            aggregator_name="bogus",
+        )
+
+
+def test_null_comparison_statistic_ineligible_aggregator_raises() -> None:
+    """A known-but-ineligible name raises NotImplementedError (not
+    ValueError) when the module function is called directly -- translating
+    that into a caller-friendly ValueError is wtnullaggregate.main's job,
+    not aggregate.null_comparison_statistic's. See is_null_eligible for a
+    pre-flight check that avoids relying on this exception type."""
+    lf = pl.DataFrame({"meta_is_control": [True], "f1": [1.0]}).lazy()
+    with pytest.raises(NotImplementedError):
+        m.null_comparison_statistic(
+            lf,
+            lf,
+            label_col="meta_wt_null_group",
+            label_value="wt_null",
+            aggregator_name="MAD",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1169,6 +1265,139 @@ def test_main_per_barcode_true_runs_end_to_end(tmp_path):
         .sort("meta_aa_changes")
         .equals(pooled_result.select(cols).sort("meta_aa_changes"))
     )
+
+
+# ---------------------------------------------------------------------------
+# null_comparison_statistic — one-sample path (mean/median/std)
+# ---------------------------------------------------------------------------
+
+
+def _two_halves_df(n: int = 8, seed: int = 0) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Two disjoint control-pool halves with distinct f1 distributions, so
+    every summary statistic differs measurably between them."""
+    rng = np.random.default_rng(seed)
+    h1 = pl.DataFrame(
+        {"meta_is_control": [True] * n, "f1": rng.normal(0.0, 1.0, n).tolist()}
+    )
+    h2 = pl.DataFrame(
+        {"meta_is_control": [True] * n, "f1": rng.normal(3.0, 1.0, n).tolist()}
+    )
+    return h1, h2
+
+
+@pytest.mark.parametrize(
+    "agg_cls, np_stat",
+    [
+        (m.MeanAggregator, np.mean),
+        (m.MedianAggregator, np.median),
+        (m.StdAggregator, lambda v: np.std(v, ddof=1)),
+    ],
+)
+def test_null_comparison_statistic_one_sample_matches_independent_diff(
+    agg_cls, np_stat
+) -> None:
+    h1, h2 = _two_halves_df()
+    agg = agg_cls(label_col="meta_wt_null_group")
+    result = agg.null_comparison_statistic(h1.lazy(), h2.lazy(), "wt_null").collect()
+    assert set(result.columns) == {"feature", "value"}
+    assert result["feature"].to_list() == [f"f1{agg_cls._stat_suffix}"]
+    expected = abs(np_stat(h1["f1"].to_list()) - np_stat(h2["f1"].to_list()))
+    assert result["value"][0] == pytest.approx(expected)
+
+
+def test_null_comparison_statistic_one_sample_per_barcode() -> None:
+    """per_barcode=True on the one-sample path: self.aggregate() already
+    respects per_barcode/barcode_column when computing each half
+    independently, so each half's result is a median-of-per-barcode-means
+    before the two halves are diffed."""
+    h1 = pl.DataFrame(
+        {
+            "meta_is_control": [True] * 12,
+            "meta_barcode": ["bc1"] * 4 + ["bc2"] * 4 + ["bc3"] * 4,
+            "f1": [0.0, 1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 13.0, 20.0, 21.0, 22.0, 23.0],
+        }
+    )
+    h2 = pl.DataFrame(
+        {
+            "meta_is_control": [True] * 6,
+            "meta_barcode": ["bc1"] * 3 + ["bc2"] * 3,
+            "f1": [100.0, 101.0, 102.0, 200.0, 201.0, 202.0],
+        }
+    )
+    agg = m.MeanAggregator(
+        label_col="meta_wt_null_group", per_barcode=True, barcode_column="meta_barcode"
+    )
+    result = agg.null_comparison_statistic(h1.lazy(), h2.lazy(), "wt_null").collect()
+
+    def median_of_barcode_means(df: pl.DataFrame) -> float:
+        return np.median(
+            [
+                df.filter(pl.col("meta_barcode") == bc)["f1"].mean()
+                for bc in df["meta_barcode"].unique()
+            ]
+        )
+
+    expected = abs(median_of_barcode_means(h1) - median_of_barcode_means(h2))
+    assert result["value"][0] == pytest.approx(expected)
+
+
+# ---------------------------------------------------------------------------
+# null_comparison_statistic — reference-based two-sample path (regression)
+# ---------------------------------------------------------------------------
+
+# Hand-written (not imported) re-derivation of the transform formulas that
+# used to live in wtnullaggregate.py's _NULL_STATISTIC_TRANSFORMS dict before
+# this refactor -- so a bug in the shared null_statistic_transform method
+# can't hide from this pinning test.
+_GOLDEN_NULL_TRANSFORMS = {
+    m.KSAggregator: lambda e: e,
+    m.SignedKSAggregator: lambda e: e.abs(),
+    m.QQCorrelationAggregator: lambda e: 1 - e,
+    m.AUROCAggregator: lambda e: (e - 0.5).abs(),
+}
+
+
+@pytest.mark.parametrize(
+    "agg_cls",
+    [
+        m.KSAggregator,
+        m.SignedKSAggregator,
+        m.QQCorrelationAggregator,
+        m.AUROCAggregator,
+    ],
+)
+def test_null_comparison_statistic_reference_based_matches_golden_reimplementation(
+    agg_cls,
+) -> None:
+    """Pins ReferenceBasedAggregator.null_comparison_statistic against a
+    hand-written re-derivation of the pre-refactor relabel/concat/aggregate/
+    transform/unpivot sequence that used to live inline in
+    wtnullaggregate.py's main() -- bit-identical output is required."""
+    rng = np.random.default_rng(1)
+    n = 40
+    h1 = pl.DataFrame(
+        {CONTROL_COLUMN_NAME: [True] * n, "f1": rng.normal(0.0, 1.0, n).tolist()}
+    )
+    h2 = pl.DataFrame(
+        {CONTROL_COLUMN_NAME: [True] * n, "f1": rng.normal(0.3, 1.2, n).tolist()}
+    )
+    label_col = "meta_wt_null_group"
+    agg = agg_cls(label_col=label_col)
+
+    h1_relabeled = h1.with_columns(
+        pl.lit("wt_null").alias(label_col), pl.lit(False).alias(CONTROL_COLUMN_NAME)
+    )
+    h2_relabeled = h2.with_columns(pl.lit("wt_null").alias(label_col))
+    combined = pl.concat([h1_relabeled, h2_relabeled])
+    raw = agg.aggregate(combined.lazy()).collect()
+    stat_cols = [c for c in raw.columns if c != label_col]
+    transform = _GOLDEN_NULL_TRANSFORMS[agg_cls]
+    golden = raw.select(transform(pl.col(c)).alias(c) for c in stat_cols).unpivot(
+        variable_name="feature", value_name="value"
+    )
+
+    actual = agg.null_comparison_statistic(h1.lazy(), h2.lazy(), "wt_null").collect()
+    assert actual.sort("feature").equals(golden.sort("feature"))
 
 
 # ---------------------------------------------------------------------------

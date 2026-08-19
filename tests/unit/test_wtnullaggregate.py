@@ -10,18 +10,21 @@ from omegaconf import OmegaConf
 import fisseq_data_pipeline.wtnullaggregate as m
 
 
-def write_control_pool(tmp_path, n_control: int = 40) -> None:
+def write_control_pool(
+    tmp_path, n_control: int = 40, with_barcode: bool = False
+) -> None:
     """Cell-level parquet with a heterogeneous control pool (distinct f1
     values so a random split of the pool produces a non-trivial aggregator
     value between halves) and no non-control rows -- WT-null only ever
     consumes the control pool."""
-    pl.DataFrame(
-        {
-            "meta_aa_changes": ["WT"] * n_control,
-            "meta_is_control": [True] * n_control,
-            "f1": [float(i) for i in range(n_control)],
-        }
-    ).write_parquet(tmp_path / "input.parquet")
+    data = {
+        "meta_aa_changes": ["WT"] * n_control,
+        "meta_is_control": [True] * n_control,
+        "f1": [float(i) for i in range(n_control)],
+    }
+    if with_barcode:
+        data["meta_barcode"] = [f"bc{i % 4}" for i in range(n_control)]
+    pl.DataFrame(data).write_parquet(tmp_path / "input.parquet")
 
 
 def make_cfg(
@@ -53,39 +56,14 @@ def run_main(cfg) -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# _NULL_STATISTIC_TRANSFORMS
-# ---------------------------------------------------------------------------
-
-
-def _apply_transform(name: str, value: float) -> float:
-    expr = m._NULL_STATISTIC_TRANSFORMS[name](pl.col("x"))
-    return pl.DataFrame({"x": [value]}).select(expr.alias("x"))["x"][0]
-
-
-def test_ks_transform_is_identity() -> None:
-    assert _apply_transform("KS", 0.3) == pytest.approx(0.3)
-
-
-def test_signedks_transform_is_absolute_value() -> None:
-    assert _apply_transform("signedKS", -0.4) == pytest.approx(0.4)
-    assert _apply_transform("signedKS", 0.4) == pytest.approx(0.4)
-
-
-def test_qq_transform_is_one_minus_value() -> None:
-    assert _apply_transform("QQ", 1.0) == pytest.approx(0.0)
-    assert _apply_transform("QQ", 0.7) == pytest.approx(0.3)
-    assert _apply_transform("QQ", -0.2) == pytest.approx(1.2)
-
-
-def test_auroc_transform_is_absolute_deviation_from_half() -> None:
-    assert _apply_transform("AUROC", 0.5) == pytest.approx(0.0)
-    assert _apply_transform("AUROC", 0.9) == pytest.approx(0.4)
-    assert _apply_transform("AUROC", 0.1) == pytest.approx(0.4)
-
-
-# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+# Note: per-aggregator null_statistic_transform behavior (identity for
+# KS/mean/median/std, abs() for signedKS, 1-x for QQ, abs(x-0.5) for AUROC)
+# used to be pinned here via a module-level _NULL_STATISTIC_TRANSFORMS dict.
+# That logic now lives on the aggregator classes themselves
+# (BaseAggregator.null_statistic_transform and its overrides) and is tested
+# in test_aggregate.py, alongside is_null_eligible/null_eligible_aggregator_names.
 
 
 def test_main_output_has_feature_and_value_columns(tmp_path) -> None:
@@ -165,11 +143,75 @@ def test_main_downsample_wt_nonpositive_int_raises(tmp_path) -> None:
 
 def test_main_ineligible_aggregator_raises(tmp_path) -> None:
     write_control_pool(tmp_path)
+    # MAD is registered but deliberately WT-null-ineligible (see
+    # MADAggregator's docstring in aggregate.py) -- unlike "mean", which
+    # became eligible as part of this refactor.
     with pytest.raises(ValueError):
-        run_main(make_cfg(tmp_path, aggregator="mean"))
+        run_main(make_cfg(tmp_path, aggregator="MAD"))
+
+
+def test_main_ksneglogp_raises(tmp_path) -> None:
+    write_control_pool(tmp_path)
+    with pytest.raises(ValueError):
+        run_main(make_cfg(tmp_path, aggregator="KSnegLogP"))
+
+
+def test_main_aurocneglogp_raises(tmp_path) -> None:
+    write_control_pool(tmp_path)
+    with pytest.raises(ValueError):
+        run_main(make_cfg(tmp_path, aggregator="AUROCnegLogP"))
 
 
 def test_main_unknown_aggregator_raises(tmp_path) -> None:
     write_control_pool(tmp_path)
     with pytest.raises(ValueError):
         run_main(make_cfg(tmp_path, aggregator="not_a_real_aggregator"))
+
+
+# ---------------------------------------------------------------------------
+# one-sample WT-null path (mean/median/std)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("aggregator", ["mean", "median", "std"])
+def test_main_succeeds_for_one_sample_aggregators(tmp_path, aggregator) -> None:
+    write_control_pool(tmp_path)
+    result = run_main(make_cfg(tmp_path, aggregator=aggregator))
+    assert set(result.columns) == {"feature", "value"}
+    assert result["feature"].to_list() == [f"f1_{aggregator}"]
+    # The one-sample path's null_statistic_transform is identity over an
+    # absolute difference, so the value is always non-negative.
+    assert result["value"][0] >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# per_barcode passthrough
+# ---------------------------------------------------------------------------
+
+
+def test_main_per_barcode_end_to_end_one_sample(tmp_path) -> None:
+    write_control_pool(tmp_path, with_barcode=True)
+    result = run_main(
+        make_cfg(
+            tmp_path,
+            aggregator="mean",
+            per_barcode=True,
+            barcode_column="meta_barcode",
+        )
+    )
+    assert set(result.columns) == {"feature", "value"}
+    assert result["feature"].to_list() == ["f1_mean"]
+
+
+def test_main_per_barcode_end_to_end_reference_based(tmp_path) -> None:
+    write_control_pool(tmp_path, with_barcode=True)
+    result = run_main(
+        make_cfg(
+            tmp_path,
+            aggregator="KS",
+            per_barcode=True,
+            barcode_column="meta_barcode",
+        )
+    )
+    assert set(result.columns) == {"feature", "value"}
+    assert result["feature"].to_list() == ["f1_KS"]

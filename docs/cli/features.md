@@ -8,22 +8,25 @@ feature type (`params.feature_select_types`) is first fully aggregated (via
 routed to one of two reproducibility-gate branches based on
 `params.feature_select_wt_null_types`:
 
-- **WT-null bootstrap** (distributional-distance aggregators — `KS`,
-  `signedKS`, `QQ`, `AUROC` by default): across
-  `params.feature_select_wt_null_bootstraps` bootstrap replicates, the
-  batch's control (wildtype) pool is split into two disjoint halves and the
-  configured aggregator is computed *between* the two halves for every
-  feature — a same-population comparison with zero true biological signal
-  by construction, used as that feature's null noise floor for one
-  replicate. Each feature's mean null value across bootstraps is then
-  gated by an upper Tukey fence over the batch's per-feature-type null-mean
+- **WT-null bootstrap** (`KS`, `signedKS`, `QQ`, `AUROC` by default; `mean`,
+  `median`, `std` are also WT-null-eligible and may be opted in, though not
+  included by default — `MAD` is the only registered aggregator that is not
+  WT-null-eligible): across `params.feature_select_wt_null_bootstraps`
+  bootstrap replicates, the batch's control (wildtype) pool is split into
+  two disjoint halves and the configured aggregator's WT-null comparison is
+  computed between the two halves for every feature — a same-population
+  comparison with zero true biological signal by construction, used as that
+  feature's null noise floor for one replicate. `KS`/`signedKS`/`QQ`/`AUROC`
+  use a two-sample reference-pool comparison; `mean`/`median`/`std` use a
+  one-sample comparison (aggregate each half independently, then diff).
+  Each feature's mean null value across bootstraps is then gated by an
+  upper Tukey fence over the batch's per-feature-type null-mean
   distribution.
 - **Passthrough** (every other configured feature type — `mean`, `median`,
-  `MAD`, `std` by default): no reproducibility computation. These
-  aggregators have no reference distribution to compare against, so the
-  WT-null concept doesn't apply; every feature is marked ok, deferring
-  entirely to pycytominer's variance/correlation thresholds in
-  `FINALIZE_FEATURE_SELECT`.
+  `MAD`, `std` by default, since only `KS`/`QQ`/`AUROC` are opted into the
+  WT-null bootstrap by default): no reproducibility computation. Every
+  feature is marked ok, deferring entirely to pycytominer's
+  variance/correlation thresholds in `FINALIZE_FEATURE_SELECT`.
 
 Both branches write the same blocklist schema (`feature`, `feature_ok`,
 `null_mean`, `threshold`, `n_bootstraps`), concatenated by
@@ -121,7 +124,9 @@ uv run python -m fisseq_data_pipeline.wtnullblocklist \
 ## 3. `python -m fisseq_data_pipeline.passthroughblocklist` (`PASSTHROUGH_BLOCKLIST`)
 
 For a feature type not in `params.feature_select_wt_null_types` (by default,
-`mean`, `median`, `MAD`, `std`): no reproducibility computation. Scans the
+`mean`, `median`, `MAD`, `std` — `mean`/`median`/`std` are WT-null-eligible
+but not opted in by default; `MAD` is not eligible at all): no reproducibility
+computation. Scans the
 feature type's full aggregate parquet's schema (no data loaded) and emits
 one row per feature column, all marked `feature_ok = true` with null audit
 columns — the same blocklist schema `WT_NULL_BLOCKLIST` writes, so

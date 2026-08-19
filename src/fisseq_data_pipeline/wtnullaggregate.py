@@ -1,78 +1,69 @@
 """WT-null bootstrap replicate computation.
 
 Hydra entry point backing the Nextflow process ``WT_NULL_AGGREGATE``: for one
-bootstrap replicate of one distributional-distance feature type, splits the
-batch's control (wildtype) pool into two disjoint halves
+bootstrap replicate of one feature type, splits the batch's control (wildtype)
+pool into two disjoint halves
 (:func:`fisseq_data_pipeline.aggregate.split_control_pool`), optionally
 downsamples each half independently
 (:func:`fisseq_data_pipeline.aggregate.downsample_control`), and computes the
-configured aggregator *between* the two halves for every feature — a
-same-population comparison with zero true biological signal by construction,
-used as that feature's null noise floor for one bootstrap replicate. Part of
-the WT-null bootstrap reproducibility check
+configured aggregator's WT-null (same-population) comparison between the two
+halves for every feature — a comparison with zero true biological signal by
+construction, used as that feature's null noise floor for one bootstrap
+replicate. Part of the WT-null bootstrap reproducibility check
 (:mod:`.wtnullblocklist` gathers these across bootstraps and applies the
 Tukey-fence gate).
 
-Reuses the existing :func:`fisseq_data_pipeline.aggregate.aggregate` /
-``ReferenceBasedAggregator`` machinery unchanged: the two halves are
-concatenated into one synthetic two-group frame (h1 relabeled as the
-"variant" group, h2 left as the ``CONTROL_COLUMN`` reference pool) and
-aggregated under one constant synthetic label, so no new statistic math is
-needed here — only the split/downsample/relabel plumbing and the
-per-aggregator null-statistic transform (see ``_NULL_STATISTIC_TRANSFORMS``)
-that makes "larger = more suspicious" hold uniformly across aggregators
-before the Tukey fence is applied downstream.
+The split/downsample/relabel plumbing lives here; the per-aggregator
+null-comparison logic itself lives on the aggregator classes in
+:mod:`fisseq_data_pipeline.aggregate` (:meth:`BaseAggregator.null_comparison_statistic`
+for the one-sample path used by aggregators with no reference pool to compare
+against, e.g. ``mean``/``median``/``std``; ``ReferenceBasedAggregator``'s
+override for the two-sample relabel-and-compare path used by
+``KS``/``signedKS``/``QQ``/``AUROC``), invoked here via
+:func:`fisseq_data_pipeline.aggregate.null_comparison_statistic`. Eligibility
+is determined by :func:`fisseq_data_pipeline.aggregate.is_null_eligible` /
+:func:`fisseq_data_pipeline.aggregate.null_eligible_aggregator_names` — an
+aggregator is WT-null-eligible iff its ``null_statistic_transform`` is
+concretely overridden rather than raising ``NotImplementedError`` (see
+``BaseAggregator``'s docstring in :mod:`.aggregate`), not membership in a
+hand-maintained dict.
 """
 
 import dataclasses
 import logging
 import pathlib
-from typing import Callable, Optional, Union
+from typing import Optional, Union
 
 import hydra
 import polars as pl
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig, OmegaConf
 
-from .aggregate import aggregate, downsample_control, split_control_pool
+from .aggregate import (
+    downsample_control,
+    is_null_eligible,
+    null_comparison_statistic,
+    null_eligible_aggregator_names,
+    split_control_pool,
+)
 from .config import InputConfig
 from .utils.batches import load_batches
-from .utils.constants import CONTROL_COLUMN_NAME, META_BARCODE_COL
+from .utils.constants import META_BARCODE_COL
 from .utils.log import setup_logging
 
 _cs = ConfigStore.instance()
 
-# Constant synthetic group used to re-run the existing ReferenceBasedAggregator
-# machinery on h1-vs-h2 instead of variant-vs-control: h1 rows are tagged with
-# this label and CONTROL_COLUMN=False (the "group"), h2 rows keep
-# CONTROL_COLUMN=True (the reference pool) and are tagged with the same label
-# purely so both halves share one schema for pl.concat. MUST carry the
-# ``meta_`` prefix: FEATURE_SELECTOR (used by aggregate()'s
+# Constant synthetic group used to re-run the aggregator's normal
+# self.aggregate() machinery on h1-vs-h2 instead of variant-vs-control (the
+# ReferenceBasedAggregator two-sample path relabels h1 as the "group" and h2
+# as the CONTROL_COLUMN reference pool; the BaseAggregator one-sample path
+# relabels both halves independently under this same constant label). MUST
+# carry the ``meta_`` prefix: FEATURE_SELECTOR (used by aggregate()'s
 # ``_feature_columns``) excludes columns by that prefix alone, so an
 # unprefixed synthetic label column would itself be swept up as a "feature"
 # to aggregate -- colliding with its own use as the group-by key.
 _WT_NULL_LABEL_COL = "meta_wt_null_group"
 _WT_NULL_LABEL_VALUE = "wt_null"
-
-# Per-aggregator transform applied to the raw aggregator(h1, h2) value so
-# "larger = more suspicious" holds uniformly across every WT-null-eligible
-# aggregator before WT_NULL_BLOCKLIST's Tukey fence is applied:
-#   - KS: already >= 0, null centers near 0 -- no transform.
-#   - signedKS: same magnitude as KS but signed -- abs() recovers that
-#     magnitude (the sign is meaningless for a WT-vs-WT null).
-#   - QQ: identical distributions -> QQ correlation ~= 1, so a LOW QQ
-#     indicates divergence -- 1 - value flips the direction to match the
-#     others (not called out explicitly in the original task spec, but
-#     required for the fence direction to be consistent).
-#   - AUROC: null centers at 0.5, not 0 -- abs(value - 0.5) recenters it.
-# This dict is also the authoritative set of WT-null-eligible aggregators:
-# `aggregator` is validated against it directly.
-_NULL_STATISTIC_TRANSFORMS: dict[str, Callable[[pl.Expr], pl.Expr]] = {
-    "KS": lambda e: e,
-    "signedKS": lambda e: e.abs(),
-    "QQ": lambda e: 1 - e,
-    "AUROC": lambda e: (e - 0.5).abs(),
-}
 
 
 @dataclasses.dataclass
@@ -84,8 +75,17 @@ class WtNullAggregateConfig(InputConfig):
     Attributes
     ----------
     aggregator : str
-        A WT-null-eligible aggregator name: ``KS``, ``signedKS``, ``QQ``, or
-        ``AUROC`` (a key of ``_NULL_STATISTIC_TRANSFORMS``). Required.
+        A WT-null-eligible aggregator name: ``mean``, ``median``, ``std``,
+        ``KS``, ``signedKS``, ``QQ``, or ``AUROC``. See
+        :func:`fisseq_data_pipeline.aggregate.null_eligible_aggregator_names`
+        for the authoritative, current list (``MAD``, ``KSnegLogP``, and
+        ``AUROCnegLogP`` are deliberately excluded -- see their classes'
+        docstrings in :mod:`.aggregate`). Note: this Python entry point
+        accepts ``mean``/``median``/``std`` directly, but
+        ``workflows/fisseq.nf``'s ``feature_select_wt_null_types`` default
+        still only includes ``KS``/``QQ``/``AUROC`` -- opting the summary
+        statistics into the pipeline-level bootstrap is a separate config
+        change. Required.
     downsample_wt : float, int, or None
         Optional downsampling of each split half's control (wildtype) rows.
         A float in ``(0, 1)`` keeps that fraction; an int keeps that many
@@ -169,13 +169,14 @@ def main(cfg: DictConfig) -> None:
 
     Loads ``input_file``, splits its control pool into two disjoint halves
     seeded by ``bootstrap_idx`` (:func:`.aggregate.split_control_pool`),
-    optionally downsamples each half independently, then relabels h1 as a
-    single synthetic "variant" group (``CONTROL_COLUMN=False``) compared
-    against h2 as the reference pool (``CONTROL_COLUMN`` left ``True``) and
-    runs the configured aggregator via the existing
-    :func:`fisseq_data_pipeline.aggregate.aggregate`. The raw per-feature
-    statistic is passed through ``_NULL_STATISTIC_TRANSFORMS`` so larger
-    always means more suspicious, then written in long format.
+    optionally downsamples each half independently, then delegates the
+    configured aggregator's WT-null comparison between the two halves to
+    :func:`fisseq_data_pipeline.aggregate.null_comparison_statistic` -- which
+    dispatches to :meth:`BaseAggregator.null_comparison_statistic`'s
+    one-sample path or :class:`ReferenceBasedAggregator`'s two-sample relabel
+    path depending on the aggregator, with each aggregator's own
+    ``null_statistic_transform`` already applied so larger always means more
+    suspicious -- then writes the result in long format.
 
     Output file
     -----------
@@ -189,10 +190,10 @@ def main(cfg: DictConfig) -> None:
     """
     ft_cfg: WtNullAggregateConfig = OmegaConf.to_object(cfg)
 
-    if ft_cfg.aggregator not in _NULL_STATISTIC_TRANSFORMS:
+    if not is_null_eligible(ft_cfg.aggregator):
         raise ValueError(
             f"Unknown or ineligible WT-null aggregator {ft_cfg.aggregator!r}. "
-            f"Choose from: {sorted(_NULL_STATISTIC_TRANSFORMS)}"
+            f"Choose from: {null_eligible_aggregator_names()}"
         )
     _validate_downsample_wt(ft_cfg.downsample_wt)
 
@@ -215,37 +216,27 @@ def main(cfg: DictConfig) -> None:
             h2_lf, ft_cfg.downsample_wt, ft_cfg.bootstrap_idx * 2 + 2, "h2"
         )
 
-    h1_lf = h1_lf.with_columns(
-        pl.lit(_WT_NULL_LABEL_VALUE).alias(_WT_NULL_LABEL_COL),
-        pl.lit(False).alias(CONTROL_COLUMN_NAME),
-    )
-    h2_lf = h2_lf.with_columns(pl.lit(_WT_NULL_LABEL_VALUE).alias(_WT_NULL_LABEL_COL))
-    combined_lf = pl.concat([h1_lf, h2_lf])
-
     logging.info("Running %s aggregator between WT halves", ft_cfg.aggregator)
-    raw_result = aggregate(
-        combined_lf,
-        label_col=_WT_NULL_LABEL_COL,
-        aggregator_name=ft_cfg.aggregator,
-        per_barcode=ft_cfg.per_barcode,
-        barcode_column=ft_cfg.barcode_column,
-    ).collect()
-
-    # Keep each column's full stat-suffixed name (e.g. "f1_KS") as the
+    # Keeps each column's full stat-suffixed name (e.g. "f1_KS") as the
     # "feature" identity, unchanged -- this must match the column names in
     # AGGREGATE_FEATURE_TYPE's output exactly, since FINALIZE_FEATURE_SELECT
     # drops blocked columns by looking them up under this same name. It's
     # also what keeps different feature types' features from colliding once
     # WT_NULL_BLOCKLIST's output is combined with every other feature type's
     # (see combineblocklists.py's docstring).
-    stat_cols = [c for c in raw_result.columns if c != _WT_NULL_LABEL_COL]
-    transform = _NULL_STATISTIC_TRANSFORMS[ft_cfg.aggregator]
-    transformed = raw_result.select(transform(pl.col(c)).alias(c) for c in stat_cols)
-    long_df = transformed.unpivot(variable_name="feature", value_name="value")
+    long_df = null_comparison_statistic(
+        h1_lf,
+        h2_lf,
+        label_col=_WT_NULL_LABEL_COL,
+        label_value=_WT_NULL_LABEL_VALUE,
+        aggregator_name=ft_cfg.aggregator,
+        per_barcode=ft_cfg.per_barcode,
+        barcode_column=ft_cfg.barcode_column,
+    )
 
     out_path = output_dir / "wt_null.parquet"
     logging.info("Writing WT-null replicate to %s", out_path)
-    long_df.write_parquet(out_path)
+    long_df.collect().write_parquet(out_path)
 
     logging.info("Done")
 

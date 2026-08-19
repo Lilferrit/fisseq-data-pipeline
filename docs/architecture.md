@@ -206,11 +206,14 @@ reloaded with `Normalizer.load(path)`. Zero-variance features produce `null` aft
 normalization. Used by both `normalize.py` (fit on WT cells) and `aggregate.py`
 (fit on synonymous-variant aggregates).
 
-**`BaseAggregator`** (`aggregate.py`) — abstract base for 8 concrete aggregation
-strategies: mean, median, MAD, std, KS, signedKS, QQ, AUROC. There is no multi-aggregator
-wrapper — combining feature types happens in Nextflow: `aggregate.feature_type_main`
-runs once per `params.feature_select_types` entry, and `features.main` (the final
-feature-selection stage) joins the per-feature-type outputs on the label column.
+**`BaseAggregator`** (`aggregate.py`) — abstract base for 10 concrete aggregation
+strategies: mean, median, MAD, std, KS, signedKS, QQ, AUROC, KSnegLogP, AUROCnegLogP.
+There is no multi-aggregator wrapper — combining feature types happens in Nextflow:
+`aggregate.feature_type_main` runs once per `params.feature_select_types` entry, and
+`features.main` (the final feature-selection stage) joins the per-feature-type outputs
+on the label column. Every aggregator except `MAD`/`KSnegLogP`/`AUROCnegLogP` is also
+WT-null-eligible (see `null_statistic_transform`/`null_comparison_statistic` and
+`is_null_eligible`/`null_eligible_aggregator_names`), consumed by `wtnullaggregate.py`.
 
 **`BatchCorrector`** (`batchcorrect.py`) — fits per-(variant, batch) statistics and
 per-variant centroids across all batches, then applies a two-pass rescale (to the

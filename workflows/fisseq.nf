@@ -495,18 +495,23 @@ workflow FisseqPipeline {
 
     // Validate feature_select_wt_null_types once, here, before it's used to
     // build any channel: must be a strict subset of feature_select_types,
-    // and none of its entries may be a summary-statistic aggregator (no
-    // reference distribution to compare against, so WT-null is ill-defined).
-    def wtNullIneligibleTypes = ["mean", "median", "MAD", "std"] as Set
+    // and none of its entries may be a WT-null-ineligible aggregator. Kept
+    // in sync with aggregate.py's null_eligible_aggregator_names() by hand
+    // (mean/median/std became WT-null-eligible via a one-sample diff-of-
+    // halves comparison; MAD stays excluded -- its own sampling distribution
+    // is lumpier at small n / low-cardinality features, and its WT-null
+    // Tukey-fence stability hasn't been validated on real data yet).
+    def wtNullIneligibleTypes = ["MAD"] as Set
     params.feature_select_wt_null_types.each { t ->
         if (!(t in params.feature_select_types)) {
             error "ERROR: feature_select_wt_null_types entry '${t}' is not in feature_select_types"
         }
         if (t in wtNullIneligibleTypes) {
-            error "ERROR: feature_select_wt_null_types entry '${t}' is a summary-statistic " +
-                "aggregator (mean/median/MAD/std) -- WT-null reproducibility is ill-defined " +
-                "for it; remove it from feature_select_wt_null_types (it is still feature-" +
-                "selected via PASSTHROUGH_BLOCKLIST + pycytominer in FINALIZE_FEATURE_SELECT)"
+            error "ERROR: feature_select_wt_null_types entry '${t}' is WT-null-ineligible " +
+                "(MAD's own sampling distribution is lumpier at small n / low-cardinality " +
+                "features, and its WT-null reproducibility hasn't been validated) -- remove " +
+                "it from feature_select_wt_null_types (it is still feature-selected via " +
+                "PASSTHROUGH_BLOCKLIST + pycytominer in FINALIZE_FEATURE_SELECT)"
         }
     }
     def wtNullTypesSet = params.feature_select_wt_null_types as Set

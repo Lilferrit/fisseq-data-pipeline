@@ -1,8 +1,8 @@
 """Per-variant cell-level feature aggregation strategies.
 
-Defines 8 concrete :class:`BaseAggregator` implementations (mean, median, MAD, std,
-KS, signedKS, QQ, AUROC) and the Hydra entry point backing standalone per-variant
-aggregation
+Defines 10 concrete :class:`BaseAggregator` implementations (mean, median, MAD, std,
+KS, signedKS, QQ, AUROC, KSnegLogP, AUROCnegLogP) and the Hydra entry point backing
+standalone per-variant aggregation
 (normalizes to synonymous baseline and attaches metadata). The lean
 per-feature-type aggregation entry point used by the feature-selection branch
 (Nextflow process ``AGGREGATE_FEATURE_TYPE``), including optional control
@@ -163,6 +163,22 @@ class BaseAggregator(abc.ABC):
         Column identifying the barcode a cell was measured from. Only
         consulted when ``per_barcode`` is ``True``. Defaults to
         ``utils.constants.META_BARCODE_COL``.
+
+    WT-null bootstrap support (:mod:`.wtnullaggregate`)
+    -----------------------------------------------------
+    :meth:`null_comparison_statistic` computes this aggregator's WT-vs-WT
+    "null" comparison between two disjoint halves of the control pool, used
+    as a per-feature reproducibility noise floor. The default implementation
+    here is the ONE-SAMPLE path (aggregate each half independently and diff
+    the results) -- the only option for aggregators with no reference pool
+    to compare against. :class:`ReferenceBasedAggregator` overrides it with
+    a single-pass two-sample comparison instead. Either path delegates
+    direction-normalization ("larger = more suspicious") to
+    :meth:`null_statistic_transform`, which raises :exc:`NotImplementedError`
+    by default -- an aggregator is WT-null-*ineligible* unless it overrides
+    this concretely. Use the module-level :func:`is_null_eligible` /
+    :func:`null_eligible_aggregator_names` to check/enumerate eligibility
+    without hand-maintaining a separate list.
     """
 
     _stat_suffix: ClassVar[str]
@@ -327,6 +343,86 @@ class BaseAggregator(abc.ABC):
         """
         raise NotImplementedError
 
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        Transform applied to this aggregator's raw WT-null comparison value
+        so "larger = more suspicious" holds uniformly before
+        ``WT_NULL_BLOCKLIST``'s Tukey fence. Raises :exc:`NotImplementedError`
+        by default: an aggregator is WT-null-*ineligible* unless it overrides
+        this concretely. This is the single source of truth probed by
+        :func:`is_null_eligible` / :func:`null_eligible_aggregator_names`,
+        replacing what used to be a hand-maintained module-level dict in
+        :mod:`.wtnullaggregate`.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} is not WT-null-eligible: "
+            "null_statistic_transform is not overridden."
+        )
+
+    def null_comparison_statistic(
+        self, h1_lf: pl.LazyFrame, h2_lf: pl.LazyFrame, label_value: str
+    ) -> pl.LazyFrame:
+        """
+        Default ONE-SAMPLE WT-null path, used by aggregators with no
+        reference pool to compare against (mean/median/std): relabel ``h1``
+        and ``h2`` each with ``self.label_col=label_value``,
+        ``CONTROL_COLUMN=False`` (each half must independently satisfy
+        :meth:`_native_aggregate_feature_batch`'s ``~CONTROL_COLUMN`` filter
+        to be grouped at all), aggregate them SEPARATELY via
+        :meth:`aggregate`, and return the transformed absolute difference of
+        each feature's statistic between the two collected results.
+
+        Unlike :class:`ReferenceBasedAggregator`'s override, this cannot
+        stay purely lazy end to end without an intermediate collect: diffing
+        two independently-grouped aggregations requires materializing both
+        sides' scalars first -- there is no single-pass alternative for a
+        one-sample comparison. At this pipeline's scale (one bootstrap
+        replicate, one feature type, per Nextflow task) this is a negligible
+        eager collect, not a memory concern comparable to what
+        :meth:`ReferenceBasedAggregator._reference_lf`'s docstring is
+        guarding against.
+
+        Returns a long-format LazyFrame (columns: ``feature``, ``value``)
+        using the exact ``{feat}{self._stat_suffix}`` names
+        ``AGGREGATE_FEATURE_TYPE`` produces, so ``WT_NULL_BLOCKLIST`` /
+        ``FINALIZE_FEATURE_SELECT`` keep matching by exact string.
+        """
+        # Fail fast on an ineligible aggregator before touching any data --
+        # pure Python dispatch on a throwaway expr, no schema resolution.
+        self.null_statistic_transform(pl.col("__null_comparison_probe__"))
+
+        def _relabel(lf: pl.LazyFrame) -> pl.LazyFrame:
+            return lf.with_columns(
+                pl.lit(label_value).alias(self.label_col),
+                pl.lit(False).alias(CONTROL_COLUMN_NAME),
+            )
+
+        feature_cols = self._feature_columns(h1_lf)
+        stat_cols = [f"{f}{self._stat_suffix}" for f in feature_cols]
+
+        h1_stats = self.aggregate(_relabel(h1_lf)).select(stat_cols)
+        h2_stats = self.aggregate(_relabel(h2_lf)).select(
+            [pl.col(c).alias(f"{c}__h2") for c in stat_cols]
+        )
+
+        # Single-row join broadcast (same idiom as _reference_lf's
+        # cross-join): no row-count multiplication, just pairs up h1's and
+        # h2's single-row results so the diff below stays in Arrow instead
+        # of round-tripping through Python scalars.
+        join_key = "__null_comparison_join_key__"
+        combined = h1_stats.with_columns(pl.lit(1).alias(join_key)).join(
+            h2_stats.with_columns(pl.lit(1).alias(join_key)), on=join_key
+        )
+        diffs = combined.select(
+            [
+                self.null_statistic_transform(
+                    (pl.col(c) - pl.col(f"{c}__h2")).abs()
+                ).alias(c)
+                for c in stat_cols
+            ]
+        )
+        return diffs.unpivot(variable_name="feature", value_name="value")
+
 
 class ReferenceBasedAggregator(BaseAggregator):
     """
@@ -334,6 +430,15 @@ class ReferenceBasedAggregator(BaseAggregator):
     control/reference pool (KS, QQ, AUROC): builds the single-row reference
     frame and lets :meth:`BaseAggregator.aggregate` cross-join it in
     automatically.
+
+    Also overrides :meth:`null_comparison_statistic` with a single-pass
+    two-sample WT-null path: relabel one control-pool half as the "variant"
+    group and the other as the reference pool, and reuse this aggregator's
+    normal two-sample :meth:`aggregate` once, instead of
+    :class:`BaseAggregator`'s default one-sample (aggregate-each-half-then-diff)
+    path. Does NOT get its own :meth:`null_statistic_transform` default --
+    that stays :class:`BaseAggregator`'s raising default, so each concrete
+    subclass (KS/signedKS/QQ/AUROC) must opt in individually.
     """
 
     @staticmethod
@@ -368,6 +473,40 @@ class ReferenceBasedAggregator(BaseAggregator):
         ]
         return lf.filter(CONTROL_COLUMN).select(exprs)
 
+    def null_comparison_statistic(
+        self, h1_lf: pl.LazyFrame, h2_lf: pl.LazyFrame, label_value: str
+    ) -> pl.LazyFrame:
+        """
+        Reference-based WT-null path: relabel ``h1`` as the single synthetic
+        "variant" group (``CONTROL_COLUMN=False``) and ``h2`` as the
+        reference pool (``CONTROL_COLUMN`` left ``True``), concatenate, and
+        run this aggregator's normal two-sample :meth:`aggregate` ONCE --
+        the exact trick :mod:`.wtnullaggregate` used to perform inline. The
+        raw per-feature statistic is passed through
+        :meth:`null_statistic_transform` so "larger = more suspicious" holds
+        uniformly, then unpivoted to long format. Stays lazy end to end;
+        unlike :class:`BaseAggregator`'s one-sample default, no intermediate
+        collect is needed here.
+        """
+        # Fail fast on an ineligible aggregator before touching any data.
+        self.null_statistic_transform(pl.col("__null_comparison_probe__"))
+
+        h1_relabeled = h1_lf.with_columns(
+            pl.lit(label_value).alias(self.label_col),
+            pl.lit(False).alias(CONTROL_COLUMN_NAME),
+        )
+        h2_relabeled = h2_lf.with_columns(pl.lit(label_value).alias(self.label_col))
+        combined_lf = pl.concat([h1_relabeled, h2_relabeled])
+
+        raw_result = self.aggregate(combined_lf)
+        stat_cols = [
+            c for c in raw_result.collect_schema().names() if c != self.label_col
+        ]
+        transformed = raw_result.select(
+            [self.null_statistic_transform(pl.col(c)).alias(c) for c in stat_cols]
+        )
+        return transformed.unpivot(variable_name="feature", value_name="value")
+
 
 class MeanAggregator(BaseAggregator):
     """Computes per-group mean for each feature column."""
@@ -376,6 +515,17 @@ class MeanAggregator(BaseAggregator):
 
     def _feature_expr(self, feat: str) -> pl.Expr:
         return self._native_clean(feat).list.mean().alias(f"{feat}{self._stat_suffix}")
+
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        Identity: the one-sample :meth:`null_comparison_statistic` default
+        already computes ``abs(stat(h1) - stat(h2))``, non-negative by
+        construction, so no additional recentering is needed. This override
+        exists purely to flip WT-null eligibility on -- see
+        :meth:`BaseAggregator.null_statistic_transform`'s
+        :exc:`NotImplementedError` default.
+        """
+        return expr
 
 
 class MedianAggregator(BaseAggregator):
@@ -388,9 +538,25 @@ class MedianAggregator(BaseAggregator):
             self._native_clean(feat).list.median().alias(f"{feat}{self._stat_suffix}")
         )
 
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """Identity -- see :meth:`MeanAggregator.null_statistic_transform`."""
+        return expr
+
 
 class MADAggregator(BaseAggregator):
-    """Computes per-group median absolute deviation (MAD) for each feature column."""
+    """
+    Computes per-group median absolute deviation (MAD) for each feature column.
+
+    Deliberately does NOT override :meth:`null_statistic_transform` (unlike
+    :class:`MeanAggregator`/:class:`MedianAggregator`/:class:`StdAggregator`)
+    -- MAD stays WT-null-*ineligible*. Mechanically it would be the same
+    one-sample diff shape as median, but MAD's own sampling distribution is
+    lumpier at small per-half cell counts or with quantized/low-cardinality
+    features (it's itself a median of within-group deviations), which may
+    make a Tukey fence anchored on its diff-of-MADs null less stable than
+    for the other summary statistics. Revisit once that's been validated on
+    real data.
+    """
 
     _stat_suffix = "_MAD"
 
@@ -419,6 +585,10 @@ class StdAggregator(BaseAggregator):
             .list.std(ddof=1)
             .alias(f"{feat}{self._stat_suffix}")
         )
+
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """Identity -- see :meth:`MeanAggregator.null_statistic_transform`."""
+        return expr
 
 
 class KSAggregator(ReferenceBasedAggregator):
@@ -492,6 +662,13 @@ class KSAggregator(ReferenceBasedAggregator):
         )
         return result.alias(alias)
 
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        Identity -- KS is already >= 0 with the WT-vs-WT null centered near
+        0, so no recentering is needed.
+        """
+        return expr
+
 
 class KSNegLogPValueAggregator(KSAggregator):
     """
@@ -540,6 +717,24 @@ class KSNegLogPValueAggregator(KSAggregator):
     """
 
     _stat_suffix = "_KSnegLogP"
+
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        Deliberately NOT overridden with a concrete transform, despite
+        inheriting from :class:`KSAggregator` (which is). Without this
+        explicit re-raise, this class would silently inherit
+        :class:`KSAggregator`'s transform via MRO and become WT-null-eligible
+        by accident. The ``-log10(p)`` transform's null-population shape
+        (unbounded, strongly ``n_group``/``n_ref``-dependent, unlike the
+        bounded D statistic itself) has not been characterized well enough
+        to trust a Tukey-fence gate built on it. Revisit once that work is
+        done; until then this aggregator is WT-null-ineligible by design,
+        not by omission.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} is not WT-null-eligible: its -log10(p) "
+            "null-statistic shape has not been characterized."
+        )
 
     @staticmethod
     def _neg_log10_kolmogorov_pvalue_expr(
@@ -716,6 +911,14 @@ class SignedKSAggregator(ReferenceBasedAggregator):
         )
         return result.alias(alias)
 
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        ``abs()`` -- same magnitude as :class:`KSAggregator`'s statistic but
+        signed; the sign is meaningless for a same-population WT-vs-WT
+        comparison, so this recovers the magnitude.
+        """
+        return expr.abs()
+
 
 class QQCorrelationAggregator(ReferenceBasedAggregator):
     """
@@ -847,6 +1050,15 @@ class QQCorrelationAggregator(ReferenceBasedAggregator):
         )
         return result.alias(alias)
 
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        ``1 - expr`` -- identical distributions give QQ correlation ~= 1,
+        so a LOW QQ indicates divergence; this flips the direction so
+        "larger = more suspicious" matches the other reference-based
+        aggregators.
+        """
+        return 1 - expr
+
 
 class AUROCAggregator(ReferenceBasedAggregator):
     """
@@ -917,6 +1129,13 @@ class AUROCAggregator(ReferenceBasedAggregator):
         )
         return result.alias(alias)
 
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        ``abs(expr - 0.5)`` -- AUROC's null centers at 0.5, not 0, so this
+        recenters it before the Tukey fence.
+        """
+        return (expr - 0.5).abs()
+
 
 class AUROCNegLogPValueAggregator(AUROCAggregator):
     """
@@ -973,6 +1192,25 @@ class AUROCNegLogPValueAggregator(AUROCAggregator):
     """
 
     _stat_suffix = "_AUROCnegLogP"
+
+    def null_statistic_transform(self, expr: pl.Expr) -> pl.Expr:
+        """
+        Deliberately NOT overridden with a concrete transform, despite
+        inheriting from :class:`AUROCAggregator` (which is). Without this
+        explicit re-raise, this class would silently inherit
+        :class:`AUROCAggregator`'s transform via MRO and become
+        WT-null-eligible by accident. The ``-log10(p)`` transform's
+        null-population shape (unbounded, strongly
+        ``n_group``/``n_ref``-dependent, unlike the bounded U statistic
+        itself) has not been characterized well enough to trust a
+        Tukey-fence gate built on it. Revisit once that work is done; until
+        then this aggregator is WT-null-ineligible by design, not by
+        omission.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} is not WT-null-eligible: its -log10(p) "
+            "null-statistic shape has not been characterized."
+        )
 
     @staticmethod
     def _u_col(feat: str) -> str:
@@ -1229,6 +1467,39 @@ _AGGREGATORS: dict[str, type[BaseAggregator]] = {
 }
 
 
+def is_null_eligible(aggregator_name: str) -> bool:
+    """
+    True if ``aggregator_name`` names a registered, WT-null-eligible
+    aggregator -- one whose :meth:`BaseAggregator.null_statistic_transform`
+    is concretely overridden rather than raising :exc:`NotImplementedError`.
+    ``False`` for an unknown name.
+
+    Cheap: constructs a throwaway instance (every registered aggregator's
+    constructor parameters are all defaulted) and probes
+    ``null_statistic_transform`` against a dummy expression; touches no
+    data, no I/O. Replaces membership-testing what used to be a
+    hand-maintained module-level dict in :mod:`.wtnullaggregate`.
+    """
+    cls = _AGGREGATORS.get(aggregator_name)
+    if cls is None:
+        return False
+    try:
+        cls().null_statistic_transform(pl.col("__null_eligibility_probe__"))
+    except NotImplementedError:
+        return False
+    return True
+
+
+def null_eligible_aggregator_names() -> list[str]:
+    """
+    Sorted names of every registered aggregator for which
+    :func:`is_null_eligible` is ``True`` -- the authoritative WT-null-eligible
+    set, recomputed from the class hierarchy instead of a hand-maintained
+    list, so the two can never drift apart.
+    """
+    return sorted(name for name in _AGGREGATORS if is_null_eligible(name))
+
+
 def aggregate(
     lf: pl.LazyFrame,
     label_col: str,
@@ -1285,6 +1556,69 @@ def aggregate(
         barcode_column=barcode_column,
     )
     return agg.aggregate(lf)
+
+
+def null_comparison_statistic(
+    h1_lf: pl.LazyFrame,
+    h2_lf: pl.LazyFrame,
+    label_col: str,
+    label_value: str,
+    aggregator_name: str,
+    block_list: Optional[set[str]] = None,
+    per_barcode: bool = False,
+    barcode_column: str = META_BARCODE_COL,
+) -> pl.LazyFrame:
+    """
+    Run ``aggregator_name``'s WT-null (same-population) comparison between
+    two already-split control-pool halves and return a long-format
+    (``feature``, ``value``) LazyFrame -- the WT-null analogue of
+    :func:`aggregate`.
+
+    Parameters
+    ----------
+    h1_lf, h2_lf : pl.LazyFrame
+        Two disjoint halves of a control pool (e.g. from
+        :func:`split_control_pool`), each with the same feature schema.
+    label_col : str
+        Name of the synthetic group column both halves get relabeled under.
+        Consumed once here, to construct the aggregator instance -- mirrors
+        :func:`aggregate`'s ``label_col``.
+    label_value : str
+        The single synthetic group value both halves are relabeled to.
+    aggregator_name : str
+        WT-null-eligible aggregator name. See
+        :func:`null_eligible_aggregator_names` for the current eligible set.
+    block_list, per_barcode, barcode_column
+        Forwarded to the aggregator constructor -- see :func:`aggregate`.
+
+    Returns
+    -------
+    pl.LazyFrame
+        Long-format frame with columns ``feature``, ``value``.
+
+    Raises
+    ------
+    ValueError
+        If ``aggregator_name`` does not name a registered aggregator.
+    NotImplementedError
+        If ``aggregator_name`` names a registered but WT-null-*ineligible*
+        aggregator (its ``null_statistic_transform`` is not concretely
+        overridden). Callers that need a friendlier, domain-specific message
+        should check :func:`is_null_eligible` first (see
+        :mod:`.wtnullaggregate`'s ``main``).
+    """
+    valid = set(_AGGREGATORS)
+    if aggregator_name not in valid:
+        raise ValueError(
+            f"Unknown aggregator {aggregator_name!r}. Choose from: {sorted(valid)}"
+        )
+    agg = _AGGREGATORS[aggregator_name](
+        label_col=label_col,
+        block_list=block_list,
+        per_barcode=per_barcode,
+        barcode_column=barcode_column,
+    )
+    return agg.null_comparison_statistic(h1_lf, h2_lf, label_value)
 
 
 @hydra.main(version_base=None, config_path=None, config_name="aggregate_main")
