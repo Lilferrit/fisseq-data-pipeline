@@ -10,13 +10,17 @@ nextflow.enable.dsl = 2
 process AGGREGATE_FEATURE_TYPE {
     errorStrategy 'ignore'
     label 'process_medium'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}/aggregates" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(cells_glob), val(feature_type), val(publish_subdir), val(downsample_wt)
+    tuple val(batch_key), val(cells_glob), val(feature_type), val(publish_subdir)
 
     output:
     tuple val(batch_key), val(feature_type), path("${feature_type}.parquet")
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     """
@@ -26,8 +30,8 @@ process AGGREGATE_FEATURE_TYPE {
         output_root=${feature_type} \\
         "input_file=${cells_glob}" \\
         aggregator=${feature_type} \\
-        downsample_wt=${downsample_wt} \\
-        seed=0
+        downsample_wt=${params.feature_select_downsample_wt} \\
+        random_seed=${params.random_seed}
     mv ${feature_type}.*.parquet ${feature_type}.parquet
     """
 }

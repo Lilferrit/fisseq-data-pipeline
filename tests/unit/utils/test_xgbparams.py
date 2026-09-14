@@ -1,15 +1,18 @@
+import dataclasses
+
 import numpy as np
 import polars as pl
+import pytest
 import xgboost as xgb
+from omegaconf import DictConfig, OmegaConf
 
 from fisseq_data_pipeline.utils.xgbparams import (
     XGBoostConfig,
     XGBoostParams,
     get_dmatrix,
-    get_dmatrix_multiclass,
     get_feature_cols,
-    resolve_feature_importance,
     split_indices_stratified,
+    train_binary_xgboost,
 )
 
 
@@ -129,43 +132,6 @@ def test_get_dmatrix_neg_inf_replaced_with_nan():
 
 
 # ---------------------------------------------------------------------------
-# get_dmatrix_multiclass
-# ---------------------------------------------------------------------------
-
-
-def test_get_dmatrix_multiclass_shape():
-    df = _make_multiclass_df(n_per_class=20, classes=["a", "b", "c"])
-    feature_cols = ["Intensity_Mean", "Texture_Var"]
-    dm, classes = get_dmatrix_multiclass(df, feature_cols, "batch")
-    assert dm.num_row() == 60
-    assert dm.num_col() == 2
-
-
-def test_get_dmatrix_multiclass_classes_sorted():
-    df = _make_multiclass_df(classes=["gamma", "alpha", "beta"])
-    feature_cols = ["Intensity_Mean", "Texture_Var"]
-    _, classes = get_dmatrix_multiclass(df, feature_cols, "batch")
-    assert classes == sorted(classes)
-
-
-def test_get_dmatrix_multiclass_labels_are_integers_in_range():
-    df = _make_multiclass_df(n_per_class=10, classes=["a", "b", "c"])
-    feature_cols = ["Intensity_Mean", "Texture_Var"]
-    dm, classes = get_dmatrix_multiclass(df, feature_cols, "batch")
-    labels = dm.get_label().astype(int)
-    assert set(labels) == set(range(len(classes)))
-
-
-def test_get_dmatrix_multiclass_inf_replaced_with_nan():
-    df = _make_multiclass_df(n_per_class=10).with_columns(
-        pl.lit(float("inf")).alias("Inf_Feature")
-    )
-    feature_cols = ["Intensity_Mean", "Texture_Var", "Inf_Feature"]
-    dm, _ = get_dmatrix_multiclass(df, feature_cols, "batch")
-    assert dm.num_row() == len(df)
-
-
-# ---------------------------------------------------------------------------
 # split_indices_stratified
 # ---------------------------------------------------------------------------
 
@@ -205,53 +171,6 @@ def test_split_indices_stratified_preserves_class_ratio():
 
 
 # ---------------------------------------------------------------------------
-# resolve_feature_importance
-# ---------------------------------------------------------------------------
-
-
-def _train_separable_model() -> tuple[xgb.Booster, list[str]]:
-    """A model where Intensity_Mean (feature index 0) is the only useful split."""
-    df = _make_df(n=40)
-    feature_cols = ["Intensity_Mean", "Texture_Var"]
-    dm = get_dmatrix(df, "label", "WT")
-    model = xgb.train({"objective": "binary:logistic"}, dm, num_boost_round=5)
-    return model, feature_cols
-
-
-def test_resolve_feature_importance_keys_are_real_feature_names():
-    model, feature_cols = _train_separable_model()
-    importance = resolve_feature_importance(model, feature_cols)
-    assert set(importance.keys()).issubset(set(feature_cols))
-
-
-def test_resolve_feature_importance_no_f_prefixed_keys_remain():
-    model, feature_cols = _train_separable_model()
-    importance = resolve_feature_importance(model, feature_cols)
-    assert not any(key.startswith("f") and key[1:].isdigit() for key in importance)
-
-
-def test_resolve_feature_importance_values_are_positive():
-    model, feature_cols = _train_separable_model()
-    importance = resolve_feature_importance(model, feature_cols)
-    assert all(value > 0 for value in importance.values())
-
-
-def test_resolve_feature_importance_matches_raw_score_by_index():
-    model, feature_cols = _train_separable_model()
-    raw = model.get_score(importance_type="gain")
-    importance = resolve_feature_importance(model, feature_cols)
-    for feat, value in raw.items():
-        assert importance[feature_cols[int(feat[1:])]] == value
-
-
-def test_resolve_feature_importance_respects_importance_type():
-    model, feature_cols = _train_separable_model()
-    gain = resolve_feature_importance(model, feature_cols, importance_type="gain")
-    weight = resolve_feature_importance(model, feature_cols, importance_type="weight")
-    assert gain != weight
-
-
-# ---------------------------------------------------------------------------
 # XGBoostParams / XGBoostConfig dataclasses
 # ---------------------------------------------------------------------------
 
@@ -269,3 +188,65 @@ def test_xgboost_config_defaults():
     assert c.early_stopping_rounds == 5
     assert c.weigh_samples is True
     assert isinstance(c.params, XGBoostParams)
+
+
+# ---------------------------------------------------------------------------
+# train_binary_xgboost
+# ---------------------------------------------------------------------------
+
+
+def _train_cfg(**overrides) -> DictConfig:
+    """A DictConfig shaped like OvwtConfig, which is what the real caller passes."""
+    base = {
+        "label_column": "label",
+        "wt_label": "WT",
+        "random_seed": 0,
+        "xgboost": OmegaConf.structured(XGBoostConfig()),
+    }
+    base.update(overrides)
+    return OmegaConf.create(base)
+
+
+def _separable_df(n: int = 60) -> pl.DataFrame:
+    """WT and V1 cleanly separated on Intensity_Mean, noise on Texture_Var."""
+    rng = np.random.default_rng(0)
+    half = n // 2
+    return pl.DataFrame(
+        {
+            "Intensity_Mean": np.concatenate(
+                [rng.normal(0.0, 0.1, half), rng.normal(5.0, 0.1, half)]
+            ).tolist(),
+            "Texture_Var": rng.random(n).tolist(),
+            "label": ["WT"] * half + ["V1"] * half,
+        }
+    )
+
+
+def test_train_binary_xgboost_returns_booster():
+    df = _separable_df()
+    model = train_binary_xgboost(df, df, _train_cfg())
+    assert isinstance(model, xgb.Booster)
+
+
+def test_train_binary_xgboost_learns_separable_signal():
+    df = _separable_df()
+    model = train_binary_xgboost(df, df, _train_cfg())
+    scores = model.predict(get_dmatrix(df, "label", "WT"))
+    is_wt = df.get_column("label").to_numpy() == "WT"
+    # Predicts P(wildtype), so WT rows must score above variant rows.
+    assert scores[is_wt].mean() > scores[~is_wt].mean()
+
+
+def test_train_binary_xgboost_is_seeded_by_random_seed():
+    df = _separable_df()
+    a = train_binary_xgboost(df, df, _train_cfg(random_seed=7))
+    b = train_binary_xgboost(df, df, _train_cfg(random_seed=7))
+    dm = get_dmatrix(df, "label", "WT")
+    np.testing.assert_allclose(a.predict(dm), b.predict(dm))
+
+
+def test_train_binary_xgboost_rejects_plain_dataclass_config():
+    """dict(cfg.xgboost.params) needs a DictConfig, not a bare dataclass."""
+    df = _separable_df()
+    with pytest.raises(Exception):
+        train_binary_xgboost(df, df, dataclasses.make_dataclass("C", [])())

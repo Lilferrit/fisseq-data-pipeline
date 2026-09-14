@@ -17,6 +17,13 @@ EPS: np.floating[Any] = np.finfo(np.float32).eps
 CONTROL_COLUMN_NAME: str = "meta_is_control"
 CONTROL_COLUMN: pl.Expr = pl.col(CONTROL_COLUMN_NAME)
 META_BARCODE_COL: str = "meta_barcode"
+# Stable per-cell identity, assigned by QC_FILTER from the raw input row order
+# (see qcfilter.combine_cell_files). Polars inner joins are not order-preserving
+# under multithreading, so without an explicit key the published cell tables come
+# out in a different row order on every run -- which silently breaks every
+# downstream seeded step (OvWT's wildtype downsample and fold assignment, the
+# feature-selection bootstrap splits) even at a fixed random_seed.
+META_CELL_INDEX_COL: str = "meta_cell_index"
 META_BATCH_COL: str = "meta_batch"
 META_EDIT_DISTANCE_COL: str = "meta_edit_distance"
 META_VARIANT_TAG_COL: str = "meta_variant_tag"

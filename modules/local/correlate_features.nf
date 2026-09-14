@@ -7,6 +7,7 @@ nextflow.enable.dsl = 2
 process CORRELATE_FEATURES {
     errorStrategy 'ignore'
     label 'process_low'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}/correlations/${feature_type}" }, mode: 'copy'
 
     input:
@@ -15,6 +16,9 @@ process CORRELATE_FEATURES {
     output:
     tuple val(batch_key), val(feature_type), val(bootstrap_idx), path("bootstrap_${bootstrap_idx}.parquet")
 
+    when:
+    task.ext.when == null || task.ext.when
+
     script:
     """
     echo "Starting CORRELATE_FEATURES for ${batch_key} / ${feature_type} / bootstrap ${bootstrap_idx}"
@@ -22,7 +26,7 @@ process CORRELATE_FEATURES {
         output_dir=. \\
         half1_file=${half1_agg} \\
         half2_file=${half2_agg} \\
-        label_column=meta_aa_changes
+        label_column=${params.filter_label_column}
     mv correlations.parquet bootstrap_${bootstrap_idx}.parquet
     """
 }

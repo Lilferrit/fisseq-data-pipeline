@@ -134,7 +134,7 @@ def make_feat_cfg(
     umap_n_neighbors: int = 2,
     umap_metric: str = "cosine",
     umap_min_dist: float = 0.1,
-    umap_random_state=42,
+    random_seed=42,
 ) -> OmegaConf:
     """Return a DictConfig for FinalizeFeatureSelectConfig with test defaults."""
     if feature_type_files is None:
@@ -156,7 +156,7 @@ def make_feat_cfg(
             umap_n_neighbors=umap_n_neighbors,
             umap_metric=umap_metric,
             umap_min_dist=umap_min_dist,
-            umap_random_state=umap_random_state,
+            random_seed=random_seed,
         )
     )
 

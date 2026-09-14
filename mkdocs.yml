@@ -12,30 +12,18 @@ nav:
       - Normalize: cli/normalize.md
       - Aggregate: cli/aggregate.md
       - Feature Selection: cli/features.md
-      - Batch Correction: cli/batchcorrect.md
-      - ANOVA: cli/anova.md
-      - ANOVA Block-list: cli/anovablocklist.md
+      - Global Feature Selection: cli/globalfeatureselect.md
       - One-vs-WT: cli/ovwt.md
-      - OvWT Cell Scores: cli/ovwtcellscores.md
-      - Check Barcodes: cli/checkbarcodes.md
-      - Barcode Block-list: cli/barcodeblocklist.md
-      - Batch vs. Batch: cli/batchvsbatch.md
-      - Wildtype vs. Wildtype: cli/wtvwt.md
+      - Global OvWT: cli/globalovwt.md
   - API Reference:
       - input: api/input.md
       - qcfilter: api/qcfilter.md
       - normalize: api/normalize.md
       - aggregate: api/aggregate.md
       - features: api/features.md
-      - batchcorrect: api/batchcorrect.md
-      - anova: api/anova.md
-      - anovablocklist: api/anovablocklist.md
+      - globalfeatureselect: api/globalfeatureselect.md
       - ovwt: api/ovwt.md
-      - ovwtcellscores: api/ovwtcellscores.md
-      - checkbarcodes: api/checkbarcodes.md
-      - barcodeblocklist: api/barcodeblocklist.md
-      - batchvsbatch: api/batchvsbatch.md
-      - wtvwt: api/wtvwt.md
+      - globalovwt: api/globalovwt.md
       - config: api/config.md
       - utils: api/utils.md
   - Walkthrough: walkthrough.md

@@ -24,12 +24,12 @@ def write_split_input_parquet(tmp_path) -> None:
     ).write_parquet(tmp_path / "split_input.parquet")
 
 
-def make_split_cfg(tmp_path, *, random_state: int = 0) -> OmegaConf:
+def make_split_cfg(tmp_path, *, random_seed: int = 0) -> OmegaConf:
     return OmegaConf.structured(
         m.GenerateSplitConfig(
             output_dir=str(tmp_path / "split_out"),
             input_file=str(tmp_path / "split_input.parquet"),
-            random_state=random_state,
+            random_seed=random_seed,
         )
     )
 
@@ -64,16 +64,16 @@ def test_main_halves_disjoint_and_cover_all_rows(tmp_path) -> None:
     assert half1 | half2 == set(range(16))
 
 
-def test_main_random_state_is_deterministic(tmp_path) -> None:
+def test_main_random_seed_is_deterministic(tmp_path) -> None:
     write_split_input_parquet(tmp_path)
     with patch("fisseq_data_pipeline.generatesplit.setup_logging"):
-        m.main.__wrapped__(make_split_cfg(tmp_path, random_state=7))
+        m.main.__wrapped__(make_split_cfg(tmp_path, random_seed=7))
     half1_first = sorted(
         pl.read_parquet(tmp_path / "split_out" / "half1.parquet")[TMP_IDX_COL].to_list()
     )
 
     with patch("fisseq_data_pipeline.generatesplit.setup_logging"):
-        m.main.__wrapped__(make_split_cfg(tmp_path, random_state=7))
+        m.main.__wrapped__(make_split_cfg(tmp_path, random_seed=7))
     half1_second = sorted(
         pl.read_parquet(tmp_path / "split_out" / "half1.parquet")[TMP_IDX_COL].to_list()
     )

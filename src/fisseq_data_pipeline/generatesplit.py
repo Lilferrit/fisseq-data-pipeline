@@ -14,7 +14,7 @@ import hydra
 import polars as pl
 import sklearn.model_selection
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING, DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .utils.batches import load_batches
@@ -31,17 +31,13 @@ class GenerateSplitConfig(LabeledInputConfig):
     Hydra structured configuration for the pseudo-replicate split-generation
     entry point.
 
-    Attributes
-    ----------
-    random_state : int
-        Seed for the stratified 50/50
-        :func:`sklearn.model_selection.train_test_split` by ``label_column``.
-        In the Nextflow pipeline this is set directly to the bootstrap-loop
-        index (``1..params.feature_select_bootstrap_reps``), so each bootstrap replicate gets a
-        distinct, reproducible split. Required.
+    Adds no fields of its own -- the stratified 50/50
+    :func:`sklearn.model_selection.train_test_split` is seeded from
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`. In the
+    Nextflow pipeline GENERATE_SPLIT passes ``random_seed + bootstrap_idx``, so
+    each bootstrap replicate still gets a distinct, reproducible split off the
+    one pipeline-wide seed.
     """
-
-    random_state: int = MISSING
 
 
 _cs.store(name="generate_split_main", node=GenerateSplitConfig)
@@ -72,7 +68,7 @@ def main(cfg: DictConfig) -> None:
         python -m fisseq_data_pipeline.generatesplit \\
             output_dir=./out \\
             input_file=data/normalized.parquet \\
-            random_state=3
+            random_seed=3
     """
     split_cfg: GenerateSplitConfig = OmegaConf.to_object(cfg)
 
@@ -89,7 +85,7 @@ def main(cfg: DictConfig) -> None:
     labels = get_column(lf, split_cfg.label_column)
 
     half1_idx, half2_idx, _, _ = sklearn.model_selection.train_test_split(
-        idx, labels, stratify=labels, random_state=split_cfg.random_state, test_size=0.5
+        idx, labels, stratify=labels, random_state=split_cfg.random_seed, test_size=0.5
     )
 
     logging.info(

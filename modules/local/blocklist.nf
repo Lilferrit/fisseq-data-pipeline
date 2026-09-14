@@ -7,13 +7,17 @@ nextflow.enable.dsl = 2
 process BLOCKLIST {
     errorStrategy 'ignore'
     label 'process_low'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}/blocklists" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir), val(minimum_correlation)
+    tuple val(batch_key), val(feature_type), path(correlation_files), val(publish_subdir)
 
     output:
     tuple val(batch_key), val(feature_type), path("${feature_type}.parquet")
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     """
@@ -21,7 +25,7 @@ process BLOCKLIST {
     python -m fisseq_data_pipeline.blocklist \\
         output_dir=. \\
         "correlation_files=*.parquet" \\
-        minimum_correlation=${minimum_correlation}
+        minimum_correlation=${params.feature_select_min_correlation}
     mv blocklist.parquet ${feature_type}.parquet
     """
 }

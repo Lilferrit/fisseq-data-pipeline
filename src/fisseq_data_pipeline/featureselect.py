@@ -11,7 +11,6 @@ import dataclasses
 import glob
 import logging
 import pathlib
-from typing import Optional
 
 import hydra
 import polars as pl
@@ -115,9 +114,14 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
     umap_min_dist : float
         ``umap.UMAP``'s minimum embedded distance between points. Defaults
         to ``0.1``.
-    umap_random_state : int or None
-        Seed for UMAP's fit. ``None`` disables seeding, enabling faster
-        nondeterministic multithreaded fitting. Defaults to ``42``.
+
+    Notes
+    -----
+    UMAP's fit is seeded from
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`. It used to
+    have its own nullable ``umap_random_state`` (``None`` opting into faster
+    nondeterministic multithreaded fitting); that knob is gone, so UMAP is now
+    always seeded.
     """
 
     feature_type_files: str = MISSING
@@ -130,7 +134,6 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
     umap_n_neighbors: int = 10
     umap_metric: str = "cosine"
     umap_min_dist: float = 0.1
-    umap_random_state: Optional[int] = 42
 
 
 _cs.store(name="feature_select_main", node=FinalizeFeatureSelectConfig)
@@ -254,7 +257,7 @@ def main(cfg: DictConfig) -> None:
                 feat_cfg.umap_n_neighbors,
                 feat_cfg.umap_metric,
                 feat_cfg.umap_min_dist,
-                feat_cfg.umap_random_state,
+                feat_cfg.random_seed,
             )
             normalized_df = normalized_df.join(umap_scores_df, on=feat_cfg.label_column)
 

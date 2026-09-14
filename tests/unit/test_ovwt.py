@@ -1,371 +1,113 @@
-from unittest.mock import patch
+"""Unit tests for the k-fold cross-validated OVWT_BATCHWISE stage.
+
+Fixture sizing note: the inner nested split (``split_indices_stratified``,
+80/10/10) runs *inside* each outer fold, so a ``(barcode, is_wt)`` stratum needs
+roughly 8-13 members to survive both levels -- merely having ``>= n_folds``
+members is not enough. Undersized fixtures make every variant fall into
+``ovwt_batchwise``'s per-variant ``except`` branch, and the test then passes
+against empty output while asserting nothing. These fixtures use ``n_folds=3``
+with ~15 cells per barcode for that reason; ``test_normal_variant_survives``
+guards the failure mode directly.
+"""
+
+import pathlib
+import subprocess
+import sys
 
 import numpy as np
 import polars as pl
 import pytest
-from omegaconf import OmegaConf
 
-import fisseq_data_pipeline.ovwt as m
 from fisseq_data_pipeline.ovwt import (
+    _MIN_STRATUM_SIZE,
     OvwtConfig,
-    _exclude_blocked_barcodes,
-    _exclude_blocked_features,
-    downsample_per_barcode,
+    _stratification_key,
     downsample_wildtype,
     filter_min_cells,
-    get_dmatrix,
-    get_feature_cols,
-    profile_variant,
-    read_feature_file,
-    train_test_val_split,
-    train_xgboost,
+    ovwt_batchwise,
+    predict_binary,
 )
-from fisseq_data_pipeline.ovwt import test_xgboost as evaluate_splits
-from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig, XGBoostParams
+from fisseq_data_pipeline.utils.xgbparams import XGBoostConfig
+
+LABEL = "meta_aa_changes"
+WT = "WT"
 
 
-def _make_df(
-    n: int = 20,
-    label_column: str = "label",
-    wt_label: str = "WT",
-    variant_label: str = "V1",
+def _cells(
+    variants: dict[str, int] | None = None,
+    wt_barcodes: int = 3,
+    cells_per_wt_barcode: int = 15,
+    barcodes_per_variant: int = 2,
+    seed: int = 0,
 ) -> pl.DataFrame:
-    rng = np.random.default_rng(0)
-    labels = [wt_label] * (n // 2) + [variant_label] * (n // 2)
-    return pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(n).tolist(),
-            "Texture_Var": rng.random(n).tolist(),
-            label_column: labels,
-        }
-    )
+    """
+    Cell-level frame with a real signal: variants sit away from WT on
+    Intensity_Mean, so the classifier has something to find.
 
+    ``variants`` maps a variant label to its per-barcode cell count.
+    """
+    variants = variants or {"M1K": 15, "A1A": 15}
+    rng = np.random.default_rng(seed)
+    rows = {LABEL: [], "meta_barcode": [], "Intensity_Mean": [], "Texture_Var": []}
 
-def _split_cfg(label_column: str = "label") -> OmegaConf:
-    return OmegaConf.create(
-        {
-            "label_column": label_column,
-            "wt_label": "WT",
-            "random_state": 0,
-            "feature_cols": None,
-            "min_cells": None,
-            "downsample_wt": False,
-            "max_cells_per_barcode_wt": None,
-            "max_cells_per_barcode_variant": None,
-            "feature_block_list_file": None,
-            "barcode_block_list_file": None,
-            "barcode_column": "meta_barcode",
-        }
-    )
+    for b in range(wt_barcodes):
+        n = cells_per_wt_barcode
+        rows[LABEL] += [WT] * n
+        rows["meta_barcode"] += [f"wt_bc{b}"] * n
+        rows["Intensity_Mean"] += rng.normal(0.0, 0.3, n).tolist()
+        rows["Texture_Var"] += rng.random(n).tolist()
 
+    for offset, (variant, per_barcode) in enumerate(variants.items(), start=1):
+        for b in range(barcodes_per_variant):
+            rows[LABEL] += [variant] * per_barcode
+            rows["meta_barcode"] += [f"{variant}_bc{b}"] * per_barcode
+            rows["Intensity_Mean"] += rng.normal(
+                3.0 * offset, 0.3, per_barcode
+            ).tolist()
+            rows["Texture_Var"] += rng.random(per_barcode).tolist()
 
-# ---------------------------------------------------------------------------
-# get_feature_cols
-# ---------------------------------------------------------------------------
-
-
-def test_get_feature_cols_returns_cellprofiler_columns():
-    df = pl.DataFrame({"Intensity_Mean": [1.0], "Texture_Var": [2.0], "label": ["WT"]})
-    assert get_feature_cols(df) == ["Intensity_Mean", "Texture_Var"]
-
-
-def test_get_feature_cols_excludes_lowercase_columns():
-    df = pl.DataFrame({"Intensity_Mean": [1.0], "metadata": ["foo"]})
-    assert get_feature_cols(df) == ["Intensity_Mean"]
-
-
-def test_get_feature_cols_excludes_uppercase_without_underscore():
-    df = pl.DataFrame({"Intensity_Mean": [1.0], "Intensity": [2.0]})
-    assert get_feature_cols(df) == ["Intensity_Mean"]
-
-
-def test_get_feature_cols_empty_dataframe():
-    df = pl.DataFrame({"label": []})
-    assert get_feature_cols(df) == []
-
-
-def test_get_feature_cols_no_matching_columns():
-    df = pl.DataFrame({"label": ["WT"], "metadata": ["foo"]})
-    assert get_feature_cols(df) == []
-
-
-def test_get_feature_cols_all_columns_match():
-    df = pl.DataFrame({"Intensity_Mean": [1.0], "Texture_Var": [2.0]})
-    assert set(get_feature_cols(df)) == {"Intensity_Mean", "Texture_Var"}
-
-
-# ---------------------------------------------------------------------------
-# get_dmatrix
-# ---------------------------------------------------------------------------
-
-
-def test_get_dmatrix_label_values():
-    df = _make_df(n=10)
-    dm = get_dmatrix(df, "label", "WT")
-    assert set(dm.get_label()) == {0.0, 1.0}
-
-
-def test_get_dmatrix_wt_label_is_true():
-    df = _make_df(n=10)
-    dm = get_dmatrix(df, "label", "WT")
-    # 5 WT rows → 5 True (1.0) labels
-    assert dm.get_label().sum() == 5.0
-
-
-def test_get_dmatrix_shape():
-    df = _make_df(n=20)
-    dm = get_dmatrix(df, "label", "WT")
-    assert dm.num_row() == 20
-    assert dm.num_col() == 2  # Intensity_Mean, Texture_Var
-
-
-def test_get_dmatrix_with_weights():
-    df = _make_df(n=10)
-    weights = np.full(10, 2.0)
-    dm = get_dmatrix(df, "label", "WT", weight=weights)
-    np.testing.assert_array_equal(dm.get_weight(), weights)
-
-
-def test_get_dmatrix_no_weights_by_default():
-    df = _make_df(n=10)
-    dm = get_dmatrix(df, "label", "WT")
-    assert len(dm.get_weight()) == 0
-
-
-def test_get_dmatrix_inf_replaced_with_nan():
-    df = _make_df(n=10)
-    df = df.with_columns(pl.lit(float("inf")).alias("Inf_Feature"))
-    # Should not raise; inf values are coerced to nan (missing)
-    dm = get_dmatrix(df, "label", "WT")
-    assert dm.num_row() == 10
-
-
-def test_get_dmatrix_neg_inf_replaced_with_nan():
-    df = _make_df(n=10)
-    df = df.with_columns(pl.lit(float("-inf")).alias("NegInf_Feature"))
-    dm = get_dmatrix(df, "label", "WT")
-    assert dm.num_row() == 10
-
-
-def test_get_dmatrix_mixed_inf_and_valid_values():
-    rng = np.random.default_rng(0)
-    values = rng.random(10).tolist()
-    values[0] = float("inf")
-    values[5] = float("-inf")
-    df = pl.DataFrame({"Intensity_Mean": values, "label": ["WT"] * 5 + ["V1"] * 5})
-    dm = get_dmatrix(df, "label", "WT")
-    assert dm.num_row() == 10
-
-
-# ---------------------------------------------------------------------------
-# read_feature_file
-# ---------------------------------------------------------------------------
-
-
-def test_read_feature_file_parquet(tmp_path):
-    df = pl.DataFrame({"Intensity_Mean": [1.0, 2.0], "label": ["WT", "V1"]})
-    path = tmp_path / "data.parquet"
-    df.write_parquet(path)
-    assert read_feature_file(path).equals(df)
-
-
-def test_read_feature_file_pq_extension(tmp_path):
-    df = pl.DataFrame({"Intensity_Mean": [1.0, 2.0], "label": ["WT", "V1"]})
-    path = tmp_path / "data.pq"
-    df.write_parquet(path)
-    assert read_feature_file(path).equals(df)
-
-
-def test_read_feature_file_csv(tmp_path):
-    df = pl.DataFrame({"Intensity_Mean": [1.0, 2.0], "label": ["WT", "V1"]})
-    path = tmp_path / "data.csv"
-    df.write_csv(path)
-    assert read_feature_file(path).equals(df)
-
-
-def test_read_feature_file_unsupported_extension(tmp_path):
-    path = tmp_path / "data.txt"
-    path.write_text("hello")
-    with pytest.raises(ValueError, match="Unsupported file format"):
-        read_feature_file(path)
-
-
-# ---------------------------------------------------------------------------
-# downsample_wildtype
-# ---------------------------------------------------------------------------
-
-
-def _make_multilabel_df(wt_count: int, variant_counts: dict[str, int]) -> pl.DataFrame:
-    """Build a DataFrame with WT rows and multiple named variants."""
-    rng = np.random.default_rng(0)
-    rows: dict[str, list] = {"Intensity_Mean": [], "label": []}
-    for _ in range(wt_count):
-        rows["Intensity_Mean"].append(rng.random())
-        rows["label"].append("WT")
-    for label, n in variant_counts.items():
-        for _ in range(n):
-            rows["Intensity_Mean"].append(rng.random())
-            rows["label"].append(label)
     return pl.DataFrame(rows)
 
 
-def test_downsample_wildtype_reduces_wt_to_max_variant():
-    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30, "V2": 20})
-    result = downsample_wildtype(df, "label", "WT", seed=0)
-    wt_count = (result.get_column("label") == "WT").sum()
-    assert wt_count == 30
-
-
-def test_downsample_wildtype_preserves_all_variant_rows():
-    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30, "V2": 20})
-    result = downsample_wildtype(df, "label", "WT", seed=0)
-    assert (result.get_column("label") == "V1").sum() == 30
-    assert (result.get_column("label") == "V2").sum() == 20
-
-
-def test_downsample_wildtype_no_op_when_wt_already_smaller():
-    df = _make_multilabel_df(wt_count=10, variant_counts={"V1": 30})
-    result = downsample_wildtype(df, "label", "WT", seed=0)
-    assert (result.get_column("label") == "WT").sum() == 10
-
-
-def test_downsample_wildtype_no_op_when_wt_equals_max_variant():
-    df = _make_multilabel_df(wt_count=30, variant_counts={"V1": 30})
-    result = downsample_wildtype(df, "label", "WT", seed=0)
-    assert (result.get_column("label") == "WT").sum() == 30
-
-
-def test_downsample_wildtype_reproducible_with_same_seed():
-    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 40})
-    r1 = downsample_wildtype(df, "label", "WT", seed=7)
-    r2 = downsample_wildtype(df, "label", "WT", seed=7)
-    wt1 = r1.filter(pl.col("label") == "WT").sort("Intensity_Mean")
-    wt2 = r2.filter(pl.col("label") == "WT").sort("Intensity_Mean")
-    assert wt1.equals(wt2)
-
-
-def test_downsample_wildtype_total_row_count():
-    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30, "V2": 20})
-    result = downsample_wildtype(df, "label", "WT", seed=0)
-    assert len(result) == 30 + 30 + 20
-
-
-def test_downsample_wildtype_integer_reduces_wt_to_target():
-    df = _make_multilabel_df(wt_count=100, variant_counts={"V1": 30})
-    result = downsample_wildtype(df, "label", "WT", seed=0, n=50)
-    assert (result.get_column("label") == "WT").sum() == 50
-
-
-def test_downsample_wildtype_integer_no_op_when_wt_smaller_than_target():
-    df = _make_multilabel_df(wt_count=40, variant_counts={"V1": 30})
-    result = downsample_wildtype(df, "label", "WT", seed=0, n=5000)
-    assert (result.get_column("label") == "WT").sum() == 40
-
-
-def test_downsample_wildtype_integer_no_op_when_wt_equals_target():
-    df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 30})
-    result = downsample_wildtype(df, "label", "WT", seed=0, n=50)
-    assert (result.get_column("label") == "WT").sum() == 50
+def _cfg(**overrides) -> OvwtConfig:
+    base = dict(
+        output_dir="unused",
+        input_file="unused",
+        label_column=LABEL,
+        wt_label=WT,
+        n_folds=3,
+        calibrate=True,
+        min_cells=None,
+        downsample_wt=False,
+        random_seed=0,
+        xgboost=XGBoostConfig(),
+    )
+    base.update(overrides)
+    return OvwtConfig(**base)
 
 
 # ---------------------------------------------------------------------------
-# downsample_per_barcode
+# Config defaults
 # ---------------------------------------------------------------------------
 
 
-def _make_per_barcode_df(
-    wt_barcode_counts: dict[str, int],
-    variant_barcode_counts: dict[str, int],
-    variant_label: str = "V1",
-) -> pl.DataFrame:
-    """Build a DataFrame with explicit per-barcode cell counts, split WT/variant."""
-    rng = np.random.default_rng(0)
-    barcodes: list[str] = []
-    labels: list[str] = []
-    for bc, n in wt_barcode_counts.items():
-        barcodes.extend([bc] * n)
-        labels.extend(["WT"] * n)
-    for bc, n in variant_barcode_counts.items():
-        barcodes.extend([bc] * n)
-        labels.extend([variant_label] * n)
-    return pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(len(labels)).tolist(),
-            "label": labels,
-            "meta_barcode": barcodes,
-        }
-    )
+def test_config_defaults():
+    cfg = OvwtConfig(output_dir="o", input_file="i")
+    assert cfg.wt_label == "WT"
+    assert cfg.n_folds == 5
+    assert cfg.calibrate is True
+    assert cfg.min_cells == 250
+    assert cfg.downsample_wt is True
+    assert cfg.label_column == "meta_aa_changes"
+    assert isinstance(cfg.xgboost, XGBoostConfig)
 
 
-def test_downsample_per_barcode_caps_wt_barcode():
-    df = _make_per_barcode_df({"bc1": 50, "bc2": 10}, {"bc_v1": 20})
-    result = downsample_per_barcode(
-        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20
-    )
-    counts = result.filter(pl.col("label") == "WT").group_by("meta_barcode").len()
-    assert counts.filter(pl.col("meta_barcode") == "bc1")["len"][0] == 20
-    assert counts.filter(pl.col("meta_barcode") == "bc2")["len"][0] == 10
-
-
-def test_downsample_per_barcode_caps_variant_barcode():
-    df = _make_per_barcode_df({"bc1": 10}, {"bc_v1": 50, "bc_v2": 5})
-    result = downsample_per_barcode(
-        df, "meta_barcode", "label", "WT", seed=0, max_cells_variant=15
-    )
-    counts = result.filter(pl.col("label") != "WT").group_by("meta_barcode").len()
-    assert counts.filter(pl.col("meta_barcode") == "bc_v1")["len"][0] == 15
-    assert counts.filter(pl.col("meta_barcode") == "bc_v2")["len"][0] == 5
-
-
-def test_downsample_per_barcode_caps_are_independent():
-    df = _make_per_barcode_df({"bc1": 50}, {"bc_v1": 30})
-    result = downsample_per_barcode(
-        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20, max_cells_variant=10
-    )
-    assert (result.get_column("label") == "WT").sum() == 20
-    assert (result.get_column("label") == "V1").sum() == 10
-
-
-def test_downsample_per_barcode_none_caps_no_op():
-    df = _make_per_barcode_df({"bc1": 50}, {"bc_v1": 30})
-    result = downsample_per_barcode(df, "meta_barcode", "label", "WT", seed=0)
-    assert len(result) == len(df)
-
-
-def test_downsample_per_barcode_no_op_when_already_under_cap():
-    df = _make_per_barcode_df({"bc1": 5}, {"bc_v1": 5})
-    result = downsample_per_barcode(
-        df,
-        "meta_barcode",
-        "label",
-        "WT",
-        seed=0,
-        max_cells_wt=100,
-        max_cells_variant=100,
-    )
-    assert len(result) == len(df)
-
-
-def test_downsample_per_barcode_reproducible_with_same_seed():
-    df = _make_per_barcode_df({"bc1": 50}, {"bc_v1": 30})
-    result1 = downsample_per_barcode(
-        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20
-    )
-    result2 = downsample_per_barcode(
-        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=20
-    )
-    assert sorted(result1["Intensity_Mean"].to_list()) == sorted(
-        result2["Intensity_Mean"].to_list()
-    )
-
-
-def test_downsample_per_barcode_multiple_barcodes_capped_independently():
-    df = _make_per_barcode_df({"bc1": 30, "bc2": 40}, {})
-    result = downsample_per_barcode(
-        df, "meta_barcode", "label", "WT", seed=0, max_cells_wt=25
-    )
-    counts = result.group_by("meta_barcode").len().sort("meta_barcode")
-    assert counts["len"].to_list() == [25, 25]
+def test_config_has_no_stage_local_seed():
+    """AppConfig.random_seed is the only seed -- see config/app.py."""
+    fields = {f for f in OvwtConfig.__dataclass_fields__}
+    assert "random_state" not in fields
+    assert "seed" not in fields
+    assert OvwtConfig(output_dir="o", input_file="i").random_seed == 0
 
 
 # ---------------------------------------------------------------------------
@@ -373,686 +115,321 @@ def test_downsample_per_barcode_multiple_barcodes_capped_independently():
 # ---------------------------------------------------------------------------
 
 
-def test_filter_min_cells_removes_variants_below_threshold():
-    df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 10, "V2": 3})
-    result = filter_min_cells(df, "label", "WT", min_cells=5)
-    assert "V2" not in result.get_column("label").to_list()
-    assert "V1" in result.get_column("label").to_list()
+def test_filter_min_cells_none_is_no_op():
+    df = _cells()
+    assert filter_min_cells(df, LABEL, WT, None).equals(df)
 
 
-def test_filter_min_cells_retains_variants_at_threshold():
-    df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 5, "V2": 4})
-    result = filter_min_cells(df, "label", "WT", min_cells=5)
-    assert "V1" in result.get_column("label").to_list()
-    assert "V2" not in result.get_column("label").to_list()
+def test_filter_min_cells_drops_small_variants():
+    df = _cells(variants={"BIG": 15, "SMALL": 2})
+    out = filter_min_cells(df, LABEL, WT, min_cells=20)
+    labels = set(out.get_column(LABEL).unique().to_list())
+    assert "BIG" in labels
+    assert "SMALL" not in labels
 
 
-def test_filter_min_cells_always_retains_wt():
-    df = _make_multilabel_df(wt_count=3, variant_counts={"V1": 10})
-    result = filter_min_cells(df, "label", "WT", min_cells=5)
-    assert (result.get_column("label") == "WT").sum() == 3
-
-
-def test_filter_min_cells_no_op_when_all_pass():
-    df = _make_multilabel_df(wt_count=20, variant_counts={"V1": 10, "V2": 8})
-    result = filter_min_cells(df, "label", "WT", min_cells=5)
-    assert len(result) == len(df)
-
-
-def test_filter_min_cells_removes_all_variants_when_none_pass():
-    df = _make_multilabel_df(wt_count=20, variant_counts={"V1": 2, "V2": 3})
-    result = filter_min_cells(df, "label", "WT", min_cells=10)
-    assert set(result.get_column("label").to_list()) == {"WT"}
-
-
-def test_filter_min_cells_row_count():
-    df = _make_multilabel_df(wt_count=20, variant_counts={"V1": 10, "V2": 3})
-    result = filter_min_cells(df, "label", "WT", min_cells=5)
-    assert len(result) == 20 + 10
+def test_filter_min_cells_always_keeps_wildtype():
+    # WT has 3 barcodes x 15 cells = 45, far below this threshold
+    df = _cells(variants={"BIG": 15})
+    out = filter_min_cells(df, LABEL, WT, min_cells=1000)
+    assert WT in out.get_column(LABEL).unique().to_list()
 
 
 # ---------------------------------------------------------------------------
-# train_test_val_split
+# downsample_wildtype
 # ---------------------------------------------------------------------------
 
 
-def test_train_test_val_split_sizes():
-    # 100 rows → 80 train, 10 test, 10 val
-    df = _make_df(n=100)
-    train, test, val = train_test_val_split(df, _split_cfg())
-    assert len(train) == 80
-    assert len(test) == 10
-    assert len(val) == 10
+def test_downsample_wildtype_no_op_when_already_small():
+    df = _cells(wt_barcodes=1, cells_per_wt_barcode=5, variants={"M1K": 30})
+    assert len(downsample_wildtype(df, LABEL, WT, seed=0)) == len(df)
 
 
-def test_train_test_val_split_no_overlap():
-    df = _make_df(n=100)
-    train, test, val = train_test_val_split(df, _split_cfg())
-    train_idx = set(train["__row_idx__"].to_list())
-    test_idx = set(test["__row_idx__"].to_list())
-    val_idx = set(val["__row_idx__"].to_list())
-    assert train_idx.isdisjoint(test_idx)
-    assert train_idx.isdisjoint(val_idx)
-    assert test_idx.isdisjoint(val_idx)
-    assert len(train) + len(test) + len(val) == 100
-
-
-def test_train_test_val_split_excludes_non_feature_columns():
-    df = _make_df(n=100).with_columns(pl.lit(0).alias("lowercase_extra"))
-    train, test, val = train_test_val_split(df, _split_cfg())
-    for split in (train, test, val):
-        assert "lowercase_extra" not in split.columns
-        assert set(split.columns) == {
-            "Intensity_Mean",
-            "Texture_Var",
-            "label",
-            "__row_idx__",
-        }
-
-
-def test_train_test_val_split_returns_row_idx_column():
-    df = _make_df(n=100)
-    train, test, val = train_test_val_split(df, _split_cfg())
-    for split in (train, test, val):
-        assert "__row_idx__" in split.columns
-
-
-def test_train_test_val_split_row_idx_are_original_positions():
-    df = _make_df(n=100)
-    train, test, val = train_test_val_split(df, _split_cfg())
-    all_idx = set()
-    for split in (train, test, val):
-        for i in split["__row_idx__"].to_list():
-            assert 0 <= i < 100
-        all_idx.update(split["__row_idx__"].to_list())
-    assert all_idx == set(range(100))
-
-
-def test_train_test_val_split_row_idx_excludes_filtered_rows():
-    # V2 has only 2 cells — below min_cells=10 — so its rows should be absent
-    df = _make_multilabel_df(wt_count=50, variant_counts={"V1": 30, "V2": 2})
-    cfg = OmegaConf.create(
-        {
-            "label_column": "label",
-            "wt_label": "WT",
-            "random_state": 0,
-            "feature_cols": None,
-            "min_cells": 10,
-            "downsample_wt": False,
-            "max_cells_per_barcode_wt": None,
-            "max_cells_per_barcode_variant": None,
-            "feature_block_list_file": None,
-            "barcode_block_list_file": None,
-            "barcode_column": "meta_barcode",
-        }
+def test_downsample_wildtype_reduces_to_largest_variant_group():
+    # WT: 4 x 25 = 100 cells; M1K: 2 x 10 = 20 cells
+    df = _cells(
+        wt_barcodes=4,
+        cells_per_wt_barcode=25,
+        variants={"M1K": 10},
+        barcodes_per_variant=2,
     )
-    train, test, val = train_test_val_split(df, cfg)
-    all_idx = set()
-    for split in (train, test, val):
-        all_idx.update(split["__row_idx__"].to_list())
-    # All returned indices must be valid positions in the original df
-    assert all(0 <= i < len(df) for i in all_idx)
-    # The 2 V2 rows (at the end of df) must not appear in any split
-    v2_rows = set(
-        df.with_row_index("__row_idx__")
-        .filter(pl.col("label") == "V2")["__row_idx__"]
-        .to_list()
+    out = downsample_wildtype(df, LABEL, WT, seed=0)
+    n_wt = len(out.filter(pl.col(LABEL) == WT))
+    # Per-barcode rounding can miss the target by up to (n wt barcodes).
+    assert abs(n_wt - 20) <= 4
+
+
+def test_downsample_wildtype_preserves_barcode_proportions():
+    """The point of the barcode-proportional draw -- a uniform one would not."""
+    rng = np.random.default_rng(0)
+    # Deliberately lopsided WT barcodes: 80 / 16 / 4
+    rows = {LABEL: [], "meta_barcode": [], "Intensity_Mean": [], "Texture_Var": []}
+    for bc, n in [("wt_a", 80), ("wt_b", 16), ("wt_c", 4)]:
+        rows[LABEL] += [WT] * n
+        rows["meta_barcode"] += [bc] * n
+        rows["Intensity_Mean"] += rng.random(n).tolist()
+        rows["Texture_Var"] += rng.random(n).tolist()
+    rows[LABEL] += ["M1K"] * 25
+    rows["meta_barcode"] += ["m1k_bc0"] * 25
+    rows["Intensity_Mean"] += rng.random(25).tolist()
+    rows["Texture_Var"] += rng.random(25).tolist()
+    df = pl.DataFrame(rows)
+
+    out = downsample_wildtype(df, LABEL, WT, seed=0)
+    kept = (
+        out.filter(pl.col(LABEL) == WT)
+        .group_by("meta_barcode")
+        .len()
+        .sort("meta_barcode")
     )
-    assert all_idx.isdisjoint(v2_rows)
+    counts = dict(zip(kept.get_column("meta_barcode"), kept.get_column("len")))
+    # 25/100 of each barcode: 20 / 4 / 1
+    assert counts["wt_a"] == 20
+    assert counts["wt_b"] == 4
+    assert counts["wt_c"] == 1
 
 
-def test_train_test_val_split_preserves_class_ratio():
-    df = _make_df(n=100)
-    train, test, val = train_test_val_split(df, _split_cfg())
-    for split in (train, test, val):
-        counts = split.get_column("label").value_counts()
-        n_wt = counts.filter(pl.col("label") == "WT")["count"][0]
-        n_v1 = counts.filter(pl.col("label") == "V1")["count"][0]
-        assert n_wt == n_v1
+def test_downsample_wildtype_reproducible_with_same_seed():
+    df = _cells(wt_barcodes=4, cells_per_wt_barcode=25, variants={"M1K": 10})
+    a = downsample_wildtype(df, LABEL, WT, seed=3)
+    b = downsample_wildtype(df, LABEL, WT, seed=3)
+    assert a.equals(b)
+
+
+def test_downsample_wildtype_no_variants_is_no_op():
+    df = _cells(variants={}).filter(pl.col(LABEL) == WT)
+    assert len(downsample_wildtype(df, LABEL, WT, seed=0)) == len(df)
 
 
 # ---------------------------------------------------------------------------
-# _exclude_blocked_features
+# _stratification_key
 # ---------------------------------------------------------------------------
 
 
-def _write_feature_block_list(tmp_path, feature_ok: dict[str, bool]):
-    path = tmp_path / "feature_block_list.parquet"
-    pl.DataFrame(
-        {
-            "feature": list(feature_ok.keys()),
-            "feature_ok": list(feature_ok.values()),
-        }
-    ).write_parquet(path)
-    return path
+def test_stratification_key_keeps_common_strata_distinct():
+    barcodes = np.array(["a"] * _MIN_STRATUM_SIZE + ["b"] * _MIN_STRATUM_SIZE)
+    is_wt = np.array([True] * _MIN_STRATUM_SIZE + [False] * _MIN_STRATUM_SIZE)
+    keys = _stratification_key(barcodes, is_wt)
+    assert set(keys) == {"a|wt", "b|variant"}
 
 
-def test_exclude_blocked_features_none_is_no_op():
-    assert _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], None) == [
-        "Intensity_Mean",
-        "Texture_Var",
+def test_stratification_key_collapses_rare_strata():
+    barcodes = np.array(["a"] * _MIN_STRATUM_SIZE + ["rareone"])
+    is_wt = np.array([True] * _MIN_STRATUM_SIZE + [True])
+    keys = _stratification_key(barcodes, is_wt)
+    assert keys[-1] == "rare|wt"
+    assert set(keys[:-1]) == {"a|wt"}
+
+
+def test_stratification_key_never_merges_across_wt_boundary():
+    """A rare WT barcode and a rare variant barcode must not share a bucket."""
+    barcodes = np.array(["rare_wt", "rare_var"])
+    is_wt = np.array([True, False])
+    keys = _stratification_key(barcodes, is_wt)
+    assert keys[0] == "rare|wt"
+    assert keys[1] == "rare|variant"
+    assert keys[0] != keys[1]
+
+
+# ---------------------------------------------------------------------------
+# ovwt_batchwise
+# ---------------------------------------------------------------------------
+
+
+def test_ovwt_batchwise_output_columns():
+    results, cell_scores, models = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert results.columns == [
+        LABEL,
+        "auroc_pooled",
+        "auroc_median_barcode",
+        "meta_n_barcodes",
+        "meta_n_cells",
     ]
+    assert "score" in cell_scores.columns
+    assert "meta_variant_scored_against" in cell_scores.columns
+    # cell_scores carries metadata only -- no feature columns leak through
+    assert all(c.startswith("meta_") or c == "score" for c in cell_scores.columns)
+    assert set(models) == {"M1K", "A1A"}
 
 
-def test_exclude_blocked_features_drops_blocked(tmp_path):
-    path = _write_feature_block_list(
-        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
-    )
-    result = _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], str(path))
-    assert result == ["Intensity_Mean"]
+def test_normal_variant_survives():
+    """Guards the fixture-too-small failure mode described in the module docstring."""
+    results, _, models = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert len(results) == 2
+    assert models
 
 
-def test_exclude_blocked_features_all_ok_returns_unchanged(tmp_path):
-    path = _write_feature_block_list(
-        tmp_path, {"Intensity_Mean": True, "Texture_Var": True}
-    )
-    result = _exclude_blocked_features(["Intensity_Mean", "Texture_Var"], str(path))
-    assert result == ["Intensity_Mean", "Texture_Var"]
+def test_ovwt_batchwise_no_nans_in_oof_scores():
+    """StratifiedKFold partitions, so every cell is scored exactly once."""
+    _, cell_scores, _ = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert cell_scores.get_column("score").is_nan().sum() == 0
+    assert cell_scores.get_column("score").null_count() == 0
 
 
-# ---------------------------------------------------------------------------
-# _exclude_blocked_barcodes
-# ---------------------------------------------------------------------------
+def test_ovwt_batchwise_scores_every_cell_once_per_variant():
+    df = _cells()
+    _, cell_scores, _ = ovwt_batchwise(df.lazy(), _cfg())
+    for variant in ("M1K", "A1A"):
+        subset = cell_scores.filter(pl.col("meta_variant_scored_against") == variant)
+        expected = len(df.filter(pl.col(LABEL).is_in([variant, WT])))
+        assert len(subset) == expected
 
 
-def _write_barcode_block_list(tmp_path, barcode_ok: dict[str, bool]):
-    path = tmp_path / "barcode_block_list.parquet"
-    pl.DataFrame(
-        {
-            "barcode": list(barcode_ok.keys()),
-            "barcode_ok": list(barcode_ok.values()),
-        }
-    ).write_parquet(path)
-    return path
+def test_ovwt_batchwise_one_model_per_fold():
+    cfg = _cfg(n_folds=3)
+    _, _, models = ovwt_batchwise(_cells().lazy(), cfg)
+    for fold_models in models.values():
+        assert len(fold_models) == cfg.n_folds
 
 
-def _make_barcode_df(n: int = 20) -> pl.DataFrame:
-    rng = np.random.default_rng(0)
-    half = n // 2
-    return pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(n).tolist(),
-            "Texture_Var": rng.random(n).tolist(),
-            "label": ["WT"] * half + ["V1"] * half,
-            "meta_barcode": (["bc_wt"] * half)
-            + (["bc_ok"] * (half - 2))
-            + (["bc_blocked"] * 2),
-        }
-    )
+def test_ovwt_batchwise_calibrators_present_when_enabled():
+    _, _, models = ovwt_batchwise(_cells().lazy(), _cfg(calibrate=True))
+    for fold_models in models.values():
+        assert all(calibrator is not None for _, calibrator in fold_models)
 
 
-def test_exclude_blocked_barcodes_none_is_no_op():
-    df = _make_barcode_df(n=10)
-    result = _exclude_blocked_barcodes(df, "meta_barcode", None)
-    assert result.equals(df)
+def test_ovwt_batchwise_no_calibrators_when_disabled():
+    _, _, models = ovwt_batchwise(_cells().lazy(), _cfg(calibrate=False))
+    for fold_models in models.values():
+        assert all(calibrator is None for _, calibrator in fold_models)
 
 
-def test_exclude_blocked_barcodes_drops_rows(tmp_path):
-    df = _make_barcode_df(n=20)
-    path = _write_barcode_block_list(
-        tmp_path, {"bc_wt": True, "bc_ok": True, "bc_blocked": False}
-    )
-    result = _exclude_blocked_barcodes(df, "meta_barcode", str(path))
-    assert "bc_blocked" not in result["meta_barcode"].to_list()
-    assert len(result) == len(df) - 2
+def test_ovwt_batchwise_recovers_separable_signal():
+    """A well-separated variant should score near 1."""
+    results, _, _ = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert results.get_column("auroc_pooled").min() > 0.9
 
 
-# ---------------------------------------------------------------------------
-# train_test_val_split -- feature_block_list_file / barcode_block_list_file
-# integration
-# ---------------------------------------------------------------------------
+def test_ovwt_batchwise_barcode_counts_are_per_variant():
+    results, _, _ = ovwt_batchwise(_cells(barcodes_per_variant=2).lazy(), _cfg())
+    # meta_n_barcodes counts the variant's OWN barcodes, not the WT ones
+    assert set(results.get_column("meta_n_barcodes").to_list()) == {2}
 
 
-def test_train_test_val_split_feature_block_list_file_excludes_feature(tmp_path):
-    df = _make_df(n=20)
-    path = _write_feature_block_list(
-        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
-    )
-    cfg = _split_cfg()
-    cfg.feature_block_list_file = str(path)
-    train, test, val = train_test_val_split(df, cfg)
-    for split in (train, test, val):
-        assert "Texture_Var" not in split.columns
-        assert "Intensity_Mean" in split.columns
+def test_ovwt_batchwise_median_barcode_auroc_is_not_null():
+    results, _, _ = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert results.get_column("auroc_median_barcode").null_count() == 0
 
 
-def test_train_test_val_split_barcode_block_list_file_excludes_cells(tmp_path):
-    df = _make_barcode_df(n=20)
-    path = _write_barcode_block_list(
-        tmp_path, {"bc_wt": True, "bc_ok": True, "bc_blocked": False}
-    )
-    cfg = _split_cfg()
-    cfg.barcode_block_list_file = str(path)
-    original_blocked_idx = set(
-        df.with_row_index("__row_idx__")
-        .filter(pl.col("meta_barcode") == "bc_blocked")["__row_idx__"]
-        .to_list()
-    )
-    train, test, val = train_test_val_split(df, cfg)
-    all_idx = set()
-    for split in (train, test, val):
-        # meta_barcode is not a feature column, so it's dropped from the
-        # returned splits -- only the row-level effect is observable here.
-        assert "meta_barcode" not in split.columns
-        all_idx.update(split["__row_idx__"].to_list())
-    assert all_idx.isdisjoint(original_blocked_idx)
-    assert len(all_idx) == len(df) - len(original_blocked_idx)
+def test_ovwt_batchwise_is_reproducible():
+    a, _, _ = ovwt_batchwise(_cells().lazy(), _cfg(random_seed=5))
+    b, _, _ = ovwt_batchwise(_cells().lazy(), _cfg(random_seed=5))
+    assert a.sort(LABEL).equals(b.sort(LABEL))
 
 
-def test_train_test_val_split_feature_and_barcode_block_list_files_both_applied(
-    tmp_path,
-):
-    df = _make_barcode_df(n=20)
-    feature_path = _write_feature_block_list(
-        tmp_path, {"Intensity_Mean": True, "Texture_Var": False}
-    )
-    barcode_path = _write_barcode_block_list(
-        tmp_path, {"bc_wt": True, "bc_ok": True, "bc_blocked": False}
-    )
-    cfg = _split_cfg()
-    cfg.feature_block_list_file = str(feature_path)
-    cfg.barcode_block_list_file = str(barcode_path)
-    original_blocked_idx = set(
-        df.with_row_index("__row_idx__")
-        .filter(pl.col("meta_barcode") == "bc_blocked")["__row_idx__"]
-        .to_list()
-    )
-    train, test, val = train_test_val_split(df, cfg)
-    all_idx = set()
-    for split in (train, test, val):
-        assert "Texture_Var" not in split.columns
-        assert "Intensity_Mean" in split.columns
-        all_idx.update(split["__row_idx__"].to_list())
-    # Both effects combine: the blocked feature column is gone AND the
-    # blocked barcode's rows are absent.
-    assert all_idx.isdisjoint(original_blocked_idx)
+def test_rare_barcode_variant_is_skipped_not_fatal():
+    """One doomed variant must not take the whole run down with it."""
+    df = _cells(variants={"GOOD": 15, "TINY": 1}, barcodes_per_variant=2)
+    results, _, models = ovwt_batchwise(df.lazy(), _cfg())
+    labels = results.get_column(LABEL).to_list()
+    assert "GOOD" in labels
+    assert "TINY" not in labels
+    assert "TINY" not in models
 
 
-def test_train_test_val_split_neither_block_list_file_keeps_everything(tmp_path):
-    df = _make_df(n=20)
-    cfg = _split_cfg()
-    assert cfg.feature_block_list_file is None
-    assert cfg.barcode_block_list_file is None
-    train, _, _ = train_test_val_split(df, cfg)
-    assert "Intensity_Mean" in train.columns
-    assert "Texture_Var" in train.columns
-    assert len(train) > 0
-
-
-def test_train_test_val_split_barcode_filter_can_push_variant_below_min_cells(
-    tmp_path,
-):
-    # V1 has exactly min_cells=5 cells, all carrying barcode "bc_v1" -- once
-    # that barcode is blocked, V1 drops to 0 cells and should be excluded
-    # entirely (a downstream effect of the row-level barcode filter, not the
-    # min_cells filter looking at barcodes directly).
-    rng = np.random.default_rng(0)
-    df = pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(15).tolist(),
-            "label": ["WT"] * 10 + ["V1"] * 5,
-            "meta_barcode": ["bc_wt"] * 10 + ["bc_v1"] * 5,
-        }
-    )
-    barcode_path = _write_barcode_block_list(tmp_path, {"bc_wt": True, "bc_v1": False})
-    cfg = OmegaConf.create(
-        {
-            "label_column": "label",
-            "wt_label": "WT",
-            "random_state": 0,
-            "feature_cols": None,
-            "min_cells": 5,
-            "downsample_wt": False,
-            "max_cells_per_barcode_wt": None,
-            "max_cells_per_barcode_variant": None,
-            "feature_block_list_file": None,
-            "barcode_block_list_file": str(barcode_path),
-            "barcode_column": "meta_barcode",
-        }
-    )
-    train, test, val = train_test_val_split(df, cfg)
-    for split in (train, test, val):
-        assert "V1" not in split["label"].to_list()
-
-
-def test_train_test_val_split_max_cells_per_barcode_wt_caps_total_wt_rows():
-    rng = np.random.default_rng(0)
-    df = pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(40).tolist(),
-            "label": ["WT"] * 30 + ["V1"] * 10,
-            "meta_barcode": ["bc_wt"] * 30 + ["bc_v1"] * 10,
-        }
-    )
-    cfg = OmegaConf.create(
-        {
-            "label_column": "label",
-            "wt_label": "WT",
-            "random_state": 0,
-            "feature_cols": None,
-            "min_cells": None,
-            "downsample_wt": False,
-            "max_cells_per_barcode_wt": 10,
-            "max_cells_per_barcode_variant": None,
-            "feature_block_list_file": None,
-            "barcode_block_list_file": None,
-            "barcode_column": "meta_barcode",
-        }
-    )
-    train, test, val = train_test_val_split(df, cfg)
-    total_wt = sum((split["label"] == "WT").sum() for split in (train, test, val))
-    assert total_wt == 10
-
-
-def test_train_test_val_split_max_cells_per_barcode_variant_can_push_variant_below_min_cells():
-    # V1 has 10 cells, all on barcode "bc_v1" -- capping that barcode to 3
-    # cells drops V1 to below min_cells=5, so it should be excluded entirely
-    # (same "downstream effect" pattern as the barcode-block-list test above).
-    rng = np.random.default_rng(0)
-    df = pl.DataFrame(
-        {
-            "Intensity_Mean": rng.random(20).tolist(),
-            "label": ["WT"] * 10 + ["V1"] * 10,
-            "meta_barcode": ["bc_wt"] * 10 + ["bc_v1"] * 10,
-        }
-    )
-    cfg = OmegaConf.create(
-        {
-            "label_column": "label",
-            "wt_label": "WT",
-            "random_state": 0,
-            "feature_cols": None,
-            "min_cells": 5,
-            "downsample_wt": False,
-            "max_cells_per_barcode_wt": None,
-            "max_cells_per_barcode_variant": 3,
-            "feature_block_list_file": None,
-            "barcode_block_list_file": None,
-            "barcode_column": "meta_barcode",
-        }
-    )
-    train, test, val = train_test_val_split(df, cfg)
-    for split in (train, test, val):
-        assert "V1" not in split["label"].to_list()
+def test_all_variants_filtered_out_yields_empty_but_typed_frames():
+    df = _cells(variants={"M1K": 15})
+    results, cell_scores, models = ovwt_batchwise(df.lazy(), _cfg(min_cells=10_000))
+    assert len(results) == 0
+    assert len(cell_scores) == 0
+    assert models == {}
+    assert results.columns == [
+        LABEL,
+        "auroc_pooled",
+        "auroc_median_barcode",
+        "meta_n_barcodes",
+        "meta_n_cells",
+    ]
+    assert results.schema["auroc_pooled"] == pl.Float64
+    assert cell_scores.schema["score"] == pl.Float64
+    assert cell_scores.schema["meta_variant_scored_against"] == pl.String
 
 
 # ---------------------------------------------------------------------------
-# train_xgboost / test_xgboost
+# predict_binary
 # ---------------------------------------------------------------------------
 
 
-def _make_xgb_cfg(weigh_samples: bool = True) -> OmegaConf:
-    return OmegaConf.create(
-        {
-            "label_column": "label",
-            "wt_label": "WT",
-            "random_state": 0,
-            "xgboost": {
-                "num_boost_round": 5,
-                "early_stopping_rounds": 3,
-                "weigh_samples": weigh_samples,
-                "params": {
-                    "nthread": 1,
-                    "max_depth": 2,
-                    "colsample_bytree": 1.0,
-                    "colsample_bylevel": 1.0,
-                    "colsample_bynode": 1.0,
-                    "subsample": 1.0,
-                },
-            },
-        }
-    )
+def test_predict_binary_returns_one_score_per_row():
+    df = _cells()
+    _, _, models = ovwt_batchwise(df.lazy(), _cfg())
+    model, _ = models["M1K"][0]
+    subset = df.filter(pl.col(LABEL).is_in(["M1K", WT]))
+    features = subset.select([LABEL, "Intensity_Mean", "Texture_Var"])
+    scores = predict_binary(features, model, LABEL, WT)
+    assert scores.shape == (len(subset),)
 
 
-def _make_separable_df(n: int = 60) -> pl.DataFrame:
-    """Linearly separable dataset: WT has high Intensity_Mean, V1 has low."""
-    rng = np.random.default_rng(42)
-    half = n // 2
-    return pl.DataFrame(
-        {
-            "Intensity_Mean": np.concatenate(
-                [
-                    rng.uniform(0.6, 1.0, half),  # WT
-                    rng.uniform(0.0, 0.4, half),  # V1
-                ]
-            ).tolist(),
-            "Texture_Var": rng.random(n).tolist(),
-            "label": ["WT"] * half + ["V1"] * half,
-        }
-    )
-
-
-@pytest.fixture()
-def trained_model_and_splits():
-    df = _make_separable_df(n=60)
-    cfg = _make_xgb_cfg()
-    wt = df.filter(pl.col("label") == "WT")
-    v1 = df.filter(pl.col("label") == "V1")
-    # 20 + 20 train, 5 + 5 val, 5 + 5 test
-    train = pl.concat([wt[:20], v1[:20]])
-    val = pl.concat([wt[20:25], v1[20:25]])
-    test = pl.concat([wt[25:], v1[25:]])
-    model = train_xgboost(train, val, cfg)
-    return model, train, val, test, cfg
-
-
-def test_train_xgboost_returns_booster():
-    import xgboost as xgb
-
-    df = _make_separable_df(n=60)
-    cfg = _make_xgb_cfg()
-    half = len(df) // 2
-    model = train_xgboost(df[:half], df[half:], cfg)
-    assert isinstance(model, xgb.Booster)
-
-
-def test_train_xgboost_without_sample_weights():
-    import xgboost as xgb
-
-    df = _make_separable_df(n=60)
-    cfg = _make_xgb_cfg(weigh_samples=False)
-    half = len(df) // 2
-    model = train_xgboost(df[:half], df[half:], cfg)
-    assert isinstance(model, xgb.Booster)
-
-
-def test_test_xgboost_result_keys(trained_model_and_splits):
-    model, train, val, test, cfg = trained_model_and_splits
-    result = evaluate_splits(model, train, val, test, cfg)
-    expected_keys = {
-        "variant",
-        "train_auroc",
-        "train_accuracy",
-        "val_auroc",
-        "val_accuracy",
-        "test_auroc",
-        "test_accuracy",
-    }
-    assert set(result.keys()) == expected_keys
-
-
-def test_test_xgboost_variant_name(trained_model_and_splits):
-    model, train, val, test, cfg = trained_model_and_splits
-    result = evaluate_splits(model, train, val, test, cfg)
-    assert result["variant"] == "V1"
-
-
-def test_test_xgboost_auroc_in_range(trained_model_and_splits):
-    model, train, val, test, cfg = trained_model_and_splits
-    result = evaluate_splits(model, train, val, test, cfg)
-    for key in ("train_auroc", "val_auroc", "test_auroc"):
-        assert 0.0 <= result[key] <= 1.0, f"{key} out of range: {result[key]}"
-
-
-def test_test_xgboost_accuracy_in_range(trained_model_and_splits):
-    model, train, val, test, cfg = trained_model_and_splits
-    result = evaluate_splits(model, train, val, test, cfg)
-    for key in ("train_accuracy", "val_accuracy", "test_accuracy"):
-        assert 0.0 <= result[key] <= 1.0, f"{key} out of range: {result[key]}"
-
-
-def test_test_xgboost_separable_data_high_auroc(trained_model_and_splits):
-    model, train, val, test, cfg = trained_model_and_splits
-    result = evaluate_splits(model, train, val, test, cfg)
-    assert result["train_auroc"] > 0.9
+def test_predict_binary_scores_wildtype_higher():
+    """Models predict P(wildtype), so WT rows must score above variant rows."""
+    df = _cells()
+    _, _, models = ovwt_batchwise(df.lazy(), _cfg())
+    model, _ = models["M1K"][0]
+    subset = df.filter(pl.col(LABEL).is_in(["M1K", WT]))
+    features = subset.select([LABEL, "Intensity_Mean", "Texture_Var"])
+    scores = predict_binary(features, model, LABEL, WT)
+    is_wt = subset.get_column(LABEL).to_numpy() == WT
+    assert scores[is_wt].mean() > scores[~is_wt].mean()
 
 
 # ---------------------------------------------------------------------------
-# profile_variant
+# CLI
 # ---------------------------------------------------------------------------
 
 
-def _make_multisplit(
-    variant: str = "V1",
-    other_variant: str = "V2",
-    n_each: int = 30,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    """
-    Build train/test/val splits containing two variants plus WT.
+def test_cli_end_to_end(tmp_path: pathlib.Path):
+    cells_path = tmp_path / "normalized.parquet"
+    _cells().write_parquet(cells_path)
 
-    V1 is linearly separable from WT (high Intensity_Mean vs low).
-    V2 has the same distribution as WT (not separable).
-    """
-    rng = np.random.default_rng(42)
-    half = n_each // 2
-
-    def _block(low: float, high: float, label: str, n: int) -> dict:
-        return {
-            "Intensity_Mean": rng.uniform(low, high, n).tolist(),
-            "label": [label] * n,
-        }
-
-    def _split(rows: list[dict]) -> pl.DataFrame:
-        return pl.concat([pl.DataFrame(r) for r in rows])
-
-    wt_train = _block(0.6, 1.0, "WT", n_each)
-    v1_train = _block(0.0, 0.4, variant, n_each)
-    v2_train = _block(0.6, 1.0, other_variant, n_each)
-
-    wt_val = _block(0.6, 1.0, "WT", half)
-    v1_val = _block(0.0, 0.4, variant, half)
-    v2_val = _block(0.6, 1.0, other_variant, half)
-
-    wt_test = _block(0.6, 1.0, "WT", half)
-    v1_test = _block(0.0, 0.4, variant, half)
-    v2_test = _block(0.6, 1.0, other_variant, half)
-
-    train = _split([wt_train, v1_train, v2_train])
-    val = _split([wt_val, v1_val, v2_val])
-    test = _split([wt_test, v1_test, v2_test])
-    return train, val, test
-
-
-@pytest.fixture()
-def profile_variant_splits():
-    train, val, test = _make_multisplit()
-    cfg = _make_xgb_cfg()
-    return train, val, test, cfg
-
-
-def test_profile_variant_returns_booster(profile_variant_splits):
-    import xgboost as xgb
-
-    train, val, test, cfg = profile_variant_splits
-    result, model = profile_variant("V1", train, test, val, cfg)
-    assert isinstance(model, xgb.Booster)
-
-
-def test_profile_variant_returns_result_dict(profile_variant_splits):
-    train, val, test, cfg = profile_variant_splits
-    result, _ = profile_variant("V1", train, test, val, cfg)
-    assert isinstance(result, dict)
-
-
-def test_profile_variant_result_keys(profile_variant_splits):
-    train, val, test, cfg = profile_variant_splits
-    result, _ = profile_variant("V1", train, test, val, cfg)
-    expected_keys = {
-        "variant",
-        "train_auroc",
-        "train_accuracy",
-        "val_auroc",
-        "val_accuracy",
-        "test_auroc",
-        "test_accuracy",
-    }
-    assert set(result.keys()) == expected_keys
-
-
-def test_profile_variant_result_variant_name(profile_variant_splits):
-    train, val, test, cfg = profile_variant_splits
-    result, _ = profile_variant("V1", train, test, val, cfg)
-    assert result["variant"] == "V1"
-
-
-def test_profile_variant_auroc_in_range(profile_variant_splits):
-    train, val, test, cfg = profile_variant_splits
-    result, _ = profile_variant("V1", train, test, val, cfg)
-    for key in ("train_auroc", "val_auroc", "test_auroc"):
-        assert 0.0 <= result[key] <= 1.0, f"{key} out of range: {result[key]}"
-
-
-def test_profile_variant_high_auroc_on_separable_data(profile_variant_splits):
-    train, val, test, cfg = profile_variant_splits
-    result, _ = profile_variant("V1", train, test, val, cfg)
-    assert result["train_auroc"] > 0.9
-
-
-def test_profile_variant_filters_to_target_variant_only(profile_variant_splits):
-    """V2 has the same distribution as WT, so it should be near-chance AUROC."""
-    train, val, test, cfg = profile_variant_splits
-    result, _ = profile_variant("V2", train, test, val, cfg)
-    # V2 is indistinguishable from WT, so the model should not achieve high AUROC
-    assert result["train_auroc"] < 0.75
-
-
-# ---------------------------------------------------------------------------
-# main
-# ---------------------------------------------------------------------------
-
-
-def _make_ovwt_structured_cfg(tmp_path, input_path, label_column: str) -> OmegaConf:
-    xgb_params = XGBoostParams(
-        nthread=1,
-        max_depth=2,
-        colsample_bytree=1.0,
-        colsample_bylevel=1.0,
-        colsample_bynode=1.0,
-        subsample=1.0,
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "fisseq_data_pipeline.ovwt",
+            "output_dir=.",
+            f"input_file={cells_path}",
+            f"label_column={LABEL}",
+            "n_folds=3",
+            "min_cells=null",
+            "downsample_wt=false",
+            "random_seed=0",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
     )
-    xgb_cfg = XGBoostConfig(
-        num_boost_round=5,
-        early_stopping_rounds=3,
-        weigh_samples=False,
-        params=xgb_params,
-    )
-    cfg = OvwtConfig(
-        output_dir=str(tmp_path),
-        input_file=str(input_path),
-        label_column=label_column,
-        wt_label="WT",
-        random_state=0,
-        min_cells=5,
-        downsample_wt=False,
-        save_splits=False,
-        xgboost=xgb_cfg,
-    )
-    return OmegaConf.structured(cfg)
+    assert result.returncode == 0, result.stderr
+
+    for name in ("results.parquet", "cell_scores.parquet", "models.pkl"):
+        assert (tmp_path / name).exists(), f"{name} missing"
+
+    results = pl.read_parquet(tmp_path / "results.parquet")
+    assert set(results.get_column(LABEL).to_list()) == {"M1K", "A1A"}
 
 
-def test_main_writes_feature_importance(tmp_path):
-    # get_aggregate_meta_data (called by main()) only retains meta_*-prefixed
-    # columns, so label_column must carry that prefix for the full main() run.
-    label_column = "meta_label"
-    df = _make_df(n=200, label_column=label_column)
-    input_path = tmp_path / "input.parquet"
-    df.write_parquet(input_path)
-    cfg = _make_ovwt_structured_cfg(tmp_path, input_path, label_column)
-    with patch("fisseq_data_pipeline.ovwt.setup_logging"):
-        m.main.__wrapped__(cfg)
-    importance = pl.read_parquet(tmp_path / "feature_importance.parquet")
-    assert importance.get_column(label_column).to_list() == ["V1"]
-    assert set(importance.columns) - {label_column} <= {
-        "Intensity_Mean",
-        "Texture_Var",
-    }
+@pytest.mark.parametrize("n_folds", [2, 3])
+def test_cli_respects_n_folds(tmp_path: pathlib.Path, n_folds: int):
+    import pickle
+
+    cells_path = tmp_path / "normalized.parquet"
+    _cells().write_parquet(cells_path)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "fisseq_data_pipeline.ovwt",
+            "output_dir=.",
+            f"input_file={cells_path}",
+            f"label_column={LABEL}",
+            f"n_folds={n_folds}",
+            "min_cells=null",
+            "downsample_wt=false",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    with open(tmp_path / "models.pkl", "rb") as f:
+        models = pickle.load(f)
+    assert all(len(folds) == n_folds for folds in models.values())

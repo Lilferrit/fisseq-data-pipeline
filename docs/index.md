@@ -16,12 +16,11 @@ population differs from wildtype (WT) controls using morphological features.
   configuration.
 - **[Nextflow Workflow](nextflow.md)** — the Nextflow processes, how they're wired
   together, and how to run the pipeline (profiles).
-- **[Configuration](configuration.md)** — every parameter, the `pipeline_dir`
-  layout, per-batch YAML overrides, and global channels.
-- **CLI Reference** — one page per Python entry point (QC filter, normalize,
-  aggregate, feature selection, batch correction, ANOVA, OvWT, OvWT cell
-  scores, batch-vs-batch, wildtype-vs-wildtype), each with its config fields
-  and a runnable example.
+- **[Configuration](configuration.md)** — every parameter, the `experiments:`
+  schema, the single `random_seed`, and global channels.
+- **CLI Reference** — one page per Python entry point (input, QC filter,
+  normalize, aggregate, feature selection, global feature selection, OvWT,
+  global OvWT), each with its config fields and a runnable example.
 - **API Reference** — full function/class-level documentation for every module,
   generated from source docstrings.
 - **[Walkthrough](walkthrough.md)** — a complete end-to-end run, from raw
@@ -30,22 +29,19 @@ population differs from wildtype (WT) controls using morphological features.
 ## Pipeline at a glance
 
 ```text
-configs/*.yaml  (mandatory, one file per batch) ──► INPUT ──► input/*.parquet
+params.yaml (experiments: [...])  ──►  INPUT  ──►  input/<batch_stem>.parquet
      │
      ▼
-QC_FILTER   (per batch)
+QC_FILTER   (per experiment)
      │
-     ├──► BATCHVSBATCH (pre)        (once per active channel — params.global_channels)
-     ├──► BATCH_CORRECT_FIT ──► BATCH_CORRECT_TRANSFORM ──► ANOVA (batch-corrected)  (once per active channel)
      ▼
-NORMALIZE   (per batch)
+NORMALIZE   (per experiment)          z-score fit on WT control cells
      │
-     ├──► BATCHVSBATCH (post)       (once per active channel)
-     ├──► OVWT_BATCHWISE             (per batch)
-     ├──► OVWT_GLOBAL                (once per active channel)
-     ├──► WTVWT_BATCHWISE            (per batch, optional — params.run_wtvwt)
-     ├──► Feature selection          (batchwise always; global sub-branch once per active channel)
-     └──► ANOVA (normalized)         (once per active channel)
+     ├──► OVWT_BATCHWISE               (per experiment — params.run_ovwt)
+     │       └──► GLOBAL_OVWT          (once per active global channel)
+     │
+     └──► Feature selection            (per experiment — params.run_feature_selection)
+             └──► GLOBAL_FEATURE_SELECT (once per active global channel)
 ```
 
 See [Architecture](architecture.md) for the full diagram and stage-by-stage detail.

@@ -136,7 +136,7 @@ uv run python -m fisseq_data_pipeline.featureselect \
 ## 6. `python -m fisseq_data_pipeline.globalfeatureselect` (`GLOBAL_FEATURE_SELECT`)
 
 Runs once per active global group (see
-[Configuration: Global groups](../configuration.md#global-groups)). Reuses the
+[Configuration: Global groups](../configuration.md#global-channels)). Reuses the
 group's member batches' already-published BATCHWISE feature-selection
 artifacts directly — no cell-level recomputation:
 
@@ -159,7 +159,7 @@ artifacts directly — no cell-level recomputation:
 | `batch_stems` | **required** | List of the active group's member batch stems (only those with `run_feature_selection` enabled). |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `min_batches_ok` | `null` | Minimum number of member batches that must mark a feature ok for it to be globally ok. `null` requires unanimity across batches that report on it. |
-| `run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see [Configuration](../configuration.md#per-batch-parameter-overrides)). |
+| `run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see [Configuration](../configuration.md#declaring-experiments)). |
 | `pca_n_components` | `10` | Number of principal components to compute and retain. |
 | `run_umap` | `false` | Compute UMAP on the final selected/normalized feature matrix, appending `meta_umap_1..meta_umap_{umap_n_components}`. PCA and UMAP are computed independently, both on the same feature matrix. |
 | `umap_n_components` | `2` | Dimensionality of the UMAP embedding. |

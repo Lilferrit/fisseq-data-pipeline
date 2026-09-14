@@ -1,404 +1,161 @@
-"""One-vs-wildtype XGBoost variant classification.
+"""OVWT_BATCHWISE: k-fold cross-validated one-vs-wildtype variant scoring.
 
-Hydra entry point (``python -m fisseq_data_pipeline.ovwt``), backing the Nextflow processes ``OVWT_BATCHWISE``
-and ``OVWT_GLOBAL``. Trains a separate binary XGBoost classifier per non-wildtype
-variant against a shared 80/10/10 stratified split, optionally downsampling
-wildtype cells, and writes per-variant AUROC/accuracy results, the trained
-models, and per-variant gain-based feature importance.
+Ported back from fisseq-embeddings-pipeline's ``ovwt.py``, which was itself
+adapted from this module's own earlier implementation. The round trip replaced
+the single 80/10/10 train/val/test split with k-fold cross-validation
+stratified jointly on ``(meta_barcode, is_wt)``, so every cell gets an
+out-of-fold score and every variant gets two distinguishability numbers
+instead of one:
+
+- ``auroc_pooled`` -- over all of the variant's cells at once.
+- ``auroc_median_barcode`` -- each of the variant's barcodes scored separately
+  against the full wildtype set, then medianed. This surfaces whether a
+  variant's apparent distinguishability is broad-based across its barcodes or
+  driven by one or two outliers, which a single pooled number hides.
+
+**One deliberate divergence from the reference implementation.** There, the
+features fed to the classifier are z-scored against the experiment's own
+*synonymous* variants. Here they are ``NORMALIZE``'s output, z-scored against
+*wildtype* cells -- this pipeline's cell-level normalization is unchanged. The
+synonymous re-centering still happens, downstream and on the AUROCs rather than
+on the features, in :mod:`fisseq_data_pipeline.globalovwt`. Do not "fix" this
+by adding a second normalizer fit here.
+
+The feature-filtered and barcode-filtered variants of this stage are gone along
+with ANOVA_BLOCKLIST and BARCODE_BLOCKLIST, as is the separate
+``ovwtcellscores`` pass -- ``cell_scores.parquet`` below is emitted directly.
 """
 
 import dataclasses
-import functools
 import logging
 import pathlib
 import pickle
-import traceback
-from os import PathLike
-from typing import Optional, Union
+from collections import Counter
+from typing import Optional
 
 import hydra
 import numpy as np
 import polars as pl
+import sklearn.calibration
 import sklearn.metrics
-import sklearn.utils
+import sklearn.model_selection
 import xgboost as xgb
 from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 
 from .config import LabeledInputConfig
 from .utils.batches import load_batches
-from .utils.constants import META_BARCODE_COL
-from .utils.filtering import (
-    _exclude_blocked_features,
-    downsample_group_to_target,
-)
+from .utils.constants import FEATURE_SELECTOR, META_BARCODE_COL, META_SELECTOR
 from .utils.log import setup_logging
-from .utils.metadata import get_aggregate_meta_data
 from .utils.xgbparams import (
     XGBoostConfig,
     get_dmatrix,
-    get_feature_cols,
-    resolve_feature_importance,
     split_indices_stratified,
+    train_binary_xgboost,
 )
+
+# Minimum members a (barcode, is_wt) stratum needs before StratifiedKFold's
+# outer split is guaranteed not to raise. This does NOT guarantee
+# split_indices_stratified's *inner* nested split survives on a very small
+# bucket -- safe stratum sizes are data-dependent, not hard-codeable, so that
+# failure mode is caught by ovwt_batchwise()'s per-variant try/except instead.
+_MIN_STRATUM_SIZE = 10
+
+_cs = ConfigStore.instance()
 
 
 @dataclasses.dataclass
 class OvwtConfig(LabeledInputConfig):
     """
-    Hydra structured configuration for the one-vs-wildtype entry point.
+    Hydra structured configuration for OVWT_BATCHWISE.
 
-    Extends :class:`.config.LabeledInputConfig` with parameters controlling
-    XGBoost training and data handling.
+    Extends :class:`~fisseq_data_pipeline.config.input.LabeledInputConfig`
+    (``output_dir``, ``output_root``, ``log_level``, ``random_seed``,
+    ``input_file``, ``label_column``). Every stochastic step below --
+    ``StratifiedKFold``'s shuffle, the inner fit/calibration split, wildtype
+    downsampling, and XGBoost's own ``seed`` -- consumes the single shared
+    ``random_seed``; there is deliberately no stage-local ``random_state``.
 
     Attributes
     ----------
     wt_label : str
-        Label string identifying wildtype cells. Defaults to ``"WT"``.
-    random_state : int
-        Random seed for train/test/val splitting and WT downsampling.
-        Defaults to ``42``.
-    feature_cols : list or None
-        Explicit list of feature column names. If ``None``, columns are
-        auto-detected by :func:`get_feature_cols`. Defaults to ``None``.
+        Label value in ``label_column`` identifying wildtype cells. Wildtype is
+        the positive class, so the trained models predict P(wildtype). Defaults
+        to ``"WT"``.
+    n_folds : int
+        Number of cross-validation folds per variant. Defaults to ``5``.
+    calibrate : bool
+        If ``True``, fit a per-fold sigmoid (Platt) probability calibrator on a
+        slice held out of that fold's training data before scoring its test
+        slice. Defaults to ``True``.
     min_cells : int or None
-        Minimum number of cells required for a variant to be included.
-        Variants with fewer cells are dropped before splitting. ``None``
-        disables the filter. Defaults to ``250``.
-    downsample_wt : bool or int
-        If ``True``, downsample wildtype cells to the size of the largest
-        variant group before splitting. If an integer, downsample to that
-        exact count (no-op if wildtype count is already at or below the
-        target). ``False`` disables downsampling. Defaults to ``True``.
-    max_cells_per_barcode_wt : int or None
-        Maximum cells allowed for any single wildtype barcode. Barcodes
-        exceeding this are randomly downsampled to this count, independently
-        of every other barcode. ``None`` disables this cap. Applied before
-        ``min_cells`` filtering and ``downsample_wt``. Defaults to ``None``.
-    max_cells_per_barcode_variant : int or None
-        Maximum cells allowed for any single non-wildtype barcode, analogous
-        to ``max_cells_per_barcode_wt``. ``None`` disables this cap. Defaults
-        to ``None``.
-    save_splits : bool
-        If ``True``, write lightweight train/test/val index files to
-        ``output_dir``. Each file records the original row position and source
-        file path for each cell in the split rather than duplicating the full
-        feature matrix. Defaults to ``True``.
-    feature_block_list_file : str or None
-        Optional path to a parquet file with at least ``feature`` (str) and
-        ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
-        ``False`` are excluded (dropped as columns) before splitting/training.
-        Defaults to ``None`` (no features blocked).
-    barcode_block_list_file : str or None
-        Optional path to a parquet file with at least ``barcode`` (str) and
-        ``barcode_ok`` (bool) columns (e.g. the output of
-        :mod:`.barcodeblocklist`). Cells whose ``barcode_column`` value is
-        blocked are excluded (dropped as rows) before splitting/training.
-        Defaults to ``None`` (no barcodes blocked). Independent of and
-        additive with ``feature_block_list_file``.
-    barcode_column : str
-        Name of the column in ``input_file`` identifying each cell's
-        barcode, used to apply ``barcode_block_list_file``. Defaults to
-        :data:`.utils.constants.META_BARCODE_COL` (``"meta_barcode"``).
+        Minimum number of cells a variant must have to be scored; variants
+        below this are dropped before the per-variant loop (wildtype is always
+        kept regardless of count). ``None`` disables this filter. Defaults to
+        ``250``.
+    downsample_wt : bool
+        If ``True``, downsample wildtype cells -- barcode-proportionally -- to
+        the size of the largest remaining variant group before the per-variant
+        loop. Defaults to ``True``.
     xgboost : XGBoostConfig
-        XGBoost training configuration. Defaults to :class:`XGBoostConfig`.
+        Booster hyperparameters and training-loop settings.
     """
 
     wt_label: str = "WT"
-    random_state: int = 42
-    feature_cols: Optional[list] = None
+    n_folds: int = 5
+    calibrate: bool = True
     min_cells: Optional[int] = 250
-    downsample_wt: Union[bool, int] = True
-    max_cells_per_barcode_wt: Optional[int] = None
-    max_cells_per_barcode_variant: Optional[int] = None
-    save_splits: bool = True
-    feature_block_list_file: Optional[str] = None
-    barcode_block_list_file: Optional[str] = None
-    barcode_column: str = META_BARCODE_COL
+    downsample_wt: bool = True
     xgboost: XGBoostConfig = dataclasses.field(default_factory=XGBoostConfig)
 
 
-_cs = ConfigStore.instance()
 _cs.store(name="ovwt_main", node=OvwtConfig)
 
 
-def train_xgboost(
-    train: pl.DataFrame,
-    val: pl.DataFrame,
-    cfg: DictConfig,
-) -> xgb.Booster:
-    """
-    Train an XGBoost binary classifier on a variant-vs-wildtype split.
-
-    Uses ``binary:logistic`` objective with AUC as the eval metric. Sample
-    weights are computed with :func:`sklearn.utils.compute_sample_weight`
-    when ``cfg.xgboost.weigh_samples`` is ``True``. Early stopping is applied
-    against the validation set.
-
-    Parameters
-    ----------
-    train : pl.DataFrame
-        Training split containing feature columns and ``cfg.label_column``.
-    val : pl.DataFrame
-        Validation split used for early stopping and eval logging.
-    cfg : DictConfig
-        Hydra config supplying ``label_column``, ``wt_label``, ``random_state``,
-        and the ``xgboost`` sub-config.
-
-    Returns
-    -------
-    xgb.Booster
-        Trained XGBoost booster at the best iteration.
-    """
-    label_col = cfg.label_column
-    wt_label = cfg.wt_label
-
-    y_train = train.get_column(label_col).to_numpy() == wt_label
-    sample_weight = (
-        sklearn.utils.compute_sample_weight("balanced", y_train)
-        if cfg.xgboost.weigh_samples
-        else None
-    )
-
-    dtrain = get_dmatrix(train, label_col, wt_label, weight=sample_weight)
-    deval = get_dmatrix(val, label_col, wt_label)
-
-    params = dict(cfg.xgboost.params)
-    params["objective"] = "binary:logistic"
-    params["eval_metric"] = "auc"
-    params["seed"] = cfg.random_state
-
-    return xgb.train(
-        params,
-        dtrain,
-        num_boost_round=cfg.xgboost.num_boost_round,
-        evals=[(dtrain, "train"), (deval, "eval")],
-        early_stopping_rounds=cfg.xgboost.early_stopping_rounds,
-        verbose_eval=True,
-    )
-
-
-def evaluate(
+def predict_binary(
     df: pl.DataFrame, model: xgb.Booster, label_col: str, wt_label: str
-) -> tuple[float, float]:
+) -> np.ndarray:
     """
-    Compute AUROC and accuracy for a trained model on a DataFrame split.
+    Raw predicted P(wildtype) scores for every row of ``df``.
+
+    Thin wrapper around :func:`~fisseq_data_pipeline.utils.xgbparams.get_dmatrix`
+    plus ``model.predict`` -- no metric computation, since this pipeline needs
+    one raw score per cell rather than an aggregate against known labels.
+    Reusing ``get_dmatrix`` keeps scoring identical to the feature handling and
+    non-finite-to-NaN masking used to fit the model.
 
     Parameters
     ----------
     df : pl.DataFrame
-        Split to evaluate. Must contain ``label_col`` and the same feature
-        columns used during training.
+        Rows to score. Every non-``label_col`` column is treated as a feature.
     model : xgb.Booster
-        Trained XGBoost booster.
+        A trained booster.
     label_col : str
-        Name of the label column.
+        Name of the label column, used only to exclude it from the features --
+        the true labels themselves are not read.
     wt_label : str
-        Wildtype label string passed to :func:`get_dmatrix`.
+        Wildtype label string, passed through to ``get_dmatrix`` (it only
+        affects that function's own label encoding, which this discards).
 
     Returns
     -------
-    tuple[float, float]
-        ``(auroc, accuracy)`` where accuracy uses a 0.5 probability threshold.
+    np.ndarray
+        1-D array of predicted P(wildtype) scores, one per row, in row order.
     """
-    dmatrix = get_dmatrix(df, label_col, wt_label)
-    y_true = dmatrix.get_label()
-    y_prob = model.predict(dmatrix)
-    auroc = sklearn.metrics.roc_auc_score(y_true, y_prob)
-    accuracy = sklearn.metrics.accuracy_score(y_true, y_prob >= 0.5)
-
-    return auroc, accuracy
-
-
-def test_xgboost(
-    model: xgb.Booster,
-    train: pl.DataFrame,
-    val: pl.DataFrame,
-    test: pl.DataFrame,
-    cfg: DictConfig,
-) -> dict:
-    """
-    Evaluate a trained model on train, validation, and test splits.
-
-    Parameters
-    ----------
-    model : xgb.Booster
-        Trained XGBoost booster.
-    train : pl.DataFrame
-        Training split.
-    val : pl.DataFrame
-        Validation split.
-    test : pl.DataFrame
-        Held-out test split.
-    cfg : DictConfig
-        Hydra config supplying ``label_column`` and ``wt_label``.
-
-    Returns
-    -------
-    dict
-        Dictionary with keys ``variant``, ``train_auroc``, ``train_accuracy``,
-        ``val_auroc``, ``val_accuracy``, ``test_auroc``, ``test_accuracy``.
-    """
-    label_col = cfg.label_column
-    wt_label = cfg.wt_label
-
-    variant = next(
-        v for v in train.get_column(label_col).unique().to_list() if v != wt_label
-    )
-
-    evaluate_wrapper = functools.partial(
-        evaluate, model=model, label_col=label_col, wt_label=wt_label
-    )
-
-    train_auroc, train_accuracy = evaluate_wrapper(train)
-    val_auroc, val_accuracy = evaluate_wrapper(val)
-    test_auroc, test_accuracy = evaluate_wrapper(test)
-
-    return {
-        "variant": variant,
-        "train_auroc": train_auroc,
-        "train_accuracy": train_accuracy,
-        "val_auroc": val_auroc,
-        "val_accuracy": val_accuracy,
-        "test_auroc": test_auroc,
-        "test_accuracy": test_accuracy,
-    }
-
-
-def read_feature_file(file_path: PathLike) -> pl.DataFrame:
-    """
-    Read a feature file (Parquet or CSV) into a Polars DataFrame.
-
-    Parameters
-    ----------
-    file_path : PathLike
-        Path to the file. Supported extensions: ``.parquet``, ``.pq``, ``.csv``.
-
-    Returns
-    -------
-    pl.DataFrame
-        Contents of the file.
-
-    Raises
-    ------
-    ValueError
-        If the file extension is not supported.
-    """
-    path = pathlib.Path(file_path)
-    suffix = path.suffix.lower()
-    if suffix in [".parquet", ".pq"]:
-        return pl.read_parquet(path)
-    elif suffix == ".csv":
-        return pl.read_csv(path)
-    else:
-        raise ValueError(
-            f"Unsupported file format: {suffix!r}. Expected .parquet or .csv"
-        )
-
-
-def downsample_per_barcode(
-    data_df: pl.DataFrame,
-    barcode_column: str,
-    label_col: str,
-    wt_label: str,
-    seed: int,
-    max_cells_wt: Optional[int] = None,
-    max_cells_variant: Optional[int] = None,
-) -> pl.DataFrame:
-    """
-    Cap each barcode's cell count independently, per wildtype/variant status.
-
-    Wildtype rows (``label_col == wt_label``) and variant rows are handled as
-    separate partitions, each with its own cap. Within a partition, any
-    barcode with more rows than its cap is randomly downsampled to exactly
-    that many rows; barcodes at or below the cap are left untouched.
-
-    Parameters
-    ----------
-    data_df : pl.DataFrame
-        DataFrame containing all variant and wildtype rows, including
-        ``barcode_column``.
-    barcode_column : str
-        Name of the column identifying each cell's barcode.
-    label_col : str
-        Name of the label column.
-    wt_label : str
-        Label string identifying wildtype rows.
-    seed : int
-        Random seed for per-barcode sampling.
-    max_cells_wt : int or None
-        Maximum rows per wildtype barcode. ``None`` disables capping for
-        wildtype rows.
-    max_cells_variant : int or None
-        Maximum rows per non-wildtype barcode. ``None`` disables capping for
-        variant rows.
-
-    Returns
-    -------
-    pl.DataFrame
-        ``data_df`` with over-cap barcodes downsampled.
-    """
-    if max_cells_wt is None and max_cells_variant is None:
-        return data_df
-
-    def _cap(df: pl.DataFrame, max_cells: Optional[int]) -> pl.DataFrame:
-        if max_cells is None or len(df) == 0:
-            return df
-        shuffled = df.sample(fraction=1.0, shuffle=True, seed=seed)
-        row_in_barcode = pl.int_range(pl.len()).over(barcode_column)
-        return shuffled.filter(row_in_barcode < max_cells)
-
-    wt_df = _cap(data_df.filter(pl.col(label_col) == wt_label), max_cells_wt)
-    variant_df = _cap(data_df.filter(pl.col(label_col) != wt_label), max_cells_variant)
-    return pl.concat([variant_df, wt_df])
-
-
-def downsample_wildtype(
-    data_df: pl.DataFrame,
-    label_col: str,
-    wt_label: str,
-    seed: int,
-    n: Optional[int] = None,
-) -> pl.DataFrame:
-    """
-    Downsample wildtype rows to a target count.
-
-    If the wildtype group is larger than the target, a random sample of
-    wildtype rows is drawn without replacement.
-
-    Parameters
-    ----------
-    data_df : pl.DataFrame
-        DataFrame containing all variant and wildtype rows.
-    label_col : str
-        Name of the label column.
-    wt_label : str
-        Label string identifying wildtype rows.
-    seed : int
-        Random seed for sampling.
-    n : int or None
-        Target wildtype count. If ``None``, the target is the size of the
-        largest non-wildtype variant group.
-
-    Returns
-    -------
-    pl.DataFrame
-        DataFrame with wildtype rows downsampled, or unchanged if already
-        at or below the target.
-    """
-    return downsample_group_to_target(data_df, label_col, wt_label, seed, n=n)
+    return model.predict(get_dmatrix(df, label_col, wt_label))
 
 
 def filter_min_cells(
     data_df: pl.DataFrame,
     label_col: str,
     wt_label: str,
-    min_cells: int,
+    min_cells: Optional[int],
 ) -> pl.DataFrame:
     """
-    Remove variant groups with fewer than ``min_cells`` cells.
+    Remove non-wildtype variant groups with fewer than ``min_cells`` cells.
 
-    Wildtype rows are always retained regardless of count.
+    Wildtype rows are always retained regardless of count. A no-op when
+    ``min_cells`` is ``None``.
 
     Parameters
     ----------
@@ -408,14 +165,18 @@ def filter_min_cells(
         Name of the label column.
     wt_label : str
         Label string identifying wildtype rows (always kept).
-    min_cells : int
-        Minimum number of cells a variant must have to be retained.
+    min_cells : int or None
+        Minimum number of cells a variant must have to be retained. ``None``
+        disables the filter entirely.
 
     Returns
     -------
     pl.DataFrame
         DataFrame with small variant groups removed.
     """
+    if min_cells is None:
+        return data_df
+
     variant_counts = (
         data_df.filter(pl.col(label_col) != wt_label).group_by(label_col).len()
     )
@@ -429,213 +190,330 @@ def filter_min_cells(
     )
 
 
-def _exclude_blocked_barcodes(
+def downsample_wildtype(
     data_df: pl.DataFrame,
-    barcode_column: str,
-    barcode_block_list_file: Optional[str],
+    label_col: str,
+    wt_label: str,
+    seed: int,
 ) -> pl.DataFrame:
     """
-    Drop cells whose barcode is blocked.
+    Downsample wildtype rows, barcode-proportionally, to the size of the
+    largest remaining non-wildtype variant group.
+
+    If wildtype barcode B holds fraction ``p_B`` of the wildtype pool, roughly
+    ``p_B * target`` of its cells are kept, so wildtype barcode proportions are
+    preserved rather than sampled uniformly across all wildtype cells. That
+    matters here specifically because ``auroc_median_barcode`` scores each
+    variant barcode against the whole wildtype set: a uniform draw could
+    silently skew the wildtype composition every one of those comparisons is
+    measured against. (This replaces an earlier uniform implementation that
+    delegated to a generic ``downsample_group_to_target`` helper.)
+
+    Rounding each barcode's target to the nearest integer can leave the final
+    wildtype count off the requested target by up to (number of wildtype
+    barcodes) cells -- accepted as negligible, not corrected with a
+    largest-remainder adjustment.
 
     Parameters
     ----------
     data_df : pl.DataFrame
-        Cell-level DataFrame containing ``barcode_column``.
-    barcode_column : str
-        Name of the column identifying each cell's barcode.
-    barcode_block_list_file : str or None
-        Path to a parquet file with ``barcode`` (str) and ``barcode_ok``
-        (bool) columns (e.g. the output of :mod:`.barcodeblocklist`), or
-        ``None`` to skip filtering entirely.
+        DataFrame containing all variant and wildtype rows, including
+        ``meta_barcode``.
+    label_col : str
+        Name of the label column.
+    wt_label : str
+        Label string identifying wildtype rows.
+    seed : int
+        Random seed for sampling.
 
     Returns
     -------
     pl.DataFrame
-        ``data_df`` with rows whose ``barcode_column`` value is blocked
-        removed. Unchanged if ``barcode_block_list_file`` is ``None``.
+        DataFrame with wildtype rows downsampled, or unchanged if already at or
+        below the target (including when there are no non-wildtype rows to size
+        the target against).
     """
-    if barcode_block_list_file is None:
+    wt_df = data_df.filter(pl.col(label_col) == wt_label)
+    other_df = data_df.filter(pl.col(label_col) != wt_label)
+    wt_n = len(wt_df)
+    if wt_n == 0:
         return data_df
-    bl_df = pl.read_parquet(barcode_block_list_file)
-    blocked = set(bl_df.filter(~pl.col("barcode_ok"))["barcode"].to_list())
-    if not blocked:
+
+    target = other_df.group_by(label_col).len().get_column("len").max()
+    if target is None or wt_n <= target:
         return data_df
-    return data_df.filter(~pl.col(barcode_column).is_in(blocked))
+
+    fraction = target / wt_n
+    barcode_targets = (
+        wt_df.group_by(META_BARCODE_COL)
+        .len()
+        .with_columns(
+            (pl.col("len") * fraction).round(0).cast(pl.Int64).alias("__target__")
+        )
+    )
+    shuffled = wt_df.sample(fraction=1.0, shuffle=True, seed=seed).join(
+        barcode_targets.select([META_BARCODE_COL, "__target__"]),
+        on=META_BARCODE_COL,
+        how="left",
+    )
+    row_in_barcode = pl.int_range(pl.len()).over(META_BARCODE_COL)
+    kept_wt = shuffled.filter(row_in_barcode < pl.col("__target__")).drop("__target__")
+    return pl.concat([other_df, kept_wt])
 
 
-def train_test_val_split(
-    data_df: pl.DataFrame,
-    cfg: DictConfig,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+def _stratification_key(barcodes: np.ndarray, is_wt: np.ndarray) -> np.ndarray:
     """
-    Split a feature DataFrame into train, test, and validation sets.
+    Composite ``(barcode, is_wt)`` stratification key, with a rare-stratum
+    fallback.
 
-    Optionally filters small variant groups via :func:`filter_min_cells` and
-    downsamples wildtype via :func:`downsample_wildtype` before splitting.
-    The 80/10/10 split is stratified by label.
+    Any ``(barcode, is_wt)`` stratum with fewer than ``_MIN_STRATUM_SIZE``
+    members collapses into a shared ``"rare|wt"`` / ``"rare|variant"`` bucket --
+    the wt/variant half of the key is preserved and never merged across, so
+    barcode composition can degrade gracefully without ever sacrificing the
+    wildtype/variant balance ``StratifiedKFold`` is there to preserve.
 
     Parameters
     ----------
-    data_df : pl.DataFrame
-        Full feature DataFrame containing feature columns and ``cfg.label_column``.
-    cfg : DictConfig
-        Hydra config supplying ``label_column``, ``wt_label``, ``feature_cols``,
-        ``min_cells``, ``downsample_wt``, ``max_cells_per_barcode_wt``,
-        ``max_cells_per_barcode_variant``, ``random_state``,
-        ``feature_block_list_file``, ``barcode_block_list_file``, and
-        ``barcode_column``.
+    barcodes : np.ndarray
+        1-D array of barcode strings, one per cell.
+    is_wt : np.ndarray
+        1-D boolean array, ``True`` for wildtype cells, aligned with
+        ``barcodes``.
 
     Returns
     -------
-    tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
-        ``(train, test, val)`` DataFrames, each containing feature columns,
-        the label column, and a ``__row_idx__`` column recording the 0-based
-        row position of each cell in the original ``data_df`` argument (before
-        any filtering or downsampling). Callers that do not need the index
-        should drop ``__row_idx__`` before passing splits to model-training
-        functions.
+    np.ndarray
+        1-D array of composite stratification key strings.
     """
+    half = np.where(is_wt, "wt", "variant")
+    raw = np.array([f"{b}|{h}" for b, h in zip(barcodes, half)])
+    counts = Counter(raw)
+    return np.array(
+        [
+            s if counts[s] >= _MIN_STRATUM_SIZE else f"rare|{h}"
+            for s, h in zip(raw, half)
+        ]
+    )
+
+
+def ovwt_batchwise(
+    cells_lf: pl.LazyFrame,
+    cfg: OvwtConfig,
+    feature_selector: pl.Expr = FEATURE_SELECTOR,
+) -> "tuple[pl.DataFrame, pl.DataFrame, dict[str, list[tuple[xgb.Booster, Optional[object]]]]]":
+    """
+    K-fold cross-validated one-vs-wildtype scoring, per variant.
+
+    Every cell in a variant's vs.-wildtype subset gets exactly one out-of-fold
+    (OOF) score, which is what makes the per-barcode metric below well-defined.
+    Folds are stratified jointly on ``(meta_barcode, is_wt)`` via a composite
+    key (see :func:`_stratification_key`), so barcode composition and the
+    wildtype/variant balance are both preserved fold to fold.
+
+    A variant whose fold training or evaluation raises -- e.g. a stratum too
+    small for the inner nested split to survive, despite
+    :func:`_stratification_key`'s mitigation -- is skipped with a logged
+    warning rather than aborting the run. This is load-bearing, not defensive
+    decoration: small variants legitimately hit it, and the alternative is
+    losing every other variant's results alongside.
+
+    Parameters
+    ----------
+    cells_lf : pl.LazyFrame
+        QC-passed, wildtype-normalized cell-level features (NORMALIZE's
+        output).
+    cfg : OvwtConfig
+        Supplies ``label_column``, ``wt_label``, ``n_folds``, ``calibrate``,
+        ``min_cells``, ``downsample_wt``, ``xgboost``, and ``random_seed``.
+    feature_selector : pl.Expr
+        Polars selector identifying feature columns. Defaults to
+        ``FEATURE_SELECTOR`` (every non-``meta_*`` column).
+
+    Returns
+    -------
+    tuple[pl.DataFrame, pl.DataFrame, dict]
+        ``(results, cell_scores, models)``:
+
+        - ``results``: one row per surviving variant, columns
+          ``cfg.label_column``, ``auroc_pooled``, ``auroc_median_barcode``,
+          ``meta_n_barcodes``, ``meta_n_cells``.
+        - ``cell_scores``: ``META_SELECTOR`` columns plus ``score`` (the OOF
+          score) and ``meta_variant_scored_against`` -- one row per cell per
+          variant it was scored against, so wildtype cells appear once per
+          variant.
+        - ``models``: one entry per surviving variant, a list of
+          ``(model, calibrator_or_None)`` tuples, one per fold.
+
+        If no variant survives pre-filtering, or every variant's loop raises,
+        both DataFrames come back empty but correctly schema'd.
+    """
+    df = cells_lf.collect()
     label_col = cfg.label_column
-    if cfg.feature_cols is not None:
-        feature_cols = list(cfg.feature_cols)
+    wt_label = cfg.wt_label
+
+    df = filter_min_cells(df, label_col, wt_label, cfg.min_cells)
+    if cfg.downsample_wt:
+        df = downsample_wildtype(df, label_col, wt_label, cfg.random_seed)
+
+    feature_cols = df.select(feature_selector).columns
+    variants = (
+        df.filter(pl.col(label_col) != wt_label)
+        .get_column(label_col)
+        .unique()
+        .sort()
+        .to_list()
+    )
+    logging.info("Scoring %d variant(s) against %r", len(variants), wt_label)
+
+    # train_binary_xgboost does `dict(cfg.xgboost.params)` internally, which
+    # raises on a plain dataclass -- OmegaConf.structured() produces a properly
+    # nested DictConfig all the way down. Computed once and reused for every
+    # fold/variant below, since cfg does not change across the loop.
+    xgb_cfg = OmegaConf.structured(cfg)
+
+    per_variant_results: list[dict] = []
+    per_cell_scores: list[pl.DataFrame] = []
+    models: "dict[str, list[tuple[xgb.Booster, Optional[object]]]]" = {}
+
+    for variant in variants:
+        try:
+            subset = df.filter(pl.col(label_col).is_in([variant, wt_label]))
+            is_wt = (subset.get_column(label_col) == wt_label).to_numpy()
+            barcodes = subset.get_column(META_BARCODE_COL).to_numpy().astype(str)
+            strata = _stratification_key(barcodes, is_wt)
+
+            splitter = sklearn.model_selection.StratifiedKFold(
+                n_splits=cfg.n_folds, shuffle=True, random_state=cfg.random_seed
+            )
+            oof_scores = np.full(len(subset), np.nan)
+            fold_models: "list[tuple[xgb.Booster, Optional[object]]]" = []
+
+            for fold_idx, (fit_idx, test_idx) in enumerate(
+                splitter.split(subset, strata)
+            ):
+                fit_df, test_df = subset[fit_idx], subset[test_idx]
+                # split_indices_stratified returns (train, test, val); this
+                # takes slots 0 and 2 and discards the middle 10% -- the fold's
+                # own test_idx above already serves that role.
+                train_pos, _, calib_pos = split_indices_stratified(
+                    strata[fit_idx], cfg.random_seed + fold_idx
+                )
+                train_df = fit_df[train_pos].select([label_col, *feature_cols])
+                calib_df = fit_df[calib_pos].select([label_col, *feature_cols])
+
+                # calib_df does double duty: XGBoost's early-stopping eval set
+                # AND the calibrator's fitting set. Not an independent
+                # calibration set -- matching the reference implementation.
+                model = train_binary_xgboost(train_df, calib_df, xgb_cfg)
+
+                calibrator = None
+                if cfg.calibrate:
+                    calib_raw = predict_binary(calib_df, model, label_col, wt_label)
+                    calib_is_wt = (
+                        calib_df.get_column(label_col) == wt_label
+                    ).to_numpy()
+                    # Private sklearn API. There is no public single-feature
+                    # Platt scaler; CalibratedClassifierCV wraps an estimator,
+                    # not a raw score vector. Pinned by test coverage rather
+                    # than by a version bound -- if a sklearn upgrade breaks
+                    # this import, tests/unit/test_ovwt.py fails loudly.
+                    calibrator = sklearn.calibration._SigmoidCalibration().fit(
+                        calib_raw, calib_is_wt
+                    )
+
+                test_raw = predict_binary(
+                    test_df.select([label_col, *feature_cols]),
+                    model,
+                    label_col,
+                    wt_label,
+                )
+                oof_scores[test_idx] = (
+                    calibrator.predict(test_raw) if calibrator is not None else test_raw
+                )
+                fold_models.append((model, calibrator))
+
+            models[variant] = fold_models
+
+            auroc_pooled = float(sklearn.metrics.roc_auc_score(is_wt, oof_scores))
+
+            variant_barcodes = (
+                subset.filter(pl.col(label_col) != wt_label)
+                .get_column(META_BARCODE_COL)
+                .unique()
+                .to_list()
+            )
+            barcode_aurocs = []
+            for barcode in variant_barcodes:
+                mask = (barcodes == str(barcode)) | is_wt
+                barcode_aurocs.append(
+                    sklearn.metrics.roc_auc_score(is_wt[mask], oof_scores[mask])
+                )
+            # None, not float("nan"), so the cross-experiment median in
+            # globalovwt.py excludes this cleanly instead of being poisoned by
+            # a NaN. Defensive only -- a variant only enters this loop with at
+            # least one barcode of its own.
+            auroc_median_barcode = (
+                float(np.median(barcode_aurocs)) if barcode_aurocs else None
+            )
+
+            per_variant_results.append(
+                {
+                    label_col: variant,
+                    "auroc_pooled": auroc_pooled,
+                    "auroc_median_barcode": auroc_median_barcode,
+                    "meta_n_barcodes": len(variant_barcodes),
+                    "meta_n_cells": len(subset),
+                }
+            )
+            per_cell_scores.append(
+                subset.select(META_SELECTOR).with_columns(
+                    pl.Series("score", oof_scores),
+                    pl.lit(variant).alias("meta_variant_scored_against"),
+                )
+            )
+        except Exception:
+            logging.warning(
+                "Skipping variant %r due to an error during training/evaluation:",
+                variant,
+                exc_info=True,
+            )
+            continue
+
+    if not per_variant_results:
+        results_df = pl.DataFrame(
+            schema={
+                label_col: pl.String,
+                "auroc_pooled": pl.Float64,
+                "auroc_median_barcode": pl.Float64,
+                "meta_n_barcodes": pl.Int64,
+                "meta_n_cells": pl.Int64,
+            }
+        )
+        cell_scores_schema = {c: df.schema[c] for c in df.select(META_SELECTOR).columns}
+        cell_scores_schema["score"] = pl.Float64
+        cell_scores_schema["meta_variant_scored_against"] = pl.String
+        cell_scores_df = pl.DataFrame(schema=cell_scores_schema)
     else:
-        feature_cols = get_feature_cols(data_df)
-    feature_cols = _exclude_blocked_features(feature_cols, cfg.feature_block_list_file)
+        results_df = pl.DataFrame(per_variant_results)
+        cell_scores_df = pl.concat(per_cell_scores)
 
-    data_df = data_df.with_row_index("__row_idx__")
-    # Barcode row-filter applied here, while barcode_column is still present
-    # (before the column-narrowing select below drops it) and after
-    # with_row_index so __row_idx__ still records true original position.
-    # This runs before min_cells filtering, so a variant that drops below
-    # min_cells purely because its barcode(s) got blocked is correctly
-    # excluded as a result.
-    data_df = _exclude_blocked_barcodes(
-        data_df, cfg.barcode_column, cfg.barcode_block_list_file
-    )
-    # Per-barcode cap applied here too, for the same reason as the
-    # barcode-blocklist filter above: barcode_column must still be present,
-    # and running before min_cells filtering means a variant that drops
-    # below min_cells purely because its barcode(s) got capped is correctly
-    # excluded as a result.
-    data_df = downsample_per_barcode(
-        data_df,
-        cfg.barcode_column,
-        label_col,
-        cfg.wt_label,
-        cfg.random_state,
-        max_cells_wt=cfg.max_cells_per_barcode_wt,
-        max_cells_variant=cfg.max_cells_per_barcode_variant,
-    )
-    select_cols = feature_cols + [label_col]
-    data_df = data_df.select(select_cols + ["__row_idx__"])
-    data_df = data_df.filter(pl.col(label_col).is_not_null())
-
-    if cfg.min_cells is not None:
-        data_df = filter_min_cells(data_df, label_col, cfg.wt_label, cfg.min_cells)
-
-    if cfg.downsample_wt is not False and cfg.downsample_wt != 0:
-        n = cfg.downsample_wt if not isinstance(cfg.downsample_wt, bool) else None
-        data_df = downsample_wildtype(
-            data_df, label_col, cfg.wt_label, cfg.random_state, n=n
-        )
-
-    data_df = data_df.with_row_index("__idx__")
-    labels = data_df.get_column(label_col).to_numpy()
-
-    train_idx, test_idx, val_idx = split_indices_stratified(labels, cfg.random_state)
-
-    def select_rows(idx: np.ndarray) -> pl.DataFrame:
-        return data_df.filter(pl.col("__idx__").is_in(idx)).select(
-            select_cols + ["__row_idx__"]
-        )
-
-    return select_rows(train_idx), select_rows(test_idx), select_rows(val_idx)
-
-
-def profile_variant(
-    v: str,
-    train_all: pl.DataFrame,
-    test_all: pl.DataFrame,
-    val_all: pl.DataFrame,
-    cfg: DictConfig,
-) -> tuple[dict, xgb.Booster]:
-    """
-    Train and evaluate an XGBoost model for one variant vs. wildtype.
-
-    Subsets ``train_all``, ``test_all``, and ``val_all`` to rows belonging to
-    variant ``v`` or the wildtype label, trains a model via
-    :func:`train_xgboost`, and evaluates it via :func:`test_xgboost`.
-
-    Parameters
-    ----------
-    v : str
-        Variant label to profile.
-    train_all : pl.DataFrame
-        Full training split (all variants).
-    test_all : pl.DataFrame
-        Full test split (all variants).
-    val_all : pl.DataFrame
-        Full validation split (all variants).
-    cfg : DictConfig
-        Hydra config supplying ``label_column``, ``wt_label``, and XGBoost
-        settings.
-
-    Returns
-    -------
-    tuple[dict, xgb.Booster]
-        ``(result_dict, model)`` where ``result_dict`` contains the evaluation
-        metrics from :func:`test_xgboost`.
-    """
-    keep = pl.col(cfg.label_column).is_in([v, cfg.wt_label])
-    train, test, val = (
-        train_all.filter(keep),
-        test_all.filter(keep),
-        val_all.filter(keep),
-    )
-    logging.info(
-        "Subset sizes — train: %d, val: %d, test: %d",
-        len(train),
-        len(val),
-        len(test),
-    )
-    model = train_xgboost(train, val, cfg)
-    result = test_xgboost(model, train, val, test, cfg)
-    logging.info(
-        "Results for '%s': train_auroc=%.4f, val_auroc=%.4f, test_auroc=%.4f",
-        v,
-        result["train_auroc"],
-        result["val_auroc"],
-        result["test_auroc"],
-    )
-    return result, model
+    return results_df, cell_scores_df, models
 
 
 @hydra.main(version_base=None, config_path=None, config_name="ovwt_main")
 def main(cfg: DictConfig) -> None:
     """
-    Hydra entry point: one-vs-wildtype XGBoost variant profiling.
-
-    Steps
-    -----
-    1. Read the feature file at ``cfg.input_file``.
-    2. Split into train/test/val via :func:`train_test_val_split`.
-    3. For each non-wildtype variant, train and evaluate an XGBoost binary
-       classifier via :func:`profile_variant`. Variants that raise an exception
-       are skipped with a warning.
-    4. Write per-variant evaluation metrics to ``results.csv`` and all trained
-       models (keyed by variant label) to ``models.pkl``.
-    5. Write per-variant gain-based feature importance to
-       ``feature_importance.parquet``.
+    Hydra entry point: k-fold one-vs-wildtype scoring for every variant in an
+    experiment.
 
     Output files
     ------------
-    - ``{output_dir}/results.parquet``
-    - ``{output_dir}/models.pkl``
-    - ``{output_dir}/feature_importance.parquet`` (one row per variant, one
-      column per feature that appeared in at least one variant's splits, plus
-      ``cfg.label_column``)
-    - ``{output_dir}/{train,test,val}_index.parquet`` (when ``save_splits`` is ``True``,
-      which is the default; each file has columns ``row_idx`` and ``origin_file``)
+    - ``{output_dir}/{prefix}results.parquet``
+    - ``{output_dir}/{prefix}cell_scores.parquet``
+    - ``{output_dir}/{prefix}models.pkl``
+
+    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,
+    otherwise empty.
 
     Configuration
     -------------
@@ -643,102 +521,45 @@ def main(cfg: DictConfig) -> None:
 
         python -m fisseq_data_pipeline.ovwt \\
             output_dir=./out \\
-            input_file=data/features.parquet \\
-            wt_label=WT
+            input_file=out/normalized.parquet \\
+            n_folds=5 \\
+            calibrate=true \\
+            min_cells=250 \\
+            downsample_wt=true \\
+            random_seed=0
     """
     ovwt_cfg: OvwtConfig = OmegaConf.to_object(cfg)
 
     output_dir = pathlib.Path(ovwt_cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    ovwt_cfg.output_dir = output_dir
+    ovwt_cfg.output_dir = str(output_dir)
     setup_logging(ovwt_cfg, "ovwt")
 
-    logging.info("Config:\n%s", OmegaConf.to_yaml(cfg))
-    logging.info("Loading input from %s", cfg.input_file)
-    feature_df = load_batches(cfg.input_file)[0].collect()
-    train_all, test_all, val_all = train_test_val_split(feature_df, cfg)
-    unique_vars = train_all.get_column(cfg.label_column).unique().to_list()
-    variants = [v for v in unique_vars if v != cfg.wt_label]
+    prefix = f"{ovwt_cfg.output_root}." if ovwt_cfg.output_root is not None else ""
 
-    logging.info("Found %d variant(s) to profile", len(variants))
+    logging.info("Loading normalized cells from %s", ovwt_cfg.input_file)
+    cells_lf = load_batches(ovwt_cfg.input_file)[0]
+
     logging.info(
-        "Split sizes — train: %d, val: %d, test: %d",
-        len(train_all),
-        len(val_all),
-        len(test_all),
+        "Running %d-fold one-vs-wildtype scoring (calibrate=%s, min_cells=%s)",
+        ovwt_cfg.n_folds,
+        ovwt_cfg.calibrate,
+        ovwt_cfg.min_cells,
     )
+    results_df, cell_scores_df, models = ovwt_batchwise(cells_lf, ovwt_cfg)
 
-    if cfg.save_splits:
-        origin_file = str(pathlib.Path(cfg.input_file).resolve())
-        for name, split_df in (
-            ("train", train_all),
-            ("test", test_all),
-            ("val", val_all),
-        ):
-            index_path = output_dir / f"{name}_index.parquet"
-            pl.DataFrame(
-                {
-                    "row_idx": split_df["__row_idx__"],
-                    "origin_file": pl.Series([origin_file] * len(split_df)),
-                }
-            ).write_parquet(index_path)
-            logging.info("Wrote %s index to %s", name, index_path)
-
-    train_all = train_all.drop("__row_idx__")
-    test_all = test_all.drop("__row_idx__")
-    val_all = val_all.drop("__row_idx__")
-
-    results = []
-    models = {}
-
-    for v in variants:
-        logging.info("Training model for variant '%s' vs. '%s'", v, cfg.wt_label)
-        try:
-            result, model = profile_variant(v, train_all, test_all, val_all, cfg)
-        except Exception:
-            logging.warning(
-                "Failed to profile variant '%s', skipping:\n%s",
-                v,
-                traceback.format_exc(),
-            )
-            continue
-        results.append(result)
-        models[v] = model
-
-    results_df = pl.DataFrame(results)
-
-    logging.info("Joining results with per-variant metadata")
-    meta_df = (
-        get_aggregate_meta_data(feature_df.lazy(), cfg.label_column)
-        .collect()
-        .rename({cfg.label_column: "variant"})
-    )
-    results_df = results_df.join(meta_df, on="variant", how="left")
-
-    results_path = output_dir / "results.parquet"
+    results_path = output_dir / f"{prefix}results.parquet"
+    logging.info("Writing %s", results_path)
     results_df.write_parquet(results_path)
-    logging.info("Results written to %s", results_path)
 
-    models_path = output_dir / "models.pkl"
-    logging.info("Writing models to %s", models_path)
+    cell_scores_path = output_dir / f"{prefix}cell_scores.parquet"
+    logging.info("Writing %s", cell_scores_path)
+    cell_scores_df.write_parquet(cell_scores_path)
+
+    models_path = output_dir / f"{prefix}models.pkl"
+    logging.info("Writing %s", models_path)
     with open(models_path, "wb") as f:
         pickle.dump(models, f)
-
-    logging.info("Computing feature importance")
-    feature_cols = [c for c in train_all.columns if c != cfg.label_column]
-    importance_dicts = []
-    for v, model in models.items():
-        importance = resolve_feature_importance(model, feature_cols)
-        importance[cfg.label_column] = v
-        importance_dicts.append(importance)
-    importance_df = (
-        pl.from_dicts(importance_dicts)
-        if importance_dicts
-        else pl.DataFrame({cfg.label_column: []})
-    )
-    importance_path = output_dir / "feature_importance.parquet"
-    importance_df.write_parquet(importance_path)
-    logging.info("Feature importance written to %s", importance_path)
 
     logging.info("Done")
 

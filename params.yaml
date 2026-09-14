@@ -1,0 +1,179 @@
+# params.yaml -- every default pipeline parameter, nothing else. Load
+# explicitly:
+#
+#   nextflow run . --pipeline_dir /path/to/experiment -params-file params.yaml
+#
+# Per-run overrides: a bare CLI flag (--ovwt_min_cells 500) wins over this
+# file; a second -params-file layers a whole alternate parameter set.
+# nextflow.config carries executor/profile/container settings only -- never
+# default parameter values.
+
+# ── Required, no default (fail fast if unset) ──────────────────────────────
+pipeline_dir: null
+container_image: "ghcr.io/lilferrit/fisseq-data-pipeline:latest"
+experiments: []
+
+# ── Experiments ─────────────────────────────────────────────────────────────
+# A list of maps, one per experiment. This replaces the old mandatory
+# <pipeline_dir>/configs/*.yaml directory -- there is no per-experiment config
+# file any more, and no per-experiment override of arbitrary pipeline
+# parameters. An entry may set ONLY these keys:
+#
+#   batch_stem              REQUIRED. Unique experiment id. Names every output
+#                           subdirectory (input/<batch_stem>.parquet,
+#                           qc_filter/<batch_stem>/, ...). Previously derived
+#                           from the config file's own name; there is no
+#                           filename to derive it from any more, so it must be
+#                           given explicitly and must be unique across the list.
+#   input_paths             REQUIRED. List of raw CSV/parquet source files that
+#                           INPUT merges into this experiment's input parquet.
+#                           There is deliberately no pipeline-wide default --
+#                           a list of raw data files is inherently per-experiment.
+#   global_channel          OPTIONAL. String or list of strings naming which
+#                           global channel(s) this experiment belongs to. An
+#                           experiment naming no channel never contributes to
+#                           GLOBAL_OVWT or GLOBAL_FEATURE_SELECT. See
+#                           global_channels below.
+#   feature_allowlist_file  OPTIONAL, INPUT-stage. Falls back to the
+#   feature_blocklist_file  pipeline-wide default below when omitted; an
+#   csv_schema_scan_rows    entry's own value always wins.
+#
+# Any other key is rejected with an error naming it, rather than silently
+# ignored -- if you want to change a QC threshold or an OvWT hyperparameter,
+# set it at the top level of this file (it applies pipeline-wide).
+#
+# The empty list above is deliberate -- every real run supplies its own
+# `experiments:` list by editing this file (or a full copy of it; Nextflow only
+# accepts one -params-file at a time).
+#
+# experiments:
+#   - batch_stem: plate1
+#     input_paths:
+#       - /data/plate1/cellprofiler_features.csv
+#       - /data/plate1/barcode_calls.parquet
+#     global_channel: cohort_a
+#   - batch_stem: plate2
+#     input_paths: [/data/plate2/cellprofiler_features.csv]
+#     global_channel: [cohort_a, cohort_b]   # may belong to several
+#     csv_schema_scan_rows: null             # per-experiment override: scan every row
+#   - batch_stem: plate3
+#     input_paths: [/data/plate3/features.parquet]
+#     # no global_channel -- processed batchwise only
+
+# ── Reproducibility ─────────────────────────────────────────────────────────
+# THE seed. Every stochastic step in the pipeline derives from this single
+# value: QC pseudo-variant downsampling, the feature-selection bootstrap
+# splits and their per-half wildtype subsampling, OvWT's StratifiedKFold
+# shuffle / inner calibration split / XGBoost `seed`, PCA's solver, and UMAP's
+# fit. There is deliberately no stage-local `random_state` anywhere -- see
+# AGENTS.md.
+#
+# Stages that need to differ from each other still do, by deriving a fixed
+# offset from this seed rather than owning a seed of their own (e.g.
+# GENERATE_SPLIT uses random_seed + bootstrap_idx so each bootstrap replicate
+# draws an independent split). Changing this value changes every one of them
+# coherently.
+random_seed: 0
+
+# ── Run gates ───────────────────────────────────────────────────────────────
+# Pipeline-wide, not per-experiment.
+run_ovwt: true               # OVWT_BATCHWISE + GLOBAL_OVWT
+run_feature_selection: true  # the whole batchwise chain + GLOBAL_FEATURE_SELECT
+
+# ── Global channels ─────────────────────────────────────────────────────────
+# Which named channels actually run the two global stages (GLOBAL_OVWT,
+# GLOBAL_FEATURE_SELECT). Each active channel gets its own run, scoped to only
+# the experiments whose `global_channel` key names it, publishing under
+# global/<channel>/. null or [] (the default): no global stage runs at all,
+# and the pipeline is purely batchwise. An experiment in several active
+# channels contributes to each one independently.
+global_channels: null
+
+# ── Label column, shared pipeline-wide ──────────────────────────────────────
+# Read by QC_FILTER, CORRELATE_FEATURES, FINALIZE_FEATURE_SELECT,
+# GLOBAL_FEATURE_SELECT, OVWT_BATCHWISE and GLOBAL_OVWT -- one override changes
+# the variant label column everywhere at once.
+filter_label_column: "meta_aa_changes"
+
+# ── INPUT stage ─────────────────────────────────────────────────────────────
+# Pipeline-wide defaults for the three optional per-experiment INPUT fields.
+feature_allowlist_file: null
+feature_blocklist_file: null
+# Rows of each CSV input_paths source scanned to infer column dtypes
+# (forwarded to polars scan_csv's infer_schema_length). null = scan every row
+# (slower, but avoids mis-inferred dtypes on sparse/late-appearing values). No
+# effect on parquet sources.
+csv_schema_scan_rows: 100
+
+# ── QC filtering (QC_FILTER) ────────────────────────────────────────────────
+barcode_count_threshold: 10
+variant_barcode_count_threshold: 4
+edit_distance_threshold: 1
+# Optional int: restrict qc_variant_downsample_classes to at most this many
+# distinct variants (see qc_variant_downsample_mode), applied before QC
+# thresholding; null = disabled.
+qc_n_variants: null
+# classify_variant() categories eligible for the qc_n_variants restriction.
+qc_variant_downsample_classes: ["Single Missense"]
+# "top" (highest cell count) or "random" (seeded by random_seed).
+qc_variant_downsample_mode: "top"
+# Optional single float (0,1] / int, or a list of floats/ints: pseudo-variant
+# downsampling per label_column group, drawn from post-QC cells. A float keeps
+# that fraction of a group; an int keeps that many rows and skips any group
+# with fewer. Each amount gets its own `:downsample-{amount}` tag on
+# meta_aa_changes, with the base label preserved and the tag exposed separately
+# as meta_variant_tag. null = disabled.
+qc_downsample_amounts: null
+# classify_variant() categories eligible for pseudo-variant generation.
+qc_downsample_classes: ["Synonymous", "Single Missense"]
+
+# ── OvWT distinguishability (OVWT_BATCHWISE) ────────────────────────────────
+# Per variant, k-fold cross-validated one-vs-wildtype scoring: every cell gets
+# exactly one out-of-fold score, and each variant gets both a pooled AUROC and
+# a median-of-per-barcode AUROC.
+ovwt_wt_label: "WT"
+ovwt_n_folds: 5
+# Per-fold sigmoid (Platt) calibration, fit on a slice held out of that fold's
+# own training data.
+ovwt_calibrate: true
+# Minimum cells a variant needs to be scored at all; wildtype is always kept
+# regardless of count. null disables the filter.
+ovwt_min_cells: 250
+# true = downsample wildtype cells (barcode-proportionally) to the size of the
+# largest remaining variant group. A plain boolean -- an explicit integer
+# target is not exposed.
+ovwt_downsample_wt: true
+
+# ── Feature selection (bootstrap + aggregation + correlation) ───────────────
+# All _AGGREGATORS keys that make sense as a reproducibility statistic.
+feature_select_types: ["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]
+feature_select_bootstrap_reps: 10
+# Optional float (0,1) or int; null = no wildtype downsampling in
+# AGGREGATE_HALF / AGGREGATE_FEATURE_TYPE.
+feature_select_downsample_wt: null
+feature_select_min_correlation: 0.5
+
+# ── Global feature selection (GLOBAL_FEATURE_SELECT) ────────────────────────
+# Optional int: minimum number of a channel's member experiments that must
+# mark a feature ok (in their own batchwise blocklist) for it to be globally
+# ok; null = a feature must be ok in every member experiment that reports on it.
+global_feature_select_min_batches_ok: null
+
+# ── Dimensionality reduction (FINALIZE_FEATURE_SELECT + GLOBAL_FEATURE_SELECT) ──
+# PCA and UMAP are computed independently of each other, both on the same
+# final selected/normalized feature matrix -- UMAP does not run on PCA output.
+run_pca: false
+# Must be <= min(n_rows, n_retained_features) after all-null feature columns
+# are dropped, or the run fails. Tune to the dataset's real post-selection
+# feature count.
+pca_n_components: 10
+run_umap: false
+umap_n_components: 2
+umap_n_neighbors: 10
+umap_metric: "cosine"
+# umap-learn's min_dist: minimum embedded distance between points.
+umap_min_dist: 0.1
+# NOTE: UMAP's fit is seeded from random_seed above. It used to have its own
+# umap_random_state (default 42, nullable to opt into faster multithreaded
+# nondeterministic fitting); that knob is gone, so UMAP output from this
+# release will not match a pre-release run's.

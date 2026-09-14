@@ -366,9 +366,14 @@ class GlobalFeatureSelectConfig(AppConfig):
     umap_min_dist : float
         ``umap.UMAP``'s minimum embedded distance between points. Defaults
         to ``0.1``.
-    umap_random_state : int or None
-        Seed for UMAP's fit. ``None`` disables seeding, enabling faster
-        nondeterministic multithreaded fitting. Defaults to ``42``.
+
+    Notes
+    -----
+    UMAP's fit is seeded from
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`. It used to
+    have its own nullable ``umap_random_state`` (``None`` opting into faster
+    nondeterministic multithreaded fitting); that knob is gone, so UMAP is now
+    always seeded.
     """
 
     pipeline_dir: str = MISSING
@@ -384,7 +389,6 @@ class GlobalFeatureSelectConfig(AppConfig):
     umap_n_neighbors: int = 10
     umap_metric: str = "cosine"
     umap_min_dist: float = 0.1
-    umap_random_state: Optional[int] = 42
 
 
 _cs.store(name="global_feature_select_main", node=GlobalFeatureSelectConfig)
@@ -488,7 +492,7 @@ def main(cfg: DictConfig) -> None:
             gfs_cfg.umap_n_neighbors,
             gfs_cfg.umap_metric,
             gfs_cfg.umap_min_dist,
-            gfs_cfg.umap_random_state,
+            gfs_cfg.random_seed,
         )
         selected_df = selected_df.join(umap_scores_df, on=gfs_cfg.label_column)
 

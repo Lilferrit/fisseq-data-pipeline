@@ -13,6 +13,16 @@ wheels/
 .vscode/*
 .vscode/
 
+# Hydra's default run directory -- created by any bare
+# `python -m fisseq_data_pipeline.<module>` invoked from the repo root
+outputs/
+.hydra/
+
+# Nextflow run artifacts
+work/
+.nextflow/
+.nextflow.log*
+
 # Other stuff
 .ruff_cache/
 .pytest_cache/

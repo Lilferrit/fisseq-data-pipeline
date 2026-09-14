@@ -37,3 +37,11 @@ Shared, non-CLI internals used across multiple pipeline modules.
 ## xgbparams
 
 ::: fisseq_data_pipeline.utils.xgbparams
+
+## dimreduction
+
+::: fisseq_data_pipeline.utils.dimreduction
+
+## nextflow_staging
+
+::: fisseq_data_pipeline.utils.nextflow_staging

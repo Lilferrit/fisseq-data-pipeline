@@ -1,19 +1,63 @@
 # One-vs-WT
 
-`python -m fisseq_data_pipeline.ovwt` (Nextflow processes `OVWT_BATCHWISE`, aliased into unfiltered,
-feature-filtered, and barcode-filtered invocations, and `OVWT_GLOBAL`, always
-feature-filtered) trains a separate XGBoost binary classifier for each
-non-wildtype variant, treating the task as "this variant vs. wildtype." An
-80/10/10 train/test/val split (stratified by label) is shared across all
-variants. Wildtype cells can be downsampled to reduce class imbalance.
-Results (per-variant AUROC and accuracy on train/val/test splits) and all
-trained models are serialized to disk. `feature_block_list_file` (see
-[ANOVA Block-list](anovablocklist.md)) optionally excludes features (columns)
-with a significant batch effect before splitting/training.
-`barcode_block_list_file` (see [Barcode Block-list](barcodeblocklist.md))
-optionally excludes cells (rows) whose barcode scored anomalously before
-splitting/training. The two are independent and additive -- either, both, or
-neither may be set.
+`python -m fisseq_data_pipeline.ovwt` (Nextflow process `OVWT_BATCHWISE`) scores
+how distinguishable each variant is from wildtype, one experiment at a time.
+
+For each non-wildtype variant it runs **k-fold cross-validation** over that
+variant's cells plus the (optionally downsampled) wildtype pool, training one
+XGBoost binary classifier per fold. Because the folds partition the data, every
+cell ends up with exactly one *out-of-fold* score — a prediction from a model
+that never saw it. That is what makes the per-barcode metric below well defined.
+
+Folds are stratified jointly on `(meta_barcode, is_wt)`, so both barcode
+composition and the wildtype/variant balance are preserved fold to fold. A
+`(barcode, is_wt)` stratum with fewer than 10 members collapses into a shared
+`rare|wt` / `rare|variant` bucket; the wildtype/variant half of the key is never
+merged across, so barcode resolution degrades gracefully without ever
+sacrificing class balance.
+
+## Two scores per variant
+
+| Column | Meaning |
+| ------ | ------- |
+| `auroc_pooled` | AUROC over all of the variant's out-of-fold scores at once. |
+| `auroc_median_barcode` | Each of the variant's barcodes scored separately against the **full** wildtype set, then medianed. |
+
+`auroc_median_barcode` exists to surface whether a variant's apparent
+distinguishability is broad-based across its barcodes or driven by one or two
+outlier barcodes — which a single pooled number hides. It is `null` only in the
+defensive case of a variant with no barcodes of its own, and deliberately
+`null` rather than `NaN` so the cross-experiment median in
+[Global OvWT](globalovwt.md) excludes it cleanly.
+
+## Wildtype downsampling
+
+`downsample_wt: true` shrinks the wildtype pool to the size of the largest
+remaining variant group, **barcode-proportionally**: a wildtype barcode holding
+fraction `p` of the pool keeps roughly `p × target` of its cells. Preserving
+wildtype barcode composition matters specifically because
+`auroc_median_barcode` measures every variant barcode against that same
+wildtype set — a uniform draw could skew it. Per-barcode rounding can leave the
+final count off target by up to (number of wildtype barcodes) cells; this is
+accepted rather than corrected.
+
+## Resilience
+
+A variant whose folds raise — most often a stratum too small for the inner
+train/calibration split to survive — is skipped with a logged warning rather
+than aborting the run. This is load-bearing, not decoration: small variants
+legitimately hit it, and the alternative is losing every other variant's
+results alongside. If no variant survives, the output files are still written,
+empty but correctly typed.
+
+## A note on normalization
+
+OvWT consumes [NORMALIZE](normalize.md)'s output, which is z-scored against
+**wildtype** cells. The sibling `fisseq-embeddings-pipeline`, from which this
+implementation was ported, instead z-scores its features against **synonymous**
+variants before training. That difference is deliberate here: cell-level
+wildtype normalization is unchanged, and the synonymous re-centering happens
+downstream on the AUROCs instead, in [Global OvWT](globalovwt.md).
 
 ## Config fields
 
@@ -21,43 +65,33 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
-| `input_file` | **required** | Path to feature-selected or normalized cell-level parquet. |
+| `input_file` | **required** | Path to normalized cell-level parquet. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
-| `wt_label` | `"WT"` | Label string identifying wildtype cells. |
-| `random_state` | `42` | Seed for train/test/val splitting and WT downsampling. |
-| `feature_cols` | `null` | Explicit list of feature column names; auto-detected if `null`. |
-| `min_cells` | `250` | Drop variants with fewer than this many cells (`null` disables). In the Nextflow pipeline this is overridden to `100` via `--ovwt_min_cells` — see [Configuration](../configuration.md#parameters). |
-| `downsample_wt` | `true` | If `true`, downsample WT to the size of the largest variant group. If an integer, downsample to that exact count. `false` disables downsampling. |
-| `max_cells_per_barcode_wt` | `null` | Cap cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count, independently of every other barcode. `null` disables the cap. Applied before `min_cells` and `downsample_wt`. |
-| `max_cells_per_barcode_variant` | `null` | Cap cells per non-wildtype barcode, analogous to `max_cells_per_barcode_wt`. `null` disables the cap. |
-| `save_splits` | `true` | Write lightweight train/test/val index files (row position + source file) to `output_dir`. |
-| `feature_block_list_file` | `null` | (renamed from `block_list_file`) Optional path to a parquet file with `feature` (str) and `feature_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.anovablocklist`'s output). Features where `feature_ok` is `false` are excluded (dropped as columns) before splitting/training. |
-| `barcode_block_list_file` | `null` | Optional path to a parquet file with `barcode` (str) and `barcode_ok` (bool) columns (e.g. `python -m fisseq_data_pipeline.barcodeblocklist`'s output). Cells whose `barcode_column` value is blocked are excluded (dropped as rows) before splitting/training. |
-| `barcode_column` | `"meta_barcode"` | Column in `input_file` identifying each cell's barcode, used to apply `barcode_block_list_file`. |
-| `xgboost.num_boost_round` | `100` | Maximum boosting rounds. |
-| `xgboost.early_stopping_rounds` | `5` | Stop early if the eval metric does not improve. |
-| `xgboost.weigh_samples` | `true` | Use balanced sample weights to handle class imbalance. |
-| `xgboost.params.max_depth` | `3` | Maximum tree depth. |
-| `xgboost.params.subsample` | `0.5` | Fraction of rows sampled per tree. |
+| `wt_label` | `"WT"` | Label identifying wildtype cells. Wildtype is the positive class, so models predict P(wildtype). |
+| `n_folds` | `5` | Cross-validation folds per variant. |
+| `calibrate` | `true` | Fit a per-fold sigmoid (Platt) calibrator on a slice held out of that fold's training data. |
+| `min_cells` | `250` | Drop variants with fewer than this many cells before scoring; wildtype is always kept. `null` disables. |
+| `downsample_wt` | `true` | Barcode-proportional wildtype downsampling to the largest remaining variant group. |
+| `random_seed` | `0` | The shared pipeline seed — drives the fold shuffle, the inner split, wildtype downsampling, and XGBoost's own `seed`. |
+| `xgboost.*` | see `XGBoostConfig` | Booster hyperparameters and training-loop settings. |
 
 ## Output files
 
-- `{output_dir}/results.parquet` — per-variant `train_auroc`, `val_auroc`,
-  `test_auroc`, `train_accuracy`, `val_accuracy`, `test_accuracy`, plus per-variant
-  metadata columns
-- `{output_dir}/models.pkl` — dictionary of trained `xgb.Booster` objects keyed by
-  variant label
-- `{output_dir}/{train,test,val}_index.parquet` — data-split index files (only
-  when `save_splits=true`, the default)
+| File | Contents |
+| ---- | -------- |
+| `results.parquet` | One row per surviving variant: `label_column`, `auroc_pooled`, `auroc_median_barcode`, `meta_n_barcodes`, `meta_n_cells`. |
+| `cell_scores.parquet` | One row per cell per variant it was scored against: every `meta_*` column plus `score` (the out-of-fold score) and `meta_variant_scored_against`. Wildtype cells appear once per variant. Join back to the cell table on `meta_cell_index`. |
+| `models.pkl` | `dict[variant, list[(Booster, calibrator_or_None)]]` — one tuple per fold. |
 
 ## Example
 
 ```bash
 uv run python -m fisseq_data_pipeline.ovwt \
     output_dir=./out \
-    input_file=out/features.parquet \
+    input_file=out/normalized.parquet \
+    n_folds=5 \
+    calibrate=true \
     min_cells=250 \
-    downsample_wt=true
+    downsample_wt=true \
+    random_seed=0
 ```
-
-See [API Reference: ovwt](../api/ovwt.md) for full function documentation.
