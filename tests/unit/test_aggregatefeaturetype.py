@@ -83,7 +83,7 @@ def make_ft_cfg(
             aggregator=aggregator,
             index_file=index_file,
             downsample_wt=downsample_wt,
-            seed=seed,
+            random_seed=seed,
         )
     )
 

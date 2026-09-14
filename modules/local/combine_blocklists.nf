@@ -7,6 +7,7 @@ nextflow.enable.dsl = 2
 process COMBINE_BLOCKLISTS {
     errorStrategy 'ignore'
     label 'process_low'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
@@ -14,6 +15,9 @@ process COMBINE_BLOCKLISTS {
 
     output:
     tuple val(batch_key), path("blocklist.parquet")
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     """

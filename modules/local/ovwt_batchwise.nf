@@ -1,47 +1,48 @@
 nextflow.enable.dsl = 2
 
-// OVWT_BATCHWISE: wraps python -m fisseq_data_pipeline.ovwt. Runs once per batch on that batch's
-// normalized cells, training a one-vs-wildtype XGBoost model per variant.
-// Parameterized over feature_block_list_file, barcode_block_list_file, and
-// publish_subdir so workflows/fisseq.nf invokes this process three times via
-// `include { OVWT_BATCHWISE as X }` aliasing: unfiltered
-// (both block-list vals null, publish_subdir="ovwt_batchwise"),
-// feature-filtered against the ANOVA_BLOCKLIST output
-// (publish_subdir="ovwt_batchwise_feature_filtered"), and barcode-filtered
-// against that batch's BARCODE_BLOCKLIST output
-// (publish_subdir="ovwt_batchwise_barcode_filtered"). Both block-list vals
-// are independent -- either, both, or neither may be non-null for a given
-// call.
-// Both block-list fields are vals (not staged paths) so a Groovy null can be
-// passed through directly -- python -m fisseq_data_pipeline.ovwt's feature_block_list_file=null /
-// barcode_block_list_file=null CLI args parse as Python None via
-// Hydra/OmegaConf, the same trick used for qc_downsample_amounts/qc_n_variants
-// in qc_filter.nf.
-// Publishes results.parquet, models.pkl, test_index.parquet, and
-// train_index.parquet (consumed by OVWT_CELLSCORES_BATCHWISE, selected via
-// params.single_cell_scores_split) under <publish_subdir>/<batch_stem>/.
+// OVWT_BATCHWISE: wraps python -m fisseq_data_pipeline.ovwt. Runs once per
+// experiment on that experiment's normalized cells.
+//
+// Per variant, this trains one one-vs-wildtype XGBoost model per
+// cross-validation fold rather than a single held-out model, so every cell
+// ends up with exactly one out-of-fold score. Each variant gets two
+// distinguishability numbers: auroc_pooled (over all its cells at once) and
+// auroc_median_barcode (per-barcode AUROC, medianed), the latter showing
+// whether a variant's signal is broad-based across its barcodes or driven by
+// one or two outliers.
+//
+// Not aliased and not parameterized over block-lists or a publish subdir --
+// the feature-filtered and barcode-filtered variants went away with
+// ANOVA_BLOCKLIST and BARCODE_BLOCKLIST, and OVWT_GLOBAL was replaced by
+// GLOBAL_OVWT, which aggregates these per-experiment scores instead of
+// re-fitting on pooled cells.
 process OVWT_BATCHWISE {
     errorStrategy 'ignore'
-    publishDir { "${params.pipeline_dir}/${publish_subdir}/${batch_stem}" }, mode: 'copy'
+    label 'process_high'
+    container "${params.container_image}"
+    publishDir { "${params.pipeline_dir}/ovwt_batchwise/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(normalized_parquet), val(feature_block_list_file), val(barcode_block_list_file), val(publish_subdir), val(ovwt_min_cells), val(ovwt_downsample_wt), val(max_cells_per_barcode_wt), val(max_cells_per_barcode_variant)
+    tuple val(batch_stem), path(normalized_parquet)
 
     output:
-    tuple val(batch_stem), path("results.parquet"), path("models.pkl"), path("test_index.parquet"), path("train_index.parquet")
+    tuple val(batch_stem), path("results.parquet"), path("cell_scores.parquet"), path("models.pkl"), emit: ovwt
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
-    // TODO: add per-batch OvWT visualization
     """
-    echo "Starting OVWT_BATCHWISE for ${batch_stem} (${publish_subdir})"
+    echo "Starting OVWT_BATCHWISE for ${batch_stem}"
     python -m fisseq_data_pipeline.ovwt \\
         output_dir=. \\
         input_file=${normalized_parquet} \\
-        min_cells=${ovwt_min_cells} \\
-        downsample_wt=${ovwt_downsample_wt} \\
-        max_cells_per_barcode_wt=${max_cells_per_barcode_wt} \\
-        max_cells_per_barcode_variant=${max_cells_per_barcode_variant} \\
-        feature_block_list_file=${feature_block_list_file} \\
-        barcode_block_list_file=${barcode_block_list_file}
+        label_column=${params.filter_label_column} \\
+        wt_label=${params.ovwt_wt_label} \\
+        n_folds=${params.ovwt_n_folds} \\
+        calibrate=${params.ovwt_calibrate} \\
+        min_cells=${params.ovwt_min_cells} \\
+        downsample_wt=${params.ovwt_downsample_wt} \\
+        random_seed=${params.random_seed}
     """
 }

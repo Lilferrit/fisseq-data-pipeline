@@ -51,15 +51,15 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         A float in ``(0, 1)`` keeps that fraction of control rows; an int
         keeps that many. ``None`` disables downsampling. Defaults to
         ``None``.
-    seed : int
-        Random seed for the ``downsample_wt`` draw. Ignored when
-        ``downsample_wt`` is ``None``. Defaults to ``0``.
+    The ``downsample_wt`` draw is seeded from
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`; AGGREGATE_HALF
+    passes ``random_seed + bootstrap_idx * 2 + half_num`` so a bootstrap
+    replicate's two halves draw independent wildtype subsamples.
     """
 
     aggregator: str = MISSING
     index_file: Optional[str] = None
     downsample_wt: Optional[Union[float, int]] = None
-    seed: int = 0
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
@@ -131,9 +131,9 @@ def main(cfg: DictConfig) -> None:
         logging.info(
             "Downsampling control rows: downsample_wt=%s, seed=%d",
             ft_cfg.downsample_wt,
-            ft_cfg.seed,
+            ft_cfg.random_seed,
         )
-        lf = downsample_control(lf, ft_cfg.downsample_wt, ft_cfg.seed)
+        lf = downsample_control(lf, ft_cfg.downsample_wt, ft_cfg.random_seed)
 
     logging.info("Running %s aggregator", ft_cfg.aggregator)
     agg_lf = aggregate(

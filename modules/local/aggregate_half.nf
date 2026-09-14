@@ -13,13 +13,17 @@ nextflow.enable.dsl = 2
 process AGGREGATE_HALF {
     errorStrategy 'ignore'
     label 'process_medium'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}/half_aggregates/bootstrap_${bootstrap_idx}/${feature_type}" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), val(bootstrap_idx), val(half_num), path(index_file), val(feature_type), val(cells_glob), val(publish_subdir), val(downsample_wt)
+    tuple val(batch_key), val(bootstrap_idx), val(half_num), path(index_file), val(feature_type), val(cells_glob), val(publish_subdir)
 
     output:
     tuple val(batch_key), val(bootstrap_idx), val(feature_type), val(half_num), path("half${half_num}_agg.parquet")
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     """
@@ -30,8 +34,8 @@ process AGGREGATE_HALF {
         "input_file=${cells_glob}" \\
         aggregator=${feature_type} \\
         index_file=${index_file} \\
-        downsample_wt=${downsample_wt} \\
-        seed=${(bootstrap_idx as int) * 2 + half_num}
+        downsample_wt=${params.feature_select_downsample_wt} \\
+        random_seed=${(params.random_seed as int) + (bootstrap_idx as int) * 2 + (half_num as int)}
     mv ${feature_type}.*.parquet half${half_num}_agg.parquet
     """
 }

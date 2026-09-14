@@ -108,9 +108,9 @@ class QcFilterConfig(AppConfig):
     downsample_classes : List[str]
         Classes eligible for ``downsample_amounts`` pseudo-variant
         generation. Defaults to ``["Synonymous", "Single Missense"]``.
-    downsample_seed : int
-        Seed for deterministic selection, shared by ``downsample_amounts``
-        and ``variant_downsample_mode="random"``. Defaults to ``0``.
+    Deterministic selection for both ``downsample_amounts`` and
+    ``variant_downsample_mode="random"`` is seeded from
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`.
     """
 
     cell_files: Any = MISSING
@@ -130,7 +130,6 @@ class QcFilterConfig(AppConfig):
     downsample_classes: List[str] = dataclasses.field(
         default_factory=lambda: list(DOWNSAMPLE_CLASSES)
     )
-    downsample_seed: int = 0
 
 
 _cs = ConfigStore.instance()
@@ -593,7 +592,7 @@ def main(cfg: DictConfig) -> None:
             variant_downsample_classes=tuple(qc_cfg.variant_downsample_classes),
             n_variants=qc_cfg.n_variants,
             mode=qc_cfg.variant_downsample_mode,
-            seed=qc_cfg.downsample_seed,
+            seed=qc_cfg.random_seed,
         )
     else:
         logging.info("n_variants not set; skipping variant-level selection")
@@ -619,7 +618,7 @@ def main(cfg: DictConfig) -> None:
                 cfg,
                 downsample_classes=tuple(qc_cfg.downsample_classes),
                 downsample_amount=amount,
-                seed=qc_cfg.downsample_seed,
+                seed=qc_cfg.random_seed,
             )
             for amount in downsample_amounts
         ]

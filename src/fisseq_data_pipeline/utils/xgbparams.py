@@ -1,9 +1,18 @@
-"""Shared XGBoost configuration, DMatrix construction, and split helpers.
+"""Shared XGBoost configuration, DMatrix construction, training, and split helpers.
 
 Defines :class:`XGBoostParams` / :class:`XGBoostConfig` (shared Hydra sub-config),
-:func:`get_dmatrix` / :func:`get_dmatrix_multiclass` / :func:`split_indices_stratified`,
-and :func:`resolve_feature_importance`, used by :mod:`.ovwt`, :mod:`.ovwtcellscores`,
-:mod:`.batchvsbatch`, :mod:`.wtvwt`, and :mod:`.wtvvariantpool`.
+:func:`get_dmatrix`, :func:`split_indices_stratified`, and
+:func:`train_binary_xgboost`, used by :mod:`.ovwt`.
+
+:func:`train_binary_xgboost` lived in ``ovwt.py`` as ``train_xgboost`` until the
+OvWT rewrite; it is generic over any binary variant-vs-wildtype split, so it
+belongs here. It reads ``cfg.random_seed`` (the one shared
+:class:`~fisseq_data_pipeline.config.app.AppConfig` seed), not a stage-local
+``random_state``.
+
+:func:`get_dmatrix_multiclass` and :func:`resolve_feature_importance` were
+dropped along with their only callers -- ``batchvsbatch.py`` and the old OvWT's
+``feature_importance.parquet`` output respectively.
 """
 
 import dataclasses
@@ -12,7 +21,9 @@ from typing import Optional
 import numpy as np
 import polars as pl
 import sklearn.model_selection
+import sklearn.utils
 import xgboost as xgb
+from omegaconf import DictConfig
 
 
 @dataclasses.dataclass
@@ -129,77 +140,6 @@ def get_dmatrix(
     return xgb.DMatrix(x, label=y, weight=weight)
 
 
-def get_dmatrix_multiclass(
-    df: pl.DataFrame,
-    feature_cols: list[str],
-    label_col: str,
-) -> tuple[xgb.DMatrix, list[str]]:
-    """
-    Build a multiclass XGBoost DMatrix from a Polars DataFrame.
-
-    String labels are encoded as consecutive integers in sorted order.
-    Non-finite feature values are replaced with ``NaN``.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input DataFrame containing ``feature_cols`` and ``label_col``.
-    feature_cols : list[str]
-        Names of the feature columns to include.
-    label_col : str
-        Name of the label column (string labels).
-
-    Returns
-    -------
-    tuple[xgb.DMatrix, list[str]]
-        ``(dmatrix, classes)`` where ``classes[i]`` is the label string for
-        integer class ``i``.
-    """
-    x = df.select(feature_cols).cast(pl.Float64).to_numpy().copy()
-    x[~np.isfinite(x)] = np.nan
-    raw_labels = df.get_column(label_col).to_numpy()
-    classes = sorted(set(raw_labels))
-    class_to_int = {c: i for i, c in enumerate(classes)}
-    y = np.array([class_to_int[v] for v in raw_labels], dtype=np.int32)
-    return xgb.DMatrix(x, label=y), classes
-
-
-def resolve_feature_importance(
-    model: xgb.Booster,
-    feature_cols: list[str],
-    importance_type: str = "gain",
-) -> dict[str, float]:
-    """
-    Get a trained booster's feature importances, keyed by real feature name.
-
-    :meth:`xgb.Booster.get_score` reports importances keyed by internal
-    feature index (``"f0"``, ``"f1"``, ...) rather than by name, since
-    :func:`get_dmatrix`/:func:`get_dmatrix_multiclass` build DMatrices from
-    bare numpy arrays without ``feature_names``. This resolves those indices
-    back onto the real column names.
-
-    Parameters
-    ----------
-    model : xgb.Booster
-        Trained XGBoost booster.
-    feature_cols : list[str]
-        Feature column names, in the same order used to build the model's
-        training DMatrix.
-    importance_type : str
-        Importance metric passed to :meth:`xgb.Booster.get_score`. Defaults
-        to ``"gain"``.
-
-    Returns
-    -------
-    dict[str, float]
-        Mapping from real feature name to importance score. Features never
-        used in a split are omitted, matching
-        :meth:`xgb.Booster.get_score`'s own behavior.
-    """
-    raw = model.get_score(importance_type=importance_type)
-    return {feature_cols[int(feat[1:])]: value for feat, value in raw.items()}
-
-
 def split_indices_stratified(
     labels: np.ndarray,
     random_state: int,
@@ -234,3 +174,65 @@ def split_indices_stratified(
         random_state=random_state,
     )
     return train_idx, test_idx, val_idx
+
+
+def train_binary_xgboost(
+    train: pl.DataFrame,
+    val: pl.DataFrame,
+    cfg: DictConfig,
+) -> xgb.Booster:
+    """
+    Train an XGBoost binary classifier on a variant-vs-wildtype split.
+
+    Uses the ``binary:logistic`` objective with AUC as the eval metric, so the
+    trained booster predicts P(wildtype). Sample weights are computed with
+    :func:`sklearn.utils.compute_sample_weight` when
+    ``cfg.xgboost.weigh_samples`` is ``True``. Early stopping is applied against
+    ``val``.
+
+    Parameters
+    ----------
+    train : pl.DataFrame
+        Training split containing feature columns and ``cfg.label_column``.
+    val : pl.DataFrame
+        Validation split used for early stopping and eval logging. In
+        :func:`fisseq_data_pipeline.ovwt.ovwt_batchwise` this is the same slice
+        that fits the probability calibrator -- deliberately, matching the
+        reference implementation; it is not an independent calibration set.
+    cfg : DictConfig
+        Hydra config supplying ``label_column``, ``wt_label``, ``random_seed``,
+        and the ``xgboost`` sub-config. Must be a ``DictConfig`` (e.g. via
+        ``OmegaConf.structured(cfg)``), not a bare dataclass: ``dict(...)`` on
+        ``cfg.xgboost.params`` below raises otherwise.
+
+    Returns
+    -------
+    xgb.Booster
+        Trained XGBoost booster at the best iteration.
+    """
+    label_col = cfg.label_column
+    wt_label = cfg.wt_label
+
+    y_train = train.get_column(label_col).to_numpy() == wt_label
+    sample_weight = (
+        sklearn.utils.compute_sample_weight("balanced", y_train)
+        if cfg.xgboost.weigh_samples
+        else None
+    )
+
+    dtrain = get_dmatrix(train, label_col, wt_label, weight=sample_weight)
+    deval = get_dmatrix(val, label_col, wt_label)
+
+    params = dict(cfg.xgboost.params)
+    params["objective"] = "binary:logistic"
+    params["eval_metric"] = "auc"
+    params["seed"] = cfg.random_seed
+
+    return xgb.train(
+        params,
+        dtrain,
+        num_boost_round=cfg.xgboost.num_boost_round,
+        evals=[(dtrain, "train"), (deval, "eval")],
+        early_stopping_rounds=cfg.xgboost.early_stopping_rounds,
+        verbose_eval=True,
+    )

@@ -275,7 +275,7 @@ def make_gfs_cfg(
     umap_n_neighbors: int = 2,
     umap_metric: str = "cosine",
     umap_min_dist: float = 0.1,
-    umap_random_state=42,
+    random_seed=42,
 ) -> OmegaConf:
     kwargs = dict(
         output_dir=str(tmp_path / "out"),
@@ -290,7 +290,7 @@ def make_gfs_cfg(
         umap_n_neighbors=umap_n_neighbors,
         umap_metric=umap_metric,
         umap_min_dist=umap_min_dist,
-        umap_random_state=umap_random_state,
+        random_seed=random_seed,
     )
     if compute_impact_score is not None:
         kwargs["compute_impact_score"] = compute_impact_score

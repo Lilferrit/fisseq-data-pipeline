@@ -706,7 +706,7 @@ def test_main_downsample_pseudo_rows_only_from_qc_survivors(tmp_path):
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=1.0,
-        downsample_seed=0,
+        random_seed=0,
     )
 
     with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
@@ -730,7 +730,7 @@ def test_main_downsample_amounts_single_scalar_equivalent_to_singleton_list(tmp_
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=0.5,
-        downsample_seed=7,
+        random_seed=7,
     )
     qc_cfg_list = _make_qc_cfg(
         tmp_path / "run_list",
@@ -739,7 +739,7 @@ def test_main_downsample_amounts_single_scalar_equivalent_to_singleton_list(tmp_
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=[0.5],
-        downsample_seed=7,
+        random_seed=7,
     )
 
     with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
@@ -768,7 +768,7 @@ def test_main_downsample_amounts_mixed_float_and_int(tmp_path):
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=[0.5, 5],
-        downsample_seed=0,
+        random_seed=0,
     )
 
     with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
@@ -792,7 +792,7 @@ def test_main_downsample_classes_configurable(tmp_path):
         edit_distance_threshold=1,
         downsample_amounts=1.0,
         downsample_classes=["WT"],
-        downsample_seed=0,
+        random_seed=0,
     )
 
     with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
@@ -814,7 +814,7 @@ def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=0.5,
-        downsample_seed=7,
+        random_seed=7,
     )
     qc_cfg_b = _make_qc_cfg(
         tmp_path / "run_b",
@@ -823,7 +823,7 @@ def test_main_downsample_reproducible_with_fixed_seed(tmp_path):
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=0.5,
-        downsample_seed=7,
+        random_seed=7,
     )
 
     with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
@@ -850,7 +850,7 @@ def test_main_downsample_barcode_counts_and_variants_per_barcode_exclude_pseudo_
         variant_bc_threshold=1,
         edit_distance_threshold=1,
         downsample_amounts=1.0,
-        downsample_seed=0,
+        random_seed=0,
     )
     qc_cfg_without = _make_qc_cfg(
         tmp_path / "run_without",

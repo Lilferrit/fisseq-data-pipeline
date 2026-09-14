@@ -21,6 +21,7 @@ nextflow.enable.dsl = 2
 process INPUT {
     errorStrategy 'ignore'
     label 'process_low'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/input" }, mode: 'copy'
 
     input:
@@ -28,6 +29,9 @@ process INPUT {
 
     output:
     tuple val(name), path("${name}.parquet")
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     def inputPathsYaml = input_paths.collect { p -> "'${p}'" }.join(', ')

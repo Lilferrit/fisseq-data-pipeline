@@ -19,12 +19,11 @@ nextflow.enable.dsl = 2
 process GLOBAL_FEATURE_SELECT {
     errorStrategy 'ignore'
     label 'process_medium'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
-    tuple val(chan), val(batch_stems), val(pipeline_dir), val(publish_subdir), val(min_batches_ok), val(feature_select_types), \
-          val(run_pca), val(pca_n_components), val(run_umap), val(umap_n_components), val(umap_n_neighbors), \
-          val(umap_metric), val(umap_min_dist), val(umap_random_state)
+    tuple val(chan), val(batch_stems), val(pipeline_dir), val(publish_subdir)
 
     output:
     // pca_components.parquet only exists when run_pca=true -- must be its
@@ -35,10 +34,13 @@ process GLOBAL_FEATURE_SELECT {
     tuple val(chan), path("aggregate.parquet"), path("blocklist.parquet")
     path("pca_components.parquet", optional: true)
 
+    when:
+    task.ext.when == null || task.ext.when
+
     script:
     def stemsArg = "[" + batch_stems.join(',') + "]"
-    def minArg = (min_batches_ok == null) ? "" : "min_batches_ok=${min_batches_ok}"
-    def typesArg = "[" + feature_select_types.join(',') + "]"
+    def minArg = (params.global_feature_select_min_batches_ok == null) ? "" : "min_batches_ok=${params.global_feature_select_min_batches_ok}"
+    def typesArg = "[" + params.feature_select_types.join(',') + "]"
     """
     echo "Starting GLOBAL_FEATURE_SELECT for ${chan}"
     python -m fisseq_data_pipeline.globalfeatureselect \\
@@ -47,13 +49,14 @@ process GLOBAL_FEATURE_SELECT {
         "batch_stems=${stemsArg}" \\
         "feature_select_types=${typesArg}" \\
         ${minArg} \\
-        run_pca=${run_pca} \\
-        pca_n_components=${pca_n_components} \\
-        run_umap=${run_umap} \\
-        umap_n_components=${umap_n_components} \\
-        umap_n_neighbors=${umap_n_neighbors} \\
-        umap_metric=${umap_metric} \\
-        umap_min_dist=${umap_min_dist} \\
-        umap_random_state=${umap_random_state}
+        label_column=${params.filter_label_column} \\
+        run_pca=${params.run_pca} \\
+        pca_n_components=${params.pca_n_components} \\
+        run_umap=${params.run_umap} \\
+        umap_n_components=${params.umap_n_components} \\
+        umap_n_neighbors=${params.umap_n_neighbors} \\
+        umap_metric=${params.umap_metric} \\
+        umap_min_dist=${params.umap_min_dist} \\
+        random_seed=${params.random_seed}
     """
 }

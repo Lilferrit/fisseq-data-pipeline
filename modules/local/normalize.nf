@@ -5,6 +5,7 @@ nextflow.enable.dsl = 2
 // so that the anova/ovwt glob "normalization/cells/*.parquet" only hits cell data.
 process NORMALIZE {
     errorStrategy 'ignore'
+    container "${params.container_image}"
     publishDir "${params.pipeline_dir}/normalization", mode: 'copy', saveAs: { fname ->
         fname.endsWith('.normalizer.parquet') ? "normalizers/${fname}" : "cells/${fname}"
     }
@@ -15,6 +16,9 @@ process NORMALIZE {
     output:
     tuple val(batch_stem), path("${batch_stem}.parquet"), emit: normalized
     path("${batch_stem}.normalizer.parquet"),              emit: normalizer
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     """

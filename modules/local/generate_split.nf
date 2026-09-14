@@ -7,6 +7,7 @@ nextflow.enable.dsl = 2
 process GENERATE_SPLIT {
     errorStrategy 'ignore'
     label 'process_low'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/${publish_subdir}/splits/bootstrap_${bootstrap_idx}" }, mode: 'copy'
 
     input:
@@ -15,12 +16,15 @@ process GENERATE_SPLIT {
     output:
     tuple val(batch_key), val(bootstrap_idx), path("half1.parquet"), path("half2.parquet")
 
+    when:
+    task.ext.when == null || task.ext.when
+
     script:
     """
     echo "Starting GENERATE_SPLIT for ${batch_key} / bootstrap ${bootstrap_idx}"
     python -m fisseq_data_pipeline.generatesplit \\
         output_dir=. \\
         "input_file=${cells_glob}" \\
-        random_state=${bootstrap_idx}
+        random_seed=${(params.random_seed as int) + (bootstrap_idx as int)}
     """
 }

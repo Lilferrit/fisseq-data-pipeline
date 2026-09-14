@@ -15,13 +15,11 @@ nextflow.enable.dsl = 2
 // variants_per_barcode.parquet under qc_filter/<batch_stem>/.
 process QC_FILTER {
     errorStrategy 'ignore'
+    container "${params.container_image}"
     publishDir { "${params.pipeline_dir}/qc_filter/${batch_stem}" }, mode: 'copy'
 
     input:
-    tuple val(batch_stem), path(input_file), val(barcode_count_threshold), \
-          val(variant_barcode_count_threshold), val(edit_distance_threshold), \
-          val(qc_n_variants), val(qc_variant_downsample_classes), val(qc_variant_downsample_mode), \
-          val(qc_downsample_amounts), val(qc_downsample_classes), val(qc_downsample_seed)
+    tuple val(batch_stem), path(input_file)
 
     output:
     tuple val(batch_stem), \
@@ -30,6 +28,9 @@ process QC_FILTER {
           path("variants_per_barcode.parquet"), \
           emit: qc_outputs
 
+    when:
+    task.ext.when == null || task.ext.when
+
     script:
     // qc_downsample_amounts: null -> Hydra null-passthrough; a bare scalar
     // (CLI or nextflow.config) interpolates unquoted like the other numeric
@@ -37,29 +38,29 @@ process QC_FILTER {
     // YAML override) becomes a single-quoted Hydra bracket-list override,
     // extending the 'cell_files=[...]' pattern below so the shell doesn't
     // glob-expand it.
-    def amountsArg = (qc_downsample_amounts == null)
+    def amountsArg = (params.qc_downsample_amounts == null)
         ? 'null'
-        : (qc_downsample_amounts instanceof List)
-            ? "'[${qc_downsample_amounts.join(',')}]'"
-            : "${qc_downsample_amounts}"
+        : (params.qc_downsample_amounts instanceof List)
+            ? "'[${params.qc_downsample_amounts.join(',')}]'"
+            : "${params.qc_downsample_amounts}"
     // qc_downsample_classes/qc_variant_downsample_classes are always
     // non-empty List<String>; each element needs its own quoting (values
     // like "Single Missense" contain a space) inside the bracket-list.
-    def downsampleClassesArg = "'[${qc_downsample_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
-    def variantClassesArg = "'[${qc_variant_downsample_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
+    def downsampleClassesArg = "'[${params.qc_downsample_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
+    def variantClassesArg = "'[${params.qc_variant_downsample_classes.collect { c -> "\"${c}\"" }.join(',')}]'"
     """
     echo "Starting QC_FILTER for ${batch_stem}"
     python -m fisseq_data_pipeline.qcfilter \\
         output_dir=. \\
         'cell_files=[${input_file}]' \\
-        bc_threshold=${barcode_count_threshold} \\
-        variant_bc_threshold=${variant_barcode_count_threshold} \\
-        edit_distance_threshold=${edit_distance_threshold} \\
-        n_variants=${qc_n_variants} \\
+        bc_threshold=${params.barcode_count_threshold} \\
+        variant_bc_threshold=${params.variant_barcode_count_threshold} \\
+        edit_distance_threshold=${params.edit_distance_threshold} \\
+        n_variants=${params.qc_n_variants} \\
         variant_downsample_classes=${variantClassesArg} \\
-        variant_downsample_mode=${qc_variant_downsample_mode} \\
+        variant_downsample_mode=${params.qc_variant_downsample_mode} \\
         downsample_amounts=${amountsArg} \\
         downsample_classes=${downsampleClassesArg} \\
-        downsample_seed=${qc_downsample_seed}
+        random_seed=${params.random_seed}
     """
 }
