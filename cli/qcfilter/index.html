@@ -791,58 +791,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../batchcorrect/" class="md-nav__link">
+      <a href="../globalfeatureselect/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Batch Correction
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../anova/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    ANOVA
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../anovablocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    ANOVA Block-list
+    Global Feature Selection
     
   </span>
   
@@ -883,104 +837,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../ovwtcellscores/" class="md-nav__link">
+      <a href="../globalovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    OvWT Cell Scores
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../checkbarcodes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Check Barcodes
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../barcodeblocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Barcode Block-list
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../batchvsbatch/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Batch vs. Batch
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../wtvwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Wildtype vs. Wildtype
+    Global OvWT
     
   </span>
   
@@ -1163,58 +1025,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/batchcorrect/" class="md-nav__link">
+      <a href="../../api/globalfeatureselect/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    batchcorrect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/anova/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    anova
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/anovablocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    anovablocklist
+    globalfeatureselect
     
   </span>
   
@@ -1255,104 +1071,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/ovwtcellscores/" class="md-nav__link">
+      <a href="../../api/globalovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    ovwtcellscores
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/checkbarcodes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    checkbarcodes
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/barcodeblocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    barcodeblocklist
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/batchvsbatch/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    batchvsbatch
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/wtvwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    wtvwt
+    globalovwt
     
   </span>
   
@@ -1533,9 +1257,7 @@ sequential filters:</p>
 restricted to at most <code>n_variants</code> distinct variants — either the
 highest-cell-count variants (<code>variant_downsample_mode: "top"</code>, the default)
 or a seeded random sample (<code>"random"</code>) — before the three filters above run.
-Every other class passes through untouched. If <code>variant_allow_list_file</code> is
-also set, variants it lists bypass the <code>n_variants</code> cap entirely and aren't
-counted against it.</p>
+Every other class passes through untouched.</p>
 <p>If <code>downsample_amounts</code> is set (a single float/int, or a list of them),
 <code>filtered_cells.parquet</code> is additionally augmented with reproducibly-
 downsampled "pseudo variant" rows for QC/calibration purposes, built from
@@ -1614,11 +1336,6 @@ not <code>downsample_amounts</code> is set.</p>
 <td><code>variant_downsample_mode</code></td>
 <td><code>"top"</code></td>
 <td><code>"top"</code> keeps the highest-cell-count variants; <code>"random"</code> keeps a seeded random sample.</td>
-</tr>
-<tr>
-<td><code>variant_allow_list_file</code></td>
-<td><code>null</code></td>
-<td>Optional: path to a Parquet file with a <code>cfg.label_column</code> column of variants that bypass the <code>n_variants</code> cap entirely and aren't counted against it. Entries absent from the data are ignored. Meaningless (ignored, with a warning) if <code>n_variants</code> is unset.</td>
 </tr>
 <tr>
 <td><code>downsample_amounts</code></td>

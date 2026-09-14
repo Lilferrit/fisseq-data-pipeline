@@ -806,58 +806,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../batchcorrect/" class="md-nav__link">
+      <a href="../globalfeatureselect/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Batch Correction
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../anova/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    ANOVA
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../anovablocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    ANOVA Block-list
+    Global Feature Selection
     
   </span>
   
@@ -898,104 +852,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../ovwtcellscores/" class="md-nav__link">
+      <a href="../globalovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    OvWT Cell Scores
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../checkbarcodes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Check Barcodes
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../barcodeblocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Barcode Block-list
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../batchvsbatch/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Batch vs. Batch
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../wtvwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Wildtype vs. Wildtype
+    Global OvWT
     
   </span>
   
@@ -1178,58 +1040,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/batchcorrect/" class="md-nav__link">
+      <a href="../../api/globalfeatureselect/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    batchcorrect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/anova/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    anova
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/anovablocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    anovablocklist
+    globalfeatureselect
     
   </span>
   
@@ -1270,104 +1086,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/ovwtcellscores/" class="md-nav__link">
+      <a href="../../api/globalovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    ovwtcellscores
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/checkbarcodes/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    checkbarcodes
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/barcodeblocklist/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    barcodeblocklist
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/batchvsbatch/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    batchvsbatch
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/wtvwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    wtvwt
+    globalovwt
     
   </span>
   
@@ -1549,7 +1273,7 @@
 <h1 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h1>
 <p><code>python -m fisseq_data_pipeline.input</code> (Nextflow process <code>INPUT</code>, runs once per
 mandatory config file in <code>&lt;pipeline_dir&gt;/configs/</code> — see
-<a href="../../configuration/#pipeline-directory-layout">Configuration</a>)
+<a href="../../configuration/#declaring-experiments">Configuration</a>)
 reads a hand-authored YAML config describing one or more raw cell-score files
 (CSV or Parquet) and merges them into a single <code>input/</code>-ready cell-level
 Parquet file.</p>
@@ -1588,7 +1312,7 @@ batch rather than only to batches routed through this optional stage.</p>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.
   <strong>Required, and batch-YAML-only</strong> — there is no pipeline-wide default for a
   per-batch list of raw data files (see
-  <a href="../../configuration/#per-batch-parameter-overrides">Per-batch parameter overrides</a>).</li>
+  <a href="../../configuration/#declaring-experiments">Per-batch parameter overrides</a>).</li>
 <li><code>feature_allowlist_file</code> / <code>feature_blocklist_file</code> — optional paths to plain
   text files, one fnmatch-style glob pattern per line (e.g.
   <code>Cells_AreaShape_*</code>), matched against feature column names. If an allowlist
@@ -1615,7 +1339,7 @@ plain <code>nextflow.config</code> pipeline-wide default (<code>params.feature_a
 <code>params.feature_blocklist_file</code>, <code>params.csv_schema_scan_rows</code>) — set one on
 the command line or in <code>nextflow.config</code> to apply it to every batch, and/or
 override it for a specific batch in that batch's YAML. See
-<a href="../../configuration/#per-batch-parameter-overrides">Per-batch parameter overrides</a>
+<a href="../../configuration/#declaring-experiments">Per-batch parameter overrides</a>
 for the full mechanism.</p>
 <h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <p>Written to <code>output_dir</code>, prefixed <code>{output_root}.</code> when <code>output_root</code> is set:</p>
