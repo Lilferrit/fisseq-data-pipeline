@@ -81,24 +81,26 @@ Run the full pipeline directly from GitHub, no local clone required:
 nextflow run Lilferrit/fisseq-data-pipeline \
     -c your.config \
     -profile my_sge \
-    --pipeline_dir /path/to/experiment
+    --pipeline_dir /path/to/experiment -params-file params.yaml
 ```
 
 Or from a local clone:
 
 ```bash
-nextflow run . -c your.config -profile my_sge --pipeline_dir /path/to/experiment
+nextflow run . -c your.config -profile my_sge --pipeline_dir /path/to/experiment -params-file params.yaml
 ```
 
 Resume a previously interrupted run instead of starting over:
 
 ```bash
-nextflow run . -c your.config -profile my_sge --pipeline_dir /path/to/experiment -resume
+nextflow run . -c your.config -profile my_sge --pipeline_dir /path/to/experiment -params-file params.yaml -resume
 ```
 
-`--pipeline_dir` must contain a `configs/` subdirectory of per-batch YAML
-config files — see [Configuration](configuration.md#pipeline-directory-layout).
-See [Configuration: Parameters](configuration.md#parameters) for every
+Experiments are declared as a list under `experiments:` in `params.yaml`,
+which must be passed with `-params-file` — see
+[Configuration](configuration.md#declaring-experiments). `--pipeline_dir` is
+just the output root; it needs no pre-existing contents.
+See [Configuration: Parameters](configuration.md#parameter-reference) for every
 `--param` the pipeline accepts.
 
 ### Running a single step directly
@@ -157,6 +159,7 @@ nextflow pull Lilferrit/fisseq-data-pipeline -r main
 nextflow run Lilferrit/fisseq-data-pipeline \
     -c "${SCRIPT_DIR}/your.config" \
     -profile my_sge \
+    -params-file "${SCRIPT_DIR}/params.yaml" \
     --pipeline_dir "${SCRIPT_DIR}" \
     ${RESUME_FLAG} \
     "$@"

@@ -366,6 +366,9 @@ class GlobalFeatureSelectConfig(AppConfig):
     umap_min_dist : float
         ``umap.UMAP``'s minimum embedded distance between points. Defaults
         to ``0.1``.
+
+    Notes
+    -----
     UMAP's fit is seeded from
     :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`. It used to
     have its own nullable ``umap_random_state`` (``None`` opting into faster

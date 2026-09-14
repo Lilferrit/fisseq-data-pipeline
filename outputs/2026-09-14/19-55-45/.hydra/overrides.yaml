@@ -1,6 +1,0 @@
-- output_dir=/tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/run3
-- input_file=/tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/cells.parquet
-- min_cells=25
-- n_folds=3
-- downsample_wt=true
-- random_seed=1234

@@ -22,7 +22,7 @@ Eight strategies are available via the `aggregator` field — there is **no**
 `"multi"`/combined option; combining feature types happens in Nextflow by running
 `AGGREGATE_FEATURE_TYPE` once per `params.feature_select_types` entry. Note that
 `signedKS` is not included in the default `params.feature_select_types` list (see
-[Parameters](../configuration.md#parameters)) — it must be opted into explicitly.
+[Parameters](../configuration.md#parameter-reference)) — it must be opted into explicitly.
 
 | Value | Description |
 | ----- | ----------- |
@@ -87,7 +87,7 @@ uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
 ```
 
 In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_select_downsample_wt`
-(see [Parameters](../configuration.md#parameters)) — `AGGREGATE_HALF` derives a distinct seed per
+(see [Parameters](../configuration.md#parameter-reference)) — `AGGREGATE_HALF` derives a distinct seed per
 `(bootstrap_idx, half_num)` so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. `AGGREGATE_FEATURE_TYPE`

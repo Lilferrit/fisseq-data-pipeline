@@ -2,7 +2,7 @@
 
 `python -m fisseq_data_pipeline.input` (Nextflow process `INPUT`, runs once per
 mandatory config file in `<pipeline_dir>/configs/` — see
-[Configuration](../configuration.md#pipeline-directory-layout))
+[Configuration](../configuration.md#declaring-experiments))
 reads a hand-authored YAML config describing one or more raw cell-score files
 (CSV or Parquet) and merges them into a single `input/`-ready cell-level
 Parquet file.
@@ -35,7 +35,7 @@ global_channel: null              # optional, string or list of strings (see bel
 - `input_paths` — one or more raw cell-score files (CSV or Parquet), concatenated.
   **Required, and batch-YAML-only** — there is no pipeline-wide default for a
   per-batch list of raw data files (see
-  [Per-batch parameter overrides](../configuration.md#per-batch-parameter-overrides)).
+  [Per-batch parameter overrides](../configuration.md#declaring-experiments)).
 - `feature_allowlist_file` / `feature_blocklist_file` — optional paths to plain
   text files, one fnmatch-style glob pattern per line (e.g.
   `Cells_AreaShape_*`), matched against feature column names. If an allowlist
@@ -62,7 +62,7 @@ plain `nextflow.config` pipeline-wide default (`params.feature_allowlist_file`,
 `params.feature_blocklist_file`, `params.csv_schema_scan_rows`) — set one on
 the command line or in `nextflow.config` to apply it to every batch, and/or
 override it for a specific batch in that batch's YAML. See
-[Per-batch parameter overrides](../configuration.md#per-batch-parameter-overrides)
+[Per-batch parameter overrides](../configuration.md#declaring-experiments)
 for the full mechanism.
 
 ## Output files

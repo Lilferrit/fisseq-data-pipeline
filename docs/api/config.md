@@ -2,7 +2,7 @@
 
 Hydra structured config hierarchy shared by every entry point:
 `AppConfig` → `InputConfig` → `LabeledInputConfig`. See
-[Architecture: Key abstractions](../architecture.md#key-abstractions) for how
+[Architecture: Key abstractions](../architecture.md#components) for how
 these compose.
 
 ## app

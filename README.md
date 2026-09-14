@@ -10,10 +10,14 @@ variant's cell population differs from wildtype (WT) controls using
 morphological features. The high-level shape:
 
 ```text
-(optional) YAML config -> cell-level features -> QC filtering -> normalization
-    -> batch-effect checks -> one-vs-WT classification -> bootstrap feature selection
-    -> batch correction -> ANOVA batch-effect testing
+raw CellProfiler features -> QC filtering -> WT normalization
+    -> one-vs-WT cross-validated scoring -> cross-experiment score aggregation
+    -> bootstrap feature selection -> cross-experiment feature selection
 ```
+
+Every parameter lives in `params.yaml`, including the single `random_seed` that
+drives every stochastic step, and the `experiments:` list that declares what to
+run over.
 
 ## Quick start
 
@@ -25,17 +29,18 @@ cd fisseq-data-pipeline
 uv sync --group dev
 ```
 
-Or install the package straight from GitHub with `pip` (no clone needed):
+Run the full pipeline end to end with [Nextflow](https://www.nextflow.io/) (≥ 26.04).
+`-params-file` is required — `nextflow.config` holds no parameter defaults:
 
 ```bash
-pip install git+https://github.com/Lilferrit/fisseq-data-pipeline.git
+nextflow run Lilferrit/fisseq-data-pipeline \
+    -params-file params.yaml \
+    --pipeline_dir /path/to/experiment
 ```
 
-Run the full pipeline end to end with [Nextflow](https://www.nextflow.io/) (≥ 23.10):
-
-```bash
-nextflow run Lilferrit/fisseq-data-pipeline -c your.config --pipeline_dir /path/to/experiment
-```
+Every process runs in a published container image
+(`ghcr.io/lilferrit/fisseq-data-pipeline`); add `-profile local` to run against a
+local uv environment instead.
 
 ## Documentation
 

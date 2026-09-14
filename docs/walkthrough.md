@@ -13,91 +13,89 @@ uv sync --group dev
 
 See [Installation](installation.md) for details, including cluster/HPC setup.
 
-## 2. Lay out your input data
+## 2. Declare your experiments
 
-Every batch is declared by a YAML config file under `<pipeline_dir>/configs/`
-naming its raw CellProfiler feature matrix (or matrices) — there is no mode
-where the pipeline scans a directory of pre-staged Parquet files directly.
-See [Configuration](configuration.md#pipeline-directory-layout) for the full
-layout and [CLI Reference: Input](cli/input.md#config_path-yaml-schema) for
-the config schema:
+Experiments are declared as a list under `experiments:` in `params.yaml`. Each
+entry names its raw CellProfiler feature matrix (or matrices) via `input_paths`;
+there is no mode where the pipeline scans a directory of pre-staged Parquet
+files. See [Configuration](configuration.md#declaring-experiments) for the full
+schema and [CLI Reference: Input](cli/input.md) for what INPUT does with them.
 
-```text
-<pipeline_dir>/
-  configs/
-    batch1.yaml   # input_paths: [/path/to/batch1_raw.parquet]
-    batch2.yaml   # input_paths: [/path/to/batch2_raw.parquet]
-    ...
+```yaml
+# params.yaml
+experiments:
+  - batch_stem: batch1
+    input_paths: [/path/to/batch1_raw.parquet]
+  - batch_stem: batch2
+    input_paths: [/path/to/batch2_raw.parquet]
 ```
+
+`<pipeline_dir>` is just the output root — it needs no pre-existing contents.
 
 ## 3. Run the pipeline
 
 ```bash
-nextflow run . --pipeline_dir /path/to/experiment
+nextflow run . --pipeline_dir /path/to/experiment -params-file params.yaml
 ```
 
-This runs the default `FisseqPipeline`, which chains every stage described in
-[Architecture](architecture.md):
+This chains every stage described in [Architecture](architecture.md):
 
-1. `INPUT` — converts each batch's config into an `input/*.parquet` file
-   (always runs, once per config).
-2. `QC_FILTER` — edit-distance, barcode-count, and variant-barcode-count filtering
-   (per batch).
-3. `BATCHVSBATCH` (pre) — batch-effect check on QC-filtered cells (once per
-   active channel in `params.global_channels`; none by default).
-4. `NORMALIZE` — z-score normalization fit on WT control cells (per batch).
-5. `BATCHVSBATCH` (post) — batch-effect check on normalized cells (once per
-   active channel).
-6. `OVWT_BATCHWISE` / `OVWT_GLOBAL` — one-vs-wildtype XGBoost classification
-   (`OVWT_GLOBAL` once per active channel).
-7. `WTVWT_BATCHWISE` — wildtype-only pairwise barcode classification (per
-   batch, if `params.run_wtvwt`).
-8. Bootstrap feature selection (batchwise always; global sub-branch once per
-   active channel) — see
-   [Nextflow Workflow](nextflow.md#feature-selection-channel-wiring) for the
-   six-stage breakdown.
-9. `BATCH_CORRECT_FIT` / `BATCH_CORRECT_TRANSFORM` — centroid batch correction
-   (once per active channel).
-10. `ANOVA` — batch-effect assessment, run once on normalized cells and once
-    on batch-corrected cells (once per active channel).
+1. `INPUT` — merges each experiment's `input_paths` into one
+   `input/<batch_stem>.parquet` (always runs, once per experiment).
+2. `QC_FILTER` — edit-distance, barcode-count and variant-barcode-count
+   filtering, per experiment. Also assigns `meta_cell_index`, the stable
+   per-cell identity everything downstream depends on for reproducibility.
+3. `NORMALIZE` — z-score normalization fit on WT control cells, per experiment.
+4. `OVWT_BATCHWISE` — k-fold cross-validated one-vs-wildtype scoring, per
+   experiment (`params.run_ovwt`). Each variant gets a pooled AUROC and a
+   median-of-per-barcode AUROC, and every cell gets one out-of-fold score.
+5. `GLOBAL_OVWT` — per-experiment synonymous z-score of those AUROCs, then the
+   cross-experiment median (once per active global channel).
+6. Bootstrap feature selection (`params.run_feature_selection`) — see
+   [Nextflow Workflow](nextflow.md#processes) for the stage breakdown.
+7. `GLOBAL_FEATURE_SELECT` — cross-experiment feature selection reusing the
+   batchwise artifacts (once per active global channel).
 
-Override any [parameter](configuration.md#parameters) on the command line,
-e.g. to adjust QC thresholds. Global processes (`OVWT_GLOBAL`, `ANOVA`, batch
-correction, the global feature-selection branch, and `BATCHVSBATCH`) don't
-run at all unless you tag batches into a channel and activate it — see
+Override any [parameter](configuration.md#parameter-reference) on the command
+line. The two global stages don't run at all unless you tag experiments into a
+channel and activate it — see
 [Configuration: Global channels](configuration.md#global-channels):
 
 ```bash
 nextflow run . \
     --pipeline_dir /path/to/experiment \
+    -params-file params.yaml \
     --barcode_count_threshold 15
 ```
 
 To run on a cluster, supply your own config:
 
 ```bash
-nextflow run . -c your.config -profile sge --pipeline_dir /path/to/experiment
+nextflow run . -c your.config -profile sge \
+    --pipeline_dir /path/to/experiment -params-file params.yaml
 ```
 
 If a run is interrupted, resume from the last completed task:
 
 ```bash
-nextflow run . --pipeline_dir /path/to/experiment -resume
+nextflow run . --pipeline_dir /path/to/experiment -params-file params.yaml -resume
 ```
 
 ## 4. Inspect the results
 
-All outputs land under `<pipeline_dir>`, alongside `configs/`/`input/` — see
+All outputs land under `<pipeline_dir>` — see
 [Architecture: Output layout](architecture.md#output-layout) for the full tree.
-The two results most analyses care about:
+The results most analyses care about:
 
-- `<pipeline_dir>/feature_select_batchwise/<batch>/output.parquet` (and, if a
-  global channel is active, `global/<channel>/feature_select/output.parquet`) —
-  final per-variant, feature-selected profiles.
-- `<pipeline_dir>/global/<channel>/anova/anova.parquet` and
-  `<pipeline_dir>/global/<channel>/batch_correction/anova/anova.parquet`
-  (only present if a global channel is active) — per-feature batch-effect
-  ANOVA results, before and after batch correction.
+- `<pipeline_dir>/feature_select_batchwise/<batch_stem>/output.parquet` (and, if
+  a global channel is active, `global/<channel>/feature_select/aggregate.parquet`)
+  — final per-variant, feature-selected profiles.
+- `<pipeline_dir>/ovwt_batchwise/<batch_stem>/results.parquet` — per-variant
+  `auroc_pooled` and `auroc_median_barcode`.
+- `<pipeline_dir>/global/<channel>/ovwt_distinguishability/global_scores.parquet`
+  (only if a global channel is active) — synonymous-corrected, cross-experiment
+  median distinguishability per variant. This is the headline result for a
+  multi-experiment run.
 
 ## 5. Running individual steps
 

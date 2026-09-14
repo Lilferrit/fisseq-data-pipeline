@@ -1,402 +1,209 @@
 # Configuration
 
-This page is the authoritative reference for pointing the pipeline at data and
-tuning it: the `pipeline_dir` layout, every `nextflow.config` parameter, how a
-batch's YAML config can override those parameters for just that batch, and
-how named **global channels** control which batches contribute to the
-pipeline's global (cross-batch) processes. See [Nextflow Workflow](nextflow.md)
-for the process DAG itself.
+Every pipeline parameter lives in **`params.yaml`** at the repo root. It must be
+passed explicitly:
 
-## Pipeline directory layout
-
-Every pipeline run is rooted at a single directory, `--pipeline_dir`:
-
-```
-<pipeline_dir>/
-  configs/                       # mandatory -- one *.yaml per batch
-    batch1.yaml
-    batch2.yaml
-    ...
-  input/                         # INPUT output -- one *.parquet per batch, always
-  qc_filter/<batch_stem>/
-  normalization/{cells,normalizers}/
-  wtvwt_batchwise/<batch_stem>/
-  wtvvariantpool_batchwise/<batch_stem>/
-  ovwt_batchwise/<batch_stem>/
-  ovwt_batchwise_barcode_filtered/<batch_stem>/
-  ovwt_cellscores_batchwise/<batch_stem>/
-  check_barcodes/<batch_stem>/
-  barcode_blocklist/<batch_stem>/
-  feature_select_batchwise/<batch_stem>/
-  global/
-    <channel>/
-      qc_filter_cells/<batch_stem>.parquet        # per-channel staged copy
-      normalization_cells/<batch_stem>.parquet    # per-channel staged copy
-      batchvsbatch/{pre,post}/results.parquet
-      anova/anova.parquet
-      anova_blocklist/anova_blocklist.parquet
-      ovwt_global/{results.parquet,models.pkl}
-      batch_correction/{fit,cells,anova}/...
-      feature_select/{aggregate.parquet,blocklist.parquet}
+```bash
+nextflow run . --pipeline_dir /path/to/experiment -params-file params.yaml
 ```
 
-`configs/` is **mandatory** -- every batch is declared by a YAML config file
-there; there is no mode where the pipeline scans a directory of pre-staged
-parquet files directly. `INPUT` (see
-[CLI Reference: Input](cli/input.md)) always runs once per config file,
-producing that batch's `input/<batch_stem>.parquet`.
+`nextflow.config` carries executor, profile and container settings **only** —
+never parameter defaults.
 
-`global/<channel>/` only exists for channels actually listed in
-`--global_channels` (see [Global channels](#global-channels) below); by
-default (`--global_channels` unset) no `global/` directory is produced at
-all. This includes `ANOVA`/`ANOVA_BLOCKLIST`/`BATCH_CORRECT_FIT`/
-`BATCH_CORRECT_TRANSFORM`/`ANOVA_BATCH_CORRECTED` -- unlike every other stage
-on this page, that entire chain is a purely per-channel feature with no
-pipeline-wide (ungated) counterpart, so it produces no output at all unless
-at least one channel is active.
+## Precedence
 
-## Parameters
+1. A bare CLI flag (`--ovwt_min_cells 500`) — highest.
+2. `-params-file params.yaml`.
+3. The Python Hydra dataclass default for that stage.
 
-Defaults live in `nextflow.config` at the repo root.
+Nextflow accepts only one `-params-file` at a time, so to run an alternate
+parameter set, copy `params.yaml` and edit the copy.
 
-### Pipeline selection
+!!! warning "Do not add a `params { }` block to `nextflow.config`"
+    Not even an empty one. Combined with `-params-file`, Nextflow's
+    `ConfigBuilder` before 26.04.6 misattributes every `params.yaml` key into the
+    `process{}` scope and fails with `Unknown config attribute 'params'`.
 
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--pipeline_mode` | `"fisseq"` | Which workflow to run: `"fisseq"` or `"ovwt"`. |
-| `--pipeline_dir` | `null` (**required**) | Root directory. Must contain `configs/`, a directory of per-batch YAML config files -- see [Pipeline directory layout](#pipeline-directory-layout). |
+## Declaring experiments
 
-### Branch toggles
+`experiments:` is a list of maps, one per experiment. This replaces the former
+mandatory `<pipeline_dir>/configs/*.yaml` directory.
 
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--global_channels` | `null` | List of named channels to run `OVWT_GLOBAL`, `BATCHVSBATCH`, `ANOVA` (both calls), `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`, and `GLOBAL_FEATURE_SELECT` for -- once per channel, scoped to only the batches whose YAML `global_channel` key names that channel. `null` or `[]` (the default): no global processes run at all. See [Global channels](#global-channels). |
-| `--run_feature_selection` | `true` | Whether to run the feature-selection branch (batchwise + global) at all. |
-| `--run_ovwt` | `true` | `FisseqPipeline` only: run `OVWT_BATCHWISE_UNFILTERED` (the normal/unfiltered per-batch OvWT pass) for that batch. Setting `false` also disables `run_single_cell_scores`/`run_check_barcodes`/`run_barcode_filtered_ovwt` for that batch regardless of their own settings, since all three consume this pass's output. No effect in `OvwtPipeline` (its entire purpose is this pass, so it always runs there). |
-| `--run_single_cell_scores` | `false` | `FisseqPipeline` only: run `OVWT_CELLSCORES_BATCHWISE` per batch after `OVWT_BATCHWISE_UNFILTERED`. Always on in `OvwtPipeline`. Forced on if `--run_check_barcodes true`. |
-| `--run_check_barcodes` | `false` | Run `CHECK_BARCODES` (per-batch pairwise Tukey HSD of single-cell scores across each variant's barcodes). Implies `--run_single_cell_scores true`. |
-| `--run_barcode_filtered_ovwt` | `true` | Run `OVWT_BATCHWISE_BARCODE_FILTERED` (per-batch OvWT filtered against `barcode_blocklist/<batch>/barcode_blocklist.parquet`). Only takes effect when `--run_check_barcodes true` is also set (default `false`) -- does NOT force it on, so the default pipeline output is unaffected. |
-| `--run_wtvwt` | `true` | `FisseqPipeline` only: run `WTVWT_BATCHWISE` (per-batch, wildtype-only pairwise barcode classification) for that batch. Independent of `--run_ovwt` and every other gate. |
-| `--run_wtvvariantpool` | `false` | `FisseqPipeline` only: run `WTVVARIANTPOOL_BATCHWISE` (per-batch, wildtype-barcode-vs-variant-pool classification) for that batch. Independent of `--run_wtvwt` and every other gate. Default `false`, unlike `--run_wtvwt`. |
+```yaml
+experiments:
+  - batch_stem: plate1
+    input_paths:
+      - /data/plate1/cellprofiler_features.csv
+      - /data/plate1/barcode_calls.parquet
+    global_channel: cohort_a
+  - batch_stem: plate2
+    input_paths: [/data/plate2/cellprofiler_features.csv]
+    global_channel: [cohort_a, cohort_b]   # may belong to several
+    csv_schema_scan_rows: null             # per-experiment override
+  - batch_stem: plate3
+    input_paths: [/data/plate3/features.parquet]
+    # no global_channel -- processed batchwise only
+```
 
-### INPUT stage tunables
+An entry may set **only** these keys:
 
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--feature_allowlist_file` | `null` | `INPUT`: optional path to a glob-pattern feature allowlist file. |
-| `--feature_blocklist_file` | `null` | `INPUT`: optional path to a glob-pattern feature blocklist file. |
-| `--csv_schema_scan_rows` | `100` | `INPUT`: rows scanned from each CSV `input_paths` source to infer column dtypes (polars `scan_csv`'s `infer_schema_length`). `null` scans every row. No effect on parquet sources. |
+| Key | Required | Meaning |
+| --- | -------- | ------- |
+| `batch_stem` | yes | Unique experiment id. Names every output subdirectory. Must be unique across the list. |
+| `input_paths` | yes | Raw CSV/parquet source files that INPUT merges. No pipeline-wide default exists — a list of raw files is inherently per-experiment. |
+| `global_channel` | no | String or list of strings naming the channel(s) this experiment belongs to. |
+| `feature_allowlist_file` | no | INPUT-stage; falls back to the pipeline-wide default. |
+| `feature_blocklist_file` | no | Likewise. |
+| `csv_schema_scan_rows` | no | Likewise. |
 
-These mirror `INPUT`'s per-batch YAML `config_path` schema (see
-[CLI Reference: Input](cli/input.md#config_path-yaml-schema)) and are
-overridable per batch exactly like every other parameter here — see
-[Per-batch parameter overrides](#per-batch-parameter-overrides).
+Any other key is **rejected with an error naming it**, rather than silently
+ignored. If you want to change a QC threshold or an OvWT hyperparameter, set it
+at the top level of `params.yaml` — it applies pipeline-wide. This is a
+deliberate simplification: per-experiment override of arbitrary parameters was
+removed for the release.
 
-### QC filtering (`QC_FILTER`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--barcode_count_threshold` | `10` | Minimum cells per barcode (QC filter). |
-| `--variant_barcode_count_threshold` | `4` | Minimum distinct barcodes per variant (QC filter). |
-| `--edit_distance_threshold` | `1` | Maximum allowed edit distance (QC filter). |
-| `--qc_n_variants` | `null` | Optional: restricts `qc_variant_downsample_classes` to at most this many distinct variants, before QC thresholding. `null` disables it. |
-| `--qc_variant_downsample_classes` | `['Single Missense']` | Classes eligible for the `qc_n_variants` restriction. |
-| `--qc_variant_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count variants; `'random'` keeps a seeded random sample. |
-| `--qc_downsample_amounts` | `null` | Optional single float `(0, 1]`/int, or list of them: QC-filter pseudo-variant downsampling drawn from cells that already passed QC — a float keeps that fraction per variant, an int keeps that many cells (skipping variants with fewer). `null` disables it. A genuine multi-element *list* is only settable via a batch YAML override or by editing the Groovy list literal in `nextflow.config` directly — a bare `--qc_downsample_amounts` CLI flag only supports a single scalar. |
-| `--qc_downsample_classes` | `['Synonymous', 'Single Missense']` | Classes eligible for `qc_downsample_amounts` pseudo-variant generation. |
-| `--qc_downsample_seed` | `0` | Seed for the deterministic downsample selection, shared by `qc_downsample_amounts` and `qc_variant_downsample_mode="random"`. |
-
-### Batch-effect detection (`ANOVA_BLOCKLIST`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--anova_blocklist_pvalue_threshold` | `0.05` | A feature is blocked (`feature_ok = false`) when its `ANOVA_NORMALIZED` p-value is strictly less than this threshold (a statistically significant batch effect was detected). |
-
-### Barcode-level blocklist (`BARCODE_BLOCKLIST`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--barcode_blocklist_pvalue_threshold` | `0.05` | A barcode is blocked (`barcode_ok = false`) when the median of its `CHECK_BARCODES` `p_adj` values is strictly less than this threshold. |
-
-### Batch-vs-batch comparison (`BATCHVSBATCH`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--batchvsbatch_min_cells` | `50` | Minimum total cells for a variant to be profiled in batch-vs-batch. |
-| `--batchvsbatch_min_batches` | `2` | Minimum unique batches a variant must appear in for batch-vs-batch. |
-
-### One-vs-wildtype classification (`OVWT_GLOBAL` / `OVWT_BATCHWISE`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--ovwt_min_cells` | `100` | Minimum cells required per variant for OvWT classification (overrides the Python CLI's own default of `250`). |
-| `--ovwt_downsample_wt` | `5000` | Wildtype downsample target for OvWT classification. |
-| `--max_cells_per_barcode_wt` | `null` | Optional cap on cells per wildtype barcode; any wildtype barcode exceeding this is randomly downsampled to exactly this count. `null` disables the cap. |
-| `--max_cells_per_barcode_variant` | `null` | Optional cap on cells per non-wildtype barcode, analogous to `--max_cells_per_barcode_wt`. `null` disables the cap. |
-
-### Wildtype-vs-wildtype pairwise barcode classification (`WTVWT_BATCHWISE`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--wtvwt_min_cells_per_barcode` | `100` | Minimum wildtype cells a barcode must have to be included in pairwise classification. |
-| `--wtvwt_max_barcodes` | `null` | Optional: after `--wtvwt_min_cells_per_barcode` filtering, caps the number of wildtype barcodes profiled to at most this many. `null` disables it. |
-| `--wtvwt_barcode_downsample_mode` | `'top'` | `'top'` keeps the highest-cell-count barcodes; `'random'` keeps a seeded random sample (using `random_state`). |
-
-### Wildtype-barcode-vs-variant-pool classification (`WTVVARIANTPOOL_BATCHWISE`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--wtvvariantpool_min_cells_per_barcode` | `100` | Minimum wildtype cells a barcode must have to be included. |
-| `--wtvvariantpool_variant_classes` | `['Synonymous']` | `classify_variant()` classes eligible for the pooled non-wildtype set. |
-| `--wtvvariantpool_downsample_variant_pool` | `null` | `null`/`false` disables downsampling; `true` downsamples the pool to match the size of the largest surviving wildtype barcode group; an int downsamples the pool to that exact count. |
-
-### Feature selection (bootstrap + aggregation + correlation)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--feature_select_types` | `["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]` | Aggregators used in feature selection (the default subset of `aggregate.py`'s aggregators; `signedKS` is also available but not enabled by default). |
-| `--feature_select_bootstrap_reps` | `10` | Number of pseudo-replicate bootstrap splits for feature selection. |
-| `--feature_select_downsample_wt` | `null` | Optional wildtype downsample for `AGGREGATE_HALF`/`AGGREGATE_FEATURE_TYPE`: a float `(0, 1)` keeps that fraction of control rows, an int keeps that many, `null` disables it. `AGGREGATE_HALF` seeds each `(bootstrap_idx, half_num)` independently so every pseudo-replicate half draws a different WT subsample. See [CLI Reference: aggregate](cli/aggregate.md#python-m-fisseq_data_pipelineaggregatefeaturetype-config-fields). |
-| `--feature_select_min_correlation` | `0.5` | Minimum median Pearson `r` required for a feature to pass `BLOCKLIST`. |
-| `--global_feature_select_min_batches_ok` | `null` | `GLOBAL_FEATURE_SELECT` only: minimum number of a global channel's member batches that must mark a feature ok (in their own `FINALIZE_FEATURE_SELECT_BATCHWISE`-chain blocklist) for it to be globally ok. `null` (the default) requires unanimity -- ok in every member batch that reports on it. Pipeline-wide only, no per-batch meaning. |
-
-### Dimensionality reduction (PCA / UMAP)
-
-Computed by both `FINALIZE_FEATURE_SELECT` (batchwise, per batch) and
-`GLOBAL_FEATURE_SELECT` (once per active global channel), independently of
-each other, on that process's own final selected/normalized feature matrix
--- UMAP does not run on PCA's output. See
-[CLI Reference: Feature Selection](cli/features.md).
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate `pca_components.parquet` (one row per component). |
-| `--pca_n_components` | `10` | Number of principal components to compute and retain. Arbitrary default -- tune to the dataset's actual post-selection feature count. Must be `<= min(n_rows, n_retained_features)` after all-null feature columns are dropped (see [CLI Reference: Feature Selection](cli/features.md)), or the run fails. |
-| `--run_umap` | `false` | Compute UMAP on the final selected/normalized feature matrix, appending `meta_umap_1..meta_umap_{umap_n_components}`. |
-| `--umap_n_components` | `2` | Dimensionality of the UMAP embedding. |
-| `--umap_n_neighbors` | `10` | `umap.UMAP`'s local neighborhood size. |
-| `--umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
-| `--umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
-| `--umap_random_state` | `42` | Seed for UMAP's fit. `null` disables seeding, enabling faster nondeterministic multithreaded fitting (an explicit umap-learn tradeoff). |
-
-### Single-cell scoring & barcode QC (`OVWT_CELLSCORES_BATCHWISE` / `CHECK_BARCODES`)
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `--single_cell_scores_split` | `"test"` | Which `OVWT_BATCHWISE` split to score: `"test"` or `"train"`. Any other value fails fast with a clear error. |
-| `--barcode_check_min_cells` | `10` | `CHECK_BARCODES`: minimum cells required per barcode (within a variant) to include it in the comparison. |
-| `--barcode_check_alpha` | `0.05` | `CHECK_BARCODES`: family-wise significance level for Tukey HSD; a barcode pair is flagged when its adjusted p-value is below this. |
+The workflow also fails fast on an empty `experiments:` list, a non-map entry, a
+missing or blank `batch_stem`, a missing or empty `input_paths`, and duplicate
+`batch_stem` values.
 
 ## Global channels
 
-By default, the pipeline's global (cross-batch) processes —
-`BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA` (both calls),
-`BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`, and `GLOBAL_FEATURE_SELECT` —
-**do not run at all**. To run them, tag batches into named channels and list
-which channels should actually run:
-
-- **`global_channel`** — an optional key in a batch's YAML config, either a
-  bare string or a list of strings, naming which channel(s) that batch
-  belongs to. A batch that omits this key never contributes to any global
-  run.
-- **`--global_channels`** — a pipeline-wide list parameter (default `null`)
-  naming which of those channels actually run. Each name in this list gets
-  its own full `BATCHVSBATCH`/`OVWT_GLOBAL`/`ANOVA`/
-  `BATCH_CORRECT_FIT`+`TRANSFORM`/`GLOBAL_FEATURE_SELECT` run, scoped to
-  only the batches whose `global_channel` list contains that name,
-  published under `<pipeline_dir>/global/<channel>/` (see
-  [Pipeline directory layout](#pipeline-directory-layout)).
-
-A batch can belong to multiple channels (via a list `global_channel`), in
-which case it contributes to each of those channels' global runs
-independently — the global processes are not deduplicated or merged across
-channels. This includes `BATCH_CORRECT_TRANSFORM`: a batch in two channels is
-batch-corrected once per channel, each using that channel's own fit (over
-only that channel's member batches), producing two independently-corrected
-copies of the batch's cells, one under each channel's own subtree.
-
-`GLOBAL_FEATURE_SELECT` additionally requires a member batch to have its own
-`run_feature_selection` enabled — it reads that batch's
-`feature_select_batchwise/<batch_stem>/{aggregates,blocklist.parquet}`
-directly, so a batch with `run_feature_selection: false` contributes to
-`BATCHVSBATCH`/`OVWT_GLOBAL`/`ANOVA`/`BATCH_CORRECT_FIT`+`TRANSFORM` for its
-channel(s) but not to `GLOBAL_FEATURE_SELECT`.
-
-### Worked example
-
-Two batches, two channels, with `batch2` contributing to both:
+An experiment joins a channel via its `global_channel` key;
+`params.global_channels` lists which channels actually run.
 
 ```yaml
-# configs/batch1.yaml
-input_paths: [/data/batch1.parquet]
-global_channel: siteA
+global_channels: [cohort_a, cohort_b]
 ```
+
+Each active channel gets its own `GLOBAL_OVWT` and `GLOBAL_FEATURE_SELECT` run,
+scoped to that channel's member experiments and published under
+`global/<channel>/`.
+
+- `global_channels: null` or `[]` (the default) — no global stage runs at all.
+- An experiment naming no channel is still processed batchwise, just excluded
+  from both global stages.
+- An experiment in several active channels contributes to each independently.
+- A channel named in `global_channels` with no member experiments logs a
+  warning.
+
+!!! note "GLOBAL_OVWT needs at least two synonymous variants per experiment"
+    It fits a per-experiment normalizer on that experiment's synonymous rows. A
+    single synonymous variant makes the standard deviation (ddof=1) undefined,
+    nulling every score for that experiment.
+
+## The one random seed
 
 ```yaml
-# configs/batch2.yaml
-input_paths: [/data/batch2.parquet]
-global_channel: [siteA, siteB]
+random_seed: 0
 ```
 
-```yaml
-# configs/batch3.yaml
-input_paths: [/data/batch3.parquet]
-global_channel: siteB
-```
+This is the only seed in the pipeline. Every stochastic step derives from it:
+QC pseudo-variant downsampling, the feature-selection bootstrap splits and their
+wildtype subsampling, OvWT's fold shuffle / inner calibration split / XGBoost
+`seed`, PCA's solver, and UMAP's fit. Changing it moves all of them coherently.
 
-Running with `--global_channels '["siteA", "siteB"]'` produces:
+Stages that must differ from one another derive a fixed offset rather than
+owning a seed of their own (`GENERATE_SPLIT` uses `random_seed + bootstrap_idx`;
+`AGGREGATE_HALF` uses `random_seed + bootstrap_idx * 2 + half_num`), so
+bootstrap replicates still draw independent subsamples.
 
-```
-<pipeline_dir>/global/siteA/...   # batch1 + batch2
-<pipeline_dir>/global/siteB/...   # batch2 + batch3
-```
+There is deliberately no stage-local `random_state` anywhere, and
+`tests/unit/test_config.py` fails if one reappears.
 
-A fourth batch with no `global_channel` key would be fully processed by every
-batchwise stage (`QC_FILTER`, `NORMALIZE`, `OVWT_BATCHWISE`, ...) but would
-never appear in either `global/siteA/` or `global/siteB/` — including the
-`ANOVA`/`ANOVA_BLOCKLIST`/`BATCH_CORRECT_FIT`/`TRANSFORM`/
-`ANOVA_BATCH_CORRECTED` chain, which now runs exclusively inside those
-per-channel subtrees.
+## Run gates
 
-!!! note "Passing a list on the command line"
-    A bare `--global_channels siteA,siteB` CLI flag does **not** produce a
-    Groovy list — Nextflow's CLI parser treats it as the single string
-    `"siteA,siteB"`. To pass a genuine list, either set
-    `params.global_channels = ['siteA', 'siteB']` in a `-c your.config` file,
-    or pass `-params-file params.json` with `{"global_channels": ["siteA", "siteB"]}`.
-    This is the same limitation `--qc_downsample_amounts` and
-    `--feature_select_types` already have for list-valued overrides.
+All pipeline-wide.
 
-### `global_channel` is validated, not consumed, by `INPUT`
+| Parameter | Default | Effect when `false` |
+| --------- | ------- | ------------------- |
+| `run_ovwt` | `true` | Skips `OVWT_BATCHWISE` and, with it, `GLOBAL_OVWT`. |
+| `run_feature_selection` | `true` | Skips the whole batchwise feature-selection chain and `GLOBAL_FEATURE_SELECT`. |
+| `run_pca` | `false` | (Enable to add PCA to the feature-selection outputs.) |
+| `run_umap` | `false` | (Enable to add UMAP.) |
 
-`global_channel` lives in the same batch YAML file as `input_paths` (see
-[CLI Reference: Input](cli/input.md#config_path-yaml-schema)), but it has no
-effect on `python -m fisseq_data_pipeline.input` itself — it is read and
-validated by the Nextflow workflow layer (`lib/BatchParams.groovy`) at
-workflow-construction time, before `INPUT` ever runs.
+## Parameter reference
 
-### `OvwtPipeline` accepts but ignores `global_channel`
+### Required, no default
 
-`OvwtPipeline` (`--pipeline_mode ovwt`) has no global processes at all, so
-`global_channel`/`--global_channels` have no effect there. A batch YAML's
-`global_channel` key is still validated the same way for consistency, but it
-is simply never read.
+| Parameter | Meaning |
+| --------- | ------- |
+| `pipeline_dir` | Root output directory. Also settable as `--pipeline_dir`. |
+| `container_image` | Image every process runs in. Pin to `:<short-sha>` for a reproducible run rather than floating on `:latest`. |
+| `experiments` | See above. |
 
-## Per-batch parameter overrides
+### Shared
 
-Any batch YAML in `<pipeline_dir>/configs/` may set additional keys beyond
-`input_paths` to override that batch's own value for a `nextflow.config`
-parameter — without affecting any other batch. This is resolved once per
-batch, in Groovy, at workflow-construction time, by
-[`lib/BatchParams.groovy`](https://github.com/Lilferrit/fisseq-data-pipeline/blob/main/lib/BatchParams.groovy)'s
-`resolve()` function: it merges that batch's YAML on top of the pipeline-wide
-defaults, validates every key, and returns the merged result plus a list of
-which keys were actually overridden. Both `workflows/fisseq.nf` and
-`workflows/ovwt.nf` call this once per batch YAML file and log each override
-via `log.info` — e.g.:
+| Parameter | Default | Meaning |
+| --------- | ------- | ------- |
+| `random_seed` | `0` | The one seed. |
+| `global_channels` | `null` | Which channels run the global stages. |
+| `filter_label_column` | `"meta_aa_changes"` | Variant label column, threaded to every stage that reads one. |
 
-```text
-Batch 'batch3': overriding barcode_count_threshold (default=10) -> 3
-```
+### INPUT
 
-### Three kinds of batch YAML keys
+| Parameter | Default | Meaning |
+| --------- | ------- | ------- |
+| `feature_allowlist_file` | `null` | Restrict to these feature columns. |
+| `feature_blocklist_file` | `null` | Drop these feature columns. |
+| `csv_schema_scan_rows` | `100` | Rows scanned to infer CSV dtypes; `null` scans every row. No effect on parquet sources. |
 
-Every key a batch YAML can set falls into one of three buckets:
+### QC_FILTER
 
-- **Batch-overridable** — most `nextflow.config` parameters (all the gating
-  booleans, QC/OvWT/feature-selection thresholds, etc.). Setting one in a
-  batch YAML overrides the pipeline-wide default for that batch only.
-- **Pipeline-wide-only** — a `nextflow.config` parameter with no per-batch
-  meaning, because it either gates/consumes ALL batches uniformly (e.g.
-  `--anova_blocklist_pvalue_threshold`, `--global_channels`) or is a
-  meta/bootstrap parameter resolved before any batch config can even be
-  located (`--pipeline_mode`, `--pipeline_dir`). A batch YAML that tries to
-  set one of these gets a clear rejection error, distinct from the
-  unrecognized-key error below.
-- **Batch-YAML-only** — a key with no `nextflow.config` default at all,
-  meaningful only inside a batch YAML: `input_paths` (required — see below)
-  and `global_channel` (optional — see [Global channels](#global-channels)).
+| Parameter | Default | Meaning |
+| --------- | ------- | ------- |
+| `barcode_count_threshold` | `10` | Minimum cells per barcode. |
+| `variant_barcode_count_threshold` | `4` | Minimum barcodes per variant. |
+| `edit_distance_threshold` | `1` | Maximum barcode edit distance. |
+| `qc_n_variants` | `null` | Cap the number of distinct variants in `qc_variant_downsample_classes`. |
+| `qc_variant_downsample_classes` | `["Single Missense"]` | Classes eligible for that cap. |
+| `qc_variant_downsample_mode` | `"top"` | `"top"` (highest cell count) or `"random"` (seeded by `random_seed`). |
+| `qc_downsample_amounts` | `null` | Float in (0,1] or int, or a list of them: pseudo-variant downsampling per label group. Each amount gets its own `:downsample-{amount}` tag. |
+| `qc_downsample_classes` | `["Synonymous", "Single Missense"]` | Classes eligible for pseudo-variant generation. |
 
-### Not every parameter is batch-overridable
+### OVWT_BATCHWISE
 
-Several processes run once per active global channel (or not at all) rather
-than per batch — `BATCHVSBATCH`, `OVWT_GLOBAL`, `ANOVA` (both calls),
-`ANOVA_BLOCKLIST`, `BATCH_CORRECT_FIT`/`BATCH_CORRECT_TRANSFORM`, and
-`GLOBAL_FEATURE_SELECT`. Params consumed only by those
-processes — `--global_channels`, `--batchvsbatch_min_cells`,
-`--batchvsbatch_min_batches`, `--anova_blocklist_pvalue_threshold`,
-`--feature_select_types`, `--feature_select_bootstrap_reps`,
-`--global_feature_select_min_batches_ok` — have no batch
-to attach a per-batch override to, so they stay pipeline-wide-only.
-(`--feature_select_types` and `--feature_select_bootstrap_reps` specifically
-determine shared fan-out *cardinality* — how many feature-type/bootstrap
-tasks exist at all — not a per-batch scalar value, so letting them vary per
-batch would require a much larger restructuring than a simple value
-override. `--global_feature_select_min_batches_ok` is inherently a
-channel-level agreement threshold across batches, with no per-batch meaning
-at all.)
+| Parameter | Default | Meaning |
+| --------- | ------- | ------- |
+| `ovwt_wt_label` | `"WT"` | Label identifying wildtype cells. |
+| `ovwt_n_folds` | `5` | Cross-validation folds per variant. |
+| `ovwt_calibrate` | `true` | Per-fold sigmoid (Platt) calibration. |
+| `ovwt_min_cells` | `250` | Minimum cells for a variant to be scored; wildtype always kept. `null` disables. |
+| `ovwt_downsample_wt` | `true` | Barcode-proportional wildtype downsampling to the largest remaining variant group. |
 
-Every other `nextflow.config` parameter — including the gating booleans
-`--run_ovwt`, `--run_single_cell_scores`, `--run_check_barcodes`,
-`--run_barcode_filtered_ovwt`, `--run_wtvwt`, `--run_wtvvariantpool`, and the
-*batchwise* effect of `--run_feature_selection` — is genuinely per-batch
-overridable. `--wtvwt_min_cells_per_barcode`, `--wtvwt_max_barcodes`, and
-`--wtvwt_barcode_downsample_mode` are likewise per-batch overridable, same
-bucket as `--ovwt_min_cells` — as are
-`--wtvvariantpool_min_cells_per_barcode`, `--wtvvariantpool_variant_classes`,
-and `--wtvvariantpool_downsample_variant_pool`. Each of these gates only a
-per-batch-only process or chain, so `workflows/fisseq.nf` implements them as
-a per-batch channel `.filter()` (via a `batchGates()` helper that also
-encodes the "`run_check_barcodes` implies `run_single_cell_scores`" /
-"`run_barcode_filtered_ovwt` only takes effect once `run_check_barcodes` is
-true" rules) rather than a workflow-scope `if`. `--run_feature_selection`'s
-*global* effect (`GLOBAL_FEATURE_SELECT`) runs once per active global channel
-instead, gated on `params.run_feature_selection`, since that process has no
-per-batch identity either — though it still only reads a member batch's
-`feature_select_batchwise/` output if that batch's own resolved
-`run_feature_selection` is true (see [Global channels](#global-channels)).
+See [One-vs-WT](cli/ovwt.md) for what these actually do.
 
-Parameters shared between a per-batch process and a global-only process
-(`--ovwt_min_cells`, `--ovwt_downsample_wt`, `--feature_select_downsample_wt`,
-`--feature_select_min_correlation`, `--run_pca`, `--pca_n_components`,
-`--run_umap`, `--umap_n_components`, `--umap_n_neighbors`, `--umap_metric`,
-`--umap_min_dist`, `--umap_random_state`) are overridable per batch for their
-batchwise consumer only (`OVWT_BATCHWISE`, `AGGREGATE_FEATURE_TYPE_BATCHWISE`
-/ `AGGREGATE_HALF_BATCHWISE`, `BLOCKLIST_BATCHWISE`,
-`FINALIZE_FEATURE_SELECT_BATCHWISE`) — their global counterpart
-(`OVWT_GLOBAL`, `GLOBAL_FEATURE_SELECT`) always uses the plain pipeline-wide
-value directly, regardless of any batch's override.
+### Feature selection
 
-### `input_paths`: required, batch-YAML-only
+| Parameter | Default | Meaning |
+| --------- | ------- | ------- |
+| `feature_select_types` | `["mean","median","MAD","std","KS","QQ","AUROC"]` | Aggregators to compute and correlate. |
+| `feature_select_bootstrap_reps` | `10` | Bootstrap replicates per feature type. |
+| `feature_select_downsample_wt` | `null` | Optional wildtype downsampling during aggregation. |
+| `feature_select_min_correlation` | `0.5` | Median-`r` threshold for a feature to pass. |
+| `global_feature_select_min_batches_ok` | `null` | Minimum member experiments that must mark a feature ok. `null` = all that report on it. |
 
-`input_paths` (the list of raw cell-score file paths for a batch) is
-**required in every batch YAML and has no `nextflow.config` default at
-all** — it is intentionally excluded from the override-symmetry described
-above. There is no sensible pipeline-wide default for a per-batch list of
-data files: unlike a threshold or a boolean gate, a default `input_paths`
-would look like something batches inherit, when in practice every batch
-must supply its own. A batch YAML that omits it fails clearly at
-config-resolution time rather than silently proceeding with no data.
+### Dimensionality reduction
 
-### `global_channel`: optional, batch-YAML-only
+PCA and UMAP are computed independently of each other, both on the same final
+selected/normalized feature matrix — UMAP does **not** run on PCA output.
 
-`global_channel` (see [Global channels](#global-channels)) is the other
-batch-YAML-only key, but unlike `input_paths` it's optional — a batch
-omitting it simply never contributes to any global run, rather than failing.
+| Parameter | Default | Meaning |
+| --------- | ------- | ------- |
+| `pca_n_components` | `10` | Must be ≤ `min(n_rows, n_retained_features)` after all-null columns are dropped, or the run fails. |
+| `umap_n_components` | `2` | Embedding dimensionality. |
+| `umap_n_neighbors` | `10` | Local neighborhood size. |
+| `umap_metric` | `"cosine"` | Distance metric. |
+| `umap_min_dist` | `0.1` | Minimum embedded distance between points. |
 
-### Why resolved scalars, not the whole config, are passed to processes
+!!! note "UMAP is now always seeded"
+    It previously had its own nullable `umap_random_state` (default `42`), where
+    `null` opted into faster nondeterministic multithreaded fitting. That knob is
+    gone — UMAP now reads `random_seed` like everything else, so UMAP output from
+    this release will not match a pre-release run's.
 
-Every process that consumes a per-batch-overridable value receives it as an
-individual `val()` input (e.g. `QC_FILTER` takes
-`barcode_count_threshold`/`variant_barcode_count_threshold`/... as nine
-separate `val()`s), never a whole config map or the raw YAML file. Nextflow's
-`-resume` cache key for a task is derived from its declared inputs — if a
-whole file or map were passed, changing *any* key in it (even one that
-process doesn't consume) would bust the cache for every task built from it.
-Passing only the specific scalars a process actually reads means an
-unrelated key change in one batch's YAML — or a non-semantic edit to it —
-does not invalidate that batch's tasks on the next `-resume` run. This is
-also why `INPUT` doesn't receive the batch's YAML file directly: it takes
-the resolved scalars as `val()` inputs and rebuilds a minimal YAML from them
-inside the process script, so only those scalars — not the original file's
-bytes — determine its cache key.
+## Passing list values on the CLI
+
+List-valued parameters cannot be expressed as a bare CLI flag:
+`--global_channels foo,bar` arrives as the single string `"foo,bar"`, and
+Groovy's `as List<String>` then splits it into individual characters. Set list
+parameters in `params.yaml` (or a copy of it) instead.

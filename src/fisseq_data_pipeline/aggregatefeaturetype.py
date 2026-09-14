@@ -51,10 +51,14 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         A float in ``(0, 1)`` keeps that fraction of control rows; an int
         keeps that many. ``None`` disables downsampling. Defaults to
         ``None``.
+
+    Notes
+    -----
     The ``downsample_wt`` draw is seeded from
-    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`; AGGREGATE_HALF
-    passes ``random_seed + bootstrap_idx * 2 + half_num`` so a bootstrap
-    replicate's two halves draw independent wildtype subsamples.
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`. AGGREGATE_HALF
+    passes ``random_seed + bootstrap_idx * 2 + half_num``, so a bootstrap
+    replicate's two halves draw independent wildtype subsamples off the one
+    shared seed.
     """
 
     aggregator: str = MISSING

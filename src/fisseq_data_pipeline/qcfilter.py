@@ -109,9 +109,13 @@ class QcFilterConfig(AppConfig):
     downsample_classes : List[str]
         Classes eligible for ``downsample_amounts`` pseudo-variant
         generation. Defaults to ``["Synonymous", "Single Missense"]``.
+
+    Notes
+    -----
     Deterministic selection for both ``downsample_amounts`` and
     ``variant_downsample_mode="random"`` is seeded from
-    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`.
+    :attr:`~fisseq_data_pipeline.config.app.AppConfig.random_seed`. There is no
+    stage-local seed field.
     """
 
     cell_files: Any = MISSING
@@ -475,6 +479,14 @@ def combine_cell_files(cell_files: Iterable[PathLike]) -> pl.LazyFrame:
     cell_files : Iterable[PathLike]
         Iterable of paths to cell data files.
 
+    Returns
+    -------
+    pl.LazyFrame
+        Concatenated lazy frame of all input files, with
+        ``META_CELL_INDEX_COL`` assigned.
+
+    Notes
+    -----
     A ``META_CELL_INDEX_COL`` column is assigned here, over the concatenation in
     ``cell_files`` order, giving every cell a stable identity for the rest of the
     pipeline. This is what makes QC_FILTER's published row order reproducible:
@@ -484,12 +496,6 @@ def combine_cell_files(cell_files: Iterable[PathLike]) -> pl.LazyFrame:
     on every run, and every downstream seeded step (OvWT's wildtype downsample
     and fold assignment, the feature-selection bootstrap splits) silently
     diverges despite a fixed ``random_seed``.
-
-    Returns
-    -------
-    pl.LazyFrame
-        Concatenated lazy frame of all input files, with
-        ``META_CELL_INDEX_COL`` assigned.
     """
     lf = pl.concat([read_file(pathlib.Path(cell_file)) for cell_file in cell_files])
     return lf.with_row_index(name=META_CELL_INDEX_COL).with_columns(
