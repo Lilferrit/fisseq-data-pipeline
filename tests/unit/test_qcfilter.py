@@ -957,3 +957,65 @@ def test_main_variant_downsample_classes_configurable(tmp_path):
     # Both A1A/A2A are Synonymous and tied at 3 cells each; alphabetical
     # tie-break keeps A1A only.
     assert set(result["meta_aa_changes"].to_list()) == {"A1A"}
+
+
+# ---------------------------------------------------------------------------
+# Deterministic row order
+# ---------------------------------------------------------------------------
+
+
+def test_combine_cell_files_assigns_stable_cell_index(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(6)], ["A1A"] * 6)
+    lf = m.combine_cell_files([source])
+    df = lf.collect()
+    assert "meta_cell_index" in df.columns
+    assert df["meta_cell_index"].to_list() == list(range(6))
+
+
+def test_main_row_order_is_deterministic(tmp_path):
+    """
+    add_qc_queries' inner joins are not order-preserving under polars'
+    multithreaded execution, so main() sorts on meta_cell_index before writing.
+    Without that, the same input yields the same rows in a different order every
+    run and every downstream seeded step diverges at a fixed random_seed.
+    """
+    source = tmp_path / "cells.parquet"
+    _write_cells(
+        source,
+        [f"bc{i}" for i in range(10) for _ in range(5)],
+        ["A1A"] * 25 + ["M1K"] * 25,
+    )
+
+    frames = []
+    for i in range(5):
+        out = tmp_path / f"out{i}"
+        qc_cfg = _make_qc_cfg(
+            tmp_path,
+            source,
+            bc_threshold=1,
+            variant_bc_threshold=1,
+            edit_distance_threshold=1,
+        )
+        qc_cfg.output_dir = str(out)
+        with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+            m.main.__wrapped__(qc_cfg)
+        frames.append(pl.read_parquet(out / "filtered_cells.parquet"))
+
+    assert all(frames[0].equals(f) for f in frames[1:])
+
+
+def test_main_output_sorted_by_cell_index(tmp_path):
+    source = tmp_path / "cells.parquet"
+    _write_cells(source, [f"bc{i}" for i in range(10)], ["A1A"] * 10)
+    qc_cfg = _make_qc_cfg(
+        tmp_path,
+        source,
+        bc_threshold=1,
+        variant_bc_threshold=1,
+        edit_distance_threshold=1,
+    )
+    with patch("fisseq_data_pipeline.qcfilter.setup_logging"):
+        m.main.__wrapped__(qc_cfg)
+    df = pl.read_parquet(tmp_path / "out" / "filtered_cells.parquet")
+    assert df["meta_cell_index"].is_sorted()

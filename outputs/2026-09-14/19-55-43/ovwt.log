@@ -1,0 +1,8 @@
+[2026-09-14 19:55:43,629][root][INFO] - Loading normalized cells from /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/cells.parquet
+[2026-09-14 19:55:43,629][root][INFO] - Found 1 batch file(s) matching '/tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/cells.parquet'
+[2026-09-14 19:55:43,631][root][INFO] - Running 3-fold one-vs-wildtype scoring (calibrate=True, min_cells=25)
+[2026-09-14 19:55:43,657][root][INFO] - Scoring 3 variant(s) against 'WT'
+[2026-09-14 19:55:44,372][root][INFO] - Writing /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/run2/results.parquet
+[2026-09-14 19:55:44,375][root][INFO] - Writing /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/run2/cell_scores.parquet
+[2026-09-14 19:55:44,376][root][INFO] - Writing /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/run2/models.pkl
+[2026-09-14 19:55:44,379][root][INFO] - Done

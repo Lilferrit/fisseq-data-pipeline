@@ -1,0 +1,33 @@
+[2026-09-14 19:57:20,176][root][INFO] - Scanning file /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/raw.parquet
+[2026-09-14 19:57:20,191][root][INFO] - n_variants not set; skipping variant-level selection
+[2026-09-14 19:57:20,191][root][INFO] - Adding edit distance QC query
+[2026-09-14 19:57:20,191][root][INFO] - Adding Barcode Level QC query
+[2026-09-14 19:57:20,191][root][INFO] - Adding Variant Level QC query
+[2026-09-14 19:57:20,193][root][INFO] - downsample_amounts not set; skipping pseudo-variant generation
+[2026-09-14 19:57:20,195][root][INFO] - Writing output files to /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/qcfix2
+[2026-09-14 19:57:20,196][root][INFO] - Writing filtered_cells
+[2026-09-14 19:57:20,228][root][INFO] - Writing barcode_counts
+[2026-09-14 19:57:20,230][root][INFO] - Writing variants_per_barcode
+[2026-09-14 19:57:20,237][root][INFO] - Done
+[2026-09-14 19:57:20,595][root][INFO] - Scanning file /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/raw.parquet
+[2026-09-14 19:57:20,601][root][INFO] - n_variants not set; skipping variant-level selection
+[2026-09-14 19:57:20,601][root][INFO] - Adding edit distance QC query
+[2026-09-14 19:57:20,601][root][INFO] - Adding Barcode Level QC query
+[2026-09-14 19:57:20,601][root][INFO] - Adding Variant Level QC query
+[2026-09-14 19:57:20,601][root][INFO] - downsample_amounts not set; skipping pseudo-variant generation
+[2026-09-14 19:57:20,602][root][INFO] - Writing output files to /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/qcfix3
+[2026-09-14 19:57:20,602][root][INFO] - Writing filtered_cells
+[2026-09-14 19:57:20,619][root][INFO] - Writing barcode_counts
+[2026-09-14 19:57:20,621][root][INFO] - Writing variants_per_barcode
+[2026-09-14 19:57:20,624][root][INFO] - Done
+[2026-09-14 19:57:20,964][root][INFO] - Scanning file /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/raw.parquet
+[2026-09-14 19:57:20,969][root][INFO] - n_variants not set; skipping variant-level selection
+[2026-09-14 19:57:20,969][root][INFO] - Adding edit distance QC query
+[2026-09-14 19:57:20,969][root][INFO] - Adding Barcode Level QC query
+[2026-09-14 19:57:20,969][root][INFO] - Adding Variant Level QC query
+[2026-09-14 19:57:20,969][root][INFO] - downsample_amounts not set; skipping pseudo-variant generation
+[2026-09-14 19:57:20,969][root][INFO] - Writing output files to /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/qcfix4
+[2026-09-14 19:57:20,969][root][INFO] - Writing filtered_cells
+[2026-09-14 19:57:20,988][root][INFO] - Writing barcode_counts
+[2026-09-14 19:57:20,990][root][INFO] - Writing variants_per_barcode
+[2026-09-14 19:57:20,993][root][INFO] - Done

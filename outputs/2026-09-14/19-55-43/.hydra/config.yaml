@@ -1,0 +1,22 @@
+output_dir: /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/run2
+output_root: null
+log_level: info
+random_seed: 1234
+input_file: /tmp/claude-1000/-workspaces-fisseq-data-pipeline/9508b8d7-728e-474a-94a7-8149b4c0a26e/scratchpad/repro/cells.parquet
+label_column: meta_aa_changes
+wt_label: WT
+n_folds: 3
+calibrate: true
+min_cells: 25
+downsample_wt: true
+xgboost:
+  num_boost_round: 100
+  early_stopping_rounds: 5
+  weigh_samples: true
+  params:
+    nthread: -1
+    max_depth: 3
+    colsample_bytree: 0.7
+    colsample_bylevel: 0.7
+    colsample_bynode: 0.7
+    subsample: 0.5

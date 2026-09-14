@@ -40,6 +40,7 @@ from omegaconf import MISSING, DictConfig, OmegaConf
 from .config import AppConfig
 from .utils.constants import (
     META_BARCODE_COL,
+    META_CELL_INDEX_COL,
     META_EDIT_DISTANCE_COL,
     META_VARIANT_TAG_COL,
 )
@@ -474,12 +475,26 @@ def combine_cell_files(cell_files: Iterable[PathLike]) -> pl.LazyFrame:
     cell_files : Iterable[PathLike]
         Iterable of paths to cell data files.
 
+    A ``META_CELL_INDEX_COL`` column is assigned here, over the concatenation in
+    ``cell_files`` order, giving every cell a stable identity for the rest of the
+    pipeline. This is what makes QC_FILTER's published row order reproducible:
+    the two inner joins in :func:`add_qc_queries` are not order-preserving under
+    polars' multithreaded execution, so :func:`main` sorts on this column before
+    writing. Without it the same input yields the same rows in a different order
+    on every run, and every downstream seeded step (OvWT's wildtype downsample
+    and fold assignment, the feature-selection bootstrap splits) silently
+    diverges despite a fixed ``random_seed``.
+
     Returns
     -------
     pl.LazyFrame
-        Concatenated lazy frame of all input files.
+        Concatenated lazy frame of all input files, with
+        ``META_CELL_INDEX_COL`` assigned.
     """
-    return pl.concat([read_file(pathlib.Path(cell_file)) for cell_file in cell_files])
+    lf = pl.concat([read_file(pathlib.Path(cell_file)) for cell_file in cell_files])
+    return lf.with_row_index(name=META_CELL_INDEX_COL).with_columns(
+        pl.col(META_CELL_INDEX_COL).cast(pl.Int64)
+    )
 
 
 def filter_columns(lf: pl.LazyFrame, cfg: DictConfig) -> pl.LazyFrame:
@@ -626,6 +641,15 @@ def main(cfg: DictConfig) -> None:
             combined_lf = pl.concat([combined_lf, *pseudo_lfs], how="vertical_relaxed")
     else:
         logging.info("downsample_amounts not set; skipping pseudo-variant generation")
+
+    # Restore a deterministic row order before publishing. add_qc_queries' inner
+    # joins scramble it, and pseudo-variant rows (when downsample_amounts is set)
+    # reuse their source row's index -- so the sort key is
+    # (cell index, variant tag), which is total: two pseudo rows sharing an index
+    # always came from different downsample amounts and so carry different tags.
+    combined_lf = combined_lf.sort(
+        [META_CELL_INDEX_COL, META_VARIANT_TAG_COL], nulls_last=False
+    )
 
     logging.info("Writing output files to %s", output_dir)
     for name, lf in [
