@@ -263,18 +263,24 @@ Lowercase verb, optional scope, PR number in parentheses:
    misattributes every `params.yaml` key into `process{}` scope and raises
    `Unknown config attribute 'params'`. All defaults live in `params.yaml`.
 
-4. **`ovwt.py`'s per-variant `try/except` is load-bearing.** A
-   `(barcode, is_wt)` stratum can be too small for the inner nested split even
-   after `_stratification_key`'s rare-bucket collapse. Small variants
-   legitimately hit this; the alternative is losing every other variant's
-   results. Tests assert a rare-barcode variant is silently dropped while its
-   peers succeed.
+4. **`ovwt.py`'s per-variant `try/except` is load-bearing.** A variant can
+   still be too small for the outer `StratifiedKFold` or produce a degenerate
+   fold, even after `_stratification_key`'s rare-bucket collapse. Small
+   variants legitimately hit this; the alternative is losing every other
+   variant's results. `test_variant_failure_is_isolated_not_fatal` asserts a
+   failing variant is silently dropped while its peers succeed. (Singleton
+   strata inside a fold are *not* one of these cases any more — see gotcha 5.)
 
-5. **Test fixtures for OvWT must be big enough.** The inner
-   `split_indices_stratified` runs inside each outer fold, so a stratum needs
-   roughly 8–13 members to survive both levels — merely `>= n_folds` is not
-   enough. An undersized fixture sends every variant down the `except` branch,
-   and the test then passes against empty output while asserting nothing.
+5. **`split_indices_stratified` is a two-way split that tolerates singleton
+   strata.** It splits each outer fold's fit rows 80/20 into train and
+   calibration — no third slot. It was an 80/10/10 train/test/val split whose
+   only caller used two of the three slots, silently discarding 10% of every
+   fold. Rows in a 1-member stratum can't be stratified, so they are assigned
+   to the train half with a logged warning rather than raising (the production
+   `least populated class in y has only 1 member` failure) or being thrown
+   away. Test fixtures still want comfortably more than `n_folds` cells per
+   stratum: an undersized fixture produces degenerate folds, and the test then
+   passes against near-empty output while asserting nothing.
 
 6. **OvWT trains on WT-normalized features, not synonymous-normalized ones.**
    The sibling `fisseq-embeddings-pipeline` (which this implementation was

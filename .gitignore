@@ -31,3 +31,6 @@ work/
 
 # Generated docs output
 site/
+
+# Scratch directory
+scratch/*

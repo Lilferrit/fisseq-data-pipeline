@@ -55,10 +55,11 @@ from .utils.xgbparams import (
 )
 
 # Minimum members a (barcode, is_wt) stratum needs before StratifiedKFold's
-# outer split is guaranteed not to raise. This does NOT guarantee
-# split_indices_stratified's *inner* nested split survives on a very small
-# bucket -- safe stratum sizes are data-dependent, not hard-codeable, so that
-# failure mode is caught by ovwt_batchwise()'s per-variant try/except instead.
+# outer split is guaranteed not to raise. The *inner* split
+# (split_indices_stratified) tolerates strata this leaves behind -- it moves
+# singleton strata into its train half rather than raising -- but a variant can
+# still be too small for the outer split itself, which is why
+# ovwt_batchwise()'s per-variant try/except stays.
 _MIN_STRATUM_SIZE = 10
 
 _cs = ConfigStore.instance()
@@ -310,8 +311,8 @@ def ovwt_batchwise(
     key (see :func:`_stratification_key`), so barcode composition and the
     wildtype/variant balance are both preserved fold to fold.
 
-    A variant whose fold training or evaluation raises -- e.g. a stratum too
-    small for the inner nested split to survive, despite
+    A variant whose fold training or evaluation raises -- e.g. a variant with
+    too few cells for the outer ``StratifiedKFold``, despite
     :func:`_stratification_key`'s mitigation -- is skipped with a logged
     warning rather than aborting the run. This is load-bearing, not defensive
     decoration: small variants legitimately hit it, and the alternative is
@@ -392,10 +393,10 @@ def ovwt_batchwise(
                 splitter.split(subset, strata)
             ):
                 fit_df, test_df = subset[fit_idx], subset[test_idx]
-                # split_indices_stratified returns (train, test, val); this
-                # takes slots 0 and 2 and discards the middle 10% -- the fold's
-                # own test_idx above already serves that role.
-                train_pos, _, calib_pos = split_indices_stratified(
+                # An 80/20 train/calibration split of the fold's fit rows.
+                # There is no third (test) slot: the fold's own test_idx above
+                # already serves that role.
+                train_pos, calib_pos = split_indices_stratified(
                     strata[fit_idx], cfg.random_seed + fold_idx
                 )
                 train_df = fit_df[train_pos].select([label_col, *feature_cols])
