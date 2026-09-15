@@ -1,13 +1,13 @@
 """Unit tests for the k-fold cross-validated OVWT_BATCHWISE stage.
 
-Fixture sizing note: the inner nested split (``split_indices_stratified``,
-80/10/10) runs *inside* each outer fold, so a ``(barcode, is_wt)`` stratum needs
-roughly 8-13 members to survive both levels -- merely having ``>= n_folds``
-members is not enough. Undersized fixtures make every variant fall into
-``ovwt_batchwise``'s per-variant ``except`` branch, and the test then passes
-against empty output while asserting nothing. These fixtures use ``n_folds=3``
-with ~15 cells per barcode for that reason; ``test_normal_variant_survives``
-guards the failure mode directly.
+Fixture sizing note: the inner 80/20 train/calibration split
+(``split_indices_stratified``) runs *inside* each outer fold, so a
+``(barcode, is_wt)`` stratum wants comfortably more than ``n_folds`` members
+for the folds to carry a real signal. Undersized fixtures used to send every
+variant into ``ovwt_batchwise``'s per-variant ``except`` branch, and the test
+would then pass against empty output while asserting nothing. These fixtures
+use ``n_folds=3`` with ~15 cells per barcode for that reason;
+``test_normal_variant_survives`` guards the failure mode directly.
 """
 
 import pathlib
@@ -317,9 +317,34 @@ def test_ovwt_batchwise_is_reproducible():
     assert a.sort(LABEL).equals(b.sort(LABEL))
 
 
-def test_rare_barcode_variant_is_skipped_not_fatal():
-    """One doomed variant must not take the whole run down with it."""
+def test_rare_barcode_variant_is_scored_not_skipped():
+    """
+    A variant whose barcodes contribute a lone cell used to die in the inner
+    split (``ValueError: The least populated class in y has only 1 member``)
+    and get dropped. It now trains: singleton strata go to the train half.
+    """
     df = _cells(variants={"GOOD": 15, "TINY": 1}, barcodes_per_variant=2)
+    results, _, models = ovwt_batchwise(df.lazy(), _cfg())
+    labels = results.get_column(LABEL).to_list()
+    assert "GOOD" in labels
+    assert "TINY" in labels
+    assert "TINY" in models
+
+
+def test_variant_failure_is_isolated_not_fatal(monkeypatch):
+    """One doomed variant must not take the whole run down with it."""
+    import fisseq_data_pipeline.ovwt as ovwt_mod
+
+    real_train = ovwt_mod.train_binary_xgboost
+
+    def _fail_on_small_variant(train, val, cfg):
+        if (train.get_column(LABEL) == "TINY").any():
+            raise ValueError("synthetic training failure")
+        return real_train(train, val, cfg)
+
+    monkeypatch.setattr(ovwt_mod, "train_binary_xgboost", _fail_on_small_variant)
+
+    df = _cells(variants={"GOOD": 15, "TINY": 3}, barcodes_per_variant=2)
     results, _, models = ovwt_batchwise(df.lazy(), _cfg())
     labels = results.get_column(LABEL).to_list()
     assert "GOOD" in labels

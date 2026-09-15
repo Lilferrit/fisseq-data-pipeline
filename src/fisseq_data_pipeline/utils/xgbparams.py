@@ -16,6 +16,7 @@ dropped along with their only callers -- ``batchvsbatch.py`` and the old OvWT's
 """
 
 import dataclasses
+import logging
 from typing import Optional
 
 import numpy as np
@@ -143,9 +144,10 @@ def get_dmatrix(
 def split_indices_stratified(
     labels: np.ndarray,
     random_state: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    test_size: float = 0.2,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Produce an 80/10/10 stratified train/test/val index split.
+    Produce an 80/20 stratified train/holdout index split.
 
     Parameters
     ----------
@@ -154,26 +156,53 @@ def split_indices_stratified(
         hashable dtype (strings, integers, etc.).
     random_state : int
         Random seed passed to :func:`sklearn.model_selection.train_test_split`.
+    test_size : float
+        Fraction of the stratifiable rows placed in the holdout split. Defaults
+        to ``0.2``.
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, np.ndarray]
-        ``(train_idx, test_idx, val_idx)`` — 0-based positions into ``labels``.
+    tuple[np.ndarray, np.ndarray]
+        ``(train_idx, holdout_idx)`` -- 0-based positions into ``labels``.
+        Together they cover every position exactly once.
+
+    Notes
+    -----
+    Rows whose stratum has only one member cannot be stratified --
+    :func:`sklearn.model_selection.train_test_split` raises ``ValueError`` on
+    them -- so they are excluded from the stratified split and appended to
+    ``train_idx``, with a logged warning. No row is discarded.
+
+    This is a two-way split on purpose. It used to be an 80/10/10
+    train/test/val split whose caller
+    (:func:`fisseq_data_pipeline.ovwt.ovwt_batchwise`) used only two of the
+    three slots, silently throwing 10% of each fold's rows away; the outer
+    k-fold's own test rows already serve as the test set.
     """
     all_idx = np.arange(len(labels))
-    train_idx, val_test_idx = sklearn.model_selection.train_test_split(
-        all_idx,
-        test_size=0.2,
-        stratify=labels,
+    unique, counts = np.unique(labels, return_counts=True)
+    singleton_strata = unique[counts < 2]
+
+    if len(singleton_strata) > 0:
+        singleton_mask = np.isin(labels, singleton_strata)
+        logging.warning(
+            "Excluding %d row(s) in %d singleton stratum/strata from "
+            "stratification; assigning them to the train split",
+            int(singleton_mask.sum()),
+            len(singleton_strata),
+        )
+    else:
+        singleton_mask = np.zeros(len(labels), dtype=bool)
+
+    stratifiable_idx = all_idx[~singleton_mask]
+    train_idx, holdout_idx = sklearn.model_selection.train_test_split(
+        stratifiable_idx,
+        test_size=test_size,
+        stratify=labels[stratifiable_idx],
         random_state=random_state,
     )
-    test_idx, val_idx = sklearn.model_selection.train_test_split(
-        val_test_idx,
-        test_size=0.5,
-        stratify=labels[val_test_idx],
-        random_state=random_state,
-    )
-    return train_idx, test_idx, val_idx
+    train_idx = np.sort(np.concatenate([train_idx, all_idx[singleton_mask]]))
+    return train_idx, holdout_idx
 
 
 def train_binary_xgboost(
