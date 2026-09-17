@@ -805,9 +805,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#leave_one_barcode_out" class="md-nav__link">
+  <a href="#barcode_holdout" class="md-nav__link">
     <span class="md-ellipsis">
-      "leave_one_barcode_out"
+      "barcode_holdout"
     </span>
   </a>
   
@@ -1277,9 +1277,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#leave_one_barcode_out" class="md-nav__link">
+  <a href="#barcode_holdout" class="md-nav__link">
     <span class="md-ellipsis">
-      "leave_one_barcode_out"
+      "barcode_holdout"
     </span>
   </a>
   
@@ -1399,20 +1399,50 @@ merged across, so barcode resolution degrades gracefully without ever
 sacrificing class balance.</p>
 <p>Every fold's model has seen every barcode, so the AUROCs measure separability
 <em>within</em> the barcodes the classifier trained on.</p>
-<h3 id="leave_one_barcode_out"><code>"leave_one_barcode_out"</code><a class="headerlink" href="#leave_one_barcode_out" title="Permanent link">&para;</a></h3>
-<p>One fold per variant barcode. Fold <em>i</em> holds out <strong>every</strong> cell of the <em>i</em>-th
-barcode, and the variant's other barcodes do the training — so the model
-scoring a barcode has never seen that barcode. Wildtype cells are still split
-across the folds (into as many disjoint blocks as there are variant barcodes,
-stratified on the same composite key), rather than held out wholesale.</p>
-<p><code>n_folds</code> is ignored: a variant gets exactly as many folds as it has barcodes.
-A variant with only <strong>one</strong> barcode cannot be scored at all — holding it out
+<h3 id="barcode_holdout"><code>"barcode_holdout"</code><a class="headerlink" href="#barcode_holdout" title="Permanent link">&para;</a></h3>
+<p>Whole barcodes are held out of training, one barcode (or one group of barcodes)
+per fold — so the model scoring a barcode has never seen that barcode. Wildtype
+cells are still split across the folds (into as many disjoint blocks as there
+are folds, stratified on the same composite key), rather than held out
+wholesale.</p>
+<p><code>n_folds</code> <strong>caps</strong> the fold count here rather than fixing it:</p>
+<table>
+<thead>
+<tr>
+<th><code>n_folds</code></th>
+<th>Folds per variant</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>null</code></td>
+<td>One per barcode — pure leave-one-barcode-out.</td>
+</tr>
+<tr>
+<td><code>k</code> below the barcode count</td>
+<td><code>k</code>; the barcodes are packed into <code>k</code> groups and a whole group is held out per fold.</td>
+</tr>
+<tr>
+<td><code>k</code> at or above the barcode count</td>
+<td>One per barcode, same as <code>null</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Grouping is what makes the mode affordable: a variant with 40 barcodes
+otherwise trains 40 models. The pack balances <strong>cell</strong> counts, not barcode
+counts — barcodes are unevenly populated, and an even split by barcode count
+can still leave one fold holding out most of the variant's cells. It is the
+greedy longest-processing-time-first heuristic over barcodes sorted by cell
+count, so it is deterministic and consumes no seed. What grouping costs is
+resolution: barcodes sharing a fold are held out together, so that fold cannot
+distinguish which of them the model failed to generalize to.</p>
+<p>A variant with only <strong>one</strong> barcode cannot be scored at all — holding it out
 would leave no variant cells to train on — and is skipped with a warning.
 <code>variant_barcode_count_threshold</code> (default <code>4</code>) already makes that rare.</p>
 <p>Use this mode to ask whether a variant's signal <em>generalizes to an unseen
 barcode</em>. A barcode-specific technical artifact inflates the <code>"kfold"</code> numbers
 invisibly; here it is penalized, because no model is ever trained and scored on
-the same barcode.</p>
+the same barcode — at any <code>n_folds</code>.</p>
 <h2 id="two-scores-per-variant">Two scores per variant<a class="headerlink" href="#two-scores-per-variant" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1449,7 +1479,7 @@ final count off target by up to (number of wildtype barcodes) cells; this is
 accepted rather than corrected.</p>
 <h2 id="progress-logging">Progress logging<a class="headerlink" href="#progress-logging" title="Permanent link">&para;</a></h2>
 <p>Each variant logs a <code>[i/N]</code> header (barcode and cell counts), one line per fold
-(the held-out barcode under <code>"leave_one_barcode_out"</code>, the train/calibration/test
+(the held-out barcode(s) under <code>"barcode_holdout"</code>, the train/calibration/test
 sizes, and that fold's own AUROC), one line per barcode, and a closing summary
 with <code>auroc_pooled</code>, <code>auroc_median_barcode</code> and elapsed time. A fold whose test
 slice happens to hold a single class logs <code>auroc=n/a</code> rather than failing the
@@ -1497,12 +1527,12 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 <tr>
 <td><code>cv_mode</code></td>
 <td><code>"kfold"</code></td>
-<td>Fold scheme: <code>"kfold"</code> or <code>"leave_one_barcode_out"</code>.</td>
+<td>Fold scheme: <code>"kfold"</code> or <code>"barcode_holdout"</code>.</td>
 </tr>
 <tr>
 <td><code>n_folds</code></td>
 <td><code>5</code></td>
-<td>Cross-validation folds per variant, under <code>"kfold"</code>. Ignored by <code>"leave_one_barcode_out"</code>.</td>
+<td>Cross-validation folds per variant: the fold count under <code>"kfold"</code>, a cap on the barcode-group count under <code>"barcode_holdout"</code>. <code>null</code> (one fold per barcode) is valid only under <code>"barcode_holdout"</code>; must otherwise be ≥ 2.</td>
 </tr>
 <tr>
 <td><code>calibrate</code></td>
@@ -1550,7 +1580,7 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 </tr>
 <tr>
 <td><code>models.pkl</code></td>
-<td><code>dict[variant, list[(Booster, calibrator_or_None)]]</code> — one tuple per fold, so <code>n_folds</code> entries under <code>"kfold"</code> and one per barcode under <code>"leave_one_barcode_out"</code>.</td>
+<td><code>dict[variant, list[(Booster, calibrator_or_None)]]</code> — one tuple per fold, so <code>n_folds</code> entries under <code>"kfold"</code>, and under <code>"barcode_holdout"</code> <code>min(n_folds, n_barcodes)</code> of them (one per barcode when <code>n_folds</code> is <code>null</code>).</td>
 </tr>
 </tbody>
 </table>
@@ -1558,8 +1588,8 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.ovwt<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">cv_mode</span><span class="o">=</span>kfold<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nv">n_folds</span><span class="o">=</span><span class="m">5</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">cv_mode</span><span class="o">=</span>barcode_holdout<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nv">n_folds</span><span class="o">=</span>null<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nv">calibrate</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nv">min_cells</span><span class="o">=</span><span class="m">250</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
