@@ -27,15 +27,31 @@ sacrificing class balance.
 Every fold's model has seen every barcode, so the AUROCs measure separability
 *within* the barcodes the classifier trained on.
 
-### `"leave_one_barcode_out"`
+### `"barcode_holdout"`
 
-One fold per variant barcode. Fold *i* holds out **every** cell of the *i*-th
-barcode, and the variant's other barcodes do the training — so the model
-scoring a barcode has never seen that barcode. Wildtype cells are still split
-across the folds (into as many disjoint blocks as there are variant barcodes,
-stratified on the same composite key), rather than held out wholesale.
+Whole barcodes are held out of training, one barcode (or one group of barcodes)
+per fold — so the model scoring a barcode has never seen that barcode. Wildtype
+cells are still split across the folds (into as many disjoint blocks as there
+are folds, stratified on the same composite key), rather than held out
+wholesale.
 
-`n_folds` is ignored: a variant gets exactly as many folds as it has barcodes.
+`n_folds` **caps** the fold count here rather than fixing it:
+
+| `n_folds` | Folds per variant |
+| --------- | ----------------- |
+| `null` | One per barcode — pure leave-one-barcode-out. |
+| `k` below the barcode count | `k`; the barcodes are packed into `k` groups and a whole group is held out per fold. |
+| `k` at or above the barcode count | One per barcode, same as `null`. |
+
+Grouping is what makes the mode affordable: a variant with 40 barcodes
+otherwise trains 40 models. The pack balances **cell** counts, not barcode
+counts — barcodes are unevenly populated, and an even split by barcode count
+can still leave one fold holding out most of the variant's cells. It is the
+greedy longest-processing-time-first heuristic over barcodes sorted by cell
+count, so it is deterministic and consumes no seed. What grouping costs is
+resolution: barcodes sharing a fold are held out together, so that fold cannot
+distinguish which of them the model failed to generalize to.
+
 A variant with only **one** barcode cannot be scored at all — holding it out
 would leave no variant cells to train on — and is skipped with a warning.
 `variant_barcode_count_threshold` (default `4`) already makes that rare.
@@ -43,7 +59,7 @@ would leave no variant cells to train on — and is skipped with a warning.
 Use this mode to ask whether a variant's signal *generalizes to an unseen
 barcode*. A barcode-specific technical artifact inflates the `"kfold"` numbers
 invisibly; here it is penalized, because no model is ever trained and scored on
-the same barcode.
+the same barcode — at any `n_folds`.
 
 ## Two scores per variant
 
@@ -73,7 +89,7 @@ accepted rather than corrected.
 ## Progress logging
 
 Each variant logs a `[i/N]` header (barcode and cell counts), one line per fold
-(the held-out barcode under `"leave_one_barcode_out"`, the train/calibration/test
+(the held-out barcode(s) under `"barcode_holdout"`, the train/calibration/test
 sizes, and that fold's own AUROC), one line per barcode, and a closing summary
 with `auroc_pooled`, `auroc_median_barcode` and elapsed time. A fold whose test
 slice happens to hold a single class logs `auroc=n/a` rather than failing the
@@ -106,8 +122,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `input_file` | **required** | Path to normalized cell-level parquet. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
 | `wt_label` | `"WT"` | Label identifying wildtype cells. Wildtype is the positive class, so models predict P(wildtype). |
-| `cv_mode` | `"kfold"` | Fold scheme: `"kfold"` or `"leave_one_barcode_out"`. |
-| `n_folds` | `5` | Cross-validation folds per variant, under `"kfold"`. Ignored by `"leave_one_barcode_out"`. |
+| `cv_mode` | `"kfold"` | Fold scheme: `"kfold"` or `"barcode_holdout"`. |
+| `n_folds` | `5` | Cross-validation folds per variant: the fold count under `"kfold"`, a cap on the barcode-group count under `"barcode_holdout"`. `null` (one fold per barcode) is valid only under `"barcode_holdout"`; must otherwise be ≥ 2. |
 | `calibrate` | `true` | Fit a per-fold sigmoid (Platt) calibrator on a slice held out of that fold's training data. |
 | `min_cells` | `250` | Drop variants with fewer than this many cells before scoring; wildtype is always kept. `null` disables. |
 | `downsample_wt` | `true` | Barcode-proportional wildtype downsampling to the largest remaining variant group. |
@@ -120,7 +136,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | ---- | -------- |
 | `results.parquet` | One row per surviving variant: `label_column`, `auroc_pooled`, `auroc_median_barcode`, `meta_n_barcodes`, `meta_n_cells`. |
 | `cell_scores.parquet` | One row per cell per variant it was scored against: every `meta_*` column plus `score` (the out-of-fold score) and `meta_variant_scored_against`. Wildtype cells appear once per variant. Join back to the cell table on `meta_cell_index`. |
-| `models.pkl` | `dict[variant, list[(Booster, calibrator_or_None)]]` — one tuple per fold, so `n_folds` entries under `"kfold"` and one per barcode under `"leave_one_barcode_out"`. |
+| `models.pkl` | `dict[variant, list[(Booster, calibrator_or_None)]]` — one tuple per fold, so `n_folds` entries under `"kfold"`, and under `"barcode_holdout"` `min(n_folds, n_barcodes)` of them (one per barcode when `n_folds` is `null`). |
 
 ## Example
 
@@ -128,8 +144,8 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 uv run python -m fisseq_data_pipeline.ovwt \
     output_dir=./out \
     input_file=out/normalized.parquet \
-    cv_mode=kfold \
-    n_folds=5 \
+    cv_mode=barcode_holdout \
+    n_folds=null \
     calibrate=true \
     min_cells=250 \
     downsample_wt=true \

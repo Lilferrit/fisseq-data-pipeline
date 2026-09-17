@@ -306,24 +306,25 @@ def test_ovwt_models_are_per_fold(pipeline_outputs, batch_stem):
         assert len(fold_models) == _TEST_PARAM_OVERRIDES["ovwt_n_folds"]
 
 
-def test_ovwt_leave_one_barcode_out_mode(tmp_path_factory):
-    """cv_mode reaches OVWT_BATCHWISE and really cuts one fold per barcode.
+@pytest.mark.parametrize("n_folds", [None, 2])
+def test_ovwt_barcode_holdout_mode(tmp_path_factory, n_folds):
+    """cv_mode and n_folds both reach OVWT_BATCHWISE and really cut the folds.
 
-    Run as its own pipeline (feature selection off) rather than a variant of
-    the session fixture: the mode changes the fold count, so it cannot share
-    outputs with the k-fold assertions above.
+    ``n_folds=None`` is one fold per barcode; ``n_folds=2`` packs the fixture's
+    5 barcodes into 2 folds. Run as its own pipeline (feature selection off)
+    rather than a variant of the session fixture: the mode changes the fold
+    count, so it cannot share outputs with the k-fold assertions above.
     """
     import pickle
 
-    raw_dir = tmp_path_factory.mktemp("nf_lobo_raw")
+    raw_dir = tmp_path_factory.mktemp("nf_holdout_raw")
     experiments = [_stage_experiment(raw_dir, "batch1", seed=42)]
-    exp_dir = tmp_path_factory.mktemp("nf_lobo")
+    exp_dir = tmp_path_factory.mktemp("nf_holdout")
     result = _run_pipeline(
         exp_dir,
         experiments,
-        ovwt_cv_mode="leave_one_barcode_out",
-        # Deliberately absurd: leave_one_barcode_out must ignore it entirely.
-        ovwt_n_folds=99,
+        ovwt_cv_mode="barcode_holdout",
+        ovwt_n_folds=n_folds,
         run_feature_selection=False,
     )
     assert result.returncode == 0, result.stderr
@@ -334,7 +335,6 @@ def test_ovwt_leave_one_barcode_out_mode(tmp_path_factory):
     with open(ovwt_dir / "models.pkl", "rb") as f:
         models = pickle.load(f)
 
-    # One fold per barcode, not ovwt_n_folds.
     barcode_counts = dict(
         zip(
             results.get_column("meta_aa_changes").to_list(),
@@ -343,8 +343,14 @@ def test_ovwt_leave_one_barcode_out_mode(tmp_path_factory):
     )
     assert models
     for variant, fold_models in models.items():
-        assert len(fold_models) == barcode_counts[variant], variant
-        assert len(fold_models) != _TEST_PARAM_OVERRIDES["ovwt_n_folds"]
+        if n_folds is None:
+            # One fold per barcode, and not the k-fold count.
+            assert len(fold_models) == barcode_counts[variant], variant
+            assert len(fold_models) != _TEST_PARAM_OVERRIDES["ovwt_n_folds"]
+        else:
+            # Barcodes packed into exactly n_folds groups.
+            assert barcode_counts[variant] > n_folds, variant
+            assert len(fold_models) == n_folds, variant
 
     # Every cell still carries exactly one out-of-fold score.
     cell_scores = pl.read_parquet(ovwt_dir / "cell_scores.parquet")
