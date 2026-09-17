@@ -17,6 +17,37 @@ outputs rather than recomputing anything from cells.
 
 All configs extend the [common config fields](qcfilter.md#common-config-fields).
 
+## Two lists of aggregate types
+
+`params.feature_select_types` names the aggregators that *decide* which
+features survive: each one is bootstrapped, correlated across pseudo-replicate
+halves, blocklisted on median `r`, and then filtered by pycytominer.
+
+`params.feature_select_passthrough_types` names aggregators that are computed
+and joined onto the final per-variant table but take no part in any of that.
+They skip stages 1b→4 of the bootstrap chain entirely (no splits, no
+correlation, no blocklist), are excluded from `pycytominer.feature_select`, and
+are joined *after* the synonymous-baseline normalization — so they are also
+outside the impact score, PCA and UMAP. They are published separately, under
+`feature_select_batchwise/<batch>/passthrough_aggregates/` rather than
+`aggregates/`.
+
+This exists for the p-value aggregators (`KSnegLogP`, `AUROCnegLogP`). They are
+wanted in the output, but they are not reproducibility statistics: a median-`r`
+threshold means nothing for a p-value, and — the real hazard — pycytominer's
+`correlation_threshold` will drop a genuine feature for correlating with its
+own p-value. Skipping the bootstrap also saves `2 × bootstrap_reps`
+aggregation tasks per type.
+
+The two lists must be disjoint; `workflows/fisseq.nf` rejects an overlap before
+any task is submitted.
+
+!!! note
+    The consequence is that `output.parquet` can carry non-`meta_` columns that
+    were never blocklisted, variance-filtered or normalized. Selecting feature
+    columns from that file by the usual `^meta_` convention no longer yields
+    "the selected features".
+
 ## 1. `python -m fisseq_data_pipeline.generatesplit` (`GENERATE_SPLIT`)
 
 Generates one stratified 50/50 pseudo-replicate split.
@@ -116,6 +147,7 @@ built-in blocklist, correlation threshold).
 | `umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
 | `umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
 | `umap_random_state` | `42` | Seed for UMAP's fit; `null` disables seeding (faster, multithreaded, nondeterministic). |
+| `passthrough_feature_type_files` | `null` | Glob matching per-feature-type aggregates to join onto the output *without* feature selection or normalization (see [Two lists of aggregate types](#two-lists-of-aggregate-types)). Unlike `feature_type_files`, a glob matching nothing warns rather than raising — an empty passthrough list is the default. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
@@ -152,6 +184,10 @@ artifacts directly — no cell-level recomputation:
    threshold across batches.
 4. Drops columns blocked by step 3 and runs `pyc_feature_select` (the same
    function `FINALIZE_FEATURE_SELECT` uses).
+
+Passthrough types do not reach this stage: step 1's glob is filtered by
+`feature_select_types`, and passthrough aggregates are published to a sibling
+directory in any case. The global output carries selected features only.
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |

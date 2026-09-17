@@ -11,6 +11,7 @@ import dataclasses
 import glob
 import logging
 import pathlib
+from typing import Optional
 
 import hydra
 import polars as pl
@@ -114,6 +115,10 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
     umap_min_dist : float
         ``umap.UMAP``'s minimum embedded distance between points. Defaults
         to ``0.1``.
+    passthrough_feature_type_files : str or None
+        Optional glob pattern matching per-feature-type aggregate parquet
+        files to join onto the output *without* running them through feature
+        selection. Defaults to ``None`` (no passthrough columns).
 
     Notes
     -----
@@ -122,6 +127,18 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
     have its own nullable ``umap_random_state`` (``None`` opting into faster
     nondeterministic multithreaded fitting); that knob is gone, so UMAP is now
     always seeded.
+
+    ``passthrough_feature_type_files`` backs ``params.feature_select_passthrough_types``:
+    aggregates that are wanted in the output but must not influence which
+    features are kept -- p-value statistics (``KSnegLogP``, ``AUROCnegLogP``)
+    above all, since ``pycytominer``'s ``correlation_threshold`` would happily
+    drop a real feature for correlating with its own p-value. Those files are
+    joined last, after selection, normalization, impact score and PCA/UMAP, so
+    every one of those steps -- each of which picks its inputs with
+    ``FEATURE_SELECTOR`` -- is blind to them. Unlike ``feature_type_files``, a
+    glob matching nothing is a warning rather than an error: an empty
+    passthrough list is the default, and it reaches this stage as an empty
+    staging directory.
     """
 
     feature_type_files: str = MISSING
@@ -134,6 +151,7 @@ class FinalizeFeatureSelectConfig(LabeledInputConfig):
     umap_n_neighbors: int = 10
     umap_metric: str = "cosine"
     umap_min_dist: float = 0.1
+    passthrough_feature_type_files: Optional[str] = None
 
 
 _cs.store(name="feature_select_main", node=FinalizeFeatureSelectConfig)
@@ -166,7 +184,9 @@ def main(cfg: DictConfig) -> None:
        independently, both on the same feature matrix -- UMAP does not run
        on PCA's output.
     8. Join per-variant metadata via :func:`.utils.metadata.get_aggregate_meta_data`.
-    9. Write output (and, if ``run_pca``, a separate PCA-components file).
+    9. Join any ``passthrough_feature_type_files`` aggregates -- last, so that
+       none of steps 4-7 ever saw them.
+    10. Write output (and, if ``run_pca``, a separate PCA-components file).
 
     Output path
     -----------
@@ -266,6 +286,50 @@ def main(cfg: DictConfig) -> None:
     logging.info("Adding queries to retrieve metadata")
     meta_lf = get_aggregate_meta_data(lf, feat_cfg.label_column)
     selected_lf = normalized_lf.join(meta_lf, on=feat_cfg.label_column)
+
+    # Deliberately last. Every step above -- pyc_feature_select, the
+    # synonymous-baseline Normalizer, the impact score, PCA and UMAP -- picks
+    # its inputs with FEATURE_SELECTOR, so joining here is what keeps the
+    # passthrough aggregates out of all of them. Moving this join earlier
+    # silently turns them back into ordinary features.
+    if feat_cfg.passthrough_feature_type_files:
+        logging.info(
+            "Loading passthrough aggregates from %s",
+            feat_cfg.passthrough_feature_type_files,
+        )
+        pt_paths = sorted(glob.glob(feat_cfg.passthrough_feature_type_files))
+        if not pt_paths:
+            # A warning, not the ValueError feature_type_files raises: an empty
+            # feature_select_passthrough_types is the default and arrives here
+            # as an empty staging directory. Nextflow validates every entry by
+            # name, so a typo cannot reach this branch.
+            logging.warning(
+                "No files matched passthrough glob pattern: %r; "
+                "no passthrough columns will be joined",
+                feat_cfg.passthrough_feature_type_files,
+            )
+        else:
+            pt_df = join_feature_type_files(pt_paths, feat_cfg.label_column)
+            collisions = set(pt_df.columns) & set(selected_lf.collect_schema().names())
+            collisions.discard(feat_cfg.label_column)
+            if collisions:
+                raise ValueError(
+                    f"Passthrough aggregates collide with selected columns: "
+                    f"{sorted(collisions)}. A feature type must not appear in "
+                    f"both feature_select_types and "
+                    f"feature_select_passthrough_types"
+                )
+            logging.info(
+                "Joining %d passthrough column(s) from %d file(s)",
+                len(pt_df.columns) - 1,
+                len(pt_paths),
+            )
+            # Left join: both tables aggregate the same cells, so the label
+            # sets should match -- a mismatch should surface as nulls, not as
+            # variants quietly vanishing from the output.
+            selected_lf = selected_lf.join(
+                pt_df.lazy(), on=feat_cfg.label_column, how="left"
+            )
 
     if feat_cfg.output_root is not None:
         out_path = pathlib.Path(f"{feat_cfg.output_root}.{output_stem}.parquet")

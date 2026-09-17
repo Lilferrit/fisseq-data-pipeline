@@ -164,6 +164,15 @@ ovwt_downsample_wt: true
 # ── Feature selection (bootstrap + aggregation + correlation) ───────────────
 # All _AGGREGATORS keys that make sense as a reproducibility statistic.
 feature_select_types: ["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]
+# Aggregates that are computed and joined onto the final per-variant table but
+# kept out of feature selection entirely: no bootstrap halves, no correlation
+# blocklist, no pycytominer filters, and no synonymous-baseline normalization.
+# Intended for the p-value statistics (KSnegLogP, AUROCnegLogP), which are
+# wanted in the output but are not reproducibility statistics -- left in
+# feature_select_types, pycytominer's correlation_threshold will happily drop a
+# real feature for correlating with its own p-value. Must not overlap
+# feature_select_types; [] = none.
+feature_select_passthrough_types: []
 feature_select_bootstrap_reps: 10
 # Optional float (0,1) or int; null = no wildtype downsampling in
 # AGGREGATE_HALF / AGGREGATE_FEATURE_TYPE.
