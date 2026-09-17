@@ -1729,9 +1729,14 @@ bootstrap replicates still draw independent subsamples.</p>
 <td>Label identifying wildtype cells.</td>
 </tr>
 <tr>
+<td><code>ovwt_cv_mode</code></td>
+<td><code>"kfold"</code></td>
+<td>Fold scheme: <code>"kfold"</code> or <code>"leave_one_barcode_out"</code>.</td>
+</tr>
+<tr>
 <td><code>ovwt_n_folds</code></td>
 <td><code>5</code></td>
-<td>Cross-validation folds per variant.</td>
+<td>Cross-validation folds per variant, under <code>"kfold"</code>. Ignored by <code>"leave_one_barcode_out"</code>.</td>
 </tr>
 <tr>
 <td><code>ovwt_calibrate</code></td>

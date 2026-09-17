@@ -786,6 +786,39 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#two-cross-validation-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Two cross-validation modes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two cross-validation modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#kfold-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      "kfold" (default)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leave_one_barcode_out" class="md-nav__link">
+    <span class="md-ellipsis">
+      "leave_one_barcode_out"
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#two-scores-per-variant" class="md-nav__link">
     <span class="md-ellipsis">
       Two scores per variant
@@ -798,6 +831,15 @@
   <a href="#wildtype-downsampling" class="md-nav__link">
     <span class="md-ellipsis">
       Wildtype downsampling
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Progress logging
     </span>
   </a>
   
@@ -1216,6 +1258,39 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#two-cross-validation-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Two cross-validation modes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two cross-validation modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#kfold-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      "kfold" (default)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leave_one_barcode_out" class="md-nav__link">
+    <span class="md-ellipsis">
+      "leave_one_barcode_out"
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#two-scores-per-variant" class="md-nav__link">
     <span class="md-ellipsis">
       Two scores per variant
@@ -1228,6 +1303,15 @@
   <a href="#wildtype-downsampling" class="md-nav__link">
     <span class="md-ellipsis">
       Wildtype downsampling
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Progress logging
     </span>
   </a>
   
@@ -1297,17 +1381,38 @@
 <h1 id="one-vs-wt">One-vs-WT<a class="headerlink" href="#one-vs-wt" title="Permanent link">&para;</a></h1>
 <p><code>python -m fisseq_data_pipeline.ovwt</code> (Nextflow process <code>OVWT_BATCHWISE</code>) scores
 how distinguishable each variant is from wildtype, one experiment at a time.</p>
-<p>For each non-wildtype variant it runs <strong>k-fold cross-validation</strong> over that
-variant's cells plus the (optionally downsampled) wildtype pool, training one
-XGBoost binary classifier per fold. Because the folds partition the data, every
-cell ends up with exactly one <em>out-of-fold</em> score — a prediction from a model
-that never saw it. That is what makes the per-barcode metric below well defined.</p>
-<p>Folds are stratified jointly on <code>(meta_barcode, is_wt)</code>, so both barcode
+<p>For each non-wildtype variant it runs <strong>cross-validation</strong> over that variant's
+cells plus the (optionally downsampled) wildtype pool, training one XGBoost
+binary classifier per fold. Because the folds partition the data, every cell
+ends up with exactly one <em>out-of-fold</em> score — a prediction from a model that
+never saw it. That is what makes the per-barcode metric below well defined.</p>
+<h2 id="two-cross-validation-modes">Two cross-validation modes<a class="headerlink" href="#two-cross-validation-modes" title="Permanent link">&para;</a></h2>
+<p><code>cv_mode</code> selects how the folds are cut. Both give every cell exactly one
+out-of-fold score, and both produce the same two output columns — what changes
+is the question those columns answer.</p>
+<h3 id="kfold-default"><code>"kfold"</code> (default)<a class="headerlink" href="#kfold-default" title="Permanent link">&para;</a></h3>
+<p><code>n_folds</code> folds, stratified jointly on <code>(meta_barcode, is_wt)</code>, so both barcode
 composition and the wildtype/variant balance are preserved fold to fold. A
 <code>(barcode, is_wt)</code> stratum with fewer than 10 members collapses into a shared
 <code>rare|wt</code> / <code>rare|variant</code> bucket; the wildtype/variant half of the key is never
 merged across, so barcode resolution degrades gracefully without ever
 sacrificing class balance.</p>
+<p>Every fold's model has seen every barcode, so the AUROCs measure separability
+<em>within</em> the barcodes the classifier trained on.</p>
+<h3 id="leave_one_barcode_out"><code>"leave_one_barcode_out"</code><a class="headerlink" href="#leave_one_barcode_out" title="Permanent link">&para;</a></h3>
+<p>One fold per variant barcode. Fold <em>i</em> holds out <strong>every</strong> cell of the <em>i</em>-th
+barcode, and the variant's other barcodes do the training — so the model
+scoring a barcode has never seen that barcode. Wildtype cells are still split
+across the folds (into as many disjoint blocks as there are variant barcodes,
+stratified on the same composite key), rather than held out wholesale.</p>
+<p><code>n_folds</code> is ignored: a variant gets exactly as many folds as it has barcodes.
+A variant with only <strong>one</strong> barcode cannot be scored at all — holding it out
+would leave no variant cells to train on — and is skipped with a warning.
+<code>variant_barcode_count_threshold</code> (default <code>4</code>) already makes that rare.</p>
+<p>Use this mode to ask whether a variant's signal <em>generalizes to an unseen
+barcode</em>. A barcode-specific technical artifact inflates the <code>"kfold"</code> numbers
+invisibly; here it is penalized, because no model is ever trained and scored on
+the same barcode.</p>
 <h2 id="two-scores-per-variant">Two scores per variant<a class="headerlink" href="#two-scores-per-variant" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1342,6 +1447,13 @@ wildtype barcode composition matters specifically because
 wildtype set — a uniform draw could skew it. Per-barcode rounding can leave the
 final count off target by up to (number of wildtype barcodes) cells; this is
 accepted rather than corrected.</p>
+<h2 id="progress-logging">Progress logging<a class="headerlink" href="#progress-logging" title="Permanent link">&para;</a></h2>
+<p>Each variant logs a <code>[i/N]</code> header (barcode and cell counts), one line per fold
+(the held-out barcode under <code>"leave_one_barcode_out"</code>, the train/calibration/test
+sizes, and that fold's own AUROC), one line per barcode, and a closing summary
+with <code>auroc_pooled</code>, <code>auroc_median_barcode</code> and elapsed time. A fold whose test
+slice happens to hold a single class logs <code>auroc=n/a</code> rather than failing the
+variant.</p>
 <h2 id="resilience">Resilience<a class="headerlink" href="#resilience" title="Permanent link">&para;</a></h2>
 <p>A variant whose folds raise — most often a stratum too small for the inner
 train/calibration split to survive — is skipped with a logged warning rather
@@ -1383,9 +1495,14 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 <td>Label identifying wildtype cells. Wildtype is the positive class, so models predict P(wildtype).</td>
 </tr>
 <tr>
+<td><code>cv_mode</code></td>
+<td><code>"kfold"</code></td>
+<td>Fold scheme: <code>"kfold"</code> or <code>"leave_one_barcode_out"</code>.</td>
+</tr>
+<tr>
 <td><code>n_folds</code></td>
 <td><code>5</code></td>
-<td>Cross-validation folds per variant.</td>
+<td>Cross-validation folds per variant, under <code>"kfold"</code>. Ignored by <code>"leave_one_barcode_out"</code>.</td>
 </tr>
 <tr>
 <td><code>calibrate</code></td>
@@ -1433,7 +1550,7 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 </tr>
 <tr>
 <td><code>models.pkl</code></td>
-<td><code>dict[variant, list[(Booster, calibrator_or_None)]]</code> — one tuple per fold.</td>
+<td><code>dict[variant, list[(Booster, calibrator_or_None)]]</code> — one tuple per fold, so <code>n_folds</code> entries under <code>"kfold"</code> and one per barcode under <code>"leave_one_barcode_out"</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -1441,11 +1558,12 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.ovwt<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">n_folds</span><span class="o">=</span><span class="m">5</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nv">calibrate</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nv">min_cells</span><span class="o">=</span><span class="m">250</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nv">random_seed</span><span class="o">=</span><span class="m">0</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">cv_mode</span><span class="o">=</span>kfold<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nv">n_folds</span><span class="o">=</span><span class="m">5</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nv">calibrate</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nv">min_cells</span><span class="o">=</span><span class="m">250</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nv">random_seed</span><span class="o">=</span><span class="m">0</span>
 </code></pre></div>
 
 
