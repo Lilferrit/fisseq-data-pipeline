@@ -165,7 +165,8 @@ All pipeline-wide.
 | Parameter | Default | Meaning |
 | --------- | ------- | ------- |
 | `ovwt_wt_label` | `"WT"` | Label identifying wildtype cells. |
-| `ovwt_n_folds` | `5` | Cross-validation folds per variant. |
+| `ovwt_cv_mode` | `"kfold"` | Fold scheme: `"kfold"` or `"leave_one_barcode_out"`. |
+| `ovwt_n_folds` | `5` | Cross-validation folds per variant, under `"kfold"`. Ignored by `"leave_one_barcode_out"`. |
 | `ovwt_calibrate` | `true` | Per-fold sigmoid (Platt) calibration. |
 | `ovwt_min_cells` | `250` | Minimum cells for a variant to be scored; wildtype always kept. `null` disables. |
 | `ovwt_downsample_wt` | `true` | Barcode-proportional wildtype downsampling to the largest remaining variant group. |

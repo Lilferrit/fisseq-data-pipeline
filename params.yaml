@@ -132,6 +132,18 @@ qc_downsample_classes: ["Synonymous", "Single Missense"]
 # exactly one out-of-fold score, and each variant gets both a pooled AUROC and
 # a median-of-per-barcode AUROC.
 ovwt_wt_label: "WT"
+# Fold scheme, "kfold" or "leave_one_barcode_out".
+#   kfold                 -- ovwt_n_folds folds, stratified jointly on
+#                            (meta_barcode, is_wt); every fold's model has seen
+#                            every barcode.
+#   leave_one_barcode_out -- one fold per variant barcode, that barcode held out
+#                            of training entirely, so the AUROCs measure
+#                            generalization to an unseen barcode. Wildtype cells
+#                            are still split across the folds. ovwt_n_folds is
+#                            ignored, and a variant with only one barcode is
+#                            skipped (nothing left to train on).
+ovwt_cv_mode: "kfold"
+# Folds per variant under cv_mode "kfold"; ignored by "leave_one_barcode_out".
 ovwt_n_folds: 5
 # Per-fold sigmoid (Platt) calibration, fit on a slice held out of that fold's
 # own training data.

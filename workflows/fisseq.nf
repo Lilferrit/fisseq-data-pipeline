@@ -57,6 +57,39 @@ def experimentKeys() {
     ] as Set
 }
 
+// Every key of aggregate.py's _AGGREGATORS registry -- the only legal entries
+// of params.feature_select_types. Kept in step with the Python side by
+// tests/unit/test_nextflow_params.py, which parses this function and asserts it
+// matches _AGGREGATORS exactly.
+//
+// This list has to exist here because the value is interpolated straight into
+// AGGREGATE_FEATURE_TYPE / AGGREGATE_HALF's shell script. aggregate() does
+// raise a clear "Unknown aggregator" ValueError, but that code never runs: a
+// malformed entry (a stray quote from a mis-quoted params.yaml list, say)
+// breaks the generated .command.sh at the bash level first, and
+// errorStrategy 'ignore' then swallows the task. Validating here fails the
+// whole run, before a single task is submitted, with a message that names the
+// offending value.
+def aggregatorKeys() {
+    [
+        'mean',
+        'median',
+        'MAD',
+        'std',
+        'KS',
+        'signedKS',
+        'QQ',
+        'AUROC',
+        'KSnegLogP',
+        'AUROCnegLogP',
+    ] as Set
+}
+
+// Every accepted value of params.ovwt_cv_mode, mirroring ovwt.py's CV_MODES.
+def ovwtCvModes() {
+    ['kfold', 'leave_one_barcode_out'] as Set
+}
+
 // Nextflow CLI overrides (--run_ovwt false) arrive as the Groovy-truthy
 // String "false", so every gate must be coerced before use. Replaces
 // lib/BatchParams.groovy's asBool(), which went away with per-batch overrides.
@@ -74,6 +107,25 @@ workflow FisseqPipeline {
     }
     if (!(params.experiments instanceof List) || params.experiments.isEmpty()) {
         error "ERROR: params.experiments must be a non-empty list of experiment maps (see params.yaml)."
+    }
+    // Only meaningful when the feature-selection chain actually runs, but
+    // checked before any of it is wired up.
+    if (asBool(params.run_feature_selection)) {
+        if (!(params.feature_select_types instanceof List) || params.feature_select_types.isEmpty()) {
+            error "ERROR: params.feature_select_types must be a non-empty list of aggregator names. " +
+                  "Valid names: ${aggregatorKeys().sort().join(', ')}."
+        }
+        def badTypes = params.feature_select_types.findAll { t -> !aggregatorKeys().contains(t) }
+        if (badTypes) {
+            error "ERROR: params.feature_select_types has unrecognized entry/entries: " +
+                  "${badTypes.join(' | ')}. Valid names: ${aggregatorKeys().sort().join(', ')}. " +
+                  "(A stray quote in one of those usually means a mis-quoted YAML list -- " +
+                  "[median\", \"KS\"] instead of [\"median\", \"KS\"].)"
+        }
+    }
+    if (!ovwtCvModes().contains(params.ovwt_cv_mode)) {
+        error "ERROR: params.ovwt_cv_mode must be one of ${ovwtCvModes().sort().join(', ')}, " +
+              "got '${params.ovwt_cv_mode}'."
     }
 
     // Validate and resolve every experiment map once, here, at
