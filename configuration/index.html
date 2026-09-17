@@ -1772,6 +1772,11 @@ bootstrap replicates still draw independent subsamples.</p>
 <td>Aggregators to compute and correlate.</td>
 </tr>
 <tr>
+<td><code>feature_select_passthrough_types</code></td>
+<td><code>[]</code></td>
+<td>Aggregators computed and joined onto the final per-variant table but excluded from every selection step — no bootstrap, no blocklist, no pycytominer filters, no normalization. Intended for the p-value statistics (<code>KSnegLogP</code>, <code>AUROCnegLogP</code>). Must not overlap <code>feature_select_types</code>.</td>
+</tr>
+<tr>
 <td><code>feature_select_bootstrap_reps</code></td>
 <td><code>10</code></td>
 <td>Bootstrap replicates per feature type.</td>

@@ -740,6 +740,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#two-lists-of-aggregate-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Two lists of aggregate types
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" class="md-nav__link">
     <span class="md-ellipsis">
       1. python -m fisseq_data_pipeline.generatesplit (GENERATE_SPLIT)
@@ -1207,6 +1216,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#two-lists-of-aggregate-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Two lists of aggregate types
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" class="md-nav__link">
     <span class="md-ellipsis">
       1. python -m fisseq_data_pipeline.generatesplit (GENERATE_SPLIT)
@@ -1291,6 +1309,33 @@ selection.</p>
 global group, reusing this BATCHWISE pipeline's already-computed per-batch
 outputs rather than recomputing anything from cells.</p>
 <p>All configs extend the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
+<h2 id="two-lists-of-aggregate-types">Two lists of aggregate types<a class="headerlink" href="#two-lists-of-aggregate-types" title="Permanent link">&para;</a></h2>
+<p><code>params.feature_select_types</code> names the aggregators that <em>decide</em> which
+features survive: each one is bootstrapped, correlated across pseudo-replicate
+halves, blocklisted on median <code>r</code>, and then filtered by pycytominer.</p>
+<p><code>params.feature_select_passthrough_types</code> names aggregators that are computed
+and joined onto the final per-variant table but take no part in any of that.
+They skip stages 1b→4 of the bootstrap chain entirely (no splits, no
+correlation, no blocklist), are excluded from <code>pycytominer.feature_select</code>, and
+are joined <em>after</em> the synonymous-baseline normalization — so they are also
+outside the impact score, PCA and UMAP. They are published separately, under
+<code>feature_select_batchwise/&lt;batch&gt;/passthrough_aggregates/</code> rather than
+<code>aggregates/</code>.</p>
+<p>This exists for the p-value aggregators (<code>KSnegLogP</code>, <code>AUROCnegLogP</code>). They are
+wanted in the output, but they are not reproducibility statistics: a median-<code>r</code>
+threshold means nothing for a p-value, and — the real hazard — pycytominer's
+<code>correlation_threshold</code> will drop a genuine feature for correlating with its
+own p-value. Skipping the bootstrap also saves <code>2 × bootstrap_reps</code>
+aggregation tasks per type.</p>
+<p>The two lists must be disjoint; <code>workflows/fisseq.nf</code> rejects an overlap before
+any task is submitted.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The consequence is that <code>output.parquet</code> can carry non-<code>meta_</code> columns that
+were never blocklisted, variance-filtered or normalized. Selecting feature
+columns from that file by the usual <code>^meta_</code> convention no longer yields
+"the selected features".</p>
+</div>
 <h2 id="1-python-m-fisseq_data_pipelinegeneratesplit-generate_split">1. <code>python -m fisseq_data_pipeline.generatesplit</code> (<code>GENERATE_SPLIT</code>)<a class="headerlink" href="#1-python-m-fisseq_data_pipelinegeneratesplit-generate_split" title="Permanent link">&para;</a></h2>
 <p>Generates one stratified 50/50 pseudo-replicate split.</p>
 <table>
@@ -1495,6 +1540,11 @@ built-in blocklist, correlation threshold).</p>
 <td><code>42</code></td>
 <td>Seed for UMAP's fit; <code>null</code> disables seeding (faster, multithreaded, nondeterministic).</td>
 </tr>
+<tr>
+<td><code>passthrough_feature_type_files</code></td>
+<td><code>null</code></td>
+<td>Glob matching per-feature-type aggregates to join onto the output <em>without</em> feature selection or normalization (see <a href="#two-lists-of-aggregate-types">Two lists of aggregate types</a>). Unlike <code>feature_type_files</code>, a glob matching nothing warns rather than raising — an empty passthrough list is the default.</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
@@ -1529,6 +1579,9 @@ artifacts directly — no cell-level recomputation:</p>
 <li>Drops columns blocked by step 3 and runs <code>pyc_feature_select</code> (the same
    function <code>FINALIZE_FEATURE_SELECT</code> uses).</li>
 </ol>
+<p>Passthrough types do not reach this stage: step 1's glob is filtered by
+<code>feature_select_types</code>, and passthrough aggregates are published to a sibling
+directory in any case. The global output carries selected features only.</p>
 <table>
 <thead>
 <tr>
