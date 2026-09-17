@@ -11,6 +11,12 @@ nextflow.enable.dsl = 2
 // whether a variant's signal is broad-based across its barcodes or driven by
 // one or two outliers.
 //
+// params.ovwt_cv_mode selects the fold scheme: "kfold" (params.ovwt_n_folds
+// folds, every barcode present in every fold's training set) or
+// "leave_one_barcode_out" (one fold per variant barcode, that barcode held out
+// of training entirely -- params.ovwt_n_folds is ignored, and a variant with a
+// single barcode is skipped).
+//
 // Not aliased and not parameterized over block-lists or a publish subdir --
 // the feature-filtered and barcode-filtered variants went away with
 // ANOVA_BLOCKLIST and BARCODE_BLOCKLIST, and OVWT_GLOBAL was replaced by
@@ -39,6 +45,7 @@ process OVWT_BATCHWISE {
         input_file=${normalized_parquet} \\
         label_column=${params.filter_label_column} \\
         wt_label=${params.ovwt_wt_label} \\
+        cv_mode=${params.ovwt_cv_mode} \\
         n_folds=${params.ovwt_n_folds} \\
         calibrate=${params.ovwt_calibrate} \\
         min_cells=${params.ovwt_min_cells} \\

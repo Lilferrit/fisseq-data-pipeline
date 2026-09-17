@@ -10,6 +10,7 @@ use ``n_folds=3`` with ~15 cells per barcode for that reason;
 ``test_normal_variant_survives`` guards the failure mode directly.
 """
 
+import logging
 import pathlib
 import subprocess
 import sys
@@ -20,7 +21,13 @@ import pytest
 
 from fisseq_data_pipeline.ovwt import (
     _MIN_STRATUM_SIZE,
+    CV_MODE_KFOLD,
+    CV_MODE_LEAVE_ONE_BARCODE_OUT,
+    CV_MODES,
     OvwtConfig,
+    _format_auroc,
+    _leave_one_barcode_out_splits,
+    _safe_auroc,
     _stratification_key,
     downsample_wildtype,
     filter_min_cells,
@@ -398,6 +405,219 @@ def test_predict_binary_scores_wildtype_higher():
 
 
 # ---------------------------------------------------------------------------
+# _leave_one_barcode_out_splits
+# ---------------------------------------------------------------------------
+
+
+def _lobo_arrays(
+    n_variant_barcodes: int = 3, n_wt_barcodes: int = 3, per_barcode: int = 15
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(barcodes, is_wt)`` for a synthetic variant-vs-wildtype subset."""
+    barcodes, is_wt = [], []
+    for b in range(n_wt_barcodes):
+        barcodes += [f"wt_bc{b}"] * per_barcode
+        is_wt += [True] * per_barcode
+    for b in range(n_variant_barcodes):
+        barcodes += [f"var_bc{b}"] * per_barcode
+        is_wt += [False] * per_barcode
+    return np.array(barcodes), np.array(is_wt)
+
+
+def test_lobo_one_fold_per_variant_barcode():
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=4)
+    assert len(_leave_one_barcode_out_splits(barcodes, is_wt, seed=0)) == 4
+
+
+def test_lobo_holds_out_exactly_one_barcode_per_fold():
+    """The held-out barcode is wholly in test and wholly absent from fit."""
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=3)
+    for fit_idx, test_idx in _leave_one_barcode_out_splits(barcodes, is_wt, seed=0):
+        held_out = np.unique(barcodes[test_idx][~is_wt[test_idx]])
+        assert len(held_out) == 1
+        # Every cell of that barcode is in test ...
+        assert set(np.flatnonzero(barcodes == held_out[0])) == set(
+            test_idx[barcodes[test_idx] == held_out[0]]
+        )
+        # ... and none of it leaked into the training side.
+        assert held_out[0] not in set(barcodes[fit_idx])
+
+
+def test_lobo_fit_set_keeps_the_other_variant_barcodes():
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=3)
+    for fit_idx, _ in _leave_one_barcode_out_splits(barcodes, is_wt, seed=0):
+        assert len(np.unique(barcodes[fit_idx][~is_wt[fit_idx]])) == 2
+
+
+def test_lobo_test_sets_partition_every_row():
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=3)
+    splits = _leave_one_barcode_out_splits(barcodes, is_wt, seed=0)
+    covered = np.concatenate([test_idx for _, test_idx in splits])
+    assert sorted(covered) == list(range(len(barcodes)))
+
+
+def test_lobo_fit_and_test_are_complementary():
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=3)
+    for fit_idx, test_idx in _leave_one_barcode_out_splits(barcodes, is_wt, seed=0):
+        assert not set(fit_idx) & set(test_idx)
+        assert sorted(np.concatenate([fit_idx, test_idx])) == list(range(len(barcodes)))
+
+
+def test_lobo_splits_wildtype_across_folds():
+    """WT is divided between folds, not held out wholesale with the barcode."""
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=3)
+    splits = _leave_one_barcode_out_splits(barcodes, is_wt, seed=0)
+    wt_test_counts = [int(is_wt[test_idx].sum()) for _, test_idx in splits]
+    assert all(c > 0 for c in wt_test_counts)
+    assert sum(wt_test_counts) == int(is_wt.sum())
+    # Every fold still trains on the bulk of the wildtype pool.
+    for fit_idx, _ in splits:
+        assert int(is_wt[fit_idx].sum()) > 0
+
+
+def test_lobo_is_reproducible():
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=3)
+    a = _leave_one_barcode_out_splits(barcodes, is_wt, seed=7)
+    b = _leave_one_barcode_out_splits(barcodes, is_wt, seed=7)
+    for (fit_a, test_a), (fit_b, test_b) in zip(a, b):
+        assert np.array_equal(fit_a, fit_b)
+        assert np.array_equal(test_a, test_b)
+
+
+def test_lobo_rejects_single_barcode_variant():
+    barcodes, is_wt = _lobo_arrays(n_variant_barcodes=1)
+    with pytest.raises(ValueError, match="at least 2 variant barcodes"):
+        _leave_one_barcode_out_splits(barcodes, is_wt, seed=0)
+
+
+def test_lobo_rejects_too_few_wildtype_cells():
+    barcodes = np.array(["wt_bc0", "var_bc0", "var_bc1", "var_bc2"])
+    is_wt = np.array([True, False, False, False])
+    with pytest.raises(ValueError, match="wildtype cells"):
+        _leave_one_barcode_out_splits(barcodes, is_wt, seed=0)
+
+
+# ---------------------------------------------------------------------------
+# ovwt_batchwise, leave-one-barcode-out mode
+# ---------------------------------------------------------------------------
+
+
+def _lobo_cfg(**overrides) -> OvwtConfig:
+    return _cfg(cv_mode=CV_MODE_LEAVE_ONE_BARCODE_OUT, **overrides)
+
+
+def test_cv_mode_defaults_to_kfold():
+    assert OvwtConfig(output_dir="o", input_file="i").cv_mode == CV_MODE_KFOLD
+    assert CV_MODES == (CV_MODE_KFOLD, CV_MODE_LEAVE_ONE_BARCODE_OUT)
+
+
+def test_unknown_cv_mode_raises():
+    with pytest.raises(ValueError, match="Unknown cv_mode"):
+        ovwt_batchwise(_cells().lazy(), _cfg(cv_mode="nonesuch"))
+
+
+def test_lobo_one_model_per_barcode_not_per_n_folds():
+    """n_folds is ignored: a 3-barcode variant gets 3 folds, not cfg.n_folds."""
+    cells = _cells(barcodes_per_variant=3)
+    _, _, models = ovwt_batchwise(cells.lazy(), _lobo_cfg(n_folds=99))
+    assert models
+    assert all(len(folds) == 3 for folds in models.values())
+
+
+def test_lobo_scores_every_cell_exactly_once_per_variant():
+    cells = _cells(barcodes_per_variant=3)
+    results, cell_scores, _ = ovwt_batchwise(cells.lazy(), _lobo_cfg())
+    assert len(results) == 2
+    for variant in results.get_column(LABEL).to_list():
+        scored = cell_scores.filter(pl.col("meta_variant_scored_against") == variant)
+        n_expected = len(cells.filter(pl.col(LABEL).is_in([variant, WT])))
+        assert len(scored) == n_expected
+        assert scored.get_column("score").null_count() == 0
+        assert not np.isnan(scored.get_column("score").to_numpy()).any()
+
+
+def test_lobo_recovers_separable_signal():
+    """The synthetic variants sit far from WT, so LOBO should still separate them."""
+    results, _, _ = ovwt_batchwise(_cells(barcodes_per_variant=3).lazy(), _lobo_cfg())
+    assert results.get_column("auroc_pooled").min() > 0.7
+    assert results.get_column("auroc_median_barcode").min() > 0.7
+
+
+def test_lobo_output_schema_matches_kfold():
+    cells = _cells(barcodes_per_variant=3)
+    kfold, _, _ = ovwt_batchwise(cells.lazy(), _cfg())
+    lobo, _, _ = ovwt_batchwise(cells.lazy(), _lobo_cfg())
+    assert kfold.columns == lobo.columns
+    assert kfold.schema == lobo.schema
+
+
+def test_lobo_is_reproducible_end_to_end():
+    cells = _cells(barcodes_per_variant=3)
+    a, _, _ = ovwt_batchwise(cells.lazy(), _lobo_cfg())
+    b, _, _ = ovwt_batchwise(cells.lazy(), _lobo_cfg())
+    assert a.equals(b)
+
+
+def test_lobo_skips_single_barcode_variant_without_losing_peers(caplog):
+    """A 1-barcode variant cannot be LOBO-scored; its peers must survive."""
+    cells = pl.concat(
+        [
+            _cells(variants={"M1K": 15, "A1A": 15}, barcodes_per_variant=3),
+            pl.DataFrame(
+                {
+                    LABEL: ["SOLO"] * 15,
+                    "meta_barcode": ["SOLO_bc0"] * 15,
+                    "Intensity_Mean": np.random.default_rng(1)
+                    .normal(9.0, 0.3, 15)
+                    .tolist(),
+                    "Texture_Var": np.random.default_rng(2).random(15).tolist(),
+                }
+            ),
+        ]
+    )
+    with caplog.at_level(logging.WARNING):
+        results, _, models = ovwt_batchwise(cells.lazy(), _lobo_cfg())
+    labels = results.get_column(LABEL).to_list()
+    assert "SOLO" not in labels
+    assert "SOLO" not in models
+    assert {"M1K", "A1A"} <= set(labels)
+    assert "at least 2" in caplog.text and "SOLO" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Per-iteration logging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cv_mode", [CV_MODE_KFOLD, CV_MODE_LEAVE_ONE_BARCODE_OUT])
+def test_logs_progress_per_variant_and_per_fold(caplog, cv_mode):
+    with caplog.at_level(logging.INFO):
+        ovwt_batchwise(_cells(barcodes_per_variant=3).lazy(), _cfg(cv_mode=cv_mode))
+    assert f"cv_mode={cv_mode}" in caplog.text
+    assert "[1/2]" in caplog.text and "[2/2]" in caplog.text
+    assert "fold 0" in caplog.text
+    assert (
+        "train=" in caplog.text and "calib=" in caplog.text and "test=" in caplog.text
+    )
+    assert "done: pooled=" in caplog.text
+    assert "median_barcode=" in caplog.text
+
+
+def test_lobo_fold_log_names_the_held_out_barcode(caplog):
+    with caplog.at_level(logging.INFO):
+        ovwt_batchwise(_cells(barcodes_per_variant=3).lazy(), _lobo_cfg())
+    assert "held-out barcode M1K_bc0" in caplog.text
+    assert "held-out barcode M1K_bc2" in caplog.text
+
+
+def test_safe_auroc_returns_none_on_single_class_slice():
+    """A single-class fold must log n/a rather than raise out of the loop."""
+    assert _safe_auroc(np.array([True, True]), np.array([0.1, 0.9])) is None
+    assert _format_auroc(None) == "n/a"
+    assert _format_auroc(float("nan")) == "n/a"
+    assert _format_auroc(0.5) == "0.5000"
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -458,3 +678,38 @@ def test_cli_respects_n_folds(tmp_path: pathlib.Path, n_folds: int):
     with open(tmp_path / "models.pkl", "rb") as f:
         models = pickle.load(f)
     assert all(len(folds) == n_folds for folds in models.values())
+
+
+def test_cli_leave_one_barcode_out(tmp_path: pathlib.Path):
+    """cv_mode reaches the CLI, and n_folds is genuinely ignored under it."""
+    import pickle
+
+    cells_path = tmp_path / "normalized.parquet"
+    _cells(barcodes_per_variant=3).write_parquet(cells_path)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "fisseq_data_pipeline.ovwt",
+            "output_dir=.",
+            f"input_file={cells_path}",
+            f"label_column={LABEL}",
+            f"cv_mode={CV_MODE_LEAVE_ONE_BARCODE_OUT}",
+            "n_folds=99",
+            "min_cells=null",
+            "downsample_wt=false",
+            "random_seed=0",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+    with open(tmp_path / "models.pkl", "rb") as f:
+        models = pickle.load(f)
+    assert models
+    assert all(len(folds) == 3 for folds in models.values())
+
+    cell_scores = pl.read_parquet(tmp_path / "cell_scores.parquet")
+    assert cell_scores.get_column("score").null_count() == 0

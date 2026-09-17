@@ -306,6 +306,55 @@ def test_ovwt_models_are_per_fold(pipeline_outputs, batch_stem):
         assert len(fold_models) == _TEST_PARAM_OVERRIDES["ovwt_n_folds"]
 
 
+def test_ovwt_leave_one_barcode_out_mode(tmp_path_factory):
+    """cv_mode reaches OVWT_BATCHWISE and really cuts one fold per barcode.
+
+    Run as its own pipeline (feature selection off) rather than a variant of
+    the session fixture: the mode changes the fold count, so it cannot share
+    outputs with the k-fold assertions above.
+    """
+    import pickle
+
+    raw_dir = tmp_path_factory.mktemp("nf_lobo_raw")
+    experiments = [_stage_experiment(raw_dir, "batch1", seed=42)]
+    exp_dir = tmp_path_factory.mktemp("nf_lobo")
+    result = _run_pipeline(
+        exp_dir,
+        experiments,
+        ovwt_cv_mode="leave_one_barcode_out",
+        # Deliberately absurd: leave_one_barcode_out must ignore it entirely.
+        ovwt_n_folds=99,
+        run_feature_selection=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    ovwt_dir = exp_dir / "ovwt_batchwise" / "batch1"
+    results = pl.read_parquet(ovwt_dir / "results.parquet")
+    assert len(results) > 0
+    with open(ovwt_dir / "models.pkl", "rb") as f:
+        models = pickle.load(f)
+
+    # One fold per barcode, not ovwt_n_folds.
+    barcode_counts = dict(
+        zip(
+            results.get_column("meta_aa_changes").to_list(),
+            results.get_column("meta_n_barcodes").to_list(),
+        )
+    )
+    assert models
+    for variant, fold_models in models.items():
+        assert len(fold_models) == barcode_counts[variant], variant
+        assert len(fold_models) != _TEST_PARAM_OVERRIDES["ovwt_n_folds"]
+
+    # Every cell still carries exactly one out-of-fold score.
+    cell_scores = pl.read_parquet(ovwt_dir / "cell_scores.parquet")
+    assert cell_scores["score"].null_count() == 0
+    assert cell_scores["score"].is_nan().sum() == 0
+
+    aurocs = results.get_column("auroc_pooled").to_list()
+    assert all(0.0 <= a <= 1.0 for a in aurocs)
+
+
 def test_no_removed_ovwt_artifacts(pipeline_outputs):
     """The old split-index and feature-importance outputs are gone."""
     exp_dir, _ = pipeline_outputs

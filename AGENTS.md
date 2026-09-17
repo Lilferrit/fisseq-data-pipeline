@@ -30,6 +30,7 @@ params.yaml (experiments: [...])
       │
       ├──► OVWT_BATCHWISE  (per experiment; params.run_ovwt)
       │         └──► GLOBAL_OVWT  (once per active global channel)
+      │              (OVWT_BATCHWISE fold scheme: params.ovwt_cv_mode)
       │
       └──► Feature selection, batchwise (params.run_feature_selection):
              AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
@@ -332,7 +333,26 @@ Lowercase verb, optional scope, PR number in parentheses:
 16. **`pandas` is a runtime dep but barely used directly.** The codebase uses
     Polars; pandas comes in via `pycytominer`.
 
-17. **`.python-version` must be copied into the image before the first
+17. **OvWT has two cross-validation schemes**, `OvwtConfig.cv_mode`
+    (`params.ovwt_cv_mode`). `"kfold"` cuts `n_folds` folds stratified on
+    `(meta_barcode, is_wt)`, so every fold's model has seen every barcode.
+    `"leave_one_barcode_out"` gives each variant barcode its own fold with that
+    barcode held out of training entirely (wildtype is still split across the
+    folds), ignores `n_folds`, and skips single-barcode variants. Both emit the
+    same columns, so `globalovwt.py` is mode-blind — but `auroc_median_barcode`
+    means *in-sample separability* under the first and *generalization to an
+    unseen barcode* under the second. Never compare the two modes' numbers.
+
+18. **`workflows/fisseq.nf` duplicates two Python allowlists on purpose.**
+    `aggregatorKeys()` mirrors `aggregate.py:_AGGREGATORS` and `ovwtCvModes()`
+    mirrors `ovwt.py:CV_MODES`, because both values are interpolated straight
+    into a process's shell script — a malformed entry breaks the generated
+    `.command.sh` at the bash level before any Python validation can fire, and
+    `errorStrategy 'ignore'` then hides it. `tests/unit/test_nextflow_params.py`
+    parses those two functions and fails if either copy drifts; update both
+    sides when you add an aggregator or a CV mode.
+
+19. **`.python-version` must be copied into the image before the first
     `uv sync`.** Without it uv resolves the newest `>=3.13` interpreter, and
     Hydra 1.3.x crashes on Python 3.14's argparse, breaking every stage's CLI.
 
