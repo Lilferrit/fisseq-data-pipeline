@@ -178,6 +178,7 @@ See [One-vs-WT](cli/ovwt.md) for what these actually do.
 | Parameter | Default | Meaning |
 | --------- | ------- | ------- |
 | `feature_select_types` | `["mean","median","MAD","std","KS","QQ","AUROC"]` | Aggregators to compute and correlate. |
+| `feature_select_passthrough_types` | `[]` | Aggregators computed and joined onto the final per-variant table but excluded from every selection step — no bootstrap, no blocklist, no pycytominer filters, no normalization. Intended for the p-value statistics (`KSnegLogP`, `AUROCnegLogP`). Must not overlap `feature_select_types`. |
 | `feature_select_bootstrap_reps` | `10` | Bootstrap replicates per feature type. |
 | `feature_select_downsample_wt` | `null` | Optional wildtype downsampling during aggregation. |
 | `feature_select_min_correlation` | `0.5` | Median-`r` threshold for a feature to pass. |

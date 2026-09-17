@@ -34,6 +34,7 @@ include { NORMALIZE              } from '../modules/local/normalize'
 include { OVWT_BATCHWISE         } from '../modules/local/ovwt_batchwise'
 include { GLOBAL_OVWT            } from '../modules/local/global_ovwt'
 include { AGGREGATE_FEATURE_TYPE  as AGGREGATE_FEATURE_TYPE_BATCHWISE  } from '../modules/local/aggregate_feature_type'
+include { AGGREGATE_FEATURE_TYPE  as AGGREGATE_FEATURE_TYPE_PASSTHROUGH } from '../modules/local/aggregate_feature_type'
 include { GENERATE_SPLIT          as GENERATE_SPLIT_BATCHWISE          } from '../modules/local/generate_split'
 include { AGGREGATE_HALF          as AGGREGATE_HALF_BATCHWISE          } from '../modules/local/aggregate_half'
 include { CORRELATE_FEATURES      as CORRELATE_FEATURES_BATCHWISE      } from '../modules/local/correlate_features'
@@ -136,6 +137,30 @@ workflow FisseqPipeline {
                   "${badTypes.join(' | ')}. Valid names: ${aggregatorKeys().sort().join(', ')}. " +
                   "(A stray quote in one of those usually means a mis-quoted YAML list -- " +
                   "[median\", \"KS\"] instead of [\"median\", \"KS\"].)"
+        }
+        // The passthrough list may be empty -- that is the default -- but the
+        // same name validation applies, and it has to be disjoint from
+        // feature_select_types: the two lists publish <type>.parquet under the
+        // same stem into sibling directories, and FINALIZE_FEATURE_SELECT
+        // would then be asked to join two identically-named column sets.
+        if (!(params.feature_select_passthrough_types instanceof List)) {
+            error "ERROR: params.feature_select_passthrough_types must be a list of aggregator " +
+                  "names (use [] for none). Valid names: ${aggregatorKeys().sort().join(', ')}."
+        }
+        def badPassthrough = params.feature_select_passthrough_types.findAll { t ->
+            !aggregatorKeys().contains(t)
+        }
+        if (badPassthrough) {
+            error "ERROR: params.feature_select_passthrough_types has unrecognized entry/entries: " +
+                  "${badPassthrough.join(' | ')}. Valid names: ${aggregatorKeys().sort().join(', ')}."
+        }
+        def overlap = params.feature_select_passthrough_types.findAll { t ->
+            params.feature_select_types.contains(t)
+        }
+        if (overlap) {
+            error "ERROR: params.feature_select_passthrough_types overlaps params.feature_select_types: " +
+                  "${overlap.join(' | ')}. A feature type is either selected on or passed through, " +
+                  "not both."
         }
     }
     if (!ovwtCvModes().contains(params.ovwt_cv_mode)) {
@@ -281,10 +306,28 @@ workflow FisseqPipeline {
             .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
             .combine(feature_types_ch)
             .map { batch_stem, cells_glob, feature_type ->
-                tuple(batch_stem, cells_glob, feature_type, "feature_select_batchwise/${batch_stem}")
+                tuple(batch_stem, cells_glob, feature_type,
+                      "feature_select_batchwise/${batch_stem}/aggregates")
             }
         AGGREGATE_FEATURE_TYPE_BATCHWISE(agg_input_ch)
         agg_ch = AGGREGATE_FEATURE_TYPE_BATCHWISE.out  // (batch_stem, feature_type, agg_file)
+
+        // Stage 1b: passthrough aggregation. Same process, and deliberately
+        // nothing downstream of it but the stage-4 join -- passthrough types
+        // never reach the bootstrap halves, the correlation, or the
+        // blocklist, which is the whole point of the second list. They also
+        // publish to their own directory, out of GLOBAL_FEATURE_SELECT's
+        // aggregates/ glob.
+        passthrough_types_ch = channel.fromList(params.feature_select_passthrough_types)
+        pt_agg_input_ch = norm_ch
+            .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
+            .combine(passthrough_types_ch)
+            .map { batch_stem, cells_glob, feature_type ->
+                tuple(batch_stem, cells_glob, feature_type,
+                      "feature_select_batchwise/${batch_stem}/passthrough_aggregates")
+            }
+        AGGREGATE_FEATURE_TYPE_PASSTHROUGH(pt_agg_input_ch)
+        pt_agg_ch = AGGREGATE_FEATURE_TYPE_PASSTHROUGH.out  // (batch_stem, feature_type, agg_file)
 
         // Stage 2a: one 50/50 split per (experiment, bootstrap replicate).
         split_input_ch = norm_ch
@@ -366,14 +409,23 @@ workflow FisseqPipeline {
         // Stage 4: group stage-1 output by batch_stem (all feature types'
         // full aggregates), join norm_ch (raw cells, for metadata), join
         // stage-3's combined blocklist.
+        // groupTuple() on an empty channel emits nothing, so with an empty
+        // params.feature_select_passthrough_types this side of the join has no
+        // entry for any batch. `remainder: true` is what keeps that from
+        // starving FINALIZE_FEATURE_SELECT entirely (the stage would silently
+        // never run); the null it yields instead becomes an empty file list.
+        pt_files_ch = pt_agg_ch
+            .map { batch_stem, _feature_type, agg_file -> tuple(batch_stem, agg_file) }
+            .groupTuple(by: 0)
         finalize_input_ch = agg_ch
             .map { batch_stem, _feature_type, agg_file -> tuple(batch_stem, agg_file) }
             .groupTuple(by: 0)
             .join(norm_ch)
             .join(combined_bl_ch)
-            .map { batch_stem, agg_files, normalized_parquet, combined_bl_file ->
-                tuple(batch_stem, agg_files, normalized_parquet.toString(), combined_bl_file,
-                      "feature_select_batchwise/${batch_stem}")
+            .join(pt_files_ch, remainder: true)
+            .map { batch_stem, agg_files, normalized_parquet, combined_bl_file, pt_files ->
+                tuple(batch_stem, agg_files, pt_files ?: [], normalized_parquet.toString(),
+                      combined_bl_file, "feature_select_batchwise/${batch_stem}")
             }
         FINALIZE_FEATURE_SELECT_BATCHWISE(finalize_input_ch)
 

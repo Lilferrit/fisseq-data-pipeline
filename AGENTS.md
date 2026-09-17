@@ -177,8 +177,10 @@ LazyFrame and applies them. Stats persist to Parquet (not pickle) and reload via
 
 **`BaseAggregator`** (`aggregate.py`) — abstract base for the concrete
 aggregation strategies. Combining feature types happens in Nextflow:
-`aggregatefeaturetype` runs once per `params.feature_select_types` entry and
-`featureselect` joins the per-type outputs on the label column.
+`aggregatefeaturetype` runs once per `params.feature_select_types` entry — and
+once per `params.feature_select_passthrough_types` entry, publishing to
+`passthrough_aggregates/` instead — and `featureselect` joins the per-type
+outputs on the label column.
 
 **`utils/xgbparams.py`** — shared XGBoost infrastructure: `XGBoostParams` /
 `XGBoostConfig`, `get_feature_cols`, `get_dmatrix`, `split_indices_stratified`,
@@ -355,9 +357,29 @@ Lowercase verb, optional scope, PR number in parentheses:
     `.command.sh` at the bash level before any Python validation can fire, and
     `errorStrategy 'ignore'` then hides it. `tests/unit/test_nextflow_params.py`
     parses those two functions and fails if either copy drifts; update both
-    sides when you add an aggregator or a CV mode.
+    sides when you add an aggregator or a CV mode. `aggregatorKeys()` validates
+    both `feature_select_types` and `feature_select_passthrough_types`, and the
+    two lists must be disjoint.
 
-19. **`.python-version` must be copied into the image before the first
+19. **A `.join()` that may have an empty right side needs `remainder: true`.**
+    `workflows/fisseq.nf`'s stage-4 `finalize_input_ch` joins the passthrough
+    aggregates, and `params.feature_select_passthrough_types` defaults to `[]`
+    — an empty channel. Without `remainder: true` that join emits nothing and
+    `FINALIZE_FEATURE_SELECT` never runs for any batch, silently (see gotcha
+    15). This is the complement of gotcha 11: `.join()` drops on the many side
+    and starves on the empty side.
+
+20. **`output.parquet` is not "the selected features" any more.**
+    `params.feature_select_passthrough_types` puts non-`meta_` columns into
+    `feature_select_batchwise/<batch>/output.parquet` that were never
+    blocklisted, variance-filtered, correlation-filtered or normalized — that
+    is the entire point of the second list. Nothing in-pipeline reads that file
+    (it is terminal), but any new stage that does must not assume
+    `FEATURE_SELECTOR` over it yields selected features. The `aggregates/` vs
+    `passthrough_aggregates/` publish split is what keeps the same confusion
+    out of `GLOBAL_FEATURE_SELECT`.
+
+21. **`.python-version` must be copied into the image before the first
     `uv sync`.** Without it uv resolves the newest `>=3.13` interpreter, and
     Hydra 1.3.x crashes on Python 3.14's argparse, breaking every stage's CLI.
 

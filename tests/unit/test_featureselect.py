@@ -134,6 +134,7 @@ def make_feat_cfg(
     umap_n_neighbors: int = 2,
     umap_metric: str = "cosine",
     umap_min_dist: float = 0.1,
+    passthrough_feature_type_files=None,
     random_seed=42,
 ) -> OmegaConf:
     """Return a DictConfig for FinalizeFeatureSelectConfig with test defaults."""
@@ -156,6 +157,7 @@ def make_feat_cfg(
             umap_n_neighbors=umap_n_neighbors,
             umap_metric=umap_metric,
             umap_min_dist=umap_min_dist,
+            passthrough_feature_type_files=passthrough_feature_type_files,
             random_seed=random_seed,
         )
     )
@@ -618,3 +620,161 @@ def test_main_impact_score_unaffected_by_pca_or_umap(tmp_path) -> None:
     assert baseline_sorted[IMPACT_SCORE_COL].to_list() == pytest.approx(
         with_embeddings_sorted[IMPACT_SCORE_COL].to_list()
     )
+
+
+# ---------------------------------------------------------------------------
+# main() — passthrough aggregates (feature_select_passthrough_types)
+# ---------------------------------------------------------------------------
+
+# Deliberately lopsided: A1C's value is an order of magnitude off the rest, so
+# a synonymous-baseline z-score would be unmistakable if one were ever applied.
+PASSTHROUGH_VALUES = [0.0, 0.0, 0.0, 1.0, 40.0]
+
+
+def write_passthrough_aggregate(tmp_path, *, column: str = "f1_KSnegLogP") -> None:
+    """A passthrough per-feature-type aggregate, in its own directory — the
+    Nextflow side publishes these to passthrough_aggregates/, not aggregates/."""
+    pt_dir = tmp_path / "pt"
+    pt_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "meta_aa_changes": ["A1A", "A2A", "A3A", "A1B", "A1C"],
+            column: PASSTHROUGH_VALUES,
+        }
+    ).write_parquet(pt_dir / "KSnegLogP.parquet")
+
+
+def _run_main_with_passthrough(tmp_path, **kwargs) -> pl.DataFrame:
+    write_passthrough_aggregate(tmp_path)
+    return _run_main(
+        tmp_path,
+        passthrough_feature_type_files=str(tmp_path / "pt" / "*.parquet"),
+        **kwargs,
+    )
+
+
+def test_main_passthrough_column_present_in_output(tmp_path) -> None:
+    result = _run_main_with_passthrough(tmp_path)
+    assert "f1_KSnegLogP" in result.columns
+
+
+def test_main_passthrough_values_are_not_normalized(tmp_path) -> None:
+    result = _run_main_with_passthrough(tmp_path).sort("meta_aa_changes")
+    expected = pl.read_parquet(tmp_path / "pt" / "KSnegLogP.parquet").sort(
+        "meta_aa_changes"
+    )["f1_KSnegLogP"]
+    assert result["f1_KSnegLogP"].to_list() == pytest.approx(expected.to_list())
+
+
+def test_main_selected_features_are_normalized(tmp_path) -> None:
+    """Control for the test above: the selected features on the same run *are*
+    z-scored, so the passthrough column's raw values are not an artifact of
+    the normalizer being a no-op here."""
+    result = _run_main_with_passthrough(tmp_path).sort("meta_aa_changes")
+    ft_values = pl.read_parquet(tmp_path / "ft" / "mean.parquet").sort(
+        "meta_aa_changes"
+    )["f1_mean"]
+    assert result["f1_mean"].to_list() != pytest.approx(ft_values.to_list())
+
+
+def test_main_passthrough_column_hidden_from_pycytominer(tmp_path) -> None:
+    """The whole point: pycytominer never sees the column, so it can neither
+    drop it (variance_threshold) nor drop a real feature for correlating with
+    it (correlation_threshold)."""
+    _write_default_fixtures(tmp_path)
+    write_passthrough_aggregate(tmp_path)
+    with patch("fisseq_data_pipeline.featureselect.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ) as mock_fs:
+            m.main.__wrapped__(
+                make_feat_cfg(
+                    tmp_path,
+                    passthrough_feature_type_files=str(tmp_path / "pt" / "*.parquet"),
+                )
+            )
+    assert "f1_KSnegLogP" not in mock_fs.call_args.kwargs["features"]
+    assert "f1_KSnegLogP" not in mock_fs.call_args.kwargs["profiles"].columns
+
+
+def test_main_passthrough_column_survives_the_blocklist(tmp_path) -> None:
+    """A passthrough column named in the blocklist is still kept — the
+    blocklist is a reproducibility verdict, and passthrough types never had a
+    bootstrap to earn one."""
+    write_feat_input_parquet(tmp_path)
+    write_feature_type_aggregate(tmp_path)
+    write_passthrough_aggregate(tmp_path)
+    pl.DataFrame(
+        {
+            "feature": ["f1_mean", "f2_mean", "f1_KSnegLogP"],
+            "feature_ok": [True, True, False],
+        }
+    ).write_parquet(tmp_path / "blocklist.parquet")
+    with patch("fisseq_data_pipeline.featureselect.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            m.main.__wrapped__(
+                make_feat_cfg(
+                    tmp_path,
+                    passthrough_feature_type_files=str(tmp_path / "pt" / "*.parquet"),
+                )
+            )
+    result = pl.read_parquet(tmp_path / "out" / "input.parquet")
+    assert "f1_KSnegLogP" in result.columns
+
+
+def test_main_passthrough_excluded_from_impact_score(tmp_path) -> None:
+    baseline = _run_main(tmp_path).sort("meta_aa_changes")
+    with_passthrough = _run_main_with_passthrough(tmp_path).sort("meta_aa_changes")
+    assert with_passthrough[IMPACT_SCORE_COL].to_list() == pytest.approx(
+        baseline[IMPACT_SCORE_COL].to_list()
+    )
+
+
+def test_main_passthrough_excluded_from_pca(tmp_path) -> None:
+    components = _run_main_with_passthrough_pca(tmp_path)
+    assert "f1_KSnegLogP" not in components.columns
+
+
+def _run_main_with_passthrough_pca(tmp_path) -> pl.DataFrame:
+    _run_main_with_passthrough(tmp_path, run_pca=True, pca_n_components=2)
+    return pl.read_parquet(tmp_path / "out" / "pca_components.parquet")
+
+
+def test_main_no_passthrough_matches_baseline(tmp_path) -> None:
+    """passthrough_feature_type_files=None is exactly today's behaviour."""
+    baseline = _run_main(tmp_path)
+    assert "f1_KSnegLogP" not in baseline.columns
+
+
+def test_main_empty_passthrough_glob_warns_and_continues(tmp_path, caplog) -> None:
+    """An empty passthrough list reaches the stage as an empty staging dir —
+    a warning, not the ValueError feature_type_files raises."""
+    (tmp_path / "pt").mkdir(parents=True, exist_ok=True)
+    with caplog.at_level(logging.WARNING):
+        result = _run_main(
+            tmp_path, passthrough_feature_type_files=str(tmp_path / "pt" / "*.parquet")
+        )
+    assert "f1_mean" in result.columns
+    assert any("passthrough glob" in record.message for record in caplog.records)
+
+
+def test_main_passthrough_column_collision_raises(tmp_path) -> None:
+    """A type in both lists would collide on the join; Nextflow rejects that
+    up front, and this is the backstop for a direct CLI invocation."""
+    _write_default_fixtures(tmp_path)
+    write_passthrough_aggregate(tmp_path, column="f1_mean")
+    with patch("fisseq_data_pipeline.featureselect.setup_logging"):
+        with patch(
+            "pycytominer.feature_select", side_effect=lambda profiles, **_kw: profiles
+        ):
+            with pytest.raises(ValueError, match="collide"):
+                m.main.__wrapped__(
+                    make_feat_cfg(
+                        tmp_path,
+                        passthrough_feature_type_files=str(
+                            tmp_path / "pt" / "*.parquet"
+                        ),
+                    )
+                )

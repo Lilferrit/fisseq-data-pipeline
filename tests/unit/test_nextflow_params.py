@@ -67,3 +67,30 @@ def test_params_yaml_feature_select_types_are_all_valid():
     )
     assert set(params["feature_select_types"]) <= set(_AGGREGATORS)
     assert params["ovwt_cv_mode"] in CV_MODES
+
+
+def test_params_yaml_passthrough_types_are_all_valid():
+    params = yaml.safe_load(
+        (pathlib.Path(__file__).parents[2] / "params.yaml").read_text()
+    )
+    assert set(params["feature_select_passthrough_types"]) <= set(_AGGREGATORS)
+
+
+def test_params_yaml_feature_select_lists_are_disjoint():
+    """``fisseq.nf`` rejects an overlap, and ``featureselect.main`` raises on the
+    resulting column collision; the repo default must not trip either."""
+    params = yaml.safe_load(
+        (pathlib.Path(__file__).parents[2] / "params.yaml").read_text()
+    )
+    assert not (
+        set(params["feature_select_types"])
+        & set(params["feature_select_passthrough_types"])
+    )
+
+
+def test_passthrough_validation_reuses_aggregator_keys():
+    """Both lists are validated against the same Groovy helper — a new
+    aggregator must not need a third hardcoded copy of the key set."""
+    source = (pathlib.Path(__file__).parents[2] / "workflows" / "fisseq.nf").read_text()
+    passthrough_block = source[source.index("feature_select_passthrough_types") :]
+    assert "aggregatorKeys()" in passthrough_block

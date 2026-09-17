@@ -8,7 +8,7 @@ process FINALIZE_FEATURE_SELECT {
     publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
-    tuple val(batch_key), path(feature_type_files), val(cells_glob), path(block_list_file), val(publish_subdir)
+    tuple val(batch_key), path(feature_type_files), path(passthrough_files, stageAs: 'pt/*'), val(cells_glob), path(block_list_file), val(publish_subdir)
 
     output:
     // pca_components.parquet only exists when run_pca=true -- must be its
@@ -29,11 +29,18 @@ process FINALIZE_FEATURE_SELECT {
     echo "Starting FINALIZE_FEATURE_SELECT for ${batch_key}"
     mkdir -p ft
     mv ${feature_type_files} ft/
+    # passthrough_files is staged straight into pt/ (stageAs above) rather than
+    # moved, because the list is empty whenever params.feature_select_passthrough_types
+    # is -- an `mv` with no arguments would fail the task. mkdir -p keeps the
+    # glob well-formed in that case; featureselect.py treats a zero-match
+    # passthrough glob as a warning, not an error.
+    mkdir -p pt
     python -m fisseq_data_pipeline.featureselect \\
         output_dir=. \\
         output_root=out \\
         "input_file=${cells_glob}" \\
         "feature_type_files=ft/*.parquet" \\
+        "passthrough_feature_type_files=pt/*.parquet" \\
         block_list_file=${block_list_file} \\
         compute_impact_score=true \\
         label_column=${params.filter_label_column} \\

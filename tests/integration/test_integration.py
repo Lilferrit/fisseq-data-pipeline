@@ -409,6 +409,60 @@ def test_feature_correlations_have_feature_ok_column(pipeline_outputs, batch_ste
     assert "feature_ok" in bl.columns
 
 
+def test_feature_select_passthrough_types(tmp_path_factory):
+    """params.feature_select_passthrough_types is computed, published apart,
+    joined onto the output, and kept out of the selection chain entirely.
+
+    Its own pipeline run: the session fixture uses the shipped default (an
+    empty list), which is itself the regression guard for the `remainder: true`
+    join -- an empty passthrough channel must not starve
+    FINALIZE_FEATURE_SELECT.
+    """
+    raw_dir = tmp_path_factory.mktemp("nf_passthrough_raw")
+    experiments = [_stage_experiment(raw_dir, "batch1", seed=42)]
+    exp_dir = tmp_path_factory.mktemp("nf_passthrough")
+    result = _run_pipeline(
+        exp_dir,
+        experiments,
+        feature_select_types=["mean", "std"],
+        feature_select_passthrough_types=["KSnegLogP"],
+        run_ovwt=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    fs = exp_dir / "feature_select_batchwise" / "batch1"
+
+    # Published to its own directory, out of GLOBAL_FEATURE_SELECT's glob.
+    assert (fs / "passthrough_aggregates" / "KSnegLogP.parquet").exists()
+    assert not (fs / "aggregates" / "KSnegLogP.parquet").exists()
+    assert {p.name for p in (fs / "aggregates").glob("*.parquet")} == {
+        "mean.parquet",
+        "std.parquet",
+    }
+
+    # No bootstrap chain ran for it.
+    assert not (fs / "correlations" / "KSnegLogP").exists()
+    assert not (fs / "blocklists" / "KSnegLogP.parquet").exists()
+    blocklist = pl.read_parquet(fs / "blocklist.parquet")
+    assert not any(
+        f.endswith("_KSnegLogP") for f in blocklist.get_column("feature").to_list()
+    )
+
+    # Joined onto the output, with the values the aggregate stage produced.
+    output = pl.read_parquet(fs / "output.parquet")
+    passthrough = pl.read_parquet(fs / "passthrough_aggregates" / "KSnegLogP.parquet")
+    pt_cols = [c for c in passthrough.columns if c.endswith("_KSnegLogP")]
+    assert pt_cols
+    assert set(pt_cols) <= set(output.columns)
+    joined = output.select(["meta_aa_changes", *pt_cols]).sort("meta_aa_changes")
+    expected = passthrough.select(["meta_aa_changes", *pt_cols]).sort("meta_aa_changes")
+    assert joined.equals(
+        expected.join(
+            joined.select("meta_aa_changes"), on="meta_aa_changes", how="semi"
+        ).sort("meta_aa_changes")
+    )
+
+
 def test_bootstrap_replicates_are_not_identical(pipeline_outputs):
     """
     Each bootstrap derives its seed as random_seed + bootstrap_idx. Collapsing

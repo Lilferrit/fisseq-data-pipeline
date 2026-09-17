@@ -11,7 +11,15 @@ process AGGREGATE_FEATURE_TYPE {
     errorStrategy 'ignore'
     label 'process_medium'
     container "${params.container_image}"
-    publishDir { "${params.pipeline_dir}/${publish_subdir}/aggregates" }, mode: 'copy'
+    // publish_subdir is the full destination, not a parent: the caller picks
+    // "<batch>/aggregates" or "<batch>/passthrough_aggregates" so that one
+    // process definition serves both params.feature_select_types and
+    // params.feature_select_passthrough_types. Keeping the two directories
+    // apart is load-bearing -- GLOBAL_FEATURE_SELECT globs
+    // "<batch>/aggregates/*.parquet", and publishDir mode: 'copy' never
+    // removes anything, so a shared directory would leak passthrough
+    // aggregates into the global stage.
+    publishDir { "${params.pipeline_dir}/${publish_subdir}" }, mode: 'copy'
 
     input:
     tuple val(batch_key), val(cells_glob), val(feature_type), val(publish_subdir)
