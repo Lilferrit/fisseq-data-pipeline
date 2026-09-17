@@ -30,7 +30,8 @@ params.yaml (experiments: [...])
       │
       ├──► OVWT_BATCHWISE  (per experiment; params.run_ovwt)
       │         └──► GLOBAL_OVWT  (once per active global channel)
-      │              (OVWT_BATCHWISE fold scheme: params.ovwt_cv_mode)
+      │              (OVWT_BATCHWISE fold scheme: params.ovwt_cv_mode,
+      │               fold count/cap: params.ovwt_n_folds)
       │
       └──► Feature selection, batchwise (params.run_feature_selection):
              AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
@@ -336,12 +337,16 @@ Lowercase verb, optional scope, PR number in parentheses:
 17. **OvWT has two cross-validation schemes**, `OvwtConfig.cv_mode`
     (`params.ovwt_cv_mode`). `"kfold"` cuts `n_folds` folds stratified on
     `(meta_barcode, is_wt)`, so every fold's model has seen every barcode.
-    `"leave_one_barcode_out"` gives each variant barcode its own fold with that
-    barcode held out of training entirely (wildtype is still split across the
-    folds), ignores `n_folds`, and skips single-barcode variants. Both emit the
-    same columns, so `globalovwt.py` is mode-blind — but `auroc_median_barcode`
-    means *in-sample separability* under the first and *generalization to an
-    unseen barcode* under the second. Never compare the two modes' numbers.
+    `"barcode_holdout"` holds whole barcodes out of training a fold at a time
+    (wildtype is still split across the folds) and skips single-barcode
+    variants. There `n_folds` *caps* the folds instead of fixing them: `null`
+    is one fold per barcode, an integer packs the barcodes into that many
+    cell-count-balanced groups, and a value above the barcode count degrades
+    back to one per barcode — so fold counts differ per variant, and
+    `len(models[variant])` is not `n_folds`. Both modes emit the same columns,
+    so `globalovwt.py` is mode-blind — but `auroc_median_barcode` means
+    *in-sample separability* under the first and *generalization to an unseen
+    barcode* under the second. Never compare the two modes' numbers.
 
 18. **`workflows/fisseq.nf` duplicates two Python allowlists on purpose.**
     `aggregatorKeys()` mirrors `aggregate.py:_AGGREGATORS` and `ovwtCvModes()`

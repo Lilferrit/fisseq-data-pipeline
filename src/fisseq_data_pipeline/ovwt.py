@@ -27,15 +27,18 @@ by adding a second normalizer fit here.
   ``(meta_barcode, is_wt)``. Every fold's model has seen every barcode, so
   ``auroc_median_barcode`` measures separability *within* the barcodes the
   classifier was trained on.
-- ``"leave_one_barcode_out"`` -- one fold per variant barcode, that barcode's
-  cells held out of training entirely and the variant's other barcodes used to
-  train. ``cfg.n_folds`` is ignored. Wildtype cells are still split across the
-  folds, so every cell still gets exactly one out-of-fold score and both AUROC
-  columns keep the same meaning they have under k-fold. What changes is what
-  they measure: whether a variant's signal *generalizes to a barcode the model
-  has never seen*, rather than whether it is separable at all. A
-  barcode-specific technical artifact inflates the k-fold number invisibly and
-  is penalized here.
+- ``"barcode_holdout"`` -- each fold holds a whole barcode (or, when
+  ``cfg.n_folds`` groups them, a whole set of barcodes) out of training, so no
+  model is ever trained on a barcode it later scores. ``cfg.n_folds = None``
+  gives one fold per barcode; an integer packs the barcodes into that many
+  cell-count-balanced groups; a value above the barcode count degrades back to
+  one fold per barcode. Wildtype cells are still split across the folds, so
+  every cell still gets exactly one out-of-fold score and both AUROC columns
+  keep the same meaning they have under k-fold. What changes is what they
+  measure: whether a variant's signal *generalizes to a barcode the model has
+  never seen*, rather than whether it is separable at all. A barcode-specific
+  technical artifact inflates the k-fold number invisibly and is penalized
+  here.
 
 The feature-filtered and barcode-filtered variants of this stage are gone along
 with ANOVA_BLOCKLIST and BARCODE_BLOCKLIST, as is the separate
@@ -83,12 +86,12 @@ _MIN_STRATUM_SIZE = 10
 #: ``(meta_barcode, is_wt)``.
 CV_MODE_KFOLD = "kfold"
 
-#: Cross-validation scheme: one fold per variant barcode, that barcode held out
-#: of training entirely. See :func:`_leave_one_barcode_out_splits`.
-CV_MODE_LEAVE_ONE_BARCODE_OUT = "leave_one_barcode_out"
+#: Cross-validation scheme: whole barcodes held out of training, one barcode
+#: (or barcode group) per fold. See :func:`_barcode_holdout_splits`.
+CV_MODE_BARCODE_HOLDOUT = "barcode_holdout"
 
 #: Every accepted value of :attr:`OvwtConfig.cv_mode`.
-CV_MODES = (CV_MODE_KFOLD, CV_MODE_LEAVE_ONE_BARCODE_OUT)
+CV_MODES = (CV_MODE_KFOLD, CV_MODE_BARCODE_HOLDOUT)
 
 _cs = ConfigStore.instance()
 
@@ -114,9 +117,11 @@ class OvwtConfig(LabeledInputConfig):
     cv_mode : str
         Cross-validation scheme, one of :data:`CV_MODES`. Defaults to
         ``"kfold"``.
-    n_folds : int
-        Number of cross-validation folds per variant, under ``"kfold"``.
-        Defaults to ``5``.
+    n_folds : int or None
+        Number of cross-validation folds per variant: fold count under
+        ``"kfold"``, barcode-group count under ``"barcode_holdout"``. ``None``
+        is valid only under ``"barcode_holdout"``, where it means one fold per
+        barcode. Defaults to ``5``.
     calibrate : bool
         If ``True``, fit a per-fold sigmoid (Platt) probability calibrator on a
         slice held out of that fold's training data before scoring its test
@@ -135,15 +140,17 @@ class OvwtConfig(LabeledInputConfig):
 
     Notes
     -----
-    ``cv_mode="leave_one_barcode_out"`` ignores ``n_folds`` entirely -- a
-    variant gets exactly as many folds as it has barcodes, and a variant with
-    only one barcode cannot be scored at all (there would be no other barcode
-    left to train on) and is skipped with a warning.
+    Under ``cv_mode="barcode_holdout"``, ``n_folds`` caps the number of folds
+    rather than fixing it: a variant with fewer barcodes than ``n_folds`` gets
+    one fold per barcode, and ``n_folds=None`` always does. A variant with only
+    one barcode cannot be scored at all in that mode (there would be no other
+    barcode left to train on) and is skipped with a warning. ``n_folds=None``
+    under ``"kfold"`` is an error -- there is no barcode count to fall back on.
     """
 
     wt_label: str = "WT"
     cv_mode: str = CV_MODE_KFOLD
-    n_folds: int = 5
+    n_folds: Optional[int] = 5
     calibrate: bool = True
     min_cells: Optional[int] = 250
     downsample_wt: bool = True
@@ -384,17 +391,93 @@ def _format_auroc(value: Optional[float]) -> str:
     return f"{value:.4f}"
 
 
-def _leave_one_barcode_out_splits(
-    barcodes: np.ndarray, is_wt: np.ndarray, seed: int
+def _barcode_groups(
+    barcodes: np.ndarray, is_wt: np.ndarray, n_folds: Optional[int]
+) -> "list[np.ndarray]":
+    """
+    Pack the variant barcodes into one group per cross-validation fold.
+
+    Each group is held out of training together by a single fold of
+    :func:`_barcode_holdout_splits`, so the group count *is* the fold count.
+    ``n_folds`` is a cap, not a fixed size: ``None``, or any value at or above
+    the barcode count, gives one singleton group per barcode -- the pure
+    leave-one-barcode-out case.
+
+    Grouping balances **cell** counts, not barcode counts. Barcodes are
+    unevenly populated, and packing by barcode count alone can leave one fold
+    holding out most of a variant's cells while another holds out a handful,
+    which unbalances both the training sets and the per-fold AUROCs. The pack
+    is the standard greedy longest-processing-time-first heuristic: barcodes
+    sorted by cell count descending (ties broken by barcode string, for
+    determinism), each assigned to the group with the smallest running cell
+    total. No seed is consumed -- the result depends only on the data, so
+    reproducibility here does not rest on ``random_seed``.
+
+    Parameters
+    ----------
+    barcodes : np.ndarray
+        1-D array of barcode strings, one per cell.
+    is_wt : np.ndarray
+        1-D boolean array, ``True`` for wildtype cells, aligned with
+        ``barcodes``.
+    n_folds : int or None
+        Maximum number of groups. ``None`` means one group per barcode.
+
+    Returns
+    -------
+    list[np.ndarray]
+        One array of barcode strings per fold. Every variant barcode appears in
+        exactly one group, and no group is empty.
+
+    Raises
+    ------
+    ValueError
+        If there are fewer than two variant barcodes, or if ``n_folds`` is
+        below 2 -- a single fold would hold out every variant cell, leaving the
+        fit set with nothing to train on.
+    """
+    variant_barcodes, counts = np.unique(barcodes[~is_wt], return_counts=True)
+    if len(variant_barcodes) < 2:
+        raise ValueError(
+            f"barcode holdout needs at least 2 variant barcodes, "
+            f"got {len(variant_barcodes)}"
+        )
+    if n_folds is not None and n_folds < 2:
+        raise ValueError(
+            f"barcode holdout needs at least 2 folds, got n_folds={n_folds}"
+        )
+
+    n_groups = len(variant_barcodes)
+    if n_folds is not None:
+        n_groups = min(n_folds, n_groups)
+    if n_groups == len(variant_barcodes):
+        # np.unique already sorted them; keep that order so this stays
+        # byte-identical to the pre-grouping behaviour.
+        return [np.array([b]) for b in variant_barcodes]
+
+    groups: "list[list[str]]" = [[] for _ in range(n_groups)]
+    group_cells = np.zeros(n_groups, dtype=np.int64)
+    # Descending cell count; np.unique's sorted barcode order already breaks
+    # ties, and argsort's "stable" kind preserves it.
+    for pos in np.argsort(-counts, kind="stable"):
+        target = int(np.argmin(group_cells))
+        groups[target].append(variant_barcodes[pos])
+        group_cells[target] += counts[pos]
+    return [np.array(sorted(g)) for g in groups]
+
+
+def _barcode_holdout_splits(
+    barcodes: np.ndarray, is_wt: np.ndarray, seed: int, n_folds: Optional[int] = None
 ) -> "list[tuple[np.ndarray, np.ndarray]]":
     """
-    One cross-validation fold per variant barcode.
+    Cross-validation folds that hold whole barcodes out of training.
 
-    Fold *i* holds out every cell of the *i*-th variant barcode, so the model
-    it trains has never seen that barcode; the variant's remaining barcodes go
-    into the fit set. Wildtype cells are *not* held out wholesale -- they are
-    divided into as many disjoint test blocks as there are variant barcodes, by
-    ``StratifiedKFold`` over the same composite key
+    Fold *i* holds out every cell of the *i*-th barcode group (see
+    :func:`_barcode_groups` -- one barcode per group unless ``n_folds`` packs
+    them), so the model it trains has never seen those barcodes; the variant's
+    remaining barcodes go into the fit set. Wildtype cells are *not* held out
+    wholesale -- they are divided into as many disjoint test blocks as there
+    are folds, by ``StratifiedKFold`` over the same composite key
     :func:`_stratification_key` builds (so a wildtype barcode with fewer than
     ``_MIN_STRATUM_SIZE`` cells degrades into the shared ``rare|wt`` bucket
     rather than destabilizing the split).
@@ -412,38 +495,36 @@ def _leave_one_barcode_out_splits(
         ``barcodes``.
     seed : int
         Random seed for the wildtype block split.
+    n_folds : int or None
+        Maximum number of folds, passed through to :func:`_barcode_groups`.
+        ``None`` (the default) means one fold per variant barcode.
 
     Returns
     -------
     list[tuple[np.ndarray, np.ndarray]]
-        ``(fit_idx, test_idx)`` per fold, in sorted-barcode order. Both are
+        ``(fit_idx, test_idx)`` per fold, in barcode-group order. Both are
         sorted 0-based positions and together cover every position exactly
         once.
 
     Raises
     ------
     ValueError
-        If there are fewer than two variant barcodes -- holding one out would
-        leave the fit set with no variant cells at all -- or if there are fewer
-        wildtype cells than folds to spread them over.
+        If the barcodes cannot be grouped (see :func:`_barcode_groups`), or if
+        there are fewer wildtype cells than folds to spread them over.
     """
-    variant_barcodes = np.unique(barcodes[~is_wt])
-    n_folds = len(variant_barcodes)
-    if n_folds < 2:
-        raise ValueError(
-            f"leave-one-barcode-out needs at least 2 variant barcodes, got {n_folds}"
-        )
+    groups = _barcode_groups(barcodes, is_wt, n_folds)
+    n_blocks = len(groups)
 
     wt_pos = np.flatnonzero(is_wt)
-    if len(wt_pos) < n_folds:
+    if len(wt_pos) < n_blocks:
         raise ValueError(
-            f"leave-one-barcode-out needs at least as many wildtype cells "
-            f"({len(wt_pos)}) as variant barcodes ({n_folds})"
+            f"barcode holdout needs at least as many wildtype cells "
+            f"({len(wt_pos)}) as folds ({n_blocks})"
         )
 
     wt_strata = _stratification_key(barcodes[wt_pos], is_wt[wt_pos])
     wt_splitter = sklearn.model_selection.StratifiedKFold(
-        n_splits=n_folds, shuffle=True, random_state=seed
+        n_splits=n_blocks, shuffle=True, random_state=seed
     )
     wt_blocks = [
         wt_pos[block_pos] for _, block_pos in wt_splitter.split(wt_pos, wt_strata)
@@ -451,8 +532,8 @@ def _leave_one_barcode_out_splits(
 
     all_idx = np.arange(len(barcodes))
     splits = []
-    for barcode, wt_block in zip(variant_barcodes, wt_blocks):
-        held_out = all_idx[(~is_wt) & (barcodes == barcode)]
+    for group, wt_block in zip(groups, wt_blocks):
+        held_out = all_idx[(~is_wt) & np.isin(barcodes, group)]
         test_idx = np.sort(np.concatenate([held_out, wt_block]))
         fit_mask = np.ones(len(barcodes), dtype=bool)
         fit_mask[test_idx] = False
@@ -474,10 +555,12 @@ def ovwt_batchwise(
     ``(meta_barcode, is_wt)`` via a composite key (see
     :func:`_stratification_key`), so barcode composition and the
     wildtype/variant balance are both preserved fold to fold. Under
-    ``"leave_one_barcode_out"`` each variant barcode instead gets a fold of its
-    own (see :func:`_leave_one_barcode_out_splits`) and ``cfg.n_folds`` is
-    ignored; a variant with a single barcode is skipped with a warning, since
-    holding its only barcode out would leave nothing to train on.
+    ``"barcode_holdout"`` whole barcodes are instead held out of training a
+    fold at a time (see :func:`_barcode_holdout_splits`), with ``cfg.n_folds``
+    capping how many folds the variant's barcodes are packed into and ``None``
+    giving one fold per barcode; a variant with a single barcode is skipped
+    with a warning, since holding its only barcode out would leave nothing to
+    train on.
 
     A variant whose fold training or evaluation raises -- e.g. a variant with
     too few cells for the outer ``StratifiedKFold``, despite
@@ -520,12 +603,22 @@ def ovwt_batchwise(
     Raises
     ------
     ValueError
-        If ``cfg.cv_mode`` is not one of :data:`CV_MODES`.
+        If ``cfg.cv_mode`` is not one of :data:`CV_MODES`, if ``cfg.n_folds``
+        is below 2, or if it is ``None`` under any mode but
+        ``"barcode_holdout"``.
     """
     if cfg.cv_mode not in CV_MODES:
         raise ValueError(
             f"Unknown cv_mode {cfg.cv_mode!r}. Choose from: {list(CV_MODES)}"
         )
+    if cfg.n_folds is None and cfg.cv_mode != CV_MODE_BARCODE_HOLDOUT:
+        raise ValueError(
+            f"n_folds=None is only valid under cv_mode="
+            f"{CV_MODE_BARCODE_HOLDOUT!r} (one fold per barcode); "
+            f"cv_mode={cfg.cv_mode!r} needs an explicit fold count"
+        )
+    if cfg.n_folds is not None and cfg.n_folds < 2:
+        raise ValueError(f"n_folds must be at least 2, got {cfg.n_folds}")
 
     df = cells_lf.collect()
     label_col = cfg.label_column
@@ -569,10 +662,10 @@ def ovwt_batchwise(
             strata = _stratification_key(barcodes, is_wt)
             n_variant_barcodes = len(np.unique(barcodes[~is_wt]))
 
-            # Checked here rather than left to _leave_one_barcode_out_splits'
+            # Checked here rather than left to _barcode_holdout_splits'
             # ValueError and the catch-all below, so the log says why the
             # variant was dropped instead of showing a traceback.
-            if cfg.cv_mode == CV_MODE_LEAVE_ONE_BARCODE_OUT and n_variant_barcodes < 2:
+            if cfg.cv_mode == CV_MODE_BARCODE_HOLDOUT and n_variant_barcodes < 2:
                 logging.warning(
                     "[%d/%d] Skipping variant %r: cv_mode=%s needs at least 2 "
                     "barcodes, found %d",
@@ -584,22 +677,30 @@ def ovwt_batchwise(
                 )
                 continue
 
-            logging.info(
-                "[%d/%d] %r: %d barcode(s), %d cells (%d wildtype)",
-                variant_num,
-                len(variants),
-                variant,
-                n_variant_barcodes,
-                len(subset),
-                int(is_wt.sum()),
-            )
-
-            if cfg.cv_mode == CV_MODE_LEAVE_ONE_BARCODE_OUT:
-                splits = _leave_one_barcode_out_splits(barcodes, is_wt, cfg.random_seed)
+            if cfg.cv_mode == CV_MODE_BARCODE_HOLDOUT:
+                splits = _barcode_holdout_splits(
+                    barcodes, is_wt, cfg.random_seed, cfg.n_folds
+                )
+                n_planned_folds = len(splits)
             else:
                 splits = sklearn.model_selection.StratifiedKFold(
                     n_splits=cfg.n_folds, shuffle=True, random_state=cfg.random_seed
                 ).split(subset, strata)
+                n_planned_folds = cfg.n_folds
+
+            # Logged after the split is cut, so the fold count reported is the
+            # resolved one -- under barcode holdout cfg.n_folds is a cap, and a
+            # variant with fewer barcodes than that gets fewer folds.
+            logging.info(
+                "[%d/%d] %r: %d barcode(s) in %d fold(s), %d cells (%d wildtype)",
+                variant_num,
+                len(variants),
+                variant,
+                n_variant_barcodes,
+                n_planned_folds,
+                len(subset),
+                int(is_wt.sum()),
+            )
 
             oof_scores = np.full(len(subset), np.nan)
             fold_models: "list[tuple[xgb.Booster, Optional[object]]]" = []
@@ -647,11 +748,11 @@ def ovwt_batchwise(
                 fold_models.append((model, calibrator))
 
                 held_out = "-"
-                if cfg.cv_mode == CV_MODE_LEAVE_ONE_BARCODE_OUT:
+                if cfg.cv_mode == CV_MODE_BARCODE_HOLDOUT:
                     held_out_barcodes = np.unique(barcodes[test_idx][~is_wt[test_idx]])
                     held_out = ",".join(held_out_barcodes.tolist())
                 logging.info(
-                    "[%d/%d] %r fold %d (held-out barcode %s): "
+                    "[%d/%d] %r fold %d (held-out barcode(s) %s): "
                     "train=%d calib=%d test=%d auroc=%s",
                     variant_num,
                     len(variants),
@@ -797,11 +898,13 @@ def main(cfg: DictConfig) -> None:
     logging.info("Loading normalized cells from %s", ovwt_cfg.input_file)
     cells_lf = load_batches(ovwt_cfg.input_file)[0]
 
-    if ovwt_cfg.cv_mode == CV_MODE_LEAVE_ONE_BARCODE_OUT:
+    if ovwt_cfg.cv_mode == CV_MODE_BARCODE_HOLDOUT:
         logging.info(
-            "Running leave-one-barcode-out one-vs-wildtype scoring "
-            "(one fold per variant barcode, n_folds ignored; "
+            "Running barcode-holdout one-vs-wildtype scoring (%s; "
             "calibrate=%s, min_cells=%s)",
+            "one fold per variant barcode"
+            if ovwt_cfg.n_folds is None
+            else f"barcodes packed into at most {ovwt_cfg.n_folds} fold(s)",
             ovwt_cfg.calibrate,
             ovwt_cfg.min_cells,
         )

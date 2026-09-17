@@ -87,7 +87,22 @@ def aggregatorKeys() {
 
 // Every accepted value of params.ovwt_cv_mode, mirroring ovwt.py's CV_MODES.
 def ovwtCvModes() {
-    ['kfold', 'leave_one_barcode_out'] as Set
+    ['kfold', 'barcode_holdout'] as Set
+}
+
+// params.ovwt_n_folds as an Integer, or null for "one fold per barcode".
+// A -params-file null arrives as a real null, but a CLI override
+// (--ovwt_n_folds 5) arrives as a String, so both spellings of null and of an
+// integer have to be understood here.
+def ovwtNFolds() {
+    def raw = params.ovwt_n_folds
+    if (raw == null || raw.toString().trim() in ['', 'null']) {
+        return null
+    }
+    if (!(raw.toString() ==~ /-?\d+/)) {
+        error "ERROR: params.ovwt_n_folds must be an integer or null, got '${raw}'."
+    }
+    return raw.toString() as Integer
 }
 
 // Nextflow CLI overrides (--run_ovwt false) arrive as the Groovy-truthy
@@ -126,6 +141,17 @@ workflow FisseqPipeline {
     if (!ovwtCvModes().contains(params.ovwt_cv_mode)) {
         error "ERROR: params.ovwt_cv_mode must be one of ${ovwtCvModes().sort().join(', ')}, " +
               "got '${params.ovwt_cv_mode}'."
+    }
+    // Mirrors ovwt_batchwise()'s own guards, but at construction time -- a
+    // bad fold count would otherwise die inside a task that
+    // errorStrategy 'ignore' then swallows.
+    def nFolds = ovwtNFolds()
+    if (nFolds == null && params.ovwt_cv_mode != 'barcode_holdout') {
+        error "ERROR: params.ovwt_n_folds = null (one fold per barcode) is only valid with " +
+              "params.ovwt_cv_mode = 'barcode_holdout', not '${params.ovwt_cv_mode}'."
+    }
+    if (nFolds != null && nFolds < 2) {
+        error "ERROR: params.ovwt_n_folds must be at least 2, got ${nFolds}."
     }
 
     // Validate and resolve every experiment map once, here, at

@@ -132,18 +132,23 @@ qc_downsample_classes: ["Synonymous", "Single Missense"]
 # exactly one out-of-fold score, and each variant gets both a pooled AUROC and
 # a median-of-per-barcode AUROC.
 ovwt_wt_label: "WT"
-# Fold scheme, "kfold" or "leave_one_barcode_out".
-#   kfold                 -- ovwt_n_folds folds, stratified jointly on
-#                            (meta_barcode, is_wt); every fold's model has seen
-#                            every barcode.
-#   leave_one_barcode_out -- one fold per variant barcode, that barcode held out
-#                            of training entirely, so the AUROCs measure
-#                            generalization to an unseen barcode. Wildtype cells
-#                            are still split across the folds. ovwt_n_folds is
-#                            ignored, and a variant with only one barcode is
-#                            skipped (nothing left to train on).
+# Fold scheme, "kfold" or "barcode_holdout".
+#   kfold           -- ovwt_n_folds folds, stratified jointly on
+#                      (meta_barcode, is_wt); every fold's model has seen every
+#                      barcode.
+#   barcode_holdout -- whole barcodes are held out of training a fold at a
+#                      time, so no model is ever trained on a barcode it later
+#                      scores and the AUROCs measure generalization to an
+#                      unseen barcode. Wildtype cells are still split across
+#                      the folds. A variant with only one barcode is skipped
+#                      (nothing left to train on).
 ovwt_cv_mode: "kfold"
-# Folds per variant under cv_mode "kfold"; ignored by "leave_one_barcode_out".
+# Folds per variant. Under "kfold" this is the fold count outright. Under
+# "barcode_holdout" it caps the folds: the variant's barcodes are packed into
+# at most this many cell-count-balanced groups, one group held out per fold, so
+# a variant with fewer barcodes than this simply gets one fold per barcode.
+# null = one fold per barcode always (pure leave-one-barcode-out); it is an
+# error under "kfold", which has no barcode count to fall back on.
 ovwt_n_folds: 5
 # Per-fold sigmoid (Platt) calibration, fit on a slice held out of that fold's
 # own training data.

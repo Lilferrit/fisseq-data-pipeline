@@ -13,9 +13,11 @@ nextflow.enable.dsl = 2
 //
 // params.ovwt_cv_mode selects the fold scheme: "kfold" (params.ovwt_n_folds
 // folds, every barcode present in every fold's training set) or
-// "leave_one_barcode_out" (one fold per variant barcode, that barcode held out
-// of training entirely -- params.ovwt_n_folds is ignored, and a variant with a
-// single barcode is skipped).
+// "barcode_holdout" (whole barcodes held out of training, one barcode group
+// per fold, so a variant with a single barcode is skipped). Under
+// "barcode_holdout" params.ovwt_n_folds caps the fold count rather than fixing
+// it, and null -- which Groovy renders as the literal `null` that Hydra parses
+// back into None -- means one fold per barcode.
 //
 // Not aliased and not parameterized over block-lists or a publish subdir --
 // the feature-filtered and barcode-filtered variants went away with
