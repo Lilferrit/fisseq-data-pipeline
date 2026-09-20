@@ -6,6 +6,7 @@ import polars as pl
 import pytest
 from omegaconf import OmegaConf
 
+import fisseq_data_pipeline.aggregate as aggregate_module
 import fisseq_data_pipeline.aggregatefeaturetype as m
 
 
@@ -73,8 +74,12 @@ def make_ft_cfg(
     index_file=None,
     downsample_wt=None,
     seed=0,
+    feature_chunk_size=None,
 ) -> OmegaConf:
     """Return a DictConfig for FeatureTypeAggregateConfig with test defaults."""
+    kwargs = (
+        {} if feature_chunk_size is None else {"feature_chunk_size": feature_chunk_size}
+    )
     return OmegaConf.structured(
         m.FeatureTypeAggregateConfig(
             output_dir=str(tmp_path / "out"),
@@ -84,8 +89,45 @@ def make_ft_cfg(
             index_file=index_file,
             downsample_wt=downsample_wt,
             random_seed=seed,
+            **kwargs,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# feature_chunk_size
+# ---------------------------------------------------------------------------
+
+
+def test_config_defaults_feature_chunk_size(tmp_path) -> None:
+    cfg = make_ft_cfg(tmp_path)
+    assert cfg.feature_chunk_size == aggregate_module.DEFAULT_FEATURE_CHUNK_SIZE
+
+
+def test_main_forwards_feature_chunk_size_to_aggregate(tmp_path) -> None:
+    """The Nextflow processes set this per run; it has to reach aggregate()."""
+    write_agg_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
+        with patch(
+            "fisseq_data_pipeline.aggregatefeaturetype.aggregate",
+            wraps=m.aggregate,
+        ) as spy:
+            m.main.__wrapped__(make_ft_cfg(tmp_path, feature_chunk_size=1))
+    assert spy.call_args.kwargs["feature_chunk_size"] == 1
+
+
+def test_main_output_identical_across_feature_chunk_sizes(tmp_path) -> None:
+    """Chunking is a memory dial -- the written parquet must not change."""
+    write_agg_input_parquet(tmp_path)
+    results = []
+    for chunk_size in (1, 2, 64):
+        with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
+            m.main.__wrapped__(
+                make_ft_cfg(tmp_path, aggregator="KS", feature_chunk_size=chunk_size)
+            )
+        results.append(pl.read_parquet(tmp_path / "out" / "input.parquet"))
+    assert results[0].equals(results[1])
+    assert results[0].equals(results[2])
 
 
 # ---------------------------------------------------------------------------
