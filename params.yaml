@@ -206,6 +206,11 @@ feature_select_min_correlation: 0.5
 # where chunk 1 is 1731 (AUROC took ~17 min at chunk 1 at the shape above). A
 # run using only mean/median/std/MAD can raise this to 128-256 freely.
 #
+# null disables chunking entirely -- every feature in one query, which is the
+# pre-chunking behaviour and therefore the shape that OOM-killed the 111925
+# run. It is an escape hatch for small inputs (or for reproducing the old
+# numbers), not a setting for a full-size batch.
+#
 # NOTE: every AGGREGATE_* process declares `label 'process_medium'`, which
 # nextflow.config deliberately leaves unsized -- this default assumes a site
 # config granting these tasks >=128 GB (e.g. a

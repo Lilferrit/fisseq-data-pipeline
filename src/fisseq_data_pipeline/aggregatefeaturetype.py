@@ -51,9 +51,10 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
         A float in ``(0, 1)`` keeps that fraction of control rows; an int
         keeps that many. ``None`` disables downsampling. Defaults to
         ``None``.
-    feature_chunk_size : int
+    feature_chunk_size : int or None
         Number of feature columns aggregated per Polars query. Lower it if a
-        task is OOM-killed. Defaults to
+        task is OOM-killed; ``None`` disables chunking entirely (every feature
+        in one query). Defaults to
         :data:`fisseq_data_pipeline.aggregate.DEFAULT_FEATURE_CHUNK_SIZE`.
 
     Notes
@@ -68,7 +69,7 @@ class FeatureTypeAggregateConfig(LabeledInputConfig):
     aggregator: str = MISSING
     index_file: Optional[str] = None
     downsample_wt: Optional[Union[float, int]] = None
-    feature_chunk_size: int = DEFAULT_FEATURE_CHUNK_SIZE
+    feature_chunk_size: Optional[int] = DEFAULT_FEATURE_CHUNK_SIZE
 
 
 _cs.store(name="aggregate_feature_type_main", node=FeatureTypeAggregateConfig)
@@ -145,7 +146,7 @@ def main(cfg: DictConfig) -> None:
         lf = downsample_control(lf, ft_cfg.downsample_wt, ft_cfg.random_seed)
 
     logging.info(
-        "Running %s aggregator (feature_chunk_size=%d)",
+        "Running %s aggregator (feature_chunk_size=%s)",
         ft_cfg.aggregator,
         ft_cfg.feature_chunk_size,
     )

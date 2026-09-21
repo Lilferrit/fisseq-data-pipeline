@@ -182,7 +182,7 @@ See [One-vs-WT](cli/ovwt.md) for what these actually do.
 | `feature_select_bootstrap_reps` | `10` | Bootstrap replicates per feature type. |
 | `feature_select_downsample_wt` | `null` | Optional wildtype downsampling during aggregation. |
 | `feature_select_min_correlation` | `0.5` | Median-`r` threshold for a feature to pass. |
-| `aggregate_feature_chunk_size` | `32` | Feature columns `AGGREGATE_FEATURE_TYPE` / `AGGREGATE_HALF` evaluate per Polars query. A memory dial: peak memory scales with `chunk_size × n_variant_labels` (× the control pool, for the reference-based aggregators), while runtime is essentially flat in it. Halve it if a task is OOM-killed (exit 137); raise it for runs using only `mean`/`median`/`std`/`MAD`. See [Feature chunking](cli/aggregate.md#feature-chunking). |
+| `aggregate_feature_chunk_size` | `32` | Feature columns `AGGREGATE_FEATURE_TYPE` / `AGGREGATE_HALF` evaluate per Polars query. A memory dial: peak memory scales with `chunk_size × n_variant_labels` (× the control pool, for the reference-based aggregators), while runtime is essentially flat in it. Halve it if a task is OOM-killed (exit 137); raise it for runs using only `mean`/`median`/`std`/`MAD`. `null` disables chunking entirely (every feature in one query) — the pre-chunking shape, for small inputs only. See [Feature chunking](cli/aggregate.md#feature-chunking). |
 | `global_feature_select_min_batches_ok` | `null` | Minimum member experiments that must mark a feature ok. `null` = all that report on it. |
 
 ### Dimensionality reduction
