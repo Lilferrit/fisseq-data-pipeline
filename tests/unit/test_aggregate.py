@@ -936,6 +936,7 @@ def test_reference_pool_not_collected_for_native_aggregators(
 def test_reference_pool_still_collected_for_reference_based_aggregators(
     toy_norm_df: pl.DataFrame,
 ) -> None:
+    """One reference pool per feature chunk -- here, one chunk."""
     for agg_cls in (
         m.KSAggregator,
         m.SignedKSAggregator,
@@ -947,8 +948,210 @@ def test_reference_pool_still_collected_for_reference_based_aggregators(
             "_reference_lf",
             wraps=m.ReferenceBasedAggregator._reference_lf,
         ) as spy:
-            agg_cls().aggregate(toy_norm_df.lazy()).collect()
+            agg_cls(feature_chunk_size=64).aggregate(toy_norm_df.lazy()).collect()
         assert spy.call_count == 1
+
+
+@pytest.mark.parametrize("chunk_size,expected_calls", [(1, 2), (2, 1), (64, 1)])
+def test_reference_pool_built_once_per_feature_chunk(
+    toy_norm_df: pl.DataFrame, chunk_size: int, expected_calls: int
+) -> None:
+    """
+    The reference pool is rebuilt per chunk, narrowed to that chunk's columns.
+
+    ``toy_norm_df`` has 2 feature columns, so chunk_size=1 means two chunks.
+    Rebuilding is the point: a chunk's reference frame must only carry that
+    chunk's features, or the broadcast control pool this chunking exists to
+    bound would be full-width again.
+    """
+    with patch.object(
+        m.ReferenceBasedAggregator,
+        "_reference_lf",
+        wraps=m.ReferenceBasedAggregator._reference_lf,
+    ) as spy:
+        m.KSAggregator(feature_chunk_size=chunk_size).aggregate(
+            toy_norm_df.lazy()
+        ).collect()
+    assert spy.call_count == expected_calls
+    for call in spy.call_args_list:
+        assert len(call.args[1]) <= chunk_size
+
+
+# ---------------------------------------------------------------------------
+# feature chunking
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def chunking_df() -> pl.DataFrame:
+    """
+    Cell-level frame wide enough to span several chunks, with the null/NaN/
+    Inf and degenerate-group cases that make the per-chunk null handling
+    worth checking.
+    """
+    rng = np.random.default_rng(0)
+    n_ctrl, n_a, n_b = 25, 20, 15
+    labels = ["WT"] * n_ctrl + ["A1B"] * n_a + ["C2D"] * n_b
+    data: dict[str, object] = {
+        "meta_aa_changes": labels,
+        "meta_is_control": [True] * n_ctrl + [False] * (n_a + n_b),
+    }
+    n = len(labels)
+    for i in range(7):
+        vals = rng.normal(size=n).tolist()
+        if i == 3:  # nulls, NaN and Inf in one feature
+            vals[0], vals[n_ctrl] = None, float("nan")
+            vals[n_ctrl + 1] = float("inf")
+        if i == 5:  # constant in one variant group -> null QQ/std
+            for j in range(n_ctrl + n_a, n):
+                vals[j] = 1.0
+        data[f"f{i}"] = vals
+    return pl.DataFrame(data)
+
+
+@pytest.mark.parametrize("aggregator_name", sorted(m._AGGREGATORS))
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7, None])
+def test_chunking_is_output_invariant(
+    chunking_df: pl.DataFrame, aggregator_name: str, chunk_size: int | None
+) -> None:
+    """
+    Chunking must not change the answer, only the peak memory used to get it.
+
+    Compared against a chunk size wider than the feature count, which is the
+    single-query shape the aggregators had before chunking existed. Equality
+    is exact, not approximate: each chunk runs the identical expression over a
+    narrower projection, so any drift here means the projection changed the
+    computation. ``None`` (chunking disabled) must land on the same answer as
+    every chunked width.
+    """
+    lf = chunking_df.lazy()
+    baseline = m.aggregate(
+        lf, "meta_aa_changes", aggregator_name, feature_chunk_size=1000
+    ).collect()
+    chunked = m.aggregate(
+        lf, "meta_aa_changes", aggregator_name, feature_chunk_size=chunk_size
+    ).collect()
+    assert chunked.columns == baseline.columns
+    assert chunked.equals(baseline)
+
+
+def test_feature_chunk_size_none_disables_chunking(
+    chunking_df: pl.DataFrame,
+) -> None:
+    """
+    ``None`` means one query over every feature -- the pre-chunking shape.
+
+    Asserted through the reference-pool spy rather than the output, since the
+    output is invariant by construction: the only observable difference is how
+    many queries were built.
+    """
+    with patch.object(
+        m.ReferenceBasedAggregator,
+        "_reference_lf",
+        wraps=m.ReferenceBasedAggregator._reference_lf,
+    ) as spy:
+        m.KSAggregator(feature_chunk_size=None).aggregate(chunking_df.lazy()).collect()
+    assert spy.call_count == 1
+    # 7 features in the fixture, all of them in the single chunk.
+    assert len(spy.call_args.args[1]) == 7
+
+
+def test_feature_chunks_none_is_one_chunk_of_everything() -> None:
+    feature_cols = [f"f{i}" for i in range(5)]
+    chunks = m.MeanAggregator(feature_chunk_size=None)._feature_chunks(feature_cols)
+    assert chunks == [feature_cols]
+
+
+def test_feature_chunks_none_with_no_features() -> None:
+    """Still one chunk, so the one-row-per-label output is produced."""
+    assert m.MeanAggregator(feature_chunk_size=None)._feature_chunks([]) == [[]]
+
+
+def test_aggregate_output_sorted_by_label_without_chunking(
+    chunking_df: pl.DataFrame,
+) -> None:
+    """The sort is unconditional -- it does not ride on chunking being on."""
+    result = m.aggregate(
+        chunking_df.lazy(), "meta_aa_changes", "mean", feature_chunk_size=None
+    ).collect()
+    labels = result["meta_aa_changes"].to_list()
+    assert labels == sorted(labels)
+
+
+@pytest.mark.parametrize("aggregator_name", sorted(m._AGGREGATORS))
+def test_aggregate_output_is_sorted_by_label(
+    chunking_df: pl.DataFrame, aggregator_name: str
+) -> None:
+    """
+    group_by is not order-preserving under Polars' multithreaded execution,
+    so the aggregate output is sorted explicitly -- without it the same input
+    yields the same rows in a different order run to run.
+    """
+    result = m.aggregate(
+        chunking_df.lazy(), "meta_aa_changes", aggregator_name, feature_chunk_size=2
+    ).collect()
+    labels = result["meta_aa_changes"].to_list()
+    assert labels == sorted(labels)
+
+
+def test_chunking_preserves_feature_column_order(chunking_df: pl.DataFrame) -> None:
+    result = m.aggregate(
+        chunking_df.lazy(), "meta_aa_changes", "mean", feature_chunk_size=2
+    ).collect()
+    assert result.columns == ["meta_aa_changes"] + [f"f{i}_mean" for i in range(7)]
+
+
+def test_chunking_with_all_features_block_listed(chunking_df: pl.DataFrame) -> None:
+    """
+    An empty feature list still yields one row per label. The chunk loop has
+    to run once over an empty chunk to produce that, rather than falling
+    through and returning nothing.
+    """
+    result = m.aggregate(
+        chunking_df.lazy(),
+        "meta_aa_changes",
+        "mean",
+        block_list={f"f{i}_mean" for i in range(7)},
+        feature_chunk_size=2,
+    ).collect()
+    assert result.columns == ["meta_aa_changes"]
+    assert sorted(result["meta_aa_changes"].to_list()) == ["A1B", "C2D"]
+
+
+def test_aggregate_returns_lazyframe(chunking_df: pl.DataFrame) -> None:
+    """Both callers sink_parquet the result, so it must stay lazy."""
+    assert isinstance(
+        m.aggregate(chunking_df.lazy(), "meta_aa_changes", "mean"), pl.LazyFrame
+    )
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_feature_chunk_size_must_be_positive(bad: int) -> None:
+    with pytest.raises(ValueError, match="feature_chunk_size must be >= 1"):
+        m.MeanAggregator(feature_chunk_size=bad)
+
+
+def test_feature_chunk_size_none_is_accepted() -> None:
+    """None is a valid setting, not a missing one -- it must not raise."""
+    assert m.MeanAggregator(feature_chunk_size=None).feature_chunk_size is None
+
+
+def test_default_feature_chunk_size_is_used_when_unspecified() -> None:
+    assert m.MeanAggregator().feature_chunk_size == m.DEFAULT_FEATURE_CHUNK_SIZE
+
+
+@pytest.mark.parametrize(
+    "n_features,chunk_size,expected",
+    [(7, 3, [3, 3, 1]), (6, 3, [3, 3]), (1, 5, [1]), (0, 4, [0])],
+)
+def test_feature_chunks_partition(
+    n_features: int, chunk_size: int, expected: list[int]
+) -> None:
+    chunks = m.MeanAggregator(feature_chunk_size=chunk_size)._feature_chunks(
+        [f"f{i}" for i in range(n_features)]
+    )
+    assert [len(c) for c in chunks] == expected
+    assert [f for c in chunks for f in c] == [f"f{i}" for i in range(n_features)]
 
 
 # ---------------------------------------------------------------------------

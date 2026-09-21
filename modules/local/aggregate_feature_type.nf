@@ -39,7 +39,8 @@ process AGGREGATE_FEATURE_TYPE {
         "input_file=${cells_glob}" \\
         aggregator=${feature_type} \\
         downsample_wt=${params.feature_select_downsample_wt} \\
-        random_seed=${params.random_seed}
+        random_seed=${params.random_seed} \\
+        feature_chunk_size=${params.aggregate_feature_chunk_size}
     mv ${feature_type}.*.parquet ${feature_type}.parquet
     """
 }

@@ -33,6 +33,25 @@ from .utils.metadata import get_aggregate_meta_data
 from .utils.variant import classify_variant
 from .utils.vectors import compute_impact_score
 
+#: Number of feature columns aggregated per Polars query when no explicit
+#: ``feature_chunk_size`` is given. Aggregating every feature in one query is
+#: what OOM-killed the production ``AGGREGATE_FEATURE_TYPE`` / ``AGGREGATE_HALF``
+#: tasks: peak memory scales with ``chunk_size x n_labels`` (and, for the
+#: reference-based aggregators, the cross-joined control pool on top).
+#:
+#: This default is sized to the memory one task is granted, not to a property
+#: of the data -- ``params.aggregate_feature_chunk_size`` is the knob, and
+#: ``params.yaml`` carries the sizing rule. ``32`` assumes >=128 GB per task at
+#: production shape, where the reference-based aggregators cost roughly 3 GB
+#: (AUROC) to 4.5 GB (KS) per feature in the chunk. See
+#: ``tests/benchmarks/README.md``.
+#:
+#: ``None`` disables chunking entirely -- every feature in one query, the
+#: pre-chunking behaviour. That is what OOM-killed production, so it is an
+#: opt-in escape hatch (for small inputs, or for reproducing the old shape),
+#: not a supported setting for a full-size batch.
+DEFAULT_FEATURE_CHUNK_SIZE: int = 32
+
 
 @dataclasses.dataclass
 class AggregateConfig(LabeledInputConfig):
@@ -53,12 +72,17 @@ class AggregateConfig(LabeledInputConfig):
         ``feature_ok`` (bool) columns. Features where ``feature_ok`` is
         ``False`` are excluded from aggregation. Defaults to ``None`` (no
         features blocked).
+    feature_chunk_size : int or None
+        Number of feature columns aggregated per Polars query. ``None``
+        disables chunking (every feature in one query). Defaults to
+        :data:`DEFAULT_FEATURE_CHUNK_SIZE`.
     """
 
     aggregator: str = MISSING
     save_normalizer: bool = True
     block_list_file: Optional[str] = None
     compute_impact_score: bool = True
+    feature_chunk_size: Optional[int] = DEFAULT_FEATURE_CHUNK_SIZE
 
 
 _cs = ConfigStore.instance()
@@ -124,6 +148,26 @@ class BaseAggregator(abc.ABC):
     block_list : set[str] or None
         Aggregated output column names to skip (e.g. ``"f1_KS"``). Blocked
         statistics are not computed. Defaults to ``None``.
+    feature_chunk_size : int or None
+        Number of feature columns evaluated per Polars query, or ``None`` to
+        evaluate every feature in a single query (no chunking). Defaults to
+        :data:`DEFAULT_FEATURE_CHUNK_SIZE`.
+
+    Notes
+    -----
+    :meth:`aggregate` evaluates ``feature_chunk_size`` features at a time
+    rather than all of them in one query, and joins the per-chunk results back
+    together on ``label_col``. The statistic itself is unaffected -- each
+    chunk runs the same :meth:`_feature_expr` / :meth:`_prep_exprs` /
+    :meth:`_native_aggregate_feature_batch` code over a narrower projection --
+    but peak memory becomes proportional to the chunk width instead of the
+    full feature count.
+
+    ``feature_chunk_size=None`` turns chunking off and restores the original
+    single-query shape. Peak memory then scales with the full feature count
+    again, which is what OOM-killed every KS/AUROC/QQ task of the 111925 run
+    -- keep it for small inputs and for reproducing the old behaviour, not for
+    a full-size batch.
     """
 
     _stat_suffix: ClassVar[str]
@@ -132,9 +176,15 @@ class BaseAggregator(abc.ABC):
         self,
         label_col: str = "meta_aa_changes",
         block_list: Optional[set[str]] = None,
+        feature_chunk_size: Optional[int] = DEFAULT_FEATURE_CHUNK_SIZE,
     ) -> None:
+        if feature_chunk_size is not None and feature_chunk_size < 1:
+            raise ValueError(
+                f"feature_chunk_size must be >= 1 or None, got {feature_chunk_size}"
+            )
         self.label_col = label_col
         self.block_list = block_list
+        self.feature_chunk_size = feature_chunk_size
 
     def _feature_columns(self, lf: pl.LazyFrame) -> list[str]:
         return [
@@ -222,6 +272,24 @@ class BaseAggregator(abc.ABC):
         """
         return []
 
+    def _feature_chunks(self, feature_cols: list[str]) -> list[list[str]]:
+        """
+        Split ``feature_cols`` into :attr:`feature_chunk_size`-wide chunks.
+
+        A :attr:`feature_chunk_size` of ``None`` yields one chunk holding
+        every feature, which is the un-chunked single-query shape.
+
+        An empty feature list yields a single empty chunk, so that a frame
+        whose every feature is block-listed still produces the one-row-per-
+        label output (with no statistic columns) that a single unchunked pass
+        would have produced.
+        """
+        size = self.feature_chunk_size
+        if size is None:
+            return [feature_cols]
+        chunks = [feature_cols[i : i + size] for i in range(0, len(feature_cols), size)]
+        return chunks or [[]]
+
     def aggregate(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         """
         Compute per-label statistics for every non-block-listed feature.
@@ -235,19 +303,68 @@ class BaseAggregator(abc.ABC):
         Returns
         -------
         pl.LazyFrame
-            One row per non-control variant group with computed statistics.
+            One row per non-control variant group with computed statistics,
+            sorted by ``label_col``.
+
+        Notes
+        -----
+        Features are processed :attr:`feature_chunk_size` at a time. Each
+        chunk is projected down to ``[label_col, CONTROL_COLUMN_NAME] +
+        chunk`` *before* grouping, so a Parquet scan reads only that chunk's
+        columns and the grouped list columns (and, for
+        :class:`ReferenceBasedAggregator`, the cross-joined control pool)
+        stay proportional to the chunk width rather than the full feature
+        count. A :attr:`feature_chunk_size` of ``None`` makes that one chunk
+        holding every feature, i.e. no chunking at all.
+
+        Each chunk is collected eagerly and joined onto the accumulated
+        result on ``label_col``. Every chunk groups the same non-control rows,
+        so the chunks share an identical label set; the per-chunk frames are
+        one row per label and a few hundred columns wide, so accumulating them
+        in memory is negligible next to the cell-level data they came from.
+        The result is re-wrapped as a LazyFrame because callers
+        (:func:`fisseq_data_pipeline.aggregatefeaturetype.main`, :func:`main`)
+        ``sink_parquet`` it.
+
+        The final ``sort`` makes row order deterministic: ``group_by`` is not
+        order-preserving under Polars' multithreaded execution, so without it
+        the same input yields the same rows in a different order on every run.
         """
         feature_cols = self._feature_columns(lf)
+        chunks = self._feature_chunks(feature_cols)
         logging.info(
-            "%s: %d feature(s) to aggregate",
+            "%s: %d feature(s) to aggregate in %d chunk(s) of up to %s",
             type(self).__name__,
             len(feature_cols),
+            len(chunks),
+            "all (chunking disabled)"
+            if self.feature_chunk_size is None
+            else self.feature_chunk_size,
         )
-        reference_lf = self._reference_lf(lf, feature_cols)
-        exprs = [self._feature_expr(f) for f in feature_cols]
-        return self._native_aggregate_feature_batch(
-            lf, feature_cols, exprs, reference_lf
-        )
+
+        meta_cols = [self.label_col, CONTROL_COLUMN_NAME]
+        result = pl.DataFrame()
+        for chunk_idx, chunk in enumerate(chunks, start=1):
+            logging.debug(
+                "%s: chunk %d/%d (%d feature(s))",
+                type(self).__name__,
+                chunk_idx,
+                len(chunks),
+                len(chunk),
+            )
+            sub = lf.select(meta_cols + chunk)
+            reference_lf = self._reference_lf(sub, chunk)
+            exprs = [self._feature_expr(f) for f in chunk]
+            part = self._native_aggregate_feature_batch(
+                sub, chunk, exprs, reference_lf
+            ).collect()
+            result = (
+                part
+                if chunk_idx == 1
+                else result.join(part, on=self.label_col, how="left")
+            )
+
+        return result.sort(self.label_col).lazy()
 
     @abc.abstractmethod
     def _feature_expr(self, feat: str) -> pl.Expr:
@@ -653,6 +770,11 @@ class QQCorrelationAggregator(ReferenceBasedAggregator):
         Variant label column name.
     n_quantiles : int, optional
         Number of quantile points to evaluate. Defaults to ``100``.
+    block_list : set[str] or None
+        Aggregated output column names to skip. Defaults to ``None``.
+    feature_chunk_size : int or None
+        Number of feature columns evaluated per Polars query. ``None``
+        disables chunking. Defaults to :data:`DEFAULT_FEATURE_CHUNK_SIZE`.
     """
 
     _stat_suffix = "_QQ"
@@ -662,8 +784,9 @@ class QQCorrelationAggregator(ReferenceBasedAggregator):
         label_col: str = "meta_aa_changes",
         n_quantiles: int = 100,
         block_list: Optional[set[str]] = None,
+        feature_chunk_size: Optional[int] = DEFAULT_FEATURE_CHUNK_SIZE,
     ) -> None:
-        super().__init__(label_col, block_list)
+        super().__init__(label_col, block_list, feature_chunk_size)
         self.quantile_points = np.linspace(0, 1, n_quantiles)
 
     @staticmethod
@@ -1115,6 +1238,7 @@ def aggregate(
     label_col: str,
     aggregator_name: str,
     block_list: Optional[set[str]] = None,
+    feature_chunk_size: Optional[int] = DEFAULT_FEATURE_CHUNK_SIZE,
 ) -> pl.LazyFrame:
     """
     Run the specified aggregator on cell-level data and return per-label statistics.
@@ -1137,11 +1261,20 @@ def aggregate(
         statistics are not computed and do not appear in the output. Names
         that do not match any aggregated output are silently ignored. Defaults
         to ``None``.
+    feature_chunk_size : int or None
+        Number of feature columns evaluated per Polars query. Lower it if a
+        task is OOM-killed; runtime is essentially flat in this value for the
+        expensive aggregators, so it is a memory dial rather than a
+        speed/memory trade-off. ``None`` disables chunking entirely (every
+        feature in one query), which is the shape that OOM-killed production
+        -- use it only for small inputs. Defaults to
+        :data:`DEFAULT_FEATURE_CHUNK_SIZE`.
 
     Returns
     -------
     pl.LazyFrame
-        One row per non-control variant group with computed statistics.
+        One row per non-control variant group with computed statistics,
+        sorted by ``label_col``.
     """
     valid = set(_AGGREGATORS)
     if aggregator_name not in valid:
@@ -1149,7 +1282,11 @@ def aggregate(
             f"Unknown aggregator {aggregator_name!r}. Choose from: {sorted(valid)}"
         )
 
-    agg = _AGGREGATORS[aggregator_name](label_col=label_col, block_list=block_list)
+    agg = _AGGREGATORS[aggregator_name](
+        label_col=label_col,
+        block_list=block_list,
+        feature_chunk_size=feature_chunk_size,
+    )
     return agg.aggregate(lf)
 
 
@@ -1204,7 +1341,11 @@ def main(cfg: DictConfig) -> None:
         bl_df = pl.read_parquet(agg_cfg.block_list_file)
         block_list = set(bl_df.filter(~pl.col("feature_ok"))["feature"].to_list())
 
-    logging.info("Running %s aggregator", agg_cfg.aggregator)
+    logging.info(
+        "Running %s aggregator (feature_chunk_size=%s)",
+        agg_cfg.aggregator,
+        agg_cfg.feature_chunk_size,
+    )
     logging.info(
         "Classifying variants and marking synonymous as normalization reference"
     )
@@ -1214,6 +1355,7 @@ def main(cfg: DictConfig) -> None:
             label_col=agg_cfg.label_column,
             aggregator_name=agg_cfg.aggregator,
             block_list=block_list,
+            feature_chunk_size=agg_cfg.feature_chunk_size,
         ),
         agg_cfg.label_column,
     )

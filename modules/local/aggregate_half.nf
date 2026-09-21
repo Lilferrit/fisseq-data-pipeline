@@ -35,7 +35,8 @@ process AGGREGATE_HALF {
         aggregator=${feature_type} \\
         index_file=${index_file} \\
         downsample_wt=${params.feature_select_downsample_wt} \\
-        random_seed=${(params.random_seed as int) + (bootstrap_idx as int) * 2 + (half_num as int)}
+        random_seed=${(params.random_seed as int) + (bootstrap_idx as int) * 2 + (half_num as int)} \\
+        feature_chunk_size=${params.aggregate_feature_chunk_size}
     mv ${feature_type}.*.parquet half${half_num}_agg.parquet
     """
 }

@@ -6,7 +6,7 @@ used to restrict a cell-level LazyFrame to one pseudo-replicate half written by
 """
 
 import os
-from typing import Optional
+from typing import Optional, Union
 
 import polars as pl
 
@@ -30,7 +30,9 @@ def add_row_index(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.with_columns(pl.row_index(TMP_IDX_COL))
 
 
-def get_replicate_lf(lf: pl.LazyFrame, rep_idx: list[int]) -> pl.LazyFrame:
+def get_replicate_lf(
+    lf: pl.LazyFrame, rep_idx: Union[list[int], pl.Series]
+) -> pl.LazyFrame:
     """
     Filter a LazyFrame to rows belonging to one pseudo-replicate.
 
@@ -39,7 +41,7 @@ def get_replicate_lf(lf: pl.LazyFrame, rep_idx: list[int]) -> pl.LazyFrame:
     lf : pl.LazyFrame
         Cell-level LazyFrame that must already contain a ``TMP_IDX_COL``
         integer column (added by :func:`add_row_index`).
-    rep_idx : list[int]
+    rep_idx : list[int] or pl.Series
         Row indices that belong to this replicate half.
 
     Returns
@@ -47,8 +49,24 @@ def get_replicate_lf(lf: pl.LazyFrame, rep_idx: list[int]) -> pl.LazyFrame:
     pl.LazyFrame
         Subset of ``lf`` containing only the rows whose ``TMP_IDX_COL`` value
         is in ``rep_idx``.
+
+    Notes
+    -----
+    ``rep_idx`` is kept as a ``pl.Series`` rather than being boxed into a
+    Python ``set`` first. ``BaseAggregator.aggregate`` re-applies this
+    predicate once per feature chunk, and on a real half-split ``rep_idx``
+    holds hundreds of thousands of indices -- materializing those as Python
+    ints on every chunk is pure overhead.
+
+    ``.implode()`` is required, not cosmetic: passing a Series of the same
+    dtype straight to ``is_in`` is ambiguous between element-wise and
+    collection membership, and Polars deprecated it (pola-rs/polars#22149).
+    Imploding to a single List value states "membership in this one
+    collection" explicitly.
     """
-    return lf.filter(pl.col(TMP_IDX_COL).is_in(set(rep_idx)))
+    if not isinstance(rep_idx, pl.Series):
+        rep_idx = pl.Series(TMP_IDX_COL, rep_idx)
+    return lf.filter(pl.col(TMP_IDX_COL).is_in(rep_idx.implode()))
 
 
 def filter_by_index_file(
@@ -80,6 +98,6 @@ def filter_by_index_file(
     """
     lf = add_row_index(lf)
     if index_file is not None:
-        idx = pl.read_parquet(index_file).get_column(TMP_IDX_COL).to_list()
+        idx = pl.read_parquet(index_file).get_column(TMP_IDX_COL)
         lf = get_replicate_lf(lf, idx)
     return lf.drop(TMP_IDX_COL)
