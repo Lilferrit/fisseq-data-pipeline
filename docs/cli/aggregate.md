@@ -48,7 +48,7 @@ Extends `LabeledInputConfig` (adds `input_file`, `label_column`) plus the
 | `save_normalizer` | `true` | Write the synonymous-baseline normalizer. |
 | `block_list_file` | `null` | Parquet with `feature` and `feature_ok` columns; blocked features are skipped. |
 | `compute_impact_score` | `true` | Append an impact score column derived from variant classification. |
-| `feature_chunk_size` | `64` | Feature columns aggregated per Polars query. See [Feature chunking](#feature-chunking). |
+| `feature_chunk_size` | `32` | Feature columns aggregated per Polars query. See [Feature chunking](#feature-chunking). |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.{ext}` or `{output_dir}/{filename}`. Plus
@@ -73,7 +73,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `python -m fisseq_data_pipeline.generatesplit`) restricting aggregation to a pseudo-replicate half. |
 | `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
 | `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |
-| `feature_chunk_size` | `64` | Feature columns aggregated per Polars query. Driven by `params.aggregate_feature_chunk_size`. See [Feature chunking](#feature-chunking). |
+| `feature_chunk_size` | `32` | Feature columns aggregated per Polars query. Driven by `params.aggregate_feature_chunk_size`. See [Feature chunking](#feature-chunking). |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.

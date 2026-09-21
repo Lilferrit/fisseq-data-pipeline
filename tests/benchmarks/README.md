@@ -62,11 +62,44 @@ Seconds / peak RSS in MB. Two things this table is meant to settle:
    a speed/memory trade-off — halving it when a task is killed costs
    essentially nothing.
 2. **`KS` pins the default.** It OOMs at 128 where `AUROC` still has headroom.
-   `params.aggregate_feature_chunk_size` defaults to 64, the widest chunk at
-   which every aggregator completed here.
+   `params.aggregate_feature_chunk_size` defaults to 32, sized to the
+   cluster's per-task memory rather than to this table -- see below.
 
 Peak memory scales with `chunk_size x n_variant_labels` (times the control
-pool, for the reference-based aggregators), so these numbers do not transfer
-to a differently-shaped batch. Production batches are *larger* on both axes
-than this one (1622-1947 labels, WT pools of 2051-12535 cells), so re-run the
-sweep against real shapes before trusting a default.
+pool, for the reference-based aggregators), so these numbers do **not** transfer
+to a differently-shaped batch -- see below.
+
+## At production shape
+
+500k cells x 1731 features x 1900 variants, ~25k control cells. The table above
+was measured on a batch a third that size, and the difference matters:
+
+| aggregator | chunk 32/16/4 | chunk 1 |
+|---|---|---|
+| mean / median / std / MAD | 5-7 s / ~1500 MB (at chunk 64) | - |
+| AUROC | OOM above 5.6 GB at chunk 4 | 999 s / 3273 MB |
+| KS | OOM above 5.7 GB at chunk 4 | >50 min, not completed |
+| QQ | OOM above 5.7 GB at chunk 4 | not measured |
+
+(Measured on a 7 GB box, so "OOM" here means "needs more than ~5.6 GB", not
+"cannot work" -- these were re-measured against a larger budget on the
+cluster.)
+
+Two things follow, and they are the reason `aggregate_feature_chunk_size`
+exists as a parameter rather than a constant:
+
+1. **The plain stats are no longer a problem at any chunk size.** ~1.5 GB and a
+   few seconds at production shape, where the pre-chunking code OOM-killed.
+2. **The reference-based aggregators cost roughly 3 GB (AUROC) to 4.5 GB (KS)
+   *per feature in the chunk* at this shape.** So the usable chunk size is set
+   by the memory one task is granted:
+   `chunk_size ~= (memory_per_task_GB - 1) / 4.5`. The shipped default of 32
+   assumes >=128 GB per task.
+
+Chunking bounds the `n_features` factor but not the `n_variant_labels x
+control_pool` one, which is what the cross-joined reference pool carries. If
+that per-feature cost is the binding problem rather than the OOM, the fix is
+to replace the Polars list-expression kernels with numpy/`searchsorted`
+kernels that sort the control pool once per feature -- prototyped and verified
+bit-comparable during planning at **KS 132 s, AUROC 157 s, QQ 50 s, flat
+~900 MB** on exactly the shape above.

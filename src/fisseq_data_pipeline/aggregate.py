@@ -37,11 +37,15 @@ from .utils.vectors import compute_impact_score
 #: ``feature_chunk_size`` is given. Aggregating every feature in one query is
 #: what OOM-killed the production ``AGGREGATE_FEATURE_TYPE`` / ``AGGREGATE_HALF``
 #: tasks: peak memory scales with ``chunk_size x n_labels`` (and, for the
-#: reference-based aggregators, the cross-joined control pool on top). Runtime
-#: is essentially flat in this value for the expensive aggregators, so it is a
-#: memory dial rather than a speed/memory trade-off. See
-#: ``tests/benchmarks/benchmark_aggregate_chunking.py``.
-DEFAULT_FEATURE_CHUNK_SIZE: int = 64
+#: reference-based aggregators, the cross-joined control pool on top).
+#:
+#: This default is sized to the memory one task is granted, not to a property
+#: of the data -- ``params.aggregate_feature_chunk_size`` is the knob, and
+#: ``params.yaml`` carries the sizing rule. ``32`` assumes >=128 GB per task at
+#: production shape, where the reference-based aggregators cost roughly 3 GB
+#: (AUROC) to 4.5 GB (KS) per feature in the chunk. See
+#: ``tests/benchmarks/README.md``.
+DEFAULT_FEATURE_CHUNK_SIZE: int = 32
 
 
 @dataclasses.dataclass

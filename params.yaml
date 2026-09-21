@@ -179,21 +179,38 @@ feature_select_bootstrap_reps: 10
 feature_select_downsample_wt: null
 feature_select_min_correlation: 0.5
 # Number of feature columns AGGREGATE_FEATURE_TYPE / AGGREGATE_HALF evaluate
-# per Polars query. Aggregating all ~2000 features in one query is what
+# per Polars query. Aggregating all ~1731 features in one query is what
 # OOM-killed (exit 137) every KS/AUROC/QQ task on the 111925 run; chunking caps
 # peak memory at roughly chunk_size x n_variant_labels (x the control pool, for
-# the reference-based aggregators). Measured on a 150k-cell / 1000-label /
-# 7500-control batch, peak RSS at this default was ~0.9 GB for
-# mean/median/std/MAD, ~3.1 GB AUROC, ~3.0 GB QQ, ~4.8 GB KS -- KS is the
-# aggregator that pins the default, and it OOMs at 128.
+# the reference-based aggregators KS/signedKS/QQ/AUROC and the two p-value
+# variants).
 #
-# Runtime is essentially FLAT in this value for the expensive aggregators
-# (AUROC moved 160s -> 167s from chunk 32 to 512), so this is a memory dial,
-# not a speed/memory trade-off: halving it is close to free. A batch with twice
-# the variant labels or twice the control pool wants half the chunk for the
-# same peak, so if KS/AUROC tasks still come back killed, halve this. A run
-# using only mean/median/std/MAD can raise it to 128-256.
-aggregate_feature_chunk_size: 64
+# THIS VALUE IS SIZED TO THE MEMORY ONE TASK IS GRANTED. Measured at production
+# shape (500k cells x 1731 features x 1900 variants, ~25k control cells):
+# mean/median/std/MAD cost ~1.5 GB at ANY chunk size in this range and are not
+# the constraint. The reference-based aggregators cost roughly 3 GB (AUROC) to
+# 4.5 GB (KS, the worst) PER FEATURE IN THE CHUNK -- AUROC measured 3.3 GB at
+# chunk 1 and was killed above 5.6 GB at chunk 4. So:
+#
+#     chunk_size ~= (memory_per_task_GB - 1) / 4.5
+#
+#   16 GB/task -> 4      64 GB/task -> 14
+#   32 GB/task -> 8     128 GB/task -> 32   <- the default below
+#
+# Those per-feature costs scale with n_variant_labels x control_pool_size, so a
+# batch with twice the labels or twice the WT pool wants half the chunk. If
+# KS/AUROC/QQ tasks still come back killed, halve this first.
+#
+# Raising it only speeds things up until memory runs out: runtime per task is
+# dominated by the number of chunks, so 1731 features at chunk 32 is 55 queries
+# where chunk 1 is 1731 (AUROC took ~17 min at chunk 1 at the shape above). A
+# run using only mean/median/std/MAD can raise this to 128-256 freely.
+#
+# NOTE: every AGGREGATE_* process declares `label 'process_medium'`, which
+# nextflow.config deliberately leaves unsized -- this default assumes a site
+# config granting these tasks >=128 GB (e.g. a
+# `withLabel:process_medium { memory = '128 GB' }` selector in your -c file).
+aggregate_feature_chunk_size: 32
 
 # ── Global feature selection (GLOBAL_FEATURE_SELECT) ────────────────────────
 # Optional int: minimum number of a channel's member experiments that must
