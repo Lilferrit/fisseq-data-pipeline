@@ -1792,6 +1792,11 @@ bootstrap replicates still draw independent subsamples.</p>
 <td>Median-<code>r</code> threshold for a feature to pass.</td>
 </tr>
 <tr>
+<td><code>aggregate_feature_chunk_size</code></td>
+<td><code>32</code></td>
+<td>Feature columns <code>AGGREGATE_FEATURE_TYPE</code> / <code>AGGREGATE_HALF</code> evaluate per Polars query. A memory dial: peak memory scales with <code>chunk_size × n_variant_labels</code> (× the control pool, for the reference-based aggregators), while runtime is essentially flat in it. Halve it if a task is OOM-killed (exit 137); raise it for runs using only <code>mean</code>/<code>median</code>/<code>std</code>/<code>MAD</code>. <code>null</code> disables chunking entirely (every feature in one query) — the pre-chunking shape, for small inputs only. See <a href="../cli/aggregate/#feature-chunking">Feature chunking</a>.</td>
+</tr>
+<tr>
 <td><code>global_feature_select_min_batches_ok</code></td>
 <td><code>null</code></td>
 <td>Minimum member experiments that must mark a feature ok. <code>null</code> = all that report on it.</td>

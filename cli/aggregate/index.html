@@ -743,6 +743,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#feature-chunking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Feature chunking
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1206,6 +1215,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#feature-chunking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Feature chunking
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1328,6 +1346,11 @@ single-file path.</p>
 <td><code>true</code></td>
 <td>Append an impact score column derived from variant classification.</td>
 </tr>
+<tr>
+<td><code>feature_chunk_size</code></td>
+<td><code>32</code></td>
+<td>Feature columns aggregated per Polars query; <code>null</code> disables chunking. See <a href="#feature-chunking">Feature chunking</a>.</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
@@ -1379,6 +1402,11 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <td><code>0</code></td>
 <td>Random seed for the <code>downsample_wt</code> draw. Ignored when <code>downsample_wt</code> is <code>null</code>.</td>
 </tr>
+<tr>
+<td><code>feature_chunk_size</code></td>
+<td><code>32</code></td>
+<td>Feature columns aggregated per Polars query; <code>null</code> disables chunking. Driven by <code>params.aggregate_feature_chunk_size</code>. See <a href="#feature-chunking">Feature chunking</a>.</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
@@ -1398,6 +1426,37 @@ subsample, which is what lets the bootstrap comparison test feature reproducibil
 different WT samples rather than reusing one fixed sample everywhere. <code>AGGREGATE_FEATURE_TYPE</code>
 (the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
 identity to vary by.</p>
+<h2 id="feature-chunking">Feature chunking<a class="headerlink" href="#feature-chunking" title="Permanent link">&para;</a></h2>
+<p>Both entry points evaluate <code>feature_chunk_size</code> feature columns per Polars
+query rather than all of them at once, joining the per-chunk results back
+together on the label column. The statistic is unaffected — each chunk runs the
+same expression over a narrower projection — but peak memory becomes
+proportional to the chunk width instead of the full feature count.</p>
+<p>This is not a tuning nicety. Aggregating all ~1731 production features in one
+query OOM-killed (exit 137) every <code>KS</code>, <code>AUROC</code>, <code>KSnegLogP</code> and
+<code>AUROCnegLogP</code> task of the 111925 run, inside <code>sink_parquet</code>. Because every
+<code>AGGREGATE_*</code> process carries <code>errorStrategy 'ignore'</code>, those tasks vanished
+silently and the feature-selection branch never reached <code>CORRELATE_FEATURES</code>.</p>
+<p>Peak memory scales with <code>feature_chunk_size × n_variant_labels</code>, and for the
+reference-based aggregators (<code>KS</code>, <code>signedKS</code>, <code>QQ</code>, <code>AUROC</code>, and the two
+p-value variants) with the size of the cross-joined control pool on top.
+Runtime, by contrast, is essentially <strong>flat</strong> in this value for those
+aggregators — so it is a memory dial, not a speed/memory trade-off, and
+halving it when a task is killed costs close to nothing.</p>
+<p><code>KS</code> is the aggregator that pins the default; it needs a smaller chunk than
+<code>AUROC</code> does. If <code>KS</code>/<code>AUROC</code> tasks still come back killed, halve
+<code>params.aggregate_feature_chunk_size</code>; a run using only <code>mean</code>/<code>median</code>/<code>std</code>/
+<code>MAD</code> can raise it. Measured numbers and the benchmark harness live in
+<code>tests/benchmarks/</code>.</p>
+<p>Setting <code>feature_chunk_size</code> to <code>null</code> turns chunking off: every feature is
+evaluated in one query, which is exactly the shape that OOM-killed the
+production tasks described above. It exists for small inputs and for
+reproducing the pre-chunking behaviour — not for a full-size batch. The
+aggregated values are identical either way; only the number of queries (and
+the peak memory) differs.</p>
+<p>Output rows are sorted by the label column, so aggregate output is
+reproducible run to run — <code>group_by</code> alone is not order-preserving under
+Polars' multithreaded execution.</p>
 <p>See <a href="../../api/aggregate/">API Reference: aggregate</a> for full function
 documentation, including the <code>BaseAggregator</code> class hierarchy.</p>
 
