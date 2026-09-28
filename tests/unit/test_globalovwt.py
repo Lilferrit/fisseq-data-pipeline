@@ -18,17 +18,26 @@ LABEL = "meta_aa_changes"
 def _results(
     rows: list[tuple[str, float, float]],
     label_column: str = LABEL,
+    with_folds: bool = True,
 ) -> pl.DataFrame:
-    """One OVWT_BATCHWISE results.parquet: (variant, auroc_pooled, auroc_median_barcode)."""
-    return pl.DataFrame(
-        {
-            label_column: [r[0] for r in rows],
-            "auroc_pooled": [r[1] for r in rows],
-            "auroc_median_barcode": [r[2] for r in rows],
-            "meta_n_barcodes": [2] * len(rows),
-            "meta_n_cells": [100] * len(rows),
-        }
-    )
+    """
+    One OVWT_BATCHWISE results.parquet: (variant, auroc_pooled,
+    auroc_median_barcode). ``auroc_median_fold`` reuses the barcode value, and
+    ``with_folds=False`` omits the ``auroc_folds`` list column.
+    """
+    cols = {
+        label_column: [r[0] for r in rows],
+        "auroc_pooled": [r[1] for r in rows],
+        "auroc_median_barcode": [r[2] for r in rows],
+    }
+    if with_folds:
+        cols["auroc_folds"] = pl.Series(
+            [[r[2], None, r[2]] for r in rows], dtype=pl.List(pl.Float64)
+        )
+    cols["auroc_median_fold"] = [r[2] for r in rows]
+    cols["meta_n_barcodes"] = [2] * len(rows)
+    cols["meta_n_cells"] = [100] * len(rows)
+    return pl.DataFrame(cols)
 
 
 # "A1A"/"L5L" are synonymous (same first and last residue) and so act as the
@@ -55,8 +64,27 @@ def test_output_schema():
         LABEL,
         "meta_median_auroc_pooled",
         "meta_median_auroc_median_barcode",
+        "meta_median_auroc_median_fold",
         "meta_num_experiments",
     }
+
+
+def test_results_without_fold_list_still_aggregate():
+    """A results file with no auroc_folds column is accepted."""
+    out = global_variant_distinguishability(
+        [_results(_SYNONYMOUS + [("M1K", 0.95, 0.93)], with_folds=False)], LABEL
+    )
+    assert "meta_median_auroc_median_fold" in out.columns
+    assert len(out) == 3
+
+
+def test_median_fold_is_zscored_against_synonymous():
+    out = global_variant_distinguishability(
+        [_results(_SYNONYMOUS + [("M1K", 0.95, 0.93)])], LABEL
+    )
+    m1k = out.filter(pl.col(LABEL) == "M1K")
+    # Synonymous mean 0.55 -> M1K sits well above it once z-scored.
+    assert m1k.get_column("meta_median_auroc_median_fold")[0] > 1.0
 
 
 def test_one_row_per_variant():

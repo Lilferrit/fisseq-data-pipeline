@@ -349,6 +349,12 @@ Lowercase verb, optional scope, PR number in parentheses:
     so `globalovwt.py` is mode-blind — but `auroc_median_barcode` means
     *in-sample separability* under the first and *generalization to an unseen
     barcode* under the second. Never compare the two modes' numbers.
+    `auroc_folds` (a `List(Float64)`, per-fold test AUROC) and
+    `auroc_median_fold` score each fold under its own model only. Unlike
+    `auroc_pooled`/`auroc_median_barcode`, they never mix scores from different
+    fold models into a single ROC curve. `globalovwt.py` must drop the list column
+    before normalizing, because the `Normalizer` would otherwise treat it as a
+    feature.
 
 18. **`workflows/fisseq.nf` duplicates two Python allowlists on purpose.**
     `aggregatorKeys()` mirrors `aggregate.py:_AGGREGATORS` and `ovwtCvModes()`

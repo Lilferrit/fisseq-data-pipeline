@@ -3,8 +3,8 @@ nextflow.enable.dsl = 2
 // GLOBAL_OVWT: wraps python -m fisseq_data_pipeline.globalovwt. Runs once per
 // active global channel, over that channel's member experiments only.
 //
-// Two steps, not one: per experiment, z-score auroc_pooled/auroc_median_barcode
-// against that experiment's own synonymous variants, THEN take the
+// Two steps, not one: per experiment, z-score auroc_pooled/auroc_median_barcode/
+// auroc_median_fold against that experiment's own synonymous variants, THEN take the
 // cross-experiment median of the z-scored values -- not a direct median of raw
 // AUROC. Raw AUROC is not comparable across experiments (different cell counts
 // and batch effects shift where a genuinely-neutral variant's score sits), so

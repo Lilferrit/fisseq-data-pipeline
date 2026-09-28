@@ -1,7 +1,8 @@
 """GLOBAL_OVWT: cross-experiment correction and aggregation of OvWT scores.
 
-Two steps, not one. Per experiment, z-score ``auroc_pooled`` and
-``auroc_median_barcode`` against that experiment's own synonymous variants;
+Two steps, not one. Per experiment, z-score ``auroc_pooled``,
+``auroc_median_barcode`` and ``auroc_median_fold`` against that experiment's
+own synonymous variants;
 *then* take the cross-experiment median of the z-scored values -- not a direct
 median of raw AUROC.
 
@@ -20,9 +21,11 @@ untagged labels as controls, and
 :class:`~fisseq_data_pipeline.normalize.Normalizer` fit with
 ``fit_only_on_control=True`` does the z-scoring. ``Normalizer.apply`` needs no
 changes either -- it operates on ``FEATURE_SELECTOR`` (exclude ``meta_*``),
-which already matches exactly ``auroc_pooled``/``auroc_median_barcode`` and
-excludes ``meta_n_barcodes``/``meta_n_cells``, provided ``label_column`` itself
-carries the conventional ``meta_`` prefix.
+which already matches exactly ``auroc_pooled``/``auroc_median_barcode``/
+``auroc_median_fold`` and excludes ``meta_n_barcodes``/``meta_n_cells``,
+provided ``label_column`` itself carries the conventional ``meta_`` prefix. The
+one exception is the per-fold ``auroc_folds`` list column, which is not a
+scalar feature and is dropped before normalizing.
 """
 
 import dataclasses
@@ -48,7 +51,7 @@ def global_variant_distinguishability(
     batch_score_dfs: List[pl.DataFrame], label_column: str
 ) -> pl.DataFrame:
     """
-    Per-experiment synonymous z-score of both AUROC columns, then
+    Per-experiment synonymous z-score of the scalar AUROC columns, then
     cross-experiment median.
 
     The normalizer is fit fresh per experiment, on that experiment's own
@@ -59,16 +62,18 @@ def global_variant_distinguishability(
     ----------
     batch_score_dfs : list[pl.DataFrame]
         Each experiment's OVWT_BATCHWISE ``results.parquet``: ``label_column``,
-        ``auroc_pooled``, ``auroc_median_barcode``, plus ``meta_n_barcodes`` /
-        ``meta_n_cells``. Must be non-empty.
+        ``auroc_pooled``, ``auroc_median_barcode``, ``auroc_median_fold``,
+        plus ``meta_n_barcodes`` / ``meta_n_cells``. An ``auroc_folds`` list
+        column, if present, is ignored. Must be non-empty.
     label_column : str
         Name of the column identifying variant labels.
 
     Returns
     -------
     pl.DataFrame
-        One row per variant, with ``meta_median_auroc_pooled`` and
-        ``meta_median_auroc_median_barcode`` (cross-experiment medians of the
+        One row per variant, with ``meta_median_auroc_pooled``,
+        ``meta_median_auroc_median_barcode`` and
+        ``meta_median_auroc_median_fold`` (cross-experiment medians of the
         per-experiment z-scored values), plus ``meta_num_experiments`` -- how
         many experiments' z-scored value for that variant was non-null and
         therefore contributed to the median.
@@ -83,6 +88,8 @@ def global_variant_distinguishability(
 
     zscored_dfs = []
     for df in batch_score_dfs:
+        # A List column would be swept into the Normalizer's feature set.
+        df = df.drop("auroc_folds", strict=False)
         classified = variant_classification(df.lazy(), label_column)
         normalizer = Normalizer.from_lazyframe(classified, fit_only_on_control=True)
         zscored_dfs.append(normalizer.apply(classified).collect())
@@ -90,7 +97,12 @@ def global_variant_distinguishability(
     return (
         pl.concat(
             [
-                df.select(label_column, "auroc_pooled", "auroc_median_barcode")
+                df.select(
+                    label_column,
+                    "auroc_pooled",
+                    "auroc_median_barcode",
+                    "auroc_median_fold",
+                )
                 for df in zscored_dfs
             ]
         )
@@ -100,6 +112,7 @@ def global_variant_distinguishability(
             pl.col("auroc_median_barcode")
             .median()
             .alias("meta_median_auroc_median_barcode"),
+            pl.col("auroc_median_fold").median().alias("meta_median_auroc_median_fold"),
             pl.col("auroc_pooled").count().alias("meta_num_experiments"),
         )
     )

@@ -91,7 +91,8 @@ The results most analyses care about:
   a global channel is active, `global/<channel>/feature_select/aggregate.parquet`)
   — final per-variant, feature-selected profiles.
 - `<pipeline_dir>/ovwt_batchwise/<batch_stem>/results.parquet` — per-variant
-  `auroc_pooled` and `auroc_median_barcode`.
+  `auroc_pooled`, `auroc_median_barcode`, per-fold `auroc_folds` and
+  `auroc_median_fold`.
 - `<pipeline_dir>/global/<channel>/ovwt_distinguishability/global_scores.parquet`
   (only if a global channel is active) — synonymous-corrected, cross-experiment
   median distinguishability per variant. This is the headline result for a

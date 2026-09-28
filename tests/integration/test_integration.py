@@ -260,6 +260,8 @@ def test_ovwt_results_schema(pipeline_outputs, batch_stem):
         "meta_aa_changes",
         "auroc_pooled",
         "auroc_median_barcode",
+        "auroc_folds",
+        "auroc_median_fold",
         "meta_n_barcodes",
         "meta_n_cells",
     ]
@@ -270,7 +272,7 @@ def test_ovwt_results_schema(pipeline_outputs, batch_stem):
 def test_ovwt_aurocs_in_unit_interval(pipeline_outputs, batch_stem):
     exp_dir, _ = pipeline_outputs
     df = pl.read_parquet(exp_dir / "ovwt_batchwise" / batch_stem / "results.parquet")
-    for col in ("auroc_pooled", "auroc_median_barcode"):
+    for col in ("auroc_pooled", "auroc_median_barcode", "auroc_median_fold"):
         vals = df[col].drop_nulls()
         assert vals.min() >= 0.0
         assert vals.max() <= 1.0
@@ -535,6 +537,7 @@ def test_channeled_global_ovwt_schema(global_channel_outputs, chan):
         "meta_aa_changes",
         "meta_median_auroc_pooled",
         "meta_median_auroc_median_barcode",
+        "meta_median_auroc_median_fold",
         "meta_num_experiments",
     }
     assert df.height > 0

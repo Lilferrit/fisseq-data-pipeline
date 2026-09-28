@@ -61,12 +61,20 @@ barcode*. A barcode-specific technical artifact inflates the `"kfold"` numbers
 invisibly; here it is penalized, because no model is ever trained and scored on
 the same barcode — at any `n_folds`.
 
-## Two scores per variant
+## Scores per variant
 
 | Column | Meaning |
 | ------ | ------- |
 | `auroc_pooled` | AUROC over all of the variant's out-of-fold scores at once. |
 | `auroc_median_barcode` | Each of the variant's barcodes scored separately against the **full** wildtype set, then medianed. |
+| `auroc_folds` | List of per-fold test AUROCs, one per fold in fold order. Each is computed on that fold's test slice using only that fold's model. `null` where a fold's test slice holds a single class. |
+| `auroc_median_fold` | Median of the non-null `auroc_folds` entries; `null` if none are defined. |
+
+`auroc_median_fold` is the older way of scoring distinguishability. Both
+`auroc_pooled` and `auroc_median_barcode` put out-of-fold scores from
+*different* fold models (each with its own calibrator) into a single ROC curve.
+Those scores are not on a shared scale, which can inflate the resulting AUROC.
+A per-fold AUROC only ranks scores from a single model against each other.
 
 `auroc_median_barcode` exists to surface whether a variant's apparent
 distinguishability is broad-based across its barcodes or driven by one or two
@@ -91,7 +99,8 @@ accepted rather than corrected.
 Each variant logs a `[i/N]` header (barcode and cell counts), one line per fold
 (the held-out barcode(s) under `"barcode_holdout"`, the train/calibration/test
 sizes, and that fold's own AUROC), one line per barcode, and a closing summary
-with `auroc_pooled`, `auroc_median_barcode` and elapsed time. A fold whose test
+with `auroc_pooled`, `auroc_median_barcode`, `auroc_median_fold` and elapsed
+time. A fold whose test
 slice happens to hold a single class logs `auroc=n/a` rather than failing the
 variant.
 
@@ -134,7 +143,7 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 
 | File | Contents |
 | ---- | -------- |
-| `results.parquet` | One row per surviving variant: `label_column`, `auroc_pooled`, `auroc_median_barcode`, `meta_n_barcodes`, `meta_n_cells`. |
+| `results.parquet` | One row per surviving variant: `label_column`, `auroc_pooled`, `auroc_median_barcode`, `auroc_folds`, `auroc_median_fold`, `meta_n_barcodes`, `meta_n_cells`. |
 | `cell_scores.parquet` | One row per cell per variant it was scored against: every `meta_*` column plus `score` (the out-of-fold score) and `meta_variant_scored_against`. Wildtype cells appear once per variant. Join back to the cell table on `meta_cell_index`. |
 | `models.pkl` | `dict[variant, list[(Booster, calibrator_or_None)]]` — one tuple per fold, so `n_folds` entries under `"kfold"`, and under `"barcode_holdout"` `min(n_folds, n_barcodes)` of them (one per barcode when `n_folds` is `null`). |
 
