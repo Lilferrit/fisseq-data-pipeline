@@ -250,6 +250,8 @@ def test_ovwt_batchwise_output_columns():
         LABEL,
         "auroc_pooled",
         "auroc_median_barcode",
+        "auroc_folds",
+        "auroc_median_fold",
         "meta_n_barcodes",
         "meta_n_cells",
     ]
@@ -319,6 +321,59 @@ def test_ovwt_batchwise_median_barcode_auroc_is_not_null():
     assert results.get_column("auroc_median_barcode").null_count() == 0
 
 
+def test_ovwt_batchwise_one_fold_auroc_per_fold():
+    cfg = _cfg(n_folds=3)
+    results, _, models = ovwt_batchwise(_cells().lazy(), cfg)
+    assert results.schema["auroc_folds"] == pl.List(pl.Float64)
+    for row in results.iter_rows(named=True):
+        assert len(row["auroc_folds"]) == cfg.n_folds
+        assert len(row["auroc_folds"]) == len(models[row[LABEL]])
+
+
+def test_ovwt_batchwise_median_fold_is_median_of_fold_aurocs():
+    results, _, _ = ovwt_batchwise(_cells().lazy(), _cfg())
+    for row in results.iter_rows(named=True):
+        defined = [a for a in row["auroc_folds"] if a is not None]
+        assert row["auroc_median_fold"] == pytest.approx(float(np.median(defined)))
+
+
+def test_ovwt_batchwise_median_fold_recovers_separable_signal():
+    results, _, _ = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert results.get_column("auroc_median_fold").min() > 0.9
+
+
+def test_single_class_fold_is_null_not_fatal(monkeypatch):
+    """A fold with an undefined AUROC is a null entry; the median skips it."""
+    import fisseq_data_pipeline.ovwt as ovwt_mod
+
+    real_safe_auroc = ovwt_mod._safe_auroc
+    calls = {"n": 0}
+
+    def _first_fold_undefined(is_wt, scores):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return real_safe_auroc(is_wt, scores)
+
+    monkeypatch.setattr(ovwt_mod, "_safe_auroc", _first_fold_undefined)
+    results, _, _ = ovwt_batchwise(_cells().lazy(), _cfg(n_folds=3))
+    first = results.row(0, named=True)
+    assert first["auroc_folds"][0] is None
+    assert first["auroc_median_fold"] == pytest.approx(
+        float(np.median(first["auroc_folds"][1:]))
+    )
+
+
+def test_all_folds_undefined_gives_null_median(monkeypatch):
+    import fisseq_data_pipeline.ovwt as ovwt_mod
+
+    monkeypatch.setattr(ovwt_mod, "_safe_auroc", lambda is_wt, scores: None)
+    results, _, _ = ovwt_batchwise(_cells().lazy(), _cfg())
+    assert results.schema["auroc_median_fold"] == pl.Float64
+    assert results.schema["auroc_folds"] == pl.List(pl.Float64)
+    assert results.get_column("auroc_median_fold").null_count() == len(results)
+
+
 def test_ovwt_batchwise_is_reproducible():
     a, _, _ = ovwt_batchwise(_cells().lazy(), _cfg(random_seed=5))
     b, _, _ = ovwt_batchwise(_cells().lazy(), _cfg(random_seed=5))
@@ -370,10 +425,14 @@ def test_all_variants_filtered_out_yields_empty_but_typed_frames():
         LABEL,
         "auroc_pooled",
         "auroc_median_barcode",
+        "auroc_folds",
+        "auroc_median_fold",
         "meta_n_barcodes",
         "meta_n_cells",
     ]
     assert results.schema["auroc_pooled"] == pl.Float64
+    assert results.schema["auroc_folds"] == pl.List(pl.Float64)
+    assert results.schema["auroc_median_fold"] == pl.Float64
     assert cell_scores.schema["score"] == pl.Float64
     assert cell_scores.schema["meta_variant_scored_against"] == pl.String
 
@@ -608,6 +667,14 @@ def test_holdout_n_folds_above_barcode_count_gives_one_fold_per_barcode():
     _, _, models = ovwt_batchwise(cells.lazy(), _holdout_cfg(n_folds=99))
     assert models
     assert all(len(folds) == 3 for folds in models.values())
+
+
+def test_holdout_one_fold_auroc_per_barcode():
+    cells = _cells(barcodes_per_variant=3)
+    results, _, _ = ovwt_batchwise(cells.lazy(), _holdout_cfg())
+    assert len(results) > 0
+    assert all(len(folds) == 3 for folds in results.get_column("auroc_folds"))
+    assert results.get_column("auroc_median_fold").null_count() == 0
 
 
 def test_holdout_n_folds_caps_the_model_count():

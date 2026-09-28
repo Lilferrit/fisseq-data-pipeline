@@ -4,7 +4,7 @@ Ported back from fisseq-embeddings-pipeline's ``ovwt.py``, which was itself
 adapted from this module's own earlier implementation. The round trip replaced
 the single 80/10/10 train/val/test split with k-fold cross-validation
 stratified jointly on ``(meta_barcode, is_wt)``, so every cell gets an
-out-of-fold score and every variant gets two distinguishability numbers
+out-of-fold score and every variant gets several distinguishability numbers
 instead of one:
 
 - ``auroc_pooled`` -- over all of the variant's cells at once.
@@ -12,6 +12,14 @@ instead of one:
   against the full wildtype set, then medianed. This surfaces whether a
   variant's apparent distinguishability is broad-based across its barcodes or
   driven by one or two outliers, which a single pooled number hides.
+- ``auroc_folds`` / ``auroc_median_fold`` -- each fold's test slice scored
+  separately by that fold's own model (a list, one entry per fold, ``null``
+  where a fold's test slice holds a single class), and the median of the
+  defined entries. This is the older way of reporting distinguishability. The
+  pooled and per-barcode numbers mix scores from different fold models into
+  one ROC curve, and those scores do not share a scale, which can inflate
+  them. A per-fold AUROC only ever ranks scores from one model against each
+  other.
 
 **One deliberate divergence from the reference implementation.** There, the
 features fed to the classifier are z-scored against the experiment's own
@@ -589,7 +597,10 @@ def ovwt_batchwise(
 
         - ``results``: one row per surviving variant, columns
           ``cfg.label_column``, ``auroc_pooled``, ``auroc_median_barcode``,
-          ``meta_n_barcodes``, ``meta_n_cells``.
+          ``auroc_folds`` (``List(Float64)``, per-fold test AUROC in fold
+          order, ``null`` for a single-class fold), ``auroc_median_fold``
+          (median of the non-null ``auroc_folds``, ``null`` if none are
+          defined), ``meta_n_barcodes``, ``meta_n_cells``.
         - ``cell_scores``: ``META_SELECTOR`` columns plus ``score`` (the OOF
           score) and ``meta_variant_scored_against`` -- one row per cell per
           variant it was scored against, so wildtype cells appear once per
@@ -704,6 +715,7 @@ def ovwt_batchwise(
 
             oof_scores = np.full(len(subset), np.nan)
             fold_models: "list[tuple[xgb.Booster, Optional[object]]]" = []
+            fold_aurocs: "list[Optional[float]]" = []
 
             for fold_idx, (fit_idx, test_idx) in enumerate(splits):
                 fit_df, test_df = subset[fit_idx], subset[test_idx]
@@ -746,6 +758,11 @@ def ovwt_batchwise(
                     calibrator.predict(test_raw) if calibrator is not None else test_raw
                 )
                 fold_models.append((model, calibrator))
+                # Calibrated or not, the AUROC is the same: Platt scaling is
+                # monotonic. _safe_auroc gives None for a single-class test
+                # slice, which lands in auroc_folds as a null.
+                fold_auroc = _safe_auroc(is_wt[test_idx], oof_scores[test_idx])
+                fold_aurocs.append(fold_auroc)
 
                 held_out = "-"
                 if cfg.cv_mode == CV_MODE_BARCODE_HOLDOUT:
@@ -762,7 +779,7 @@ def ovwt_batchwise(
                     len(train_pos),
                     len(calib_pos),
                     len(test_idx),
-                    _format_auroc(_safe_auroc(is_wt[test_idx], oof_scores[test_idx])),
+                    _format_auroc(fold_auroc),
                 )
 
             models[variant] = fold_models
@@ -799,13 +816,22 @@ def ovwt_batchwise(
                 float(np.median(barcode_aurocs)) if barcode_aurocs else None
             )
 
+            # None rather than NaN when every fold is single-class, for the
+            # same reason as auroc_median_barcode above.
+            defined_fold_aurocs = [a for a in fold_aurocs if a is not None]
+            auroc_median_fold = (
+                float(np.median(defined_fold_aurocs)) if defined_fold_aurocs else None
+            )
+
             logging.info(
-                "[%d/%d] %r done: pooled=%s median_barcode=%s over %d fold(s) in %.1fs",
+                "[%d/%d] %r done: pooled=%s median_barcode=%s median_fold=%s "
+                "over %d fold(s) in %.1fs",
                 variant_num,
                 len(variants),
                 variant,
                 _format_auroc(auroc_pooled),
                 _format_auroc(auroc_median_barcode),
+                _format_auroc(auroc_median_fold),
                 len(fold_models),
                 time.perf_counter() - started_at,
             )
@@ -815,6 +841,8 @@ def ovwt_batchwise(
                     label_col: variant,
                     "auroc_pooled": auroc_pooled,
                     "auroc_median_barcode": auroc_median_barcode,
+                    "auroc_folds": fold_aurocs,
+                    "auroc_median_fold": auroc_median_fold,
                     "meta_n_barcodes": len(variant_barcodes),
                     "meta_n_cells": len(subset),
                 }
@@ -836,22 +864,25 @@ def ovwt_batchwise(
             )
             continue
 
+    # Explicit in both branches: an all-null auroc_median_fold or auroc_folds
+    # would otherwise be inferred as the Null dtype.
+    results_schema = {
+        label_col: pl.String,
+        "auroc_pooled": pl.Float64,
+        "auroc_median_barcode": pl.Float64,
+        "auroc_folds": pl.List(pl.Float64),
+        "auroc_median_fold": pl.Float64,
+        "meta_n_barcodes": pl.Int64,
+        "meta_n_cells": pl.Int64,
+    }
     if not per_variant_results:
-        results_df = pl.DataFrame(
-            schema={
-                label_col: pl.String,
-                "auroc_pooled": pl.Float64,
-                "auroc_median_barcode": pl.Float64,
-                "meta_n_barcodes": pl.Int64,
-                "meta_n_cells": pl.Int64,
-            }
-        )
+        results_df = pl.DataFrame(schema=results_schema)
         cell_scores_schema = {c: df.schema[c] for c in df.select(META_SELECTOR).columns}
         cell_scores_schema["score"] = pl.Float64
         cell_scores_schema["meta_variant_scored_against"] = pl.String
         cell_scores_df = pl.DataFrame(schema=cell_scores_schema)
     else:
-        results_df = pl.DataFrame(per_variant_results)
+        results_df = pl.DataFrame(per_variant_results, schema=results_schema)
         cell_scores_df = pl.concat(per_cell_scores)
 
     return results_df, cell_scores_df, models

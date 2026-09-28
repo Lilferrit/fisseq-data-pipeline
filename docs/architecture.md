@@ -140,6 +140,7 @@ it creates.
     normalizers/<batch_stem>.normalizer.parquet
   ovwt_batchwise/<batch_stem>/
     results.parquet          # per variant: auroc_pooled, auroc_median_barcode,
+                             # auroc_folds, auroc_median_fold,
                              # meta_n_barcodes, meta_n_cells
     cell_scores.parquet      # per cell per variant scored against: meta_* +
                              # score + meta_variant_scored_against

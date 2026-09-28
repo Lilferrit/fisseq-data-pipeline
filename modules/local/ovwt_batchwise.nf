@@ -5,11 +5,12 @@ nextflow.enable.dsl = 2
 //
 // Per variant, this trains one one-vs-wildtype XGBoost model per
 // cross-validation fold rather than a single held-out model, so every cell
-// ends up with exactly one out-of-fold score. Each variant gets two
-// distinguishability numbers: auroc_pooled (over all its cells at once) and
+// ends up with exactly one out-of-fold score. Each variant gets several
+// distinguishability numbers: auroc_pooled (over all its cells at once),
 // auroc_median_barcode (per-barcode AUROC, medianed), the latter showing
 // whether a variant's signal is broad-based across its barcodes or driven by
-// one or two outliers.
+// one or two outliers, and auroc_folds / auroc_median_fold (each fold's test
+// AUROC under its own model, and their median).
 //
 // params.ovwt_cv_mode selects the fold scheme: "kfold" (params.ovwt_n_folds
 // folds, every barcode present in every fold's training set) or

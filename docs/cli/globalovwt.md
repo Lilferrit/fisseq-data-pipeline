@@ -14,8 +14,8 @@ would therefore pool numbers that do not mean the same thing.
 
 So the stage does two things, in order:
 
-1. **Score correction.** Per experiment, z-score `auroc_pooled` and
-   `auroc_median_barcode` against *that experiment's own synonymous variants*.
+1. **Score correction.** Per experiment, z-score `auroc_pooled`,
+   `auroc_median_barcode` and `auroc_median_fold` against *that experiment's own synonymous variants*.
    Synonymous variants are the natural neutral baseline, so this re-centers each
    experiment on its own null.
 2. **Aggregation.** Take the cross-experiment **median** of the z-scored values.
@@ -25,8 +25,9 @@ Both halves reuse existing machinery unchanged:
 controls, and `Normalizer.from_lazyframe(..., fit_only_on_control=True)` does
 the z-scoring. `Normalizer.apply` needs no changes either — it operates on
 `FEATURE_SELECTOR` (exclude `meta_*`), which already matches exactly
-`auroc_pooled`/`auroc_median_barcode` and excludes `meta_n_barcodes` /
-`meta_n_cells`.
+`auroc_pooled`/`auroc_median_barcode`/`auroc_median_fold` and excludes
+`meta_n_barcodes` / `meta_n_cells`. The per-fold `auroc_folds` list column is
+dropped before normalizing.
 
 !!! note "Each experiment needs at least two synonymous variants"
     The per-experiment normalizer fits on synonymous rows. A single synonymous
@@ -64,6 +65,7 @@ file is staged, so a single-experiment channel yields `res_input_.parquet` —
 | `label_column` | Variant label. |
 | `meta_median_auroc_pooled` | Cross-experiment median of the z-scored `auroc_pooled`. |
 | `meta_median_auroc_median_barcode` | Cross-experiment median of the z-scored `auroc_median_barcode`. |
+| `meta_median_auroc_median_fold` | Cross-experiment median of the z-scored `auroc_median_fold`. |
 | `meta_num_experiments` | How many experiments contributed a non-null value for this variant. |
 
 ## Example
