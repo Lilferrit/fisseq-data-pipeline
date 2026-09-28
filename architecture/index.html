@@ -1458,23 +1458,24 @@ it creates.</p>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    normalizers/&lt;batch_stem&gt;.normalizer.parquet
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  ovwt_batchwise/&lt;batch_stem&gt;/
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    results.parquet          # per variant: auroc_pooled, auroc_median_barcode,
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                             # meta_n_barcodes, meta_n_cells
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    cell_scores.parquet      # per cell per variant scored against: meta_* +
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>                             # score + meta_variant_scored_against
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    models.pkl               # dict[variant -&gt; list[(Booster, calibrator|None)]]
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    aggregates/&lt;feature_type&gt;.parquet
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    splits/bootstrap_&lt;n&gt;/half{1,2}.parquet
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    half_aggregates/bootstrap_&lt;n&gt;/&lt;feature_type&gt;/half{1,2}.parquet
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    correlations/&lt;feature_type&gt;/bootstrap_&lt;n&gt;.parquet
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    blocklists/&lt;feature_type&gt;.parquet
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    blocklist.parquet
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    output.parquet
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>  global/&lt;channel&gt;/          # one subtree per active global channel
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    ovwt_distinguishability/global_scores.parquet
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    feature_select/
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>      aggregate.parquet
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>      blocklist.parquet
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                             # auroc_folds, auroc_median_fold,
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>                             # meta_n_barcodes, meta_n_cells
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    cell_scores.parquet      # per cell per variant scored against: meta_* +
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>                             # score + meta_variant_scored_against
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    models.pkl               # dict[variant -&gt; list[(Booster, calibrator|None)]]
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    aggregates/&lt;feature_type&gt;.parquet
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    splits/bootstrap_&lt;n&gt;/half{1,2}.parquet
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    half_aggregates/bootstrap_&lt;n&gt;/&lt;feature_type&gt;/half{1,2}.parquet
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    correlations/&lt;feature_type&gt;/bootstrap_&lt;n&gt;.parquet
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    blocklists/&lt;feature_type&gt;.parquet
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    blocklist.parquet
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    output.parquet
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>  global/&lt;channel&gt;/          # one subtree per active global channel
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    ovwt_distinguishability/global_scores.parquet
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    feature_select/
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>      aggregate.parquet
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>      blocklist.parquet
 </code></pre></div>
 <h2 id="column-naming">Column naming<a class="headerlink" href="#column-naming" title="Permanent link">&para;</a></h2>
 <table>

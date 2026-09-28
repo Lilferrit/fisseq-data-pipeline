@@ -1270,8 +1270,8 @@ classifier score sits. Taking a plain median of raw AUROC across experiments
 would therefore pool numbers that do not mean the same thing.</p>
 <p>So the stage does two things, in order:</p>
 <ol>
-<li><strong>Score correction.</strong> Per experiment, z-score <code>auroc_pooled</code> and
-   <code>auroc_median_barcode</code> against <em>that experiment's own synonymous variants</em>.
+<li><strong>Score correction.</strong> Per experiment, z-score <code>auroc_pooled</code>,
+   <code>auroc_median_barcode</code> and <code>auroc_median_fold</code> against <em>that experiment's own synonymous variants</em>.
    Synonymous variants are the natural neutral baseline, so this re-centers each
    experiment on its own null.</li>
 <li><strong>Aggregation.</strong> Take the cross-experiment <strong>median</strong> of the z-scored values.</li>
@@ -1281,8 +1281,9 @@ would therefore pool numbers that do not mean the same thing.</p>
 controls, and <code>Normalizer.from_lazyframe(..., fit_only_on_control=True)</code> does
 the z-scoring. <code>Normalizer.apply</code> needs no changes either — it operates on
 <code>FEATURE_SELECTOR</code> (exclude <code>meta_*</code>), which already matches exactly
-<code>auroc_pooled</code>/<code>auroc_median_barcode</code> and excludes <code>meta_n_barcodes</code> /
-<code>meta_n_cells</code>.</p>
+<code>auroc_pooled</code>/<code>auroc_median_barcode</code>/<code>auroc_median_fold</code> and excludes
+<code>meta_n_barcodes</code> / <code>meta_n_cells</code>. The per-fold <code>auroc_folds</code> list column is
+dropped before normalizing.</p>
 <div class="admonition note">
 <p class="admonition-title">Each experiment needs at least two synonymous variants</p>
 <p>The per-experiment normalizer fits on synonymous rows. A single synonymous
@@ -1343,6 +1344,10 @@ file is staged, so a single-experiment channel yields <code>res_input_.parquet</
 <tr>
 <td><code>meta_median_auroc_median_barcode</code></td>
 <td>Cross-experiment median of the z-scored <code>auroc_median_barcode</code>.</td>
+</tr>
+<tr>
+<td><code>meta_median_auroc_median_fold</code></td>
+<td>Cross-experiment median of the z-scored <code>auroc_median_fold</code>.</td>
 </tr>
 <tr>
 <td><code>meta_num_experiments</code></td>

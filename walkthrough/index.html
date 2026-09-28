@@ -1320,7 +1320,8 @@ The results most analyses care about:</p>
   a global channel is active, <code>global/&lt;channel&gt;/feature_select/aggregate.parquet</code>)
   — final per-variant, feature-selected profiles.</li>
 <li><code>&lt;pipeline_dir&gt;/ovwt_batchwise/&lt;batch_stem&gt;/results.parquet</code> — per-variant
-  <code>auroc_pooled</code> and <code>auroc_median_barcode</code>.</li>
+  <code>auroc_pooled</code>, <code>auroc_median_barcode</code>, per-fold <code>auroc_folds</code> and
+  <code>auroc_median_fold</code>.</li>
 <li><code>&lt;pipeline_dir&gt;/global/&lt;channel&gt;/ovwt_distinguishability/global_scores.parquet</code>
   (only if a global channel is active) — synonymous-corrected, cross-experiment
   median distinguishability per variant. This is the headline result for a

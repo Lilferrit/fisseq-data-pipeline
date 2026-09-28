@@ -819,9 +819,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#two-scores-per-variant" class="md-nav__link">
+  <a href="#scores-per-variant" class="md-nav__link">
     <span class="md-ellipsis">
-      Two scores per variant
+      Scores per variant
     </span>
   </a>
   
@@ -1291,9 +1291,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#two-scores-per-variant" class="md-nav__link">
+  <a href="#scores-per-variant" class="md-nav__link">
     <span class="md-ellipsis">
-      Two scores per variant
+      Scores per variant
     </span>
   </a>
   
@@ -1443,7 +1443,7 @@ would leave no variant cells to train on — and is skipped with a warning.
 barcode</em>. A barcode-specific technical artifact inflates the <code>"kfold"</code> numbers
 invisibly; here it is penalized, because no model is ever trained and scored on
 the same barcode — at any <code>n_folds</code>.</p>
-<h2 id="two-scores-per-variant">Two scores per variant<a class="headerlink" href="#two-scores-per-variant" title="Permanent link">&para;</a></h2>
+<h2 id="scores-per-variant">Scores per variant<a class="headerlink" href="#scores-per-variant" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -1460,8 +1460,21 @@ the same barcode — at any <code>n_folds</code>.</p>
 <td><code>auroc_median_barcode</code></td>
 <td>Each of the variant's barcodes scored separately against the <strong>full</strong> wildtype set, then medianed.</td>
 </tr>
+<tr>
+<td><code>auroc_folds</code></td>
+<td>List of per-fold test AUROCs, one per fold in fold order. Each is computed on that fold's test slice using only that fold's model. <code>null</code> where a fold's test slice holds a single class.</td>
+</tr>
+<tr>
+<td><code>auroc_median_fold</code></td>
+<td>Median of the non-null <code>auroc_folds</code> entries; <code>null</code> if none are defined.</td>
+</tr>
 </tbody>
 </table>
+<p><code>auroc_median_fold</code> is the older way of scoring distinguishability. Both
+<code>auroc_pooled</code> and <code>auroc_median_barcode</code> put out-of-fold scores from
+<em>different</em> fold models (each with its own calibrator) into a single ROC curve.
+Those scores are not on a shared scale, which can inflate the resulting AUROC.
+A per-fold AUROC only ranks scores from a single model against each other.</p>
 <p><code>auroc_median_barcode</code> exists to surface whether a variant's apparent
 distinguishability is broad-based across its barcodes or driven by one or two
 outlier barcodes — which a single pooled number hides. It is <code>null</code> only in the
@@ -1481,7 +1494,8 @@ accepted rather than corrected.</p>
 <p>Each variant logs a <code>[i/N]</code> header (barcode and cell counts), one line per fold
 (the held-out barcode(s) under <code>"barcode_holdout"</code>, the train/calibration/test
 sizes, and that fold's own AUROC), one line per barcode, and a closing summary
-with <code>auroc_pooled</code>, <code>auroc_median_barcode</code> and elapsed time. A fold whose test
+with <code>auroc_pooled</code>, <code>auroc_median_barcode</code>, <code>auroc_median_fold</code> and elapsed
+time. A fold whose test
 slice happens to hold a single class logs <code>auroc=n/a</code> rather than failing the
 variant.</p>
 <h2 id="resilience">Resilience<a class="headerlink" href="#resilience" title="Permanent link">&para;</a></h2>
@@ -1572,7 +1586,7 @@ downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</
 <tbody>
 <tr>
 <td><code>results.parquet</code></td>
-<td>One row per surviving variant: <code>label_column</code>, <code>auroc_pooled</code>, <code>auroc_median_barcode</code>, <code>meta_n_barcodes</code>, <code>meta_n_cells</code>.</td>
+<td>One row per surviving variant: <code>label_column</code>, <code>auroc_pooled</code>, <code>auroc_median_barcode</code>, <code>auroc_folds</code>, <code>auroc_median_fold</code>, <code>meta_n_barcodes</code>, <code>meta_n_cells</code>.</td>
 </tr>
 <tr>
 <td><code>cell_scores.parquet</code></td>
