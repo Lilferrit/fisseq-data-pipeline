@@ -17,10 +17,9 @@ population differs from wildtype (WT) controls using morphological features.
 - **[Nextflow Workflow](nextflow.md)** — the Nextflow processes, how they're wired
   together, and how to run the pipeline (profiles).
 - **[Configuration](configuration.md)** — every parameter, the `experiments:`
-  schema, the single `random_seed`, and global channels.
+  schema, and the single `random_seed`.
 - **CLI Reference** — one page per Python entry point (input, QC filter,
-  normalize, aggregate, feature selection, global feature selection, OvWT,
-  global OvWT), each with its config fields and a runnable example.
+  normalize, aggregate, feature selection, OvWT), each with its config fields and a runnable example.
 - **API Reference** — full function/class-level documentation for every module,
   generated from source docstrings.
 - **[Walkthrough](walkthrough.md)** — a complete end-to-end run, from raw
@@ -38,11 +37,12 @@ QC_FILTER   (per experiment)
 NORMALIZE   (per experiment)          z-score fit on WT control cells
      │
      ├──► OVWT_BATCHWISE               (per experiment — params.run_ovwt)
-     │       └──► GLOBAL_OVWT          (once per active global channel)
      │
      └──► Feature selection            (per experiment — params.run_feature_selection)
-             └──► GLOBAL_FEATURE_SELECT (once per active global channel)
 ```
+
+Every output is per experiment; cross-experiment aggregation is done downstream
+by [fisseqborn](https://github.com/FowlerLab/fisseqborn).
 
 See [Architecture](architecture.md) for the full diagram and stage-by-stage detail.
 

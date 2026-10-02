@@ -1,9 +1,9 @@
 """PCA and UMAP embeddings of an already-selected, ``label_column``-keyed
 feature matrix.
 
-Shared by :mod:`fisseq_data_pipeline.featureselect` and
-:mod:`fisseq_data_pipeline.globalfeatureselect` so the PCA/UMAP plumbing
-(including the all-null-feature-column handling below) lives in one place.
+Used by :mod:`fisseq_data_pipeline.featureselect`; kept separate so the
+PCA/UMAP plumbing (including the all-null-feature-column handling below) lives
+in one place.
 
 ``umap-learn`` is imported lazily, inside :func:`compute_umap`, rather than at
 module import time: it pulls in ``numba``/``pynndescent``/``llvmlite``, whose

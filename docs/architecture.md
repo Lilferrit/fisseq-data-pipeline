@@ -21,13 +21,11 @@ params.yaml (experiments: [...])
    NORMALIZE        (per experiment)   ← z-score fit on WT control cells
       │
       ├──► OVWT_BATCHWISE  (per experiment; gated by run_ovwt)
-      │         │  k-fold CV one-vs-wildtype scoring
-      │         └──► GLOBAL_OVWT  (once per active global channel)
-      │                  per-experiment synonymous z-score,
-      │                  then cross-experiment median
+      │            k-fold CV one-vs-wildtype scoring
       │
       └──► Feature selection, batchwise (gated by run_feature_selection):
-             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
+             AGGREGATE_FEATURE_TYPE      (per feature type;           ─┐
+                                          synonymous z-score)         │
              GENERATE_SPLIT              (per bootstrap replicate)    │
                └─► AGGREGATE_HALF        (per bootstrap × type × half)│
                      └─► CORRELATE_FEATURES  (per bootstrap × type)   │
@@ -35,43 +33,32 @@ params.yaml (experiments: [...])
                                               the one sync point)      │
                                  └─► COMBINE_BLOCKLISTS (all types) ──┘
                                        └─► FINALIZE_FEATURE_SELECT
-                                             │
-                                             ▼
-                                      GLOBAL_FEATURE_SELECT
-                                      (once per active global channel)
 ```
 
 There is a single pipeline mode. `main.nf` includes one workflow,
-`workflows/fisseq.nf`, and runs it.
+`workflows/fisseq.nf`, and runs it. Every stage runs per experiment; nothing in
+the pipeline combines experiments (see
+[Cross-experiment aggregation](#cross-experiment-aggregation)).
 
 ## Experiments
 
 Every experiment is declared as a map in the `experiments:` list in
 `params.yaml`. There is no `<pipeline_dir>/configs/` directory, and no
 per-experiment override of arbitrary pipeline parameters — an entry may set only
-`batch_stem`, `input_paths`, `global_channel`, and the three INPUT-stage fields.
+`batch_stem`, `input_paths`, and the three INPUT-stage fields.
 Anything else is rejected with an error naming the key. See
 [Configuration](configuration.md).
 
-## Global channels
+## Cross-experiment aggregation
 
-An experiment's `global_channel` key (string or list of strings) names which
-channel(s) it belongs to; `params.global_channels` (pipeline-wide, default
-`null`) lists which of those channels actually run. Each active channel gets its
-own `GLOBAL_OVWT` and `GLOBAL_FEATURE_SELECT` run, scoped to only that channel's
-member experiments, publishing under `global/<channel>/`.
-
-With `global_channels` unset (the default), neither global stage runs at all and
-the pipeline is purely per-experiment. An experiment belonging to no active
-channel is still processed batchwise as normal; one in several channels
-contributes to each independently.
-
-Both global stages read published output rather than staged cells:
-`GLOBAL_FEATURE_SELECT` reads each member experiment's
-`feature_select_batchwise/<batch_stem>/{aggregates,blocklist.parquet}` directly
-off `pipeline_dir`, while `GLOBAL_OVWT` receives its members' `results.parquet`
-files as real staged paths (not a glob string, so `-resume` invalidates
-correctly).
+The pipeline stops at per-experiment outputs. Combining experiments — merging
+blocklists across experiments, z-scoring each experiment's per-variant profiles
+and taking the per-variant median across experiments, and re-centering OvWT
+AUROCs against synonymous variants before a cross-experiment median — is the job
+of the downstream [fisseqborn](https://github.com/FowlerLab/fisseqborn) package.
+It reads each experiment's published
+`feature_select_batchwise/<batch_stem>/{aggregates,passthrough_aggregates,blocklists}/<feature_type>.parquet`
+and `ovwt_batchwise/<batch_stem>/results.parquet`.
 
 ## Reproducibility
 
@@ -100,17 +87,19 @@ These are easy to confuse:
 | Stage | Control population |
 | ----- | ------------------ |
 | `NORMALIZE` (cell level) | **Wildtype** cells (`meta_aa_changes = 'WT'`) |
-| `FINALIZE_FEATURE_SELECT` / `GLOBAL_FEATURE_SELECT` (aggregate level) | **Synonymous** variants |
-| `GLOBAL_OVWT` (score level) | **Synonymous** variants |
+| `AGGREGATE_FEATURE_TYPE` (aggregate level, `normalize_to_synonymous`) | **Synonymous** variants |
+| `FINALIZE_FEATURE_SELECT` (aggregate level) | **Synonymous** variants |
 
 `aggregate.variant_classification` flags synonymous, untagged labels as
-`meta_is_control = True`; `normalize.py` uses the WT SQL query instead.
+`meta_is_control = True`; `normalize.py` uses the WT SQL query instead. Both
+synonymous-baseline normalizations fit a `ddof=1` std, so each experiment needs
+at least two synonymous variants — with one, every feature comes out null.
 
 Note that `OVWT_BATCHWISE` consumes `NORMALIZE`'s wildtype-normalized output.
 The sibling `fisseq-embeddings-pipeline`, from which the OvWT implementation was
 ported, z-scores its features against synonymous variants before training
-instead. The difference is deliberate: the synonymous re-centering happens here
-at the score level, in `GLOBAL_OVWT`.
+instead. The difference is deliberate: the synonymous re-centering happens at
+the score level, on the AUROCs, downstream in fisseqborn.
 
 ## Variant tags
 
@@ -146,18 +135,14 @@ it creates.
                              # score + meta_variant_scored_against
     models.pkl               # dict[variant -> list[(Booster, calibrator|None)]]
   feature_select_batchwise/<batch_stem>/
-    aggregates/<feature_type>.parquet
+    aggregates/<feature_type>.parquet              # z-scored to synonymous variants
+    passthrough_aggregates/<feature_type>.parquet  # raw scale (passthrough types)
     splits/bootstrap_<n>/half{1,2}.parquet
     half_aggregates/bootstrap_<n>/<feature_type>/half{1,2}.parquet
     correlations/<feature_type>/bootstrap_<n>.parquet
     blocklists/<feature_type>.parquet
     blocklist.parquet
     output.parquet
-  global/<channel>/          # one subtree per active global channel
-    ovwt_distinguishability/global_scores.parquet
-    feature_select/
-      aggregate.parquet
-      blocklist.parquet
 ```
 
 ## Column naming

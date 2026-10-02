@@ -29,7 +29,6 @@ input_paths: [/path/to/file1.parquet, /path/to/file2.csv]
 feature_allowlist_file: null      # optional, default null (no allowlist)
 feature_blocklist_file: null      # optional, default null (no blocklist)
 csv_schema_scan_rows: 100         # optional, default 100
-global_channel: null              # optional, string or list of strings (see below)
 ```
 
 - `input_paths` — one or more raw cell-score files (CSV or Parquet), concatenated.
@@ -49,18 +48,10 @@ global_channel: null              # optional, string or list of strings (see bel
   instead — slower, but avoids mis-inferred dtypes on columns whose
   non-null/non-integer values only appear after the scanned prefix. Has no
   effect on parquet sources.
-- `global_channel` — optional, a string or list of strings naming which named
-  channel(s) this batch belongs to for the purpose of `--global_channels`
-  scoping. **Validated and consumed by the Nextflow workflow layer
-  (`lib/BatchParams.groovy`), not by this CLI** — it has no effect on
-  `python -m fisseq_data_pipeline.input`'s own behavior, but lives in the
-  same batch YAML file, so it's documented here alongside `input_paths`. See
-  [Configuration: Global channels](../configuration.md#global-channels).
-
-Except for `input_paths` and `global_channel`, every field above is also a
-plain `nextflow.config` pipeline-wide default (`params.feature_allowlist_file`,
+Except for `input_paths`, every field above is also a
+plain `params.yaml` pipeline-wide default (`params.feature_allowlist_file`,
 `params.feature_blocklist_file`, `params.csv_schema_scan_rows`) — set one on
-the command line or in `nextflow.config` to apply it to every batch, and/or
+the command line or in `params.yaml` to apply it to every batch, and/or
 override it for a specific batch in that batch's YAML. See
 [Per-batch parameter overrides](../configuration.md#declaring-experiments)
 for the full mechanism.

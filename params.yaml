@@ -29,11 +29,6 @@ experiments: []
 #                           INPUT merges into this experiment's input parquet.
 #                           There is deliberately no pipeline-wide default --
 #                           a list of raw data files is inherently per-experiment.
-#   global_channel          OPTIONAL. String or list of strings naming which
-#                           global channel(s) this experiment belongs to. An
-#                           experiment naming no channel never contributes to
-#                           GLOBAL_OVWT or GLOBAL_FEATURE_SELECT. See
-#                           global_channels below.
 #   feature_allowlist_file  OPTIONAL, INPUT-stage. Falls back to the
 #   feature_blocklist_file  pipeline-wide default below when omitted; an
 #   csv_schema_scan_rows    entry's own value always wins.
@@ -51,14 +46,11 @@ experiments: []
 #     input_paths:
 #       - /data/plate1/cellprofiler_features.csv
 #       - /data/plate1/barcode_calls.parquet
-#     global_channel: cohort_a
 #   - batch_stem: plate2
 #     input_paths: [/data/plate2/cellprofiler_features.csv]
-#     global_channel: [cohort_a, cohort_b]   # may belong to several
 #     csv_schema_scan_rows: null             # per-experiment override: scan every row
 #   - batch_stem: plate3
 #     input_paths: [/data/plate3/features.parquet]
-#     # no global_channel -- processed batchwise only
 
 # ── Reproducibility ─────────────────────────────────────────────────────────
 # THE seed. Every stochastic step in the pipeline derives from this single
@@ -77,21 +69,12 @@ random_seed: 0
 
 # ── Run gates ───────────────────────────────────────────────────────────────
 # Pipeline-wide, not per-experiment.
-run_ovwt: true               # OVWT_BATCHWISE + GLOBAL_OVWT
-run_feature_selection: true  # the whole batchwise chain + GLOBAL_FEATURE_SELECT
-
-# ── Global channels ─────────────────────────────────────────────────────────
-# Which named channels actually run the two global stages (GLOBAL_OVWT,
-# GLOBAL_FEATURE_SELECT). Each active channel gets its own run, scoped to only
-# the experiments whose `global_channel` key names it, publishing under
-# global/<channel>/. null or [] (the default): no global stage runs at all,
-# and the pipeline is purely batchwise. An experiment in several active
-# channels contributes to each one independently.
-global_channels: null
+run_ovwt: true               # OVWT_BATCHWISE
+run_feature_selection: true  # the whole batchwise feature-selection chain
 
 # ── Label column, shared pipeline-wide ──────────────────────────────────────
-# Read by QC_FILTER, CORRELATE_FEATURES, FINALIZE_FEATURE_SELECT,
-# GLOBAL_FEATURE_SELECT, OVWT_BATCHWISE and GLOBAL_OVWT -- one override changes
+# Read by QC_FILTER, CORRELATE_FEATURES, FINALIZE_FEATURE_SELECT and
+# OVWT_BATCHWISE -- one override changes
 # the variant label column everywhere at once.
 filter_label_column: "meta_aa_changes"
 
@@ -162,7 +145,10 @@ ovwt_min_cells: 250
 ovwt_downsample_wt: true
 
 # ── Feature selection (bootstrap + aggregation + correlation) ───────────────
-# All _AGGREGATORS keys that make sense as a reproducibility statistic.
+# All _AGGREGATORS keys that make sense as a reproducibility statistic. Their
+# published per-variant aggregates (feature_select_batchwise/<batch>/aggregates/)
+# are z-scored against the experiment's synonymous variants, so every
+# experiment needs at least two synonymous variants.
 feature_select_types: ["mean", "median", "MAD", "std", "KS", "QQ", "AUROC"]
 # Aggregates that are computed and joined onto the final per-variant table but
 # kept out of feature selection entirely: no bootstrap halves, no correlation
@@ -217,13 +203,7 @@ feature_select_min_correlation: 0.5
 # `withLabel:process_medium { memory = '128 GB' }` selector in your -c file).
 aggregate_feature_chunk_size: 32
 
-# ── Global feature selection (GLOBAL_FEATURE_SELECT) ────────────────────────
-# Optional int: minimum number of a channel's member experiments that must
-# mark a feature ok (in their own batchwise blocklist) for it to be globally
-# ok; null = a feature must be ok in every member experiment that reports on it.
-global_feature_select_min_batches_ok: null
-
-# ── Dimensionality reduction (FINALIZE_FEATURE_SELECT + GLOBAL_FEATURE_SELECT) ──
+# ── Dimensionality reduction (FINALIZE_FEATURE_SELECT) ──────────────────────
 # PCA and UMAP are computed independently of each other, both on the same
 # final selected/normalized feature matrix -- UMAP does not run on PCA output.
 run_pca: false

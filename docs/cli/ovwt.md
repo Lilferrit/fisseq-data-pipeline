@@ -80,8 +80,8 @@ A per-fold AUROC only ranks scores from a single model against each other.
 distinguishability is broad-based across its barcodes or driven by one or two
 outlier barcodes — which a single pooled number hides. It is `null` only in the
 defensive case of a variant with no barcodes of its own, and deliberately
-`null` rather than `NaN` so the cross-experiment median in
-[Global OvWT](globalovwt.md) excludes it cleanly.
+`null` rather than `NaN` so a downstream cross-experiment median (computed in
+[fisseqborn](https://github.com/FowlerLab/fisseqborn)) excludes it cleanly.
 
 ## Wildtype downsampling
 
@@ -120,7 +120,9 @@ OvWT consumes [NORMALIZE](normalize.md)'s output, which is z-scored against
 implementation was ported, instead z-scores its features against **synonymous**
 variants before training. That difference is deliberate here: cell-level
 wildtype normalization is unchanged, and the synonymous re-centering happens
-downstream on the AUROCs instead, in [Global OvWT](globalovwt.md).
+downstream on the AUROCs instead, in
+[fisseqborn](https://github.com/FowlerLab/fisseqborn). Do not add a second,
+synonymous normalizer fit here.
 
 ## Config fields
 

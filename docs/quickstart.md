@@ -3,8 +3,8 @@
 The fastest path from a fresh checkout to a first pipeline run, including
 setting up a cluster config. For more depth, see
 [Installation](installation.md) (full environment setup),
-[Configuration](configuration.md) (every parameter, the `pipeline_dir` layout,
-and global channels), and
+[Configuration](configuration.md) (every parameter and the `experiments:`
+schema), and
 [Walkthrough](walkthrough.md) (stage-by-stage detail on what each part of the
 pipeline does).
 
@@ -169,15 +169,16 @@ Set `CLEAN=true` before running it to force a fresh run instead of resuming
 (e.g. `CLEAN=true ./run.sh`). Any extra arguments passed to the script (`"$@"`)
 are forwarded straight to `nextflow run`, so you can override any pipeline
 parameter without editing the script, e.g. `./run.sh --barcode_count_threshold 15`
-(list-valued params like `--global_channels` need a `-c`/`-params-file` override
-instead — see [Configuration: Global channels](configuration.md#global-channels)).
+(list-valued params like `--feature_select_types` need a `-params-file` override
+instead — see
+[Configuration: Passing list values on the CLI](configuration.md#passing-list-values-on-the-cli)).
 
 ## Next steps
 
 - [Walkthrough](walkthrough.md) — a complete end-to-end run, stage by stage.
 - [Nextflow Workflow](nextflow.md) — every process and profile.
-- [Configuration](configuration.md) — every parameter, the `pipeline_dir`
-  layout, and global channels.
+- [Configuration](configuration.md) — every parameter and the `experiments:`
+  schema.
 - [Architecture](architecture.md) — the full pipeline DAG and output layout.
 - [CLI Reference](cli/qcfilter.md) — config fields and examples for every
   standalone Python tool.

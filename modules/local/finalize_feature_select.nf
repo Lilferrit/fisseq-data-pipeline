@@ -1,6 +1,9 @@
 nextflow.enable.dsl = 2
 
-// Replaces feature_select_batchwise.nf and feature_select_global.nf.
+// FINALIZE_FEATURE_SELECT: wraps python -m fisseq_data_pipeline.featureselect.
+// Feature-selection stage 4 -- joins one batch's per-type aggregates, applies
+// the combined blocklist and pycytominer selection, and z-scores to the
+// synonymous baseline; passthrough aggregates are joined in raw afterwards.
 process FINALIZE_FEATURE_SELECT {
     errorStrategy 'ignore'
     label 'process_medium'

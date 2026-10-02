@@ -9,9 +9,10 @@ Cell-level aggregation is implemented as two Hydra entry points across two modul
 - **`python -m fisseq_data_pipeline.aggregatefeaturetype`** (Nextflow processes
   `AGGREGATE_FEATURE_TYPE` and `AGGREGATE_HALF`) — a leaner version used by the
   feature-selection branch: runs a single aggregator, writes only
-  `[label_column] + <stat columns>`, with no normalizer, metadata join, or impact
-  score. Imports `aggregate()` and `downsample_control()` from
-  `fisseq_data_pipeline.aggregate`.
+  `[label_column] + <stat columns>`, with no metadata join or impact score.
+  Optionally z-scores the output against the synonymous variants
+  (`normalize_to_synonymous`). Imports `aggregate()`, `downsample_control()` and
+  `variant_classification()` from `fisseq_data_pipeline.aggregate`.
 
 Both accept `input_file` as a glob pattern (via `load_batches`) or a concrete
 single-file path.
@@ -72,8 +73,10 @@ Extends `LabeledInputConfig` plus the [common config fields](qcfilter.md#common-
 | `aggregator` | **required** | One of the eight aggregators above. |
 | `index_file` | `null` | Optional path to a single-column row-index parquet (as written by `python -m fisseq_data_pipeline.generatesplit`) restricting aggregation to a pseudo-replicate half. |
 | `downsample_wt` | `null` | Optional downsample of control (wildtype) rows before aggregation. A float in `(0, 1)` keeps that fraction; an int keeps that many. `null` disables downsampling. |
-| `seed` | `0` | Random seed for the `downsample_wt` draw. Ignored when `downsample_wt` is `null`. |
 | `feature_chunk_size` | `32` | Feature columns aggregated per Polars query; `null` disables chunking. Driven by `params.aggregate_feature_chunk_size`. See [Feature chunking](#feature-chunking). |
+| `normalize_to_synonymous` | `false` | Z-score every output stat column against the synonymous variants' rows. See [Synonymous normalization](#synonymous-normalization). |
+
+The `downsample_wt` draw is seeded from the common `random_seed` field.
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
 single-file input → `{output_root}.{stem}.parquet` or `{output_dir}/{stem}.parquet`.
@@ -85,16 +88,41 @@ uv run python -m fisseq_data_pipeline.aggregatefeaturetype \
     aggregator=mean \
     index_file=./half1.parquet \
     downsample_wt=0.5 \
-    seed=1
+    random_seed=1
 ```
 
-In the Nextflow pipeline, `downsample_wt`/`seed` are driven by `params.feature_select_downsample_wt`
+In the Nextflow pipeline, `downsample_wt`/`random_seed` are driven by `params.feature_select_downsample_wt`
 (see [Parameters](../configuration.md#parameter-reference)) — `AGGREGATE_HALF` derives a distinct seed per
 `(bootstrap_idx, half_num)` so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. `AGGREGATE_FEATURE_TYPE`
 (the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
 identity to vary by.
+
+## Synonymous normalization
+
+With `normalize_to_synonymous=true`, the aggregated per-variant table is
+z-scored before it is written: synonymous, untagged labels are flagged by
+`variant_classification()`, a `Normalizer` is fit on those rows only (mean and
+`ddof=1` std), applied to every row, and the temporary `meta_is_control` column
+is dropped again — so the output is still `[label_column] + <stat columns>`.
+This synonymous baseline is a different population from the wildtype cells the
+aggregators compare against.
+
+In the Nextflow pipeline:
+
+- `AGGREGATE_FEATURE_TYPE` sets it for every `params.feature_select_types`
+  entry, published to `feature_select_batchwise/<batch>/aggregates/`.
+- `AGGREGATE_FEATURE_TYPE` leaves it off for every
+  `params.feature_select_passthrough_types` entry, published raw to
+  `feature_select_batchwise/<batch>/passthrough_aggregates/` — p-values such as
+  `KSnegLogP`/`AUROCnegLogP` must keep their own scale.
+- `AGGREGATE_HALF` leaves it off: the bootstrap halves stay raw.
+
+!!! note "Needs at least two synonymous variants"
+    With fewer than two synonymous variants in the experiment the std is
+    undefined and every stat column comes out null. Zero-variance features are
+    null as well.
 
 ## Feature chunking
 

@@ -26,6 +26,10 @@ _NF_ENV = {**os.environ, "NXF_DISABLE_CHECK_LATEST": "true"}
 
 # 10 WT barcodes x 20 cells = 200 WT cells
 # 5 A1A barcodes x 6 cells = 30 Synonymous cells  (A->A at position 1)
+# 5 A2A / 5 A3A barcodes x 6 cells = 30 more Synonymous cells each. The
+# per-variant aggregates are z-scored against the synonymous variants, and a
+# single synonymous row makes std (ddof=1) undefined, nulling every feature --
+# so the fixture needs more than one synonymous label.
 # 5 M1K barcodes x 6 cells = 30 Single Missense cells
 # 5 M1K:downsampled-half barcodes x 6 cells = 30 tagged Single Missense cells,
 # which must pool with the untagged M1K rows under meta_aa_changes == "M1K"
@@ -39,19 +43,10 @@ _NF_ENV = {**os.environ, "NXF_DISABLE_CHECK_LATEST": "true"}
 _VARIANTS = {
     "WT": ("bc_wt_{i:02d}", 10, 20),
     "A1A": ("bc_syn_{i:02d}", 5, 6),
-    "M1K": ("bc_mis_{i:02d}", 5, 6),
-    "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 6),
-}
-
-# GLOBAL_OVWT and GLOBAL_FEATURE_SELECT both fit a per-experiment Normalizer on
-# that experiment's synonymous ("control") rows. A single control row makes std
-# (ddof=1) undefined, nulling every feature -- so the channeled fixture needs
-# more synonymous labels than the shared _VARIANTS' lone "A1A". Counts/prefix
-# mirror "A1A" so the barcode/variant count thresholds are satisfied the same
-# way.
-_EXTRA_SYNONYMOUS_VARIANTS = {
     "A2A": ("bc_syn2_{i:02d}", 5, 6),
     "A3A": ("bc_syn3_{i:02d}", 5, 6),
+    "M1K": ("bc_mis_{i:02d}", 5, 6),
+    "M1K:downsampled-half": ("bc_mis_tag_{i:02d}", 5, 6),
 }
 
 _FEATURE_COLS = [
@@ -232,8 +227,8 @@ def test_normalized_cells_wt_mean_near_zero(pipeline_outputs, batch_stem):
         assert abs(wt[col].mean()) < 1e-6
 
 
-def test_no_global_dir_by_default(pipeline_outputs):
-    """global_channels defaults to null, so no global stage runs at all."""
+def test_no_global_dir(pipeline_outputs):
+    """Cross-experiment aggregation lives in fisseqborn, not this pipeline."""
     exp_dir, _ = pipeline_outputs
     assert not (exp_dir / "global").exists()
 
@@ -434,13 +429,27 @@ def test_feature_select_passthrough_types(tmp_path_factory):
 
     fs = exp_dir / "feature_select_batchwise" / "batch1"
 
-    # Published to its own directory, out of GLOBAL_FEATURE_SELECT's glob.
+    # Published to its own directory, apart from the normalized aggregates.
     assert (fs / "passthrough_aggregates" / "KSnegLogP.parquet").exists()
     assert not (fs / "aggregates" / "KSnegLogP.parquet").exists()
     assert {p.name for p in (fs / "aggregates").glob("*.parquet")} == {
         "mean.parquet",
         "std.parquet",
     }
+
+    # Selected aggregates are z-scored to the synonymous baseline; the
+    # passthrough ones are not.
+    syn = ["A1A", "A2A", "A3A"]
+    mean_agg = pl.read_parquet(fs / "aggregates" / "mean.parquet")
+    syn_mean = mean_agg.filter(pl.col("meta_aa_changes").is_in(syn))
+    for col in [c for c in mean_agg.columns if c.endswith("_mean")]:
+        assert abs(syn_mean[col].mean()) < 1e-6
+        assert syn_mean[col].std() == pytest.approx(1.0)
+    pt_agg = pl.read_parquet(fs / "passthrough_aggregates" / "KSnegLogP.parquet")
+    pt_syn = pt_agg.filter(pl.col("meta_aa_changes").is_in(syn))
+    # -log10 p-values are non-negative on their own scale; a z-score is not.
+    for col in [c for c in pt_agg.columns if c.endswith("_KSnegLogP")]:
+        assert pt_syn[col].min() >= 0
 
     # No bootstrap chain ran for it.
     assert not (fs / "correlations" / "KSnegLogP").exists()
@@ -477,106 +486,6 @@ def test_bootstrap_replicates_are_not_identical(pipeline_outputs):
     assert len(halves) == _TEST_PARAM_OVERRIDES["feature_select_bootstrap_reps"]
     seen = {pl.read_parquet(h).to_pandas().to_csv(index=False) for h in halves}
     assert len(seen) > 1, "every bootstrap split is identical -- seed offset lost"
-
-
-# ---------------------------------------------------------------------------
-# Global channels
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="session")
-def global_channel_outputs(tmp_path_factory):
-    exp_dir = tmp_path_factory.mktemp("nf_channels")
-    raw_dir = tmp_path_factory.mktemp("nf_channels_raw")
-    variants = {**_VARIANTS, **_EXTRA_SYNONYMOUS_VARIANTS}
-    experiments = [
-        # chan_a only
-        _stage_experiment(
-            raw_dir, "batch1", seed=42, variants=variants, global_channel="chan_a"
-        ),
-        # both channels -- membership is a list
-        _stage_experiment(
-            raw_dir,
-            "batch2",
-            seed=99,
-            variants=variants,
-            global_channel=["chan_a", "chan_b"],
-        ),
-        # chan_b only
-        _stage_experiment(
-            raw_dir, "batch3", seed=7, variants=variants, global_channel="chan_b"
-        ),
-        # deliberately in no channel -- must be excluded from both global stages
-        _stage_experiment(raw_dir, "batch4", seed=13, variants=variants),
-    ]
-    result = _run_pipeline(exp_dir, experiments, global_channels=["chan_a", "chan_b"])
-    return exp_dir, result
-
-
-def test_channeled_pipeline_exits_cleanly(global_channel_outputs):
-    _, result = global_channel_outputs
-    assert result.returncode == 0, result.stderr
-
-
-@pytest.mark.parametrize("chan", ["chan_a", "chan_b"])
-def test_channeled_global_ovwt_outputs(global_channel_outputs, chan):
-    exp_dir, _ = global_channel_outputs
-    out = (
-        exp_dir / "global" / chan / "ovwt_distinguishability" / "global_scores.parquet"
-    )
-    assert out.exists()
-
-
-@pytest.mark.parametrize("chan", ["chan_a", "chan_b"])
-def test_channeled_global_ovwt_schema(global_channel_outputs, chan):
-    exp_dir, _ = global_channel_outputs
-    df = pl.read_parquet(
-        exp_dir / "global" / chan / "ovwt_distinguishability" / "global_scores.parquet"
-    )
-    assert set(df.columns) == {
-        "meta_aa_changes",
-        "meta_median_auroc_pooled",
-        "meta_median_auroc_median_barcode",
-        "meta_median_auroc_median_fold",
-        "meta_num_experiments",
-    }
-    assert df.height > 0
-
-
-@pytest.mark.parametrize("chan", ["chan_a", "chan_b"])
-def test_channeled_global_ovwt_scoped_to_membership(global_channel_outputs, chan):
-    """
-    Each channel has exactly 2 member experiments, so no variant can report
-    more than 2 contributing experiments -- batch4 (no channel) must not leak in.
-    """
-    exp_dir, _ = global_channel_outputs
-    df = pl.read_parquet(
-        exp_dir / "global" / chan / "ovwt_distinguishability" / "global_scores.parquet"
-    )
-    assert df["meta_num_experiments"].max() <= 2
-
-
-@pytest.mark.parametrize("chan", ["chan_a", "chan_b"])
-def test_channeled_global_feature_select_outputs(global_channel_outputs, chan):
-    exp_dir, _ = global_channel_outputs
-    fs = exp_dir / "global" / chan / "feature_select"
-    assert (fs / "aggregate.parquet").exists()
-    assert (fs / "blocklist.parquet").exists()
-
-
-def test_unchanneled_experiment_still_runs_batchwise(global_channel_outputs):
-    """batch4 belongs to no channel, but is processed batchwise as normal."""
-    exp_dir, _ = global_channel_outputs
-    assert (exp_dir / "ovwt_batchwise" / "batch4" / "results.parquet").exists()
-    assert (exp_dir / "feature_select_batchwise" / "batch4" / "output.parquet").exists()
-
-
-def test_no_channel_subdir_for_undeclared_channel(global_channel_outputs):
-    exp_dir, _ = global_channel_outputs
-    assert sorted(p.name for p in (exp_dir / "global").iterdir()) == [
-        "chan_a",
-        "chan_b",
-    ]
 
 
 # ---------------------------------------------------------------------------

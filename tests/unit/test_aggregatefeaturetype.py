@@ -75,6 +75,7 @@ def make_ft_cfg(
     downsample_wt=None,
     seed=0,
     feature_chunk_size=aggregate_module.DEFAULT_FEATURE_CHUNK_SIZE,
+    normalize_to_synonymous=False,
 ) -> OmegaConf:
     """
     Return a DictConfig for FeatureTypeAggregateConfig with test defaults.
@@ -92,6 +93,7 @@ def make_ft_cfg(
             downsample_wt=downsample_wt,
             random_seed=seed,
             feature_chunk_size=feature_chunk_size,
+            normalize_to_synonymous=normalize_to_synonymous,
         )
     )
 
@@ -320,3 +322,70 @@ def test_main_downsample_wt_nonpositive_int_raises(tmp_path) -> None:
     with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
         with pytest.raises(ValueError):
             m.main.__wrapped__(make_ft_cfg(tmp_path, downsample_wt=-1))
+
+
+# ---------------------------------------------------------------------------
+# normalize_to_synonymous
+# ---------------------------------------------------------------------------
+
+# Per-variant f1 means: A1A/A2A/A3A are the synonymous baseline, "A3A:tag" is
+# a tagged duplicate of a synonymous label (never a control), A1B is missense.
+_SYN_F1 = {"A1A": 1.0, "A2A": 2.0, "A3A": 6.0, "A3A:tag": 100.0, "A1B": 10.0}
+
+
+def write_syn_input_parquet(tmp_path) -> None:
+    labels = ["WT"] * 3 + [v for v in _SYN_F1 for _ in range(3)]
+    pl.DataFrame(
+        {
+            "meta_aa_changes": labels,
+            "meta_is_control": [lbl == "WT" for lbl in labels],
+            "f1": [0.0] * 3 + [_SYN_F1[v] for v in _SYN_F1 for _ in range(3)],
+            # Identical for every synonymous variant -> zero variance -> null.
+            "f2": [0.0] * 3
+            + [5.0 if v != "A1B" else 9.0 for v in _SYN_F1 for _ in range(3)],
+        }
+    ).write_parquet(tmp_path / "input.parquet")
+
+
+def _run_syn(tmp_path, normalize: bool) -> pl.DataFrame:
+    write_syn_input_parquet(tmp_path)
+    with patch("fisseq_data_pipeline.aggregatefeaturetype.setup_logging"):
+        m.main.__wrapped__(make_ft_cfg(tmp_path, normalize_to_synonymous=normalize))
+    return pl.read_parquet(tmp_path / "out" / "input.parquet")
+
+
+def test_config_defaults_normalize_to_synonymous_off() -> None:
+    cfg = OmegaConf.structured(m.FeatureTypeAggregateConfig)
+    assert cfg.normalize_to_synonymous is False
+
+
+def test_main_without_normalize_writes_raw_aggregates(tmp_path) -> None:
+    result = _run_syn(tmp_path, normalize=False)
+    for label, raw in _SYN_F1.items():
+        assert _get_row(result, label)["f1_mean"] == pytest.approx(raw)
+
+
+def test_main_normalize_z_scores_against_synonymous(tmp_path) -> None:
+    result = _run_syn(tmp_path, normalize=True)
+    syn = pl.Series([1.0, 2.0, 6.0])
+    mean, std = syn.mean(), syn.std(ddof=1)
+    for label, raw in _SYN_F1.items():
+        assert _get_row(result, label)["f1_mean"] == pytest.approx((raw - mean) / std)
+
+
+def test_main_normalize_excludes_tagged_labels_from_fit(tmp_path) -> None:
+    """The tagged A3A duplicate is far out; including it would shift the mean."""
+    result = _run_syn(tmp_path, normalize=True)
+    syn_rows = result.filter(pl.col("meta_aa_changes").is_in(["A1A", "A2A", "A3A"]))
+    assert syn_rows["f1_mean"].mean() == pytest.approx(0.0, abs=1e-12)
+    assert syn_rows["f1_mean"].std(ddof=1) == pytest.approx(1.0)
+
+
+def test_main_normalize_keeps_output_lean(tmp_path) -> None:
+    result = _run_syn(tmp_path, normalize=True)
+    assert set(result.columns) == {"meta_aa_changes", "f1_mean", "f2_mean"}
+
+
+def test_main_normalize_zero_variance_feature_is_null(tmp_path) -> None:
+    result = _run_syn(tmp_path, normalize=True)
+    assert result["f2_mean"].null_count() == result.height

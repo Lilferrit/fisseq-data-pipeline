@@ -22,9 +22,8 @@ nextflow.enable.dsl = 2
 //
 // Not aliased and not parameterized over block-lists or a publish subdir --
 // the feature-filtered and barcode-filtered variants went away with
-// ANOVA_BLOCKLIST and BARCODE_BLOCKLIST, and OVWT_GLOBAL was replaced by
-// GLOBAL_OVWT, which aggregates these per-experiment scores instead of
-// re-fitting on pooled cells.
+// ANOVA_BLOCKLIST and BARCODE_BLOCKLIST. Cross-experiment aggregation of these
+// per-experiment scores happens downstream, in the fisseqborn package.
 process OVWT_BATCHWISE {
     errorStrategy 'ignore'
     label 'process_high'
