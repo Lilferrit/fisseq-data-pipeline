@@ -530,9 +530,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#global-channels" class="md-nav__link">
+  <a href="#cross-experiment-aggregation" class="md-nav__link">
     <span class="md-ellipsis">
-      Global channels
+      Cross-experiment aggregation
     </span>
   </a>
   
@@ -831,58 +831,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../cli/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -1065,58 +1019,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1247,9 +1155,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#global-channels" class="md-nav__link">
+  <a href="#cross-experiment-aggregation" class="md-nav__link">
     <span class="md-ellipsis">
-      Global channels
+      Cross-experiment aggregation
     </span>
   </a>
   
@@ -1344,50 +1252,39 @@ from wildtype (WT) controls using morphological features.</p>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>   NORMALIZE        (per experiment)   ← z-score fit on WT control cells
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>      │
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>      ├──► OVWT_BATCHWISE  (per experiment; gated by run_ovwt)
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>      │         │  k-fold CV one-vs-wildtype scoring
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>      │         └──► GLOBAL_OVWT  (once per active global channel)
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>      │                  per-experiment synonymous z-score,
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>      │                  then cross-experiment median
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>      │
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      └──► Feature selection, batchwise (gated by run_feature_selection):
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>             GENERATE_SPLIT              (per bootstrap replicate)    │
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>               └─► AGGREGATE_HALF        (per bootstrap × type × half)│
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                     └─► CORRELATE_FEATURES  (per bootstrap × type)   │
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>                           └─► BLOCKLIST     (gathers all bootstraps — │
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>                                              the one sync point)      │
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>                                 └─► COMBINE_BLOCKLISTS (all types) ──┘
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>                                       └─► FINALIZE_FEATURE_SELECT
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>                                             │
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>                                             ▼
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>                                      GLOBAL_FEATURE_SELECT
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>                                      (once per active global channel)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>      │            k-fold CV one-vs-wildtype scoring
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>      │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>      └──► Feature selection, batchwise (gated by run_feature_selection):
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>             AGGREGATE_FEATURE_TYPE      (per feature type;           ─┐
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>                                          synonymous z-score)         │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>             GENERATE_SPLIT              (per bootstrap replicate)    │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>               └─► AGGREGATE_HALF        (per bootstrap × type × half)│
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                     └─► CORRELATE_FEATURES  (per bootstrap × type)   │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                           └─► BLOCKLIST     (gathers all bootstraps — │
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                                              the one sync point)      │
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>                                 └─► COMBINE_BLOCKLISTS (all types) ──┘
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>                                       └─► FINALIZE_FEATURE_SELECT
 </code></pre></div>
 <p>There is a single pipeline mode. <code>main.nf</code> includes one workflow,
-<code>workflows/fisseq.nf</code>, and runs it.</p>
+<code>workflows/fisseq.nf</code>, and runs it. Every stage runs per experiment; nothing in
+the pipeline combines experiments (see
+<a href="#cross-experiment-aggregation">Cross-experiment aggregation</a>).</p>
 <h2 id="experiments">Experiments<a class="headerlink" href="#experiments" title="Permanent link">&para;</a></h2>
 <p>Every experiment is declared as a map in the <code>experiments:</code> list in
 <code>params.yaml</code>. There is no <code>&lt;pipeline_dir&gt;/configs/</code> directory, and no
 per-experiment override of arbitrary pipeline parameters — an entry may set only
-<code>batch_stem</code>, <code>input_paths</code>, <code>global_channel</code>, and the three INPUT-stage fields.
+<code>batch_stem</code>, <code>input_paths</code>, and the three INPUT-stage fields.
 Anything else is rejected with an error naming the key. See
 <a href="../configuration/">Configuration</a>.</p>
-<h2 id="global-channels">Global channels<a class="headerlink" href="#global-channels" title="Permanent link">&para;</a></h2>
-<p>An experiment's <code>global_channel</code> key (string or list of strings) names which
-channel(s) it belongs to; <code>params.global_channels</code> (pipeline-wide, default
-<code>null</code>) lists which of those channels actually run. Each active channel gets its
-own <code>GLOBAL_OVWT</code> and <code>GLOBAL_FEATURE_SELECT</code> run, scoped to only that channel's
-member experiments, publishing under <code>global/&lt;channel&gt;/</code>.</p>
-<p>With <code>global_channels</code> unset (the default), neither global stage runs at all and
-the pipeline is purely per-experiment. An experiment belonging to no active
-channel is still processed batchwise as normal; one in several channels
-contributes to each independently.</p>
-<p>Both global stages read published output rather than staged cells:
-<code>GLOBAL_FEATURE_SELECT</code> reads each member experiment's
-<code>feature_select_batchwise/&lt;batch_stem&gt;/{aggregates,blocklist.parquet}</code> directly
-off <code>pipeline_dir</code>, while <code>GLOBAL_OVWT</code> receives its members' <code>results.parquet</code>
-files as real staged paths (not a glob string, so <code>-resume</code> invalidates
-correctly).</p>
+<h2 id="cross-experiment-aggregation">Cross-experiment aggregation<a class="headerlink" href="#cross-experiment-aggregation" title="Permanent link">&para;</a></h2>
+<p>The pipeline stops at per-experiment outputs. Combining experiments — merging
+blocklists across experiments, z-scoring each experiment's per-variant profiles
+and taking the per-variant median across experiments, and re-centering OvWT
+AUROCs against synonymous variants before a cross-experiment median — is the job
+of the downstream <a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a> package.
+It reads each experiment's published
+<code>feature_select_batchwise/&lt;batch_stem&gt;/{aggregates,passthrough_aggregates,blocklists}/&lt;feature_type&gt;.parquet</code>
+and <code>ovwt_batchwise/&lt;batch_stem&gt;/results.parquet</code>.</p>
 <h2 id="reproducibility">Reproducibility<a class="headerlink" href="#reproducibility" title="Permanent link">&para;</a></h2>
 <p><code>params.random_seed</code> is the only seed in the pipeline. Every stochastic step
 reads it: QC pseudo-variant downsampling, the feature-selection bootstrap splits
@@ -1419,22 +1316,24 @@ diverges despite a fixed seed.</p>
 <td><strong>Wildtype</strong> cells (<code>meta_aa_changes = 'WT'</code>)</td>
 </tr>
 <tr>
-<td><code>FINALIZE_FEATURE_SELECT</code> / <code>GLOBAL_FEATURE_SELECT</code> (aggregate level)</td>
+<td><code>AGGREGATE_FEATURE_TYPE</code> (aggregate level, <code>normalize_to_synonymous</code>)</td>
 <td><strong>Synonymous</strong> variants</td>
 </tr>
 <tr>
-<td><code>GLOBAL_OVWT</code> (score level)</td>
+<td><code>FINALIZE_FEATURE_SELECT</code> (aggregate level)</td>
 <td><strong>Synonymous</strong> variants</td>
 </tr>
 </tbody>
 </table>
 <p><code>aggregate.variant_classification</code> flags synonymous, untagged labels as
-<code>meta_is_control = True</code>; <code>normalize.py</code> uses the WT SQL query instead.</p>
+<code>meta_is_control = True</code>; <code>normalize.py</code> uses the WT SQL query instead. Both
+synonymous-baseline normalizations fit a <code>ddof=1</code> std, so each experiment needs
+at least two synonymous variants — with one, every feature comes out null.</p>
 <p>Note that <code>OVWT_BATCHWISE</code> consumes <code>NORMALIZE</code>'s wildtype-normalized output.
 The sibling <code>fisseq-embeddings-pipeline</code>, from which the OvWT implementation was
 ported, z-scores its features against synonymous variants before training
-instead. The difference is deliberate: the synonymous re-centering happens here
-at the score level, in <code>GLOBAL_OVWT</code>.</p>
+instead. The difference is deliberate: the synonymous re-centering happens at
+the score level, on the AUROCs, downstream in fisseqborn.</p>
 <h2 id="variant-tags">Variant tags<a class="headerlink" href="#variant-tags" title="Permanent link">&para;</a></h2>
 <p><code>aaChanges</code> values may carry a <code>:&lt;tag&gt;</code> suffix (e.g. <code>V123A:downsampled-half</code>).
 The tag is stripped exactly once, in <code>qcfilter.py:filter_columns</code>:
@@ -1464,18 +1363,14 @@ it creates.</p>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>                             # score + meta_variant_scored_against
 <a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    models.pkl               # dict[variant -&gt; list[(Booster, calibrator|None)]]
 <a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>  feature_select_batchwise/&lt;batch_stem&gt;/
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    aggregates/&lt;feature_type&gt;.parquet
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    splits/bootstrap_&lt;n&gt;/half{1,2}.parquet
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    half_aggregates/bootstrap_&lt;n&gt;/&lt;feature_type&gt;/half{1,2}.parquet
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    correlations/&lt;feature_type&gt;/bootstrap_&lt;n&gt;.parquet
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    blocklists/&lt;feature_type&gt;.parquet
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    blocklist.parquet
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    output.parquet
-<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>  global/&lt;channel&gt;/          # one subtree per active global channel
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    ovwt_distinguishability/global_scores.parquet
-<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    feature_select/
-<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>      aggregate.parquet
-<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>      blocklist.parquet
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    aggregates/&lt;feature_type&gt;.parquet              # z-scored to synonymous variants
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    passthrough_aggregates/&lt;feature_type&gt;.parquet  # raw scale (passthrough types)
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    splits/bootstrap_&lt;n&gt;/half{1,2}.parquet
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    half_aggregates/bootstrap_&lt;n&gt;/&lt;feature_type&gt;/half{1,2}.parquet
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    correlations/&lt;feature_type&gt;/bootstrap_&lt;n&gt;.parquet
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    blocklists/&lt;feature_type&gt;.parquet
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    blocklist.parquet
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    output.parquet
 </code></pre></div>
 <h2 id="column-naming">Column naming<a class="headerlink" href="#column-naming" title="Permanent link">&para;</a></h2>
 <table>

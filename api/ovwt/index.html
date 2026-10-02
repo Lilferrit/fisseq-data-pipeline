@@ -9,10 +9,10 @@
       
       
       
-        <link rel="prev" href="../globalfeatureselect/">
+        <link rel="prev" href="../features/">
       
       
-        <link rel="next" href="../globalovwt/">
+        <link rel="next" href="../config/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -708,58 +708,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../cli/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../cli/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -944,29 +898,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -1092,29 +1023,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
-    
-  </span>
-  
-
-      </a>
     </li>
   
 
@@ -1348,8 +1256,8 @@ instead of one:</p>
 features fed to the classifier are z-scored against the experiment's own
 <em>synonymous</em> variants. Here they are <code>NORMALIZE</code>'s output, z-scored against
 <em>wildtype</em> cells -- this pipeline's cell-level normalization is unchanged. The
-synonymous re-centering still happens, downstream and on the AUROCs rather than
-on the features, in :mod:<code>fisseq_data_pipeline.globalovwt</code>. Do not "fix" this
+synonymous re-centering happens outside this pipeline, on the AUROCs rather than
+on the features, in the downstream <code>fisseqborn</code> package. Do not "fix" this
 by adding a second normalizer fit here.</p>
 <p><strong>Two cross-validation schemes</strong>, selected by <code>OvwtConfig.cv_mode</code>:</p>
 <ul>
@@ -2245,7 +2153,8 @@ otherwise empty.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/fisseq_data_pipeline/ovwt.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-891">891</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-890">890</a></span>
+<span class="normal"><a href="#__codelineno-0-891">891</a></span>
 <span class="normal"><a href="#__codelineno-0-892">892</a></span>
 <span class="normal"><a href="#__codelineno-0-893">893</a></span>
 <span class="normal"><a href="#__codelineno-0-894">894</a></span>
@@ -2317,81 +2226,80 @@ otherwise empty.</p>
 <span class="normal"><a href="#__codelineno-0-960">960</a></span>
 <span class="normal"><a href="#__codelineno-0-961">961</a></span>
 <span class="normal"><a href="#__codelineno-0-962">962</a></span>
-<span class="normal"><a href="#__codelineno-0-963">963</a></span>
-<span class="normal"><a href="#__codelineno-0-964">964</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-891" name="__codelineno-0-891"></a><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;ovwt_main&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-892" name="__codelineno-0-892"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-893" name="__codelineno-0-893"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-894" name="__codelineno-0-894"></a><span class="sd">    Hydra entry point: cross-validated one-vs-wildtype scoring for every</span>
-<a id="__codelineno-0-895" name="__codelineno-0-895"></a><span class="sd">    variant in an experiment.</span>
-<a id="__codelineno-0-896" name="__codelineno-0-896"></a>
-<a id="__codelineno-0-897" name="__codelineno-0-897"></a><span class="sd">    Output files</span>
-<a id="__codelineno-0-898" name="__codelineno-0-898"></a><span class="sd">    ------------</span>
-<a id="__codelineno-0-899" name="__codelineno-0-899"></a><span class="sd">    - ``{output_dir}/{prefix}results.parquet``</span>
-<a id="__codelineno-0-900" name="__codelineno-0-900"></a><span class="sd">    - ``{output_dir}/{prefix}cell_scores.parquet``</span>
-<a id="__codelineno-0-901" name="__codelineno-0-901"></a><span class="sd">    - ``{output_dir}/{prefix}models.pkl``</span>
-<a id="__codelineno-0-902" name="__codelineno-0-902"></a>
-<a id="__codelineno-0-903" name="__codelineno-0-903"></a><span class="sd">    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,</span>
-<a id="__codelineno-0-904" name="__codelineno-0-904"></a><span class="sd">    otherwise empty.</span>
-<a id="__codelineno-0-905" name="__codelineno-0-905"></a>
-<a id="__codelineno-0-906" name="__codelineno-0-906"></a><span class="sd">    Configuration</span>
-<a id="__codelineno-0-907" name="__codelineno-0-907"></a><span class="sd">    -------------</span>
-<a id="__codelineno-0-908" name="__codelineno-0-908"></a><span class="sd">    Override any field on the command line, e.g.::</span>
-<a id="__codelineno-0-909" name="__codelineno-0-909"></a>
-<a id="__codelineno-0-910" name="__codelineno-0-910"></a><span class="sd">        python -m fisseq_data_pipeline.ovwt \\</span>
-<a id="__codelineno-0-911" name="__codelineno-0-911"></a><span class="sd">            output_dir=./out \\</span>
-<a id="__codelineno-0-912" name="__codelineno-0-912"></a><span class="sd">            input_file=out/normalized.parquet \\</span>
-<a id="__codelineno-0-913" name="__codelineno-0-913"></a><span class="sd">            cv_mode=kfold \\</span>
-<a id="__codelineno-0-914" name="__codelineno-0-914"></a><span class="sd">            n_folds=5 \\</span>
-<a id="__codelineno-0-915" name="__codelineno-0-915"></a><span class="sd">            calibrate=true \\</span>
-<a id="__codelineno-0-916" name="__codelineno-0-916"></a><span class="sd">            min_cells=250 \\</span>
-<a id="__codelineno-0-917" name="__codelineno-0-917"></a><span class="sd">            downsample_wt=true \\</span>
-<a id="__codelineno-0-918" name="__codelineno-0-918"></a><span class="sd">            random_seed=0</span>
-<a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-920" name="__codelineno-0-920"></a>    <span class="n">ovwt_cfg</span><span class="p">:</span> <span class="n">OvwtConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
-<a id="__codelineno-0-921" name="__codelineno-0-921"></a>
-<a id="__codelineno-0-922" name="__codelineno-0-922"></a>    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
-<a id="__codelineno-0-923" name="__codelineno-0-923"></a>    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-924" name="__codelineno-0-924"></a>    <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
-<a id="__codelineno-0-925" name="__codelineno-0-925"></a>    <span class="n">setup_logging</span><span class="p">(</span><span class="n">ovwt_cfg</span><span class="p">,</span> <span class="s2">&quot;ovwt&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-926" name="__codelineno-0-926"></a>
-<a id="__codelineno-0-927" name="__codelineno-0-927"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-<a id="__codelineno-0-928" name="__codelineno-0-928"></a>
-<a id="__codelineno-0-929" name="__codelineno-0-929"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading normalized cells from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
-<a id="__codelineno-0-930" name="__codelineno-0-930"></a>    <span class="n">cells_lf</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-931" name="__codelineno-0-931"></a>
-<a id="__codelineno-0-932" name="__codelineno-0-932"></a>    <span class="k">if</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">cv_mode</span> <span class="o">==</span> <span class="n">CV_MODE_BARCODE_HOLDOUT</span><span class="p">:</span>
-<a id="__codelineno-0-933" name="__codelineno-0-933"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-934" name="__codelineno-0-934"></a>            <span class="s2">&quot;Running barcode-holdout one-vs-wildtype scoring (</span><span class="si">%s</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-935" name="__codelineno-0-935"></a>            <span class="s2">&quot;calibrate=</span><span class="si">%s</span><span class="s2">, min_cells=</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-936" name="__codelineno-0-936"></a>            <span class="s2">&quot;one fold per variant barcode&quot;</span>
-<a id="__codelineno-0-937" name="__codelineno-0-937"></a>            <span class="k">if</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">n_folds</span> <span class="ow">is</span> <span class="kc">None</span>
-<a id="__codelineno-0-938" name="__codelineno-0-938"></a>            <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;barcodes packed into at most </span><span class="si">{</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">n_folds</span><span class="si">}</span><span class="s2"> fold(s)&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-939" name="__codelineno-0-939"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">calibrate</span><span class="p">,</span>
-<a id="__codelineno-0-940" name="__codelineno-0-940"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">min_cells</span><span class="p">,</span>
-<a id="__codelineno-0-941" name="__codelineno-0-941"></a>        <span class="p">)</span>
-<a id="__codelineno-0-942" name="__codelineno-0-942"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-943" name="__codelineno-0-943"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-944" name="__codelineno-0-944"></a>            <span class="s2">&quot;Running </span><span class="si">%d</span><span class="s2">-fold one-vs-wildtype scoring (calibrate=</span><span class="si">%s</span><span class="s2">, min_cells=</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-945" name="__codelineno-0-945"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">n_folds</span><span class="p">,</span>
-<a id="__codelineno-0-946" name="__codelineno-0-946"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">calibrate</span><span class="p">,</span>
-<a id="__codelineno-0-947" name="__codelineno-0-947"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">min_cells</span><span class="p">,</span>
-<a id="__codelineno-0-948" name="__codelineno-0-948"></a>        <span class="p">)</span>
-<a id="__codelineno-0-949" name="__codelineno-0-949"></a>    <span class="n">results_df</span><span class="p">,</span> <span class="n">cell_scores_df</span><span class="p">,</span> <span class="n">models</span> <span class="o">=</span> <span class="n">ovwt_batchwise</span><span class="p">(</span><span class="n">cells_lf</span><span class="p">,</span> <span class="n">ovwt_cfg</span><span class="p">)</span>
-<a id="__codelineno-0-950" name="__codelineno-0-950"></a>
-<a id="__codelineno-0-951" name="__codelineno-0-951"></a>    <span class="n">results_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">results.parquet&quot;</span>
-<a id="__codelineno-0-952" name="__codelineno-0-952"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">results_path</span><span class="p">)</span>
-<a id="__codelineno-0-953" name="__codelineno-0-953"></a>    <span class="n">results_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">results_path</span><span class="p">)</span>
-<a id="__codelineno-0-954" name="__codelineno-0-954"></a>
-<a id="__codelineno-0-955" name="__codelineno-0-955"></a>    <span class="n">cell_scores_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">cell_scores.parquet&quot;</span>
-<a id="__codelineno-0-956" name="__codelineno-0-956"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">cell_scores_path</span><span class="p">)</span>
-<a id="__codelineno-0-957" name="__codelineno-0-957"></a>    <span class="n">cell_scores_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">cell_scores_path</span><span class="p">)</span>
-<a id="__codelineno-0-958" name="__codelineno-0-958"></a>
-<a id="__codelineno-0-959" name="__codelineno-0-959"></a>    <span class="n">models_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">models.pkl&quot;</span>
-<a id="__codelineno-0-960" name="__codelineno-0-960"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">models_path</span><span class="p">)</span>
-<a id="__codelineno-0-961" name="__codelineno-0-961"></a>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">models_path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-<a id="__codelineno-0-962" name="__codelineno-0-962"></a>        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">models</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
-<a id="__codelineno-0-963" name="__codelineno-0-963"></a>
-<a id="__codelineno-0-964" name="__codelineno-0-964"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-963">963</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-890" name="__codelineno-0-890"></a><span class="nd">@hydra</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="n">version_base</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">config_name</span><span class="o">=</span><span class="s2">&quot;ovwt_main&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">DictConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-893" name="__codelineno-0-893"></a><span class="sd">    Hydra entry point: cross-validated one-vs-wildtype scoring for every</span>
+<a id="__codelineno-0-894" name="__codelineno-0-894"></a><span class="sd">    variant in an experiment.</span>
+<a id="__codelineno-0-895" name="__codelineno-0-895"></a>
+<a id="__codelineno-0-896" name="__codelineno-0-896"></a><span class="sd">    Output files</span>
+<a id="__codelineno-0-897" name="__codelineno-0-897"></a><span class="sd">    ------------</span>
+<a id="__codelineno-0-898" name="__codelineno-0-898"></a><span class="sd">    - ``{output_dir}/{prefix}results.parquet``</span>
+<a id="__codelineno-0-899" name="__codelineno-0-899"></a><span class="sd">    - ``{output_dir}/{prefix}cell_scores.parquet``</span>
+<a id="__codelineno-0-900" name="__codelineno-0-900"></a><span class="sd">    - ``{output_dir}/{prefix}models.pkl``</span>
+<a id="__codelineno-0-901" name="__codelineno-0-901"></a>
+<a id="__codelineno-0-902" name="__codelineno-0-902"></a><span class="sd">    where ``prefix`` is ``{output_root}.`` when ``output_root`` is set,</span>
+<a id="__codelineno-0-903" name="__codelineno-0-903"></a><span class="sd">    otherwise empty.</span>
+<a id="__codelineno-0-904" name="__codelineno-0-904"></a>
+<a id="__codelineno-0-905" name="__codelineno-0-905"></a><span class="sd">    Configuration</span>
+<a id="__codelineno-0-906" name="__codelineno-0-906"></a><span class="sd">    -------------</span>
+<a id="__codelineno-0-907" name="__codelineno-0-907"></a><span class="sd">    Override any field on the command line, e.g.::</span>
+<a id="__codelineno-0-908" name="__codelineno-0-908"></a>
+<a id="__codelineno-0-909" name="__codelineno-0-909"></a><span class="sd">        python -m fisseq_data_pipeline.ovwt \\</span>
+<a id="__codelineno-0-910" name="__codelineno-0-910"></a><span class="sd">            output_dir=./out \\</span>
+<a id="__codelineno-0-911" name="__codelineno-0-911"></a><span class="sd">            input_file=out/normalized.parquet \\</span>
+<a id="__codelineno-0-912" name="__codelineno-0-912"></a><span class="sd">            cv_mode=kfold \\</span>
+<a id="__codelineno-0-913" name="__codelineno-0-913"></a><span class="sd">            n_folds=5 \\</span>
+<a id="__codelineno-0-914" name="__codelineno-0-914"></a><span class="sd">            calibrate=true \\</span>
+<a id="__codelineno-0-915" name="__codelineno-0-915"></a><span class="sd">            min_cells=250 \\</span>
+<a id="__codelineno-0-916" name="__codelineno-0-916"></a><span class="sd">            downsample_wt=true \\</span>
+<a id="__codelineno-0-917" name="__codelineno-0-917"></a><span class="sd">            random_seed=0</span>
+<a id="__codelineno-0-918" name="__codelineno-0-918"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a>    <span class="n">ovwt_cfg</span><span class="p">:</span> <span class="n">OvwtConfig</span> <span class="o">=</span> <span class="n">OmegaConf</span><span class="o">.</span><span class="n">to_object</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+<a id="__codelineno-0-920" name="__codelineno-0-920"></a>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a>    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+<a id="__codelineno-0-922" name="__codelineno-0-922"></a>    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a>    <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a>    <span class="n">setup_logging</span><span class="p">(</span><span class="n">ovwt_cfg</span><span class="p">,</span> <span class="s2">&quot;ovwt&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-925" name="__codelineno-0-925"></a>
+<a id="__codelineno-0-926" name="__codelineno-0-926"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_root</span><span class="si">}</span><span class="s2">.&quot;</span> <span class="k">if</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">output_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-0-927" name="__codelineno-0-927"></a>
+<a id="__codelineno-0-928" name="__codelineno-0-928"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading normalized cells from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)</span>
+<a id="__codelineno-0-929" name="__codelineno-0-929"></a>    <span class="n">cells_lf</span> <span class="o">=</span> <span class="n">load_batches</span><span class="p">(</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">input_file</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-930" name="__codelineno-0-930"></a>
+<a id="__codelineno-0-931" name="__codelineno-0-931"></a>    <span class="k">if</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">cv_mode</span> <span class="o">==</span> <span class="n">CV_MODE_BARCODE_HOLDOUT</span><span class="p">:</span>
+<a id="__codelineno-0-932" name="__codelineno-0-932"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-933" name="__codelineno-0-933"></a>            <span class="s2">&quot;Running barcode-holdout one-vs-wildtype scoring (</span><span class="si">%s</span><span class="s2">; &quot;</span>
+<a id="__codelineno-0-934" name="__codelineno-0-934"></a>            <span class="s2">&quot;calibrate=</span><span class="si">%s</span><span class="s2">, min_cells=</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-935" name="__codelineno-0-935"></a>            <span class="s2">&quot;one fold per variant barcode&quot;</span>
+<a id="__codelineno-0-936" name="__codelineno-0-936"></a>            <span class="k">if</span> <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">n_folds</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-0-937" name="__codelineno-0-937"></a>            <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;barcodes packed into at most </span><span class="si">{</span><span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">n_folds</span><span class="si">}</span><span class="s2"> fold(s)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-938" name="__codelineno-0-938"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">calibrate</span><span class="p">,</span>
+<a id="__codelineno-0-939" name="__codelineno-0-939"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">min_cells</span><span class="p">,</span>
+<a id="__codelineno-0-940" name="__codelineno-0-940"></a>        <span class="p">)</span>
+<a id="__codelineno-0-941" name="__codelineno-0-941"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-942" name="__codelineno-0-942"></a>        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-943" name="__codelineno-0-943"></a>            <span class="s2">&quot;Running </span><span class="si">%d</span><span class="s2">-fold one-vs-wildtype scoring (calibrate=</span><span class="si">%s</span><span class="s2">, min_cells=</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-944" name="__codelineno-0-944"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">n_folds</span><span class="p">,</span>
+<a id="__codelineno-0-945" name="__codelineno-0-945"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">calibrate</span><span class="p">,</span>
+<a id="__codelineno-0-946" name="__codelineno-0-946"></a>            <span class="n">ovwt_cfg</span><span class="o">.</span><span class="n">min_cells</span><span class="p">,</span>
+<a id="__codelineno-0-947" name="__codelineno-0-947"></a>        <span class="p">)</span>
+<a id="__codelineno-0-948" name="__codelineno-0-948"></a>    <span class="n">results_df</span><span class="p">,</span> <span class="n">cell_scores_df</span><span class="p">,</span> <span class="n">models</span> <span class="o">=</span> <span class="n">ovwt_batchwise</span><span class="p">(</span><span class="n">cells_lf</span><span class="p">,</span> <span class="n">ovwt_cfg</span><span class="p">)</span>
+<a id="__codelineno-0-949" name="__codelineno-0-949"></a>
+<a id="__codelineno-0-950" name="__codelineno-0-950"></a>    <span class="n">results_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">results.parquet&quot;</span>
+<a id="__codelineno-0-951" name="__codelineno-0-951"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">results_path</span><span class="p">)</span>
+<a id="__codelineno-0-952" name="__codelineno-0-952"></a>    <span class="n">results_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">results_path</span><span class="p">)</span>
+<a id="__codelineno-0-953" name="__codelineno-0-953"></a>
+<a id="__codelineno-0-954" name="__codelineno-0-954"></a>    <span class="n">cell_scores_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">cell_scores.parquet&quot;</span>
+<a id="__codelineno-0-955" name="__codelineno-0-955"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">cell_scores_path</span><span class="p">)</span>
+<a id="__codelineno-0-956" name="__codelineno-0-956"></a>    <span class="n">cell_scores_df</span><span class="o">.</span><span class="n">write_parquet</span><span class="p">(</span><span class="n">cell_scores_path</span><span class="p">)</span>
+<a id="__codelineno-0-957" name="__codelineno-0-957"></a>
+<a id="__codelineno-0-958" name="__codelineno-0-958"></a>    <span class="n">models_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">models.pkl&quot;</span>
+<a id="__codelineno-0-959" name="__codelineno-0-959"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">models_path</span><span class="p">)</span>
+<a id="__codelineno-0-960" name="__codelineno-0-960"></a>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">models_path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-0-961" name="__codelineno-0-961"></a>        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">models</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+<a id="__codelineno-0-962" name="__codelineno-0-962"></a>
+<a id="__codelineno-0-963" name="__codelineno-0-963"></a>    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2913,8 +2821,7 @@ is below 2, or if it is <code>None</code> under any mode but
 <span class="normal"><a href="#__codelineno-0-884">884</a></span>
 <span class="normal"><a href="#__codelineno-0-885">885</a></span>
 <span class="normal"><a href="#__codelineno-0-886">886</a></span>
-<span class="normal"><a href="#__codelineno-0-887">887</a></span>
-<span class="normal"><a href="#__codelineno-0-888">888</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="k">def</span><span class="w"> </span><span class="nf">ovwt_batchwise</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-887">887</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-552" name="__codelineno-0-552"></a><span class="k">def</span><span class="w"> </span><span class="nf">ovwt_batchwise</span><span class="p">(</span>
 <a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="n">cells_lf</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span>
 <a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="n">cfg</span><span class="p">:</span> <span class="n">OvwtConfig</span><span class="p">,</span>
 <a id="__codelineno-0-555" name="__codelineno-0-555"></a>    <span class="n">feature_selector</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span> <span class="o">=</span> <span class="n">FEATURE_SELECTOR</span><span class="p">,</span>
@@ -3173,84 +3080,83 @@ is below 2, or if it is <code>None</code> under any mode but
 <a id="__codelineno-0-808" name="__codelineno-0-808"></a>                    <span class="nb">int</span><span class="p">((</span><span class="o">~</span><span class="n">is_wt</span> <span class="o">&amp;</span> <span class="n">mask</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()),</span>
 <a id="__codelineno-0-809" name="__codelineno-0-809"></a>                    <span class="n">_format_auroc</span><span class="p">(</span><span class="n">barcode_auroc</span><span class="p">),</span>
 <a id="__codelineno-0-810" name="__codelineno-0-810"></a>                <span class="p">)</span>
-<a id="__codelineno-0-811" name="__codelineno-0-811"></a>            <span class="c1"># None, not float(&quot;nan&quot;), so the cross-experiment median in</span>
-<a id="__codelineno-0-812" name="__codelineno-0-812"></a>            <span class="c1"># globalovwt.py excludes this cleanly instead of being poisoned by</span>
-<a id="__codelineno-0-813" name="__codelineno-0-813"></a>            <span class="c1"># a NaN. Defensive only -- a variant only enters this loop with at</span>
-<a id="__codelineno-0-814" name="__codelineno-0-814"></a>            <span class="c1"># least one barcode of its own.</span>
-<a id="__codelineno-0-815" name="__codelineno-0-815"></a>            <span class="n">auroc_median_barcode</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-816" name="__codelineno-0-816"></a>                <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">barcode_aurocs</span><span class="p">))</span> <span class="k">if</span> <span class="n">barcode_aurocs</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-817" name="__codelineno-0-817"></a>            <span class="p">)</span>
-<a id="__codelineno-0-818" name="__codelineno-0-818"></a>
-<a id="__codelineno-0-819" name="__codelineno-0-819"></a>            <span class="c1"># None rather than NaN when every fold is single-class, for the</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a>            <span class="c1"># same reason as auroc_median_barcode above.</span>
-<a id="__codelineno-0-821" name="__codelineno-0-821"></a>            <span class="n">defined_fold_aurocs</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">fold_aurocs</span> <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
-<a id="__codelineno-0-822" name="__codelineno-0-822"></a>            <span class="n">auroc_median_fold</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-823" name="__codelineno-0-823"></a>                <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">defined_fold_aurocs</span><span class="p">))</span> <span class="k">if</span> <span class="n">defined_fold_aurocs</span> <span class="k">else</span> <span class="kc">None</span>
-<a id="__codelineno-0-824" name="__codelineno-0-824"></a>            <span class="p">)</span>
-<a id="__codelineno-0-825" name="__codelineno-0-825"></a>
-<a id="__codelineno-0-826" name="__codelineno-0-826"></a>            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<a id="__codelineno-0-827" name="__codelineno-0-827"></a>                <span class="s2">&quot;[</span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2">] </span><span class="si">%r</span><span class="s2"> done: pooled=</span><span class="si">%s</span><span class="s2"> median_barcode=</span><span class="si">%s</span><span class="s2"> median_fold=</span><span class="si">%s</span><span class="s2"> &quot;</span>
-<a id="__codelineno-0-828" name="__codelineno-0-828"></a>                <span class="s2">&quot;over </span><span class="si">%d</span><span class="s2"> fold(s) in </span><span class="si">%.1f</span><span class="s2">s&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-829" name="__codelineno-0-829"></a>                <span class="n">variant_num</span><span class="p">,</span>
-<a id="__codelineno-0-830" name="__codelineno-0-830"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">variants</span><span class="p">),</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>                <span class="n">variant</span><span class="p">,</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>                <span class="n">_format_auroc</span><span class="p">(</span><span class="n">auroc_pooled</span><span class="p">),</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>                <span class="n">_format_auroc</span><span class="p">(</span><span class="n">auroc_median_barcode</span><span class="p">),</span>
-<a id="__codelineno-0-834" name="__codelineno-0-834"></a>                <span class="n">_format_auroc</span><span class="p">(</span><span class="n">auroc_median_fold</span><span class="p">),</span>
-<a id="__codelineno-0-835" name="__codelineno-0-835"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">fold_models</span><span class="p">),</span>
-<a id="__codelineno-0-836" name="__codelineno-0-836"></a>                <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">started_at</span><span class="p">,</span>
-<a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="p">)</span>
-<a id="__codelineno-0-838" name="__codelineno-0-838"></a>
-<a id="__codelineno-0-839" name="__codelineno-0-839"></a>            <span class="n">per_variant_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-840" name="__codelineno-0-840"></a>                <span class="p">{</span>
-<a id="__codelineno-0-841" name="__codelineno-0-841"></a>                    <span class="n">label_col</span><span class="p">:</span> <span class="n">variant</span><span class="p">,</span>
-<a id="__codelineno-0-842" name="__codelineno-0-842"></a>                    <span class="s2">&quot;auroc_pooled&quot;</span><span class="p">:</span> <span class="n">auroc_pooled</span><span class="p">,</span>
-<a id="__codelineno-0-843" name="__codelineno-0-843"></a>                    <span class="s2">&quot;auroc_median_barcode&quot;</span><span class="p">:</span> <span class="n">auroc_median_barcode</span><span class="p">,</span>
-<a id="__codelineno-0-844" name="__codelineno-0-844"></a>                    <span class="s2">&quot;auroc_folds&quot;</span><span class="p">:</span> <span class="n">fold_aurocs</span><span class="p">,</span>
-<a id="__codelineno-0-845" name="__codelineno-0-845"></a>                    <span class="s2">&quot;auroc_median_fold&quot;</span><span class="p">:</span> <span class="n">auroc_median_fold</span><span class="p">,</span>
-<a id="__codelineno-0-846" name="__codelineno-0-846"></a>                    <span class="s2">&quot;meta_n_barcodes&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">variant_barcodes</span><span class="p">),</span>
-<a id="__codelineno-0-847" name="__codelineno-0-847"></a>                    <span class="s2">&quot;meta_n_cells&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">subset</span><span class="p">),</span>
-<a id="__codelineno-0-848" name="__codelineno-0-848"></a>                <span class="p">}</span>
-<a id="__codelineno-0-849" name="__codelineno-0-849"></a>            <span class="p">)</span>
-<a id="__codelineno-0-850" name="__codelineno-0-850"></a>            <span class="n">per_cell_scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-851" name="__codelineno-0-851"></a>                <span class="n">subset</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">META_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
-<a id="__codelineno-0-852" name="__codelineno-0-852"></a>                    <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">,</span> <span class="n">oof_scores</span><span class="p">),</span>
-<a id="__codelineno-0-853" name="__codelineno-0-853"></a>                    <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="n">variant</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;meta_variant_scored_against&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-854" name="__codelineno-0-854"></a>                <span class="p">)</span>
-<a id="__codelineno-0-855" name="__codelineno-0-855"></a>            <span class="p">)</span>
-<a id="__codelineno-0-856" name="__codelineno-0-856"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<a id="__codelineno-0-857" name="__codelineno-0-857"></a>            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<a id="__codelineno-0-858" name="__codelineno-0-858"></a>                <span class="s2">&quot;[</span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2">] Skipping variant </span><span class="si">%r</span><span class="s2"> due to an error during &quot;</span>
-<a id="__codelineno-0-859" name="__codelineno-0-859"></a>                <span class="s2">&quot;training/evaluation:&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-860" name="__codelineno-0-860"></a>                <span class="n">variant_num</span><span class="p">,</span>
-<a id="__codelineno-0-861" name="__codelineno-0-861"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">variants</span><span class="p">),</span>
-<a id="__codelineno-0-862" name="__codelineno-0-862"></a>                <span class="n">variant</span><span class="p">,</span>
-<a id="__codelineno-0-863" name="__codelineno-0-863"></a>                <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-864" name="__codelineno-0-864"></a>            <span class="p">)</span>
-<a id="__codelineno-0-865" name="__codelineno-0-865"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-866" name="__codelineno-0-866"></a>
-<a id="__codelineno-0-867" name="__codelineno-0-867"></a>    <span class="c1"># Explicit in both branches: an all-null auroc_median_fold or auroc_folds</span>
-<a id="__codelineno-0-868" name="__codelineno-0-868"></a>    <span class="c1"># would otherwise be inferred as the Null dtype.</span>
-<a id="__codelineno-0-869" name="__codelineno-0-869"></a>    <span class="n">results_schema</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-870" name="__codelineno-0-870"></a>        <span class="n">label_col</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">String</span><span class="p">,</span>
-<a id="__codelineno-0-871" name="__codelineno-0-871"></a>        <span class="s2">&quot;auroc_pooled&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
-<a id="__codelineno-0-872" name="__codelineno-0-872"></a>        <span class="s2">&quot;auroc_median_barcode&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
-<a id="__codelineno-0-873" name="__codelineno-0-873"></a>        <span class="s2">&quot;auroc_folds&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">List</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">),</span>
-<a id="__codelineno-0-874" name="__codelineno-0-874"></a>        <span class="s2">&quot;auroc_median_fold&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
-<a id="__codelineno-0-875" name="__codelineno-0-875"></a>        <span class="s2">&quot;meta_n_barcodes&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">,</span>
-<a id="__codelineno-0-876" name="__codelineno-0-876"></a>        <span class="s2">&quot;meta_n_cells&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">,</span>
-<a id="__codelineno-0-877" name="__codelineno-0-877"></a>    <span class="p">}</span>
-<a id="__codelineno-0-878" name="__codelineno-0-878"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">per_variant_results</span><span class="p">:</span>
-<a id="__codelineno-0-879" name="__codelineno-0-879"></a>        <span class="n">results_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">schema</span><span class="o">=</span><span class="n">results_schema</span><span class="p">)</span>
-<a id="__codelineno-0-880" name="__codelineno-0-880"></a>        <span class="n">cell_scores_schema</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">df</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">META_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span><span class="p">}</span>
-<a id="__codelineno-0-881" name="__codelineno-0-881"></a>        <span class="n">cell_scores_schema</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span>
-<a id="__codelineno-0-882" name="__codelineno-0-882"></a>        <span class="n">cell_scores_schema</span><span class="p">[</span><span class="s2">&quot;meta_variant_scored_against&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">String</span>
-<a id="__codelineno-0-883" name="__codelineno-0-883"></a>        <span class="n">cell_scores_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">schema</span><span class="o">=</span><span class="n">cell_scores_schema</span><span class="p">)</span>
-<a id="__codelineno-0-884" name="__codelineno-0-884"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-885" name="__codelineno-0-885"></a>        <span class="n">results_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">per_variant_results</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">results_schema</span><span class="p">)</span>
-<a id="__codelineno-0-886" name="__codelineno-0-886"></a>        <span class="n">cell_scores_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">per_cell_scores</span><span class="p">)</span>
-<a id="__codelineno-0-887" name="__codelineno-0-887"></a>
-<a id="__codelineno-0-888" name="__codelineno-0-888"></a>    <span class="k">return</span> <span class="n">results_df</span><span class="p">,</span> <span class="n">cell_scores_df</span><span class="p">,</span> <span class="n">models</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>            <span class="c1"># None, not float(&quot;nan&quot;), so a downstream cross-experiment median</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>            <span class="c1"># excludes this cleanly instead of being poisoned by a NaN. Defensive only -- a variant only enters this loop with at</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>            <span class="c1"># least one barcode of its own.</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>            <span class="n">auroc_median_barcode</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>                <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">barcode_aurocs</span><span class="p">))</span> <span class="k">if</span> <span class="n">barcode_aurocs</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>            <span class="p">)</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a>            <span class="c1"># None rather than NaN when every fold is single-class, for the</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>            <span class="c1"># same reason as auroc_median_barcode above.</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>            <span class="n">defined_fold_aurocs</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">fold_aurocs</span> <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>            <span class="n">auroc_median_fold</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>                <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">defined_fold_aurocs</span><span class="p">))</span> <span class="k">if</span> <span class="n">defined_fold_aurocs</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>            <span class="p">)</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a>                <span class="s2">&quot;[</span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2">] </span><span class="si">%r</span><span class="s2"> done: pooled=</span><span class="si">%s</span><span class="s2"> median_barcode=</span><span class="si">%s</span><span class="s2"> median_fold=</span><span class="si">%s</span><span class="s2"> &quot;</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a>                <span class="s2">&quot;over </span><span class="si">%d</span><span class="s2"> fold(s) in </span><span class="si">%.1f</span><span class="s2">s&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>                <span class="n">variant_num</span><span class="p">,</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">variants</span><span class="p">),</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>                <span class="n">variant</span><span class="p">,</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>                <span class="n">_format_auroc</span><span class="p">(</span><span class="n">auroc_pooled</span><span class="p">),</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>                <span class="n">_format_auroc</span><span class="p">(</span><span class="n">auroc_median_barcode</span><span class="p">),</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>                <span class="n">_format_auroc</span><span class="p">(</span><span class="n">auroc_median_fold</span><span class="p">),</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">fold_models</span><span class="p">),</span>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>                <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">started_at</span><span class="p">,</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>            <span class="p">)</span>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a>
+<a id="__codelineno-0-838" name="__codelineno-0-838"></a>            <span class="n">per_variant_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a>                <span class="p">{</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a>                    <span class="n">label_col</span><span class="p">:</span> <span class="n">variant</span><span class="p">,</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a>                    <span class="s2">&quot;auroc_pooled&quot;</span><span class="p">:</span> <span class="n">auroc_pooled</span><span class="p">,</span>
+<a id="__codelineno-0-842" name="__codelineno-0-842"></a>                    <span class="s2">&quot;auroc_median_barcode&quot;</span><span class="p">:</span> <span class="n">auroc_median_barcode</span><span class="p">,</span>
+<a id="__codelineno-0-843" name="__codelineno-0-843"></a>                    <span class="s2">&quot;auroc_folds&quot;</span><span class="p">:</span> <span class="n">fold_aurocs</span><span class="p">,</span>
+<a id="__codelineno-0-844" name="__codelineno-0-844"></a>                    <span class="s2">&quot;auroc_median_fold&quot;</span><span class="p">:</span> <span class="n">auroc_median_fold</span><span class="p">,</span>
+<a id="__codelineno-0-845" name="__codelineno-0-845"></a>                    <span class="s2">&quot;meta_n_barcodes&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">variant_barcodes</span><span class="p">),</span>
+<a id="__codelineno-0-846" name="__codelineno-0-846"></a>                    <span class="s2">&quot;meta_n_cells&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">subset</span><span class="p">),</span>
+<a id="__codelineno-0-847" name="__codelineno-0-847"></a>                <span class="p">}</span>
+<a id="__codelineno-0-848" name="__codelineno-0-848"></a>            <span class="p">)</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a>            <span class="n">per_cell_scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a>                <span class="n">subset</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">META_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a>                    <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">,</span> <span class="n">oof_scores</span><span class="p">),</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a>                    <span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="n">variant</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;meta_variant_scored_against&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a>                <span class="p">)</span>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a>            <span class="p">)</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a>            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a>                <span class="s2">&quot;[</span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2">] Skipping variant </span><span class="si">%r</span><span class="s2"> due to an error during &quot;</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a>                <span class="s2">&quot;training/evaluation:&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-859" name="__codelineno-0-859"></a>                <span class="n">variant_num</span><span class="p">,</span>
+<a id="__codelineno-0-860" name="__codelineno-0-860"></a>                <span class="nb">len</span><span class="p">(</span><span class="n">variants</span><span class="p">),</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a>                <span class="n">variant</span><span class="p">,</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>                <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a>            <span class="p">)</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a>    <span class="c1"># Explicit in both branches: an all-null auroc_median_fold or auroc_folds</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>    <span class="c1"># would otherwise be inferred as the Null dtype.</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>    <span class="n">results_schema</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a>        <span class="n">label_col</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">String</span><span class="p">,</span>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a>        <span class="s2">&quot;auroc_pooled&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a>        <span class="s2">&quot;auroc_median_barcode&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a>        <span class="s2">&quot;auroc_folds&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">List</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">),</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a>        <span class="s2">&quot;auroc_median_fold&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">,</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a>        <span class="s2">&quot;meta_n_barcodes&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">,</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a>        <span class="s2">&quot;meta_n_cells&quot;</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">,</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a>    <span class="p">}</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">per_variant_results</span><span class="p">:</span>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a>        <span class="n">results_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">schema</span><span class="o">=</span><span class="n">results_schema</span><span class="p">)</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a>        <span class="n">cell_scores_schema</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">df</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">META_SELECTOR</span><span class="p">)</span><span class="o">.</span><span class="n">columns</span><span class="p">}</span>
+<a id="__codelineno-0-880" name="__codelineno-0-880"></a>        <span class="n">cell_scores_schema</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">Float64</span>
+<a id="__codelineno-0-881" name="__codelineno-0-881"></a>        <span class="n">cell_scores_schema</span><span class="p">[</span><span class="s2">&quot;meta_variant_scored_against&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">String</span>
+<a id="__codelineno-0-882" name="__codelineno-0-882"></a>        <span class="n">cell_scores_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">schema</span><span class="o">=</span><span class="n">cell_scores_schema</span><span class="p">)</span>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a>        <span class="n">results_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">per_variant_results</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">results_schema</span><span class="p">)</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a>        <span class="n">cell_scores_df</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">per_cell_scores</span><span class="p">)</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a>    <span class="k">return</span> <span class="n">results_df</span><span class="p">,</span> <span class="n">cell_scores_df</span><span class="p">,</span> <span class="n">models</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

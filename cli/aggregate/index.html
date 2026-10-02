@@ -744,6 +744,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#synonymous-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Synonymous normalization
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#feature-chunking" class="md-nav__link">
     <span class="md-ellipsis">
       Feature chunking
@@ -791,58 +800,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -1025,58 +988,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1216,6 +1133,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#synonymous-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Synonymous normalization
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#feature-chunking" class="md-nav__link">
     <span class="md-ellipsis">
       Feature chunking
@@ -1250,9 +1176,10 @@
 <li><strong><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></strong> (Nextflow processes
   <code>AGGREGATE_FEATURE_TYPE</code> and <code>AGGREGATE_HALF</code>) — a leaner version used by the
   feature-selection branch: runs a single aggregator, writes only
-  <code>[label_column] + &lt;stat columns&gt;</code>, with no normalizer, metadata join, or impact
-  score. Imports <code>aggregate()</code> and <code>downsample_control()</code> from
-  <code>fisseq_data_pipeline.aggregate</code>.</li>
+  <code>[label_column] + &lt;stat columns&gt;</code>, with no metadata join or impact score.
+  Optionally z-scores the output against the synonymous variants
+  (<code>normalize_to_synonymous</code>). Imports <code>aggregate()</code>, <code>downsample_control()</code> and
+  <code>variant_classification()</code> from <code>fisseq_data_pipeline.aggregate</code>.</li>
 </ul>
 <p>Both accept <code>input_file</code> as a glob pattern (via <code>load_batches</code>) or a concrete
 single-file path.</p>
@@ -1398,17 +1325,18 @@ single-file input → <code>{output_root}.{stem}.{ext}</code> or <code>{output_d
 <td>Optional downsample of control (wildtype) rows before aggregation. A float in <code>(0, 1)</code> keeps that fraction; an int keeps that many. <code>null</code> disables downsampling.</td>
 </tr>
 <tr>
-<td><code>seed</code></td>
-<td><code>0</code></td>
-<td>Random seed for the <code>downsample_wt</code> draw. Ignored when <code>downsample_wt</code> is <code>null</code>.</td>
-</tr>
-<tr>
 <td><code>feature_chunk_size</code></td>
 <td><code>32</code></td>
 <td>Feature columns aggregated per Polars query; <code>null</code> disables chunking. Driven by <code>params.aggregate_feature_chunk_size</code>. See <a href="#feature-chunking">Feature chunking</a>.</td>
 </tr>
+<tr>
+<td><code>normalize_to_synonymous</code></td>
+<td><code>false</code></td>
+<td>Z-score every output stat column against the synonymous variants' rows. See <a href="#synonymous-normalization">Synonymous normalization</a>.</td>
+</tr>
 </tbody>
 </table>
+<p>The <code>downsample_wt</code> draw is seeded from the common <code>random_seed</code> field.</p>
 <p><strong>Output</strong>: glob input → <code>{output_root}.output.parquet</code> or <code>{output_dir}/output.parquet</code>;
 single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output_dir}/{stem}.parquet</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.aggregatefeaturetype<span class="w"> </span><span class="se">\</span>
@@ -1417,15 +1345,39 @@ single-file input → <code>{output_root}.{stem}.parquet</code> or <code>{output
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nv">aggregator</span><span class="o">=</span>mean<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nv">index_file</span><span class="o">=</span>./half1.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nv">downsample_wt</span><span class="o">=</span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">seed</span><span class="o">=</span><span class="m">1</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nv">random_seed</span><span class="o">=</span><span class="m">1</span>
 </code></pre></div>
-<p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>seed</code> are driven by <code>params.feature_select_downsample_wt</code>
+<p>In the Nextflow pipeline, <code>downsample_wt</code>/<code>random_seed</code> are driven by <code>params.feature_select_downsample_wt</code>
 (see <a href="../../configuration/#parameter-reference">Parameters</a>) — <code>AGGREGATE_HALF</code> derives a distinct seed per
 <code>(bootstrap_idx, half_num)</code> so each pseudo-replicate half draws an independent wildtype
 subsample, which is what lets the bootstrap comparison test feature reproducibility against
 different WT samples rather than reusing one fixed sample everywhere. <code>AGGREGATE_FEATURE_TYPE</code>
 (the full, un-split aggregation) uses a fixed seed, since it has no repeated per-instance
 identity to vary by.</p>
+<h2 id="synonymous-normalization">Synonymous normalization<a class="headerlink" href="#synonymous-normalization" title="Permanent link">&para;</a></h2>
+<p>With <code>normalize_to_synonymous=true</code>, the aggregated per-variant table is
+z-scored before it is written: synonymous, untagged labels are flagged by
+<code>variant_classification()</code>, a <code>Normalizer</code> is fit on those rows only (mean and
+<code>ddof=1</code> std), applied to every row, and the temporary <code>meta_is_control</code> column
+is dropped again — so the output is still <code>[label_column] + &lt;stat columns&gt;</code>.
+This synonymous baseline is a different population from the wildtype cells the
+aggregators compare against.</p>
+<p>In the Nextflow pipeline:</p>
+<ul>
+<li><code>AGGREGATE_FEATURE_TYPE</code> sets it for every <code>params.feature_select_types</code>
+  entry, published to <code>feature_select_batchwise/&lt;batch&gt;/aggregates/</code>.</li>
+<li><code>AGGREGATE_FEATURE_TYPE</code> leaves it off for every
+  <code>params.feature_select_passthrough_types</code> entry, published raw to
+  <code>feature_select_batchwise/&lt;batch&gt;/passthrough_aggregates/</code> — p-values such as
+  <code>KSnegLogP</code>/<code>AUROCnegLogP</code> must keep their own scale.</li>
+<li><code>AGGREGATE_HALF</code> leaves it off: the bootstrap halves stay raw.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Needs at least two synonymous variants</p>
+<p>With fewer than two synonymous variants in the experiment the std is
+undefined and every stat column comes out null. Zero-variance features are
+null as well.</p>
+</div>
 <h2 id="feature-chunking">Feature chunking<a class="headerlink" href="#feature-chunking" title="Permanent link">&para;</a></h2>
 <p>Both entry points evaluate <code>feature_chunk_size</code> feature columns per Polars
 query rather than all of them at once, joining the per-chunk results back

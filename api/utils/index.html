@@ -708,58 +708,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../cli/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../cli/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -947,58 +901,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1562,45 +1470,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#nextflow_staging" class="md-nav__link">
-    <span class="md-ellipsis">
-      nextflow_staging
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="nextflow_staging">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#fisseq_data_pipeline.utils.nextflow_staging" class="md-nav__link">
-    <span class="md-ellipsis">
-      nextflow_staging
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="nextflow_staging">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#fisseq_data_pipeline.utils.nextflow_staging.reconstruct_staged_paths" class="md-nav__link">
-    <span class="md-ellipsis">
-      reconstruct_staged_paths
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -2124,45 +1993,6 @@
   <a href="#fisseq_data_pipeline.utils.dimreduction.compute_umap" class="md-nav__link">
     <span class="md-ellipsis">
       compute_umap
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#nextflow_staging" class="md-nav__link">
-    <span class="md-ellipsis">
-      nextflow_staging
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="nextflow_staging">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#fisseq_data_pipeline.utils.nextflow_staging" class="md-nav__link">
-    <span class="md-ellipsis">
-      nextflow_staging
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="nextflow_staging">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#fisseq_data_pipeline.utils.nextflow_staging.reconstruct_staged_paths" class="md-nav__link">
-    <span class="md-ellipsis">
-      reconstruct_staged_paths
     </span>
   </a>
   
@@ -5922,9 +5752,9 @@ and the <code>xgboost</code> sub-config. Must be a <code>DictConfig</code> (e.g.
 
         <p>PCA and UMAP embeddings of an already-selected, <code>label_column</code>-keyed
 feature matrix.</p>
-<p>Shared by :mod:<code>fisseq_data_pipeline.featureselect</code> and
-:mod:<code>fisseq_data_pipeline.globalfeatureselect</code> so the PCA/UMAP plumbing
-(including the all-null-feature-column handling below) lives in one place.</p>
+<p>Used by :mod:<code>fisseq_data_pipeline.featureselect</code>; kept separate so the
+PCA/UMAP plumbing (including the all-null-feature-column handling below) lives
+in one place.</p>
 <p><code>umap-learn</code> is imported lazily, inside :func:<code>compute_umap</code>, rather than at
 module import time: it pulls in <code>numba</code>/<code>pynndescent</code>/<code>llvmlite</code>, whose
 import/JIT-compilation cost should only be paid by runs that actually set
@@ -6590,245 +6420,6 @@ tradeoff -- see its documentation).</p>
 <a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="k">return</span> <span class="n">feature_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">label_column</span><span class="p">)</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
 <a id="__codelineno-0-226" name="__codelineno-0-226"></a>        <span class="p">[</span><span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">embedding</span><span class="p">[:,</span> <span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">umap_cols</span><span class="p">)]</span>
 <a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-
-
-  </div>
-
-    </div>
-
-</div><h2 id="nextflow_staging">nextflow_staging<a class="headerlink" href="#nextflow_staging" title="Permanent link">&para;</a></h2>
-
-
-<div class="doc doc-object doc-module">
-
-
-
-<h3 id="fisseq_data_pipeline.utils.nextflow_staging" class="doc doc-heading">
-            <span class="doc doc-object-name doc-module-name">fisseq_data_pipeline.utils.nextflow_staging</span>
-
-
-<a href="#fisseq_data_pipeline.utils.nextflow_staging" class="headerlink" title="Permanent link">&para;</a></h3>
-
-    <div class="doc doc-contents first">
-
-        <p>Helpers for reading files a Nextflow process staged under a <code>stageAs</code> pattern.</p>
-<p>A process that collects one same-named file per experiment (e.g. every
-experiment's <code>results.parquet</code>) must rename them on staging or they collide in
-the task work directory. The convention here, matching
-<code>modules/local/global_ovwt.nf</code>, is <code>stageAs: "&lt;prefix&gt;_*.parquet"</code> paired
-with a <code>val(batch_stems)</code> list in the same order.</p>
-
-
-
-
-
-
-
-
-
-
-<div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-<div class="doc doc-object doc-function">
-
-
-<h4 id="fisseq_data_pipeline.utils.nextflow_staging.reconstruct_staged_paths" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">reconstruct_staged_paths</span>
-
-
-<a href="#fisseq_data_pipeline.utils.nextflow_staging.reconstruct_staged_paths" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">reconstruct_staged_paths</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Reconstruct the filenames Nextflow produces for a <code>stageAs</code> glob pattern.</p>
-<p>Nextflow substitutes the <code>*</code> in <code>stageAs: "&lt;prefix&gt;_*.parquet"</code> with an
-<strong>empty string</strong> when exactly one file is staged, and only 1-indexes it from
-two files up. So a single-experiment channel yields <code>&lt;prefix&gt;_.parquet</code>
-(no digit), not <code>&lt;prefix&gt;_1.parquet</code> -- a real edge case, since a global
-channel with one member experiment is perfectly legal.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>n</code>
-            </td>
-            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Number of staged files, i.e. the length of the accompanying
-<code>batch_stems</code> list.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>prefix</code>
-            </td>
-            <td>
-                  <code><span title="str">str</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The <code>stageAs</code> prefix, without the trailing <code>_*</code> or extension.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="list">list</span>[<span title="str">str</span>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Staged filenames, in the order Nextflow emitted them -- which is the
-order <code>batch_stems</code> is in.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ValueError">ValueError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If <code>n</code> is not positive.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>src/fisseq_data_pipeline/utils/nextflow_staging.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-11">11</a></span>
-<span class="normal"><a href="#__codelineno-0-12">12</a></span>
-<span class="normal"><a href="#__codelineno-0-13">13</a></span>
-<span class="normal"><a href="#__codelineno-0-14">14</a></span>
-<span class="normal"><a href="#__codelineno-0-15">15</a></span>
-<span class="normal"><a href="#__codelineno-0-16">16</a></span>
-<span class="normal"><a href="#__codelineno-0-17">17</a></span>
-<span class="normal"><a href="#__codelineno-0-18">18</a></span>
-<span class="normal"><a href="#__codelineno-0-19">19</a></span>
-<span class="normal"><a href="#__codelineno-0-20">20</a></span>
-<span class="normal"><a href="#__codelineno-0-21">21</a></span>
-<span class="normal"><a href="#__codelineno-0-22">22</a></span>
-<span class="normal"><a href="#__codelineno-0-23">23</a></span>
-<span class="normal"><a href="#__codelineno-0-24">24</a></span>
-<span class="normal"><a href="#__codelineno-0-25">25</a></span>
-<span class="normal"><a href="#__codelineno-0-26">26</a></span>
-<span class="normal"><a href="#__codelineno-0-27">27</a></span>
-<span class="normal"><a href="#__codelineno-0-28">28</a></span>
-<span class="normal"><a href="#__codelineno-0-29">29</a></span>
-<span class="normal"><a href="#__codelineno-0-30">30</a></span>
-<span class="normal"><a href="#__codelineno-0-31">31</a></span>
-<span class="normal"><a href="#__codelineno-0-32">32</a></span>
-<span class="normal"><a href="#__codelineno-0-33">33</a></span>
-<span class="normal"><a href="#__codelineno-0-34">34</a></span>
-<span class="normal"><a href="#__codelineno-0-35">35</a></span>
-<span class="normal"><a href="#__codelineno-0-36">36</a></span>
-<span class="normal"><a href="#__codelineno-0-37">37</a></span>
-<span class="normal"><a href="#__codelineno-0-38">38</a></span>
-<span class="normal"><a href="#__codelineno-0-39">39</a></span>
-<span class="normal"><a href="#__codelineno-0-40">40</a></span>
-<span class="normal"><a href="#__codelineno-0-41">41</a></span>
-<span class="normal"><a href="#__codelineno-0-42">42</a></span>
-<span class="normal"><a href="#__codelineno-0-43">43</a></span>
-<span class="normal"><a href="#__codelineno-0-44">44</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-11" name="__codelineno-0-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">reconstruct_staged_paths</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="sd">    Reconstruct the filenames Nextflow produces for a ``stageAs`` glob pattern.</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15"></a><span class="sd">    Nextflow substitutes the ``*`` in ``stageAs: &quot;&lt;prefix&gt;_*.parquet&quot;`` with an</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16"></a><span class="sd">    **empty string** when exactly one file is staged, and only 1-indexes it from</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17"></a><span class="sd">    two files up. So a single-experiment channel yields ``&lt;prefix&gt;_.parquet``</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18"></a><span class="sd">    (no digit), not ``&lt;prefix&gt;_1.parquet`` -- a real edge case, since a global</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19"></a><span class="sd">    channel with one member experiment is perfectly legal.</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20"></a>
-<a id="__codelineno-0-21" name="__codelineno-0-21"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23"></a><span class="sd">    n : int</span>
-<a id="__codelineno-0-24" name="__codelineno-0-24"></a><span class="sd">        Number of staged files, i.e. the length of the accompanying</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25"></a><span class="sd">        ``batch_stems`` list.</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26"></a><span class="sd">    prefix : str</span>
-<a id="__codelineno-0-27" name="__codelineno-0-27"></a><span class="sd">        The ``stageAs`` prefix, without the trailing ``_*`` or extension.</span>
-<a id="__codelineno-0-28" name="__codelineno-0-28"></a>
-<a id="__codelineno-0-29" name="__codelineno-0-29"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-30" name="__codelineno-0-30"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31"></a><span class="sd">    list[str]</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32"></a><span class="sd">        Staged filenames, in the order Nextflow emitted them -- which is the</span>
-<a id="__codelineno-0-33" name="__codelineno-0-33"></a><span class="sd">        order ``batch_stems`` is in.</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34"></a>
-<a id="__codelineno-0-35" name="__codelineno-0-35"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37"></a><span class="sd">    ValueError</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38"></a><span class="sd">        If ``n`` is not positive.</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40"></a>    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;n must be &gt;= 1, got </span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-42" name="__codelineno-0-42"></a>    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43"></a>        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_.parquet&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44"></a>    <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">.parquet&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

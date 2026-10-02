@@ -9,10 +9,10 @@
       
       
       
-        <link rel="prev" href="../globalfeatureselect/">
+        <link rel="prev" href="../features/">
       
       
-        <link rel="next" href="../globalovwt/">
+        <link rel="next" href="../../api/input/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -710,29 +710,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -894,29 +871,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
-    
-  </span>
-  
-
-      </a>
     </li>
   
 
@@ -1094,58 +1048,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1479,8 +1387,8 @@ A per-fold AUROC only ranks scores from a single model against each other.</p>
 distinguishability is broad-based across its barcodes or driven by one or two
 outlier barcodes — which a single pooled number hides. It is <code>null</code> only in the
 defensive case of a variant with no barcodes of its own, and deliberately
-<code>null</code> rather than <code>NaN</code> so the cross-experiment median in
-<a href="../globalovwt/">Global OvWT</a> excludes it cleanly.</p>
+<code>null</code> rather than <code>NaN</code> so a downstream cross-experiment median (computed in
+<a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a>) excludes it cleanly.</p>
 <h2 id="wildtype-downsampling">Wildtype downsampling<a class="headerlink" href="#wildtype-downsampling" title="Permanent link">&para;</a></h2>
 <p><code>downsample_wt: true</code> shrinks the wildtype pool to the size of the largest
 remaining variant group, <strong>barcode-proportionally</strong>: a wildtype barcode holding
@@ -1511,7 +1419,9 @@ empty but correctly typed.</p>
 implementation was ported, instead z-scores its features against <strong>synonymous</strong>
 variants before training. That difference is deliberate here: cell-level
 wildtype normalization is unchanged, and the synonymous re-centering happens
-downstream on the AUROCs instead, in <a href="../globalovwt/">Global OvWT</a>.</p>
+downstream on the AUROCs instead, in
+<a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a>. Do not add a second,
+synonymous normalizer fit here.</p>
 <h2 id="config-fields">Config fields<a class="headerlink" href="#config-fields" title="Permanent link">&para;</a></h2>
 <p>Extends <code>LabeledInputConfig</code> plus the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <table>

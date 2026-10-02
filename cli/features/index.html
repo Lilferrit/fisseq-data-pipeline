@@ -12,7 +12,7 @@
         <link rel="prev" href="../aggregate/">
       
       
-        <link rel="next" href="../globalfeatureselect/">
+        <link rel="next" href="../ovwt/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -793,42 +793,10 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" class="md-nav__link">
-    <span class="md-ellipsis">
-      6. python -m fisseq_data_pipeline.globalfeatureselect (GLOBAL_FEATURE_SELECT)
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
     </li>
   
 
@@ -847,29 +815,6 @@
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -1052,58 +997,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1269,15 +1168,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" class="md-nav__link">
-    <span class="md-ellipsis">
-      6. python -m fisseq_data_pipeline.globalfeatureselect (GLOBAL_FEATURE_SELECT)
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1305,9 +1195,15 @@ correlated against its partner half, and a per-feature blocklist is derived from
 the median correlation across all bootstrap replicates. The final stage joins the
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.</p>
-<p>A separate, much simpler GLOBAL entry point (§6 below) runs once per active
-global group, reusing this BATCHWISE pipeline's already-computed per-batch
-outputs rather than recomputing anything from cells.</p>
+<p>Everything here is per batch. Combining batches across experiments is done
+downstream by <a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a> from the
+published outputs (see
+<a href="../../architecture/#cross-experiment-aggregation">Architecture</a>).</p>
+<p>The full per-feature-type aggregates for <code>params.feature_select_types</code> are
+published to <code>feature_select_batchwise/&lt;batch&gt;/aggregates/</code> z-scored against
+the batch's synonymous variants (<code>normalize_to_synonymous=true</code>; see
+<a href="../aggregate/#synonymous-normalization">Aggregate: Synonymous normalization</a>).
+The bootstrap half-aggregates stay raw.</p>
 <p>All configs extend the <a href="../qcfilter/#common-config-fields">common config fields</a>.</p>
 <h2 id="two-lists-of-aggregate-types">Two lists of aggregate types<a class="headerlink" href="#two-lists-of-aggregate-types" title="Permanent link">&para;</a></h2>
 <p><code>params.feature_select_types</code> names the aggregators that <em>decide</em> which
@@ -1318,9 +1214,10 @@ and joined onto the final per-variant table but take no part in any of that.
 They skip stages 1b→4 of the bootstrap chain entirely (no splits, no
 correlation, no blocklist), are excluded from <code>pycytominer.feature_select</code>, and
 are joined <em>after</em> the synonymous-baseline normalization — so they are also
-outside the impact score, PCA and UMAP. They are published separately, under
-<code>feature_select_batchwise/&lt;batch&gt;/passthrough_aggregates/</code> rather than
-<code>aggregates/</code>.</p>
+outside the impact score, PCA and UMAP. They are published separately and raw
+(not z-scored), under <code>feature_select_batchwise/&lt;batch&gt;/passthrough_aggregates/</code>
+rather than <code>aggregates/</code>, so a glob over <code>aggregates/</code> never mixes normalized
+and raw-scale values.</p>
 <p>This exists for the p-value aggregators (<code>KSnegLogP</code>, <code>AUROCnegLogP</code>). They are
 wanted in the output, but they are not reproducibility statistics: a median-<code>r</code>
 threshold means nothing for a p-value, and — the real hazard — pycytominer's
@@ -1358,9 +1255,9 @@ columns from that file by the usual <code>^meta_</code> convention no longer yie
 <td>Column identifying variant labels.</td>
 </tr>
 <tr>
-<td><code>random_state</code></td>
-<td><strong>required</strong></td>
-<td>Seed for the stratified split — set to the bootstrap-loop index in Nextflow, so each replicate is distinct and reproducible.</td>
+<td><code>random_seed</code></td>
+<td><code>0</code></td>
+<td>Seed for the stratified split (the common config field). Nextflow passes <code>params.random_seed + bootstrap_idx</code>, so each replicate is distinct and reproducible.</td>
 </tr>
 </tbody>
 </table>
@@ -1368,7 +1265,7 @@ columns from that file by the usual <code>^meta_</code> convention no longer yie
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.generatesplit<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>data/normalized.parquet<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">random_state</span><span class="o">=</span><span class="m">3</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nv">random_seed</span><span class="o">=</span><span class="m">3</span>
 </code></pre></div>
 <h2 id="2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features">2. <code>python -m fisseq_data_pipeline.correlatefeatures</code> (<code>CORRELATE_FEATURES</code>)<a class="headerlink" href="#2-python-m-fisseq_data_pipelinecorrelatefeatures-correlate_features" title="Permanent link">&para;</a></h2>
 <p>Computes per-feature Pearson correlation between two aggregate halves for the same
@@ -1465,7 +1362,13 @@ types).</p>
 <p>The final stage: joins every feature type's full aggregate (from
 <a href="../aggregate/"><code>python -m fisseq_data_pipeline.aggregatefeaturetype</code></a>) on <code>label_column</code>, drops blocked
 feature columns, and runs <code>pycytominer.feature_select</code> (variance threshold,
-built-in blocklist, correlation threshold).</p>
+built-in blocklist, correlation threshold). The selected table is then z-scored
+against the synonymous variants (a <code>Normalizer</code> fit on
+<code>variant_classification()</code>'s synonymous rows). In the pipeline its inputs are
+already synonymous-z-scored by <code>AGGREGATE_FEATURE_TYPE</code>, so this second pass is
+effectively a no-op; it keeps the stage correct when run standalone on raw
+aggregates. Like the upstream normalization, it needs at least two synonymous
+variants.</p>
 <table>
 <thead>
 <tr>
@@ -1536,11 +1439,6 @@ built-in blocklist, correlation threshold).</p>
 <td><code>umap.UMAP</code>'s minimum embedded distance between points.</td>
 </tr>
 <tr>
-<td><code>umap_random_state</code></td>
-<td><code>42</code></td>
-<td>Seed for UMAP's fit; <code>null</code> disables seeding (faster, multithreaded, nondeterministic).</td>
-</tr>
-<tr>
 <td><code>passthrough_feature_type_files</code></td>
 <td><code>null</code></td>
 <td>Glob matching per-feature-type aggregates to join onto the output <em>without</em> feature selection or normalization (see <a href="#two-lists-of-aggregate-types">Two lists of aggregate types</a>). Unlike <code>feature_type_files</code>, a glob matching nothing warns rather than raising — an empty passthrough list is the default.</td>
@@ -1559,111 +1457,6 @@ column name, holding its loading), plus <code>meta_variance_explained</code>,
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nv">input_file</span><span class="o">=</span>out/normalized.parquet<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="s1">&#39;feature_type_files=out/aggregates/*.parquet&#39;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nv">block_list_file</span><span class="o">=</span>out/blocklist.parquet
-</code></pre></div>
-<h2 id="6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select">6. <code>python -m fisseq_data_pipeline.globalfeatureselect</code> (<code>GLOBAL_FEATURE_SELECT</code>)<a class="headerlink" href="#6-python-m-fisseq_data_pipelineglobalfeatureselect-global_feature_select" title="Permanent link">&para;</a></h2>
-<p>Runs once per active global group (see
-<a href="../../configuration/#global-channels">Configuration: Global groups</a>). Reuses the
-group's member batches' already-published BATCHWISE feature-selection
-artifacts directly — no cell-level recomputation:</p>
-<ol>
-<li>For each member batch, joins that batch's own per-feature-type aggregate
-   files (<code>feature_select_batchwise/&lt;batch&gt;/aggregates/*.parquet</code>) and
-   normalizes the joined table to that batch's own synonymous baseline (this
-   serves as both batch correction and normalization).</li>
-<li>Concatenates every member batch's normalized table and takes the
-   per-feature median, grouped by <code>label_column</code> (a variant can appear in
-   more than one batch).</li>
-<li>Combines each member batch's own combined blocklist
-   (<code>feature_select_batchwise/&lt;batch&gt;/blocklist.parquet</code>) using an agreement
-   threshold across batches.</li>
-<li>Drops columns blocked by step 3 and runs <code>pyc_feature_select</code> (the same
-   function <code>FINALIZE_FEATURE_SELECT</code> uses).</li>
-</ol>
-<p>Passthrough types do not reach this stage: step 1's glob is filtered by
-<code>feature_select_types</code>, and passthrough aggregates are published to a sibling
-directory in any case. The global output carries selected features only.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>pipeline_dir</code></td>
-<td><strong>required</strong></td>
-<td>Absolute path to the pipeline's root output directory.</td>
-</tr>
-<tr>
-<td><code>batch_stems</code></td>
-<td><strong>required</strong></td>
-<td>List of the active group's member batch stems (only those with <code>run_feature_selection</code> enabled).</td>
-</tr>
-<tr>
-<td><code>label_column</code></td>
-<td><code>"meta_aa_changes"</code></td>
-<td>Column identifying variant labels.</td>
-</tr>
-<tr>
-<td><code>min_batches_ok</code></td>
-<td><code>null</code></td>
-<td>Minimum number of member batches that must mark a feature ok for it to be globally ok. <code>null</code> requires unanimity across batches that report on it.</td>
-</tr>
-<tr>
-<td><code>run_pca</code></td>
-<td><code>false</code></td>
-<td>Compute PCA on the final selected/normalized feature matrix, appending <code>meta_pc_1..meta_pc_{pca_n_components}</code> and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see <a href="../../configuration/#declaring-experiments">Configuration</a>).</td>
-</tr>
-<tr>
-<td><code>pca_n_components</code></td>
-<td><code>10</code></td>
-<td>Number of principal components to compute and retain.</td>
-</tr>
-<tr>
-<td><code>run_umap</code></td>
-<td><code>false</code></td>
-<td>Compute UMAP on the final selected/normalized feature matrix, appending <code>meta_umap_1..meta_umap_{umap_n_components}</code>. PCA and UMAP are computed independently, both on the same feature matrix.</td>
-</tr>
-<tr>
-<td><code>umap_n_components</code></td>
-<td><code>2</code></td>
-<td>Dimensionality of the UMAP embedding.</td>
-</tr>
-<tr>
-<td><code>umap_n_neighbors</code></td>
-<td><code>10</code></td>
-<td><code>umap.UMAP</code>'s local neighborhood size.</td>
-</tr>
-<tr>
-<td><code>umap_metric</code></td>
-<td><code>"cosine"</code></td>
-<td><code>umap.UMAP</code>'s distance metric.</td>
-</tr>
-<tr>
-<td><code>umap_min_dist</code></td>
-<td><code>0.1</code></td>
-<td><code>umap.UMAP</code>'s minimum embedded distance between points.</td>
-</tr>
-<tr>
-<td><code>umap_random_state</code></td>
-<td><code>42</code></td>
-<td>Seed for UMAP's fit; <code>null</code> disables seeding (faster, multithreaded, nondeterministic).</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Output</strong>: <code>aggregate.parquet</code> (the selected, cross-batch median aggregate
-table) and <code>blocklist.parquet</code> (the combined global blocklist, columns
-<code>feature</code>, <code>n_batches</code>, <code>n_ok</code>, <code>feature_ok</code>). When <code>run_pca=true</code>, also
-writes <code>pca_components.parquet</code> — one row per principal component, with one
-column per feature used in the fit (named by that feature's actual column
-name, holding its loading), plus <code>meta_variance_explained</code>,
-<code>meta_cumulative_variance_explained</code>, and <code>meta_component_idx</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>fisseq_data_pipeline.globalfeatureselect<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nv">output_dir</span><span class="o">=</span>./out<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nv">pipeline_dir</span><span class="o">=</span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="s1">&#39;batch_stems=[batch1,batch2]&#39;</span>
 </code></pre></div>
 <p>See <a href="../../api/features/">API Reference: features</a> for full function
 documentation, including <code>pyc_feature_select</code> and <code>compute_feature_correlations</code>.</p>

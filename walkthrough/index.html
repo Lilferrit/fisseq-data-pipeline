@@ -706,58 +706,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../cli/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -940,58 +894,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1288,17 +1196,17 @@ schema and <a href="../cli/input/">CLI Reference: Input</a> for what INPUT does 
 <li><code>OVWT_BATCHWISE</code> — k-fold cross-validated one-vs-wildtype scoring, per
    experiment (<code>params.run_ovwt</code>). Each variant gets a pooled AUROC and a
    median-of-per-barcode AUROC, and every cell gets one out-of-fold score.</li>
-<li><code>GLOBAL_OVWT</code> — per-experiment synonymous z-score of those AUROCs, then the
-   cross-experiment median (once per active global channel).</li>
 <li>Bootstrap feature selection (<code>params.run_feature_selection</code>) — see
-   <a href="../nextflow/#processes">Nextflow Workflow</a> for the stage breakdown.</li>
-<li><code>GLOBAL_FEATURE_SELECT</code> — cross-experiment feature selection reusing the
-   batchwise artifacts (once per active global channel).</li>
+   <a href="../nextflow/#processes">Nextflow Workflow</a> for the stage breakdown. The
+   per-feature-type aggregates are z-scored against the experiment's synonymous
+   variants, so each experiment needs at least two of them.</li>
 </ol>
+<p>Every stage runs per experiment. Combining experiments (cross-experiment
+medians, AUROC re-centering against synonymous variants) is done downstream by
+<a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a> — see
+<a href="../architecture/#cross-experiment-aggregation">Architecture: Cross-experiment aggregation</a>.</p>
 <p>Override any <a href="../configuration/#parameter-reference">parameter</a> on the command
-line. The two global stages don't run at all unless you tag experiments into a
-channel and activate it — see
-<a href="../configuration/#global-channels">Configuration: Global channels</a>:</p>
+line:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nextflow<span class="w"> </span>run<span class="w"> </span>.<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>--pipeline_dir<span class="w"> </span>/path/to/experiment<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>-params-file<span class="w"> </span>params.yaml<span class="w"> </span><span class="se">\</span>
@@ -1316,16 +1224,15 @@ channel and activate it — see
 <a href="../architecture/#output-layout">Architecture: Output layout</a> for the full tree.
 The results most analyses care about:</p>
 <ul>
-<li><code>&lt;pipeline_dir&gt;/feature_select_batchwise/&lt;batch_stem&gt;/output.parquet</code> (and, if
-  a global channel is active, <code>global/&lt;channel&gt;/feature_select/aggregate.parquet</code>)
-  — final per-variant, feature-selected profiles.</li>
+<li><code>&lt;pipeline_dir&gt;/feature_select_batchwise/&lt;batch_stem&gt;/output.parquet</code> — final
+  per-variant, feature-selected profiles (plus any raw passthrough columns).</li>
+<li><code>&lt;pipeline_dir&gt;/feature_select_batchwise/&lt;batch_stem&gt;/{aggregates,passthrough_aggregates,blocklists}/&lt;feature_type&gt;.parquet</code>
+  — the per-feature-type inputs fisseqborn reads for cross-experiment
+  aggregation (<code>aggregates/</code> synonymous-z-scored, <code>passthrough_aggregates/</code> raw).</li>
 <li><code>&lt;pipeline_dir&gt;/ovwt_batchwise/&lt;batch_stem&gt;/results.parquet</code> — per-variant
   <code>auroc_pooled</code>, <code>auroc_median_barcode</code>, per-fold <code>auroc_folds</code> and
-  <code>auroc_median_fold</code>.</li>
-<li><code>&lt;pipeline_dir&gt;/global/&lt;channel&gt;/ovwt_distinguishability/global_scores.parquet</code>
-  (only if a global channel is active) — synonymous-corrected, cross-experiment
-  median distinguishability per variant. This is the headline result for a
-  multi-experiment run.</li>
+  <code>auroc_median_fold</code>. Synonymous correction and the cross-experiment median of
+  these happen downstream in fisseqborn.</li>
 </ul>
 <h2 id="5-running-individual-steps">5. Running individual steps<a class="headerlink" href="#5-running-individual-steps" title="Permanent link">&para;</a></h2>
 <p>Every Nextflow process wraps a standalone <code>python -m fisseq_data_pipeline.&lt;module&gt;</code>

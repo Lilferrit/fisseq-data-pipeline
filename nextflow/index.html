@@ -601,15 +601,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#same-named-staged-files" class="md-nav__link">
-    <span class="md-ellipsis">
-      Same-named staged files
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#linting" class="md-nav__link">
     <span class="md-ellipsis">
       Linting
@@ -813,58 +804,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../cli/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -1047,58 +992,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1256,15 +1155,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#same-named-staged-files" class="md-nav__link">
-    <span class="md-ellipsis">
-      Same-named staged files
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#linting" class="md-nav__link">
     <span class="md-ellipsis">
       Linting
@@ -1369,13 +1259,8 @@ parameter. See <a href="../configuration/">Configuration</a>.</p>
 <td><code>run_ovwt</code></td>
 </tr>
 <tr>
-<td><code>GLOBAL_OVWT</code></td>
-<td>per active global channel</td>
-<td><code>run_ovwt</code> + channel membership</td>
-</tr>
-<tr>
 <td><code>AGGREGATE_FEATURE_TYPE</code></td>
-<td>per experiment × feature type</td>
+<td>per experiment × feature type (selected and passthrough)</td>
 <td><code>run_feature_selection</code></td>
 </tr>
 <tr>
@@ -1408,17 +1293,17 @@ parameter. See <a href="../configuration/">Configuration</a>.</p>
 <td>per experiment</td>
 <td><code>run_feature_selection</code></td>
 </tr>
-<tr>
-<td><code>GLOBAL_FEATURE_SELECT</code></td>
-<td>per active global channel</td>
-<td><code>run_feature_selection</code> + channel membership</td>
-</tr>
 </tbody>
 </table>
 <p><code>BLOCKLIST</code>'s <code>groupTuple</code> — gathering every bootstrap replicate for one feature
 type before computing a median-<code>r</code> threshold — is the pipeline's only
 cross-bootstrap synchronization point. Everything else in the
 split/aggregate/correlate chain is fully parallel.</p>
+<p>Every process runs per experiment; there is no cross-experiment stage. Combining
+experiments is done downstream by
+<a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a> from the published
+per-experiment outputs (see
+<a href="../architecture/#cross-experiment-aggregation">Architecture</a>).</p>
 <h2 id="module-conventions">Module conventions<a class="headerlink" href="#module-conventions" title="Permanent link">&para;</a></h2>
 <p>Every <code>modules/local/*.nf</code> process declares:</p>
 <ul>
@@ -1441,9 +1326,16 @@ keeps <code>-resume</code> cache keys narrow: a process's key then depends only 
 actually varies per task.</p>
 <h2 id="channel-idioms">Channel idioms<a class="headerlink" href="#channel-idioms" title="Permanent link">&para;</a></h2>
 <p>A few conventions in <code>workflows/fisseq.nf</code> worth knowing before editing it.</p>
-<p><strong>Filter channels, don't <code>if</code>.</strong> Global-channel scoping is expressed as
-<code>channel.fromList(activeChannels)</code>, which is empty when <code>global_channels</code> is
-<code>null</code>. Both global stages then simply run zero tasks — no explicit gate needed.</p>
+<p><strong>Filter channels, don't <code>if</code>.</strong> Optional fan-out is expressed as an empty
+channel rather than a conditional. <code>channel.fromList(params.feature_select_passthrough_types)</code>
+is empty under the default <code>[]</code>, so the passthrough <code>AGGREGATE_FEATURE_TYPE</code>
+simply runs zero tasks — no explicit gate needed. (The pipeline-wide run gates
+<code>run_ovwt</code> / <code>run_feature_selection</code> are the exception: they wrap whole
+subgraphs in an <code>if</code>.)</p>
+<p><strong>A <code>.join()</code> whose right side may be empty needs <code>remainder: true</code>.</strong> The
+finalize stage joins the passthrough aggregates; with the default empty
+passthrough list, a plain <code>.join()</code> emits nothing and <code>FINALIZE_FEATURE_SELECT</code>
+never runs for any experiment, silently.</p>
 <p><strong><code>.join()</code> is not a broadcast operator.</strong> For a many-to-one key relationship it
 silently keeps one match per key and drops the rest, starving every downstream
 stage. Use <code>.combine(other, by: 0)</code> to broadcast one per-experiment value across
@@ -1452,21 +1344,14 @@ where both sides are already collapsed to exactly one item per key (as the
 finalize-stage joins are).</p>
 <p><strong>Collect real path channels, not glob strings.</strong> A <code>val</code> glob passed to a
 process hashes only the glob <em>text</em>, not the resolved file set, so <code>-resume</code>
-fails to invalidate when the underlying files change. <code>GLOBAL_OVWT</code> collects
-actual path objects for this reason.</p>
+fails to invalidate when the underlying files change. The gathering processes
+(<code>BLOCKLIST</code>, <code>COMBINE_BLOCKLISTS</code>, <code>FINALIZE_FEATURE_SELECT</code>) therefore take
+<code>path(...)</code> inputs built with <code>groupTuple</code>, never a glob string.</p>
 <p><strong>Never bind a variable named <code>channel</code>.</strong> It is a reserved Nextflow binding —
 the lowercase alias for the <code>Channel</code> class — and silently resolves to
-<code>nextflow.Channel</code> itself rather than failing loudly. The codebase uses <code>chan</code>
-everywhere. (The <code>channel.fromList(...)</code> <em>factory call</em> is fine; that is not a
+<code>nextflow.Channel</code> itself rather than failing loudly. Use a name like <code>chan</code>
+instead. (The <code>channel.fromList(...)</code> <em>factory call</em> is fine; that is not a
 variable binding.)</p>
-<h2 id="same-named-staged-files">Same-named staged files<a class="headerlink" href="#same-named-staged-files" title="Permanent link">&para;</a></h2>
-<p><code>GLOBAL_OVWT</code> collects one <code>results.parquet</code> per member experiment into a single
-task, which would collide. It stages them as <code>res_input_*.parquet</code> and takes a
-parallel <code>batch_stems</code> list in the same order.</p>
-<p>Nextflow substitutes the <code>*</code> with an <strong>empty string</strong> when exactly one file is
-staged — <code>res_input_.parquet</code>, no digit — and 1-indexes only from two files up.
-<code>utils.nextflow_staging.reconstruct_staged_paths</code> encodes exactly that rule; a
-single-experiment global channel is a legal and tested case.</p>
 <h2 id="linting">Linting<a class="headerlink" href="#linting" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>nextflow<span class="w"> </span>lint<span class="w"> </span>.
 </code></pre></div>

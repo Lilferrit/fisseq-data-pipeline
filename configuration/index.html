@@ -596,9 +596,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#global-channels" class="md-nav__link">
+  <a href="#cross-experiment-aggregation" class="md-nav__link">
     <span class="md-ellipsis">
-      Global channels
+      Cross-experiment aggregation
     </span>
   </a>
   
@@ -882,58 +882,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../cli/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -1116,58 +1070,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1298,9 +1206,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#global-channels" class="md-nav__link">
+  <a href="#cross-experiment-aggregation" class="md-nav__link">
     <span class="md-ellipsis">
-      Global channels
+      Cross-experiment aggregation
     </span>
   </a>
   
@@ -1456,14 +1364,11 @@ mandatory <code>&lt;pipeline_dir&gt;/configs/*.yaml</code> directory.</p>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">input_paths</span><span class="p">:</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/plate1/cellprofiler_features.csv</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/plate1/barcode_calls.parquet</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cohort_a</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">batch_stem</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">plate2</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/plate2/cellprofiler_features.csv</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">cohort_a</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">cohort_b</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># may belong to several</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">csv_schema_scan_rows</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">             </span><span class="c1"># per-experiment override</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">batch_stem</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">plate3</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/plate3/features.parquet</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="c1"># no global_channel -- processed batchwise only</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">batch_stem</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">plate2</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/plate2/cellprofiler_features.csv</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">csv_schema_scan_rows</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">             </span><span class="c1"># per-experiment override</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">batch_stem</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">plate3</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">input_paths</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/data/plate3/features.parquet</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>An entry may set <strong>only</strong> these keys:</p>
 <table>
@@ -1484,11 +1389,6 @@ mandatory <code>&lt;pipeline_dir&gt;/configs/*.yaml</code> directory.</p>
 <td><code>input_paths</code></td>
 <td>yes</td>
 <td>Raw CSV/parquet source files that INPUT merges. No pipeline-wide default exists — a list of raw files is inherently per-experiment.</td>
-</tr>
-<tr>
-<td><code>global_channel</code></td>
-<td>no</td>
-<td>String or list of strings naming the channel(s) this experiment belongs to.</td>
 </tr>
 <tr>
 <td><code>feature_allowlist_file</code></td>
@@ -1515,30 +1415,15 @@ removed for the release.</p>
 <p>The workflow also fails fast on an empty <code>experiments:</code> list, a non-map entry, a
 missing or blank <code>batch_stem</code>, a missing or empty <code>input_paths</code>, and duplicate
 <code>batch_stem</code> values.</p>
-<h2 id="global-channels">Global channels<a class="headerlink" href="#global-channels" title="Permanent link">&para;</a></h2>
-<p>An experiment joins a channel via its <code>global_channel</code> key;
-<code>params.global_channels</code> lists which channels actually run.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">global_channels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">cohort_a</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">cohort_b</span><span class="p p-Indicator">]</span>
-</code></pre></div>
-<p>Each active channel gets its own <code>GLOBAL_OVWT</code> and <code>GLOBAL_FEATURE_SELECT</code> run,
-scoped to that channel's member experiments and published under
-<code>global/&lt;channel&gt;/</code>.</p>
-<ul>
-<li><code>global_channels: null</code> or <code>[]</code> (the default) — no global stage runs at all.</li>
-<li>An experiment naming no channel is still processed batchwise, just excluded
-  from both global stages.</li>
-<li>An experiment in several active channels contributes to each independently.</li>
-<li>A channel named in <code>global_channels</code> with no member experiments logs a
-  warning.</li>
-</ul>
-<div class="admonition note">
-<p class="admonition-title">GLOBAL_OVWT needs at least two synonymous variants per experiment</p>
-<p>It fits a per-experiment normalizer on that experiment's synonymous rows. A
-single synonymous variant makes the standard deviation (ddof=1) undefined,
-nulling every score for that experiment.</p>
-</div>
+<h2 id="cross-experiment-aggregation">Cross-experiment aggregation<a class="headerlink" href="#cross-experiment-aggregation" title="Permanent link">&para;</a></h2>
+<p>Every stage runs per experiment, and nothing in the pipeline combines
+experiments. Cross-experiment aggregation — merging blocklists, per-variant
+medians across experiments, AUROC re-centering against synonymous variants — is
+done downstream by <a href="https://github.com/FowlerLab/fisseqborn">fisseqborn</a>, which
+reads the published per-experiment outputs (see
+<a href="../architecture/#cross-experiment-aggregation">Architecture</a>).</p>
 <h2 id="the-one-random-seed">The one random seed<a class="headerlink" href="#the-one-random-seed" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">random_seed</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">random_seed</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
 </code></pre></div>
 <p>This is the only seed in the pipeline. Every stochastic step derives from it:
 QC pseudo-variant downsampling, the feature-selection bootstrap splits and their
@@ -1564,12 +1449,12 @@ bootstrap replicates still draw independent subsamples.</p>
 <tr>
 <td><code>run_ovwt</code></td>
 <td><code>true</code></td>
-<td>Skips <code>OVWT_BATCHWISE</code> and, with it, <code>GLOBAL_OVWT</code>.</td>
+<td>Skips <code>OVWT_BATCHWISE</code>.</td>
 </tr>
 <tr>
 <td><code>run_feature_selection</code></td>
 <td><code>true</code></td>
-<td>Skips the whole batchwise feature-selection chain and <code>GLOBAL_FEATURE_SELECT</code>.</td>
+<td>Skips the whole batchwise feature-selection chain.</td>
 </tr>
 <tr>
 <td><code>run_pca</code></td>
@@ -1621,11 +1506,6 @@ bootstrap replicates still draw independent subsamples.</p>
 <td><code>random_seed</code></td>
 <td><code>0</code></td>
 <td>The one seed.</td>
-</tr>
-<tr>
-<td><code>global_channels</code></td>
-<td><code>null</code></td>
-<td>Which channels run the global stages.</td>
 </tr>
 <tr>
 <td><code>filter_label_column</code></td>
@@ -1769,12 +1649,12 @@ bootstrap replicates still draw independent subsamples.</p>
 <tr>
 <td><code>feature_select_types</code></td>
 <td><code>["mean","median","MAD","std","KS","QQ","AUROC"]</code></td>
-<td>Aggregators to compute and correlate.</td>
+<td>Aggregators to compute and correlate. Their published aggregates (<code>feature_select_batchwise/&lt;batch&gt;/aggregates/</code>) are z-scored against the experiment's synonymous variants.</td>
 </tr>
 <tr>
 <td><code>feature_select_passthrough_types</code></td>
 <td><code>[]</code></td>
-<td>Aggregators computed and joined onto the final per-variant table but excluded from every selection step — no bootstrap, no blocklist, no pycytominer filters, no normalization. Intended for the p-value statistics (<code>KSnegLogP</code>, <code>AUROCnegLogP</code>). Must not overlap <code>feature_select_types</code>.</td>
+<td>Aggregators computed and joined onto the final per-variant table but excluded from every selection step — no bootstrap, no blocklist, no pycytominer filters, no normalization; published raw to <code>passthrough_aggregates/</code>. Intended for the p-value statistics (<code>KSnegLogP</code>, <code>AUROCnegLogP</code>). Must not overlap <code>feature_select_types</code>.</td>
 </tr>
 <tr>
 <td><code>feature_select_bootstrap_reps</code></td>
@@ -1796,13 +1676,16 @@ bootstrap replicates still draw independent subsamples.</p>
 <td><code>32</code></td>
 <td>Feature columns <code>AGGREGATE_FEATURE_TYPE</code> / <code>AGGREGATE_HALF</code> evaluate per Polars query. A memory dial: peak memory scales with <code>chunk_size × n_variant_labels</code> (× the control pool, for the reference-based aggregators), while runtime is essentially flat in it. Halve it if a task is OOM-killed (exit 137); raise it for runs using only <code>mean</code>/<code>median</code>/<code>std</code>/<code>MAD</code>. <code>null</code> disables chunking entirely (every feature in one query) — the pre-chunking shape, for small inputs only. See <a href="../cli/aggregate/#feature-chunking">Feature chunking</a>.</td>
 </tr>
-<tr>
-<td><code>global_feature_select_min_batches_ok</code></td>
-<td><code>null</code></td>
-<td>Minimum member experiments that must mark a feature ok. <code>null</code> = all that report on it.</td>
-</tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Each experiment needs at least two synonymous variants</p>
+<p>The <code>feature_select_types</code> aggregates and <code>FINALIZE_FEATURE_SELECT</code>'s
+output are z-scored against the experiment's synonymous variants (mean and
+<code>ddof=1</code> std). A single synonymous variant leaves the std undefined and
+nulls every feature for that experiment; zero-variance features are null
+too.</p>
+</div>
 <h3 id="dimensionality-reduction">Dimensionality reduction<a class="headerlink" href="#dimensionality-reduction" title="Permanent link">&para;</a></h3>
 <p>PCA and UMAP are computed independently of each other, both on the same final
 selected/normalized feature matrix — UMAP does <strong>not</strong> run on PCA output.</p>
@@ -1851,9 +1734,9 @@ this release will not match a pre-release run's.</p>
 </div>
 <h2 id="passing-list-values-on-the-cli">Passing list values on the CLI<a class="headerlink" href="#passing-list-values-on-the-cli" title="Permanent link">&para;</a></h2>
 <p>List-valued parameters cannot be expressed as a bare CLI flag:
-<code>--global_channels foo,bar</code> arrives as the single string <code>"foo,bar"</code>, and
-Groovy's <code>as List&lt;String&gt;</code> then splits it into individual characters. Set list
-parameters in <code>params.yaml</code> (or a copy of it) instead.</p>
+<code>--feature_select_types mean,median</code> arrives as the single string
+<code>"mean,median"</code>, not a two-element list. Set list parameters in <code>params.yaml</code>
+(or a copy of it) instead.</p>
 
 
 

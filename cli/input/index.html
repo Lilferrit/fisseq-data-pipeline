@@ -806,58 +806,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global Feature Selection
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     One-vs-WT
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Global OvWT
     
   </span>
   
@@ -1040,58 +994,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/globalfeatureselect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalfeatureselect
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../api/ovwt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     ovwt
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/globalovwt/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    globalovwt
     
   </span>
   
@@ -1306,7 +1214,6 @@ batch rather than only to batches routed through this optional stage.</p>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">feature_allowlist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no allowlist)</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">feature_blocklist_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">      </span><span class="c1"># optional, default null (no blocklist)</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">csv_schema_scan_rows</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span><span class="w">         </span><span class="c1"># optional, default 100</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">global_channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span><span class="w">              </span><span class="c1"># optional, string or list of strings (see below)</span>
 </code></pre></div>
 <ul>
 <li><code>input_paths</code> — one or more raw cell-score files (CSV or Parquet), concatenated.
@@ -1325,22 +1232,15 @@ batch rather than only to batches routed through this optional stage.</p>
   <code>scan_csv</code>'s <code>infer_schema_length</code>). Default <code>100</code>. <code>null</code> scans every row
   instead — slower, but avoids mis-inferred dtypes on columns whose
   non-null/non-integer values only appear after the scanned prefix. Has no
-  effect on parquet sources.</li>
-<li><code>global_channel</code> — optional, a string or list of strings naming which named
-  channel(s) this batch belongs to for the purpose of <code>--global_channels</code>
-  scoping. <strong>Validated and consumed by the Nextflow workflow layer
-  (<code>lib/BatchParams.groovy</code>), not by this CLI</strong> — it has no effect on
-  <code>python -m fisseq_data_pipeline.input</code>'s own behavior, but lives in the
-  same batch YAML file, so it's documented here alongside <code>input_paths</code>. See
-  <a href="../../configuration/#global-channels">Configuration: Global channels</a>.</li>
-</ul>
-<p>Except for <code>input_paths</code> and <code>global_channel</code>, every field above is also a
-plain <code>nextflow.config</code> pipeline-wide default (<code>params.feature_allowlist_file</code>,
+  effect on parquet sources.
+Except for <code>input_paths</code>, every field above is also a
+plain <code>params.yaml</code> pipeline-wide default (<code>params.feature_allowlist_file</code>,
 <code>params.feature_blocklist_file</code>, <code>params.csv_schema_scan_rows</code>) — set one on
-the command line or in <code>nextflow.config</code> to apply it to every batch, and/or
+the command line or in <code>params.yaml</code> to apply it to every batch, and/or
 override it for a specific batch in that batch's YAML. See
 <a href="../../configuration/#declaring-experiments">Per-batch parameter overrides</a>
-for the full mechanism.</p>
+for the full mechanism.</li>
+</ul>
 <h2 id="output-files">Output files<a class="headerlink" href="#output-files" title="Permanent link">&para;</a></h2>
 <p>Written to <code>output_dir</code>, prefixed <code>{output_root}.</code> when <code>output_root</code> is set:</p>
 <ul>
