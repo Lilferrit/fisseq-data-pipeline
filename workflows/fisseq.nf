@@ -6,33 +6,25 @@ nextflow.enable.dsl = 2
 //                            |
 //                            +-> OVWT_BATCHWISE (per experiment, gated by
 //                            |     params.run_ovwt)
-//                            |     `-> GLOBAL_OVWT (once per active global
-//                            |           channel: per-experiment synonymous
-//                            |           z-score of both AUROC columns, then
-//                            |           cross-experiment median)
 //                            |
 //                            `-> bootstrap feature selection (per experiment,
 //                                  gated by params.run_feature_selection)
-//                                  `-> GLOBAL_FEATURE_SELECT (once per active
-//                                        global channel)
+//
+// Every output is per experiment. Cross-experiment aggregation (combining
+// blocklists, medians across experiments, AUROC re-centering) is left to the
+// downstream fisseqborn package, which reads these published outputs.
 //
 // Experiments are declared as a list of maps under `experiments:` in
 // params.yaml (loaded with -params-file); there is no <pipeline_dir>/configs/
 // directory and no per-experiment override of arbitrary pipeline params. Each
-// entry carries only batch_stem, input_paths, an optional global_channel, and
-// the three optional INPUT-stage fields, which fall back to their
+// entry carries only batch_stem, input_paths, and the three optional INPUT-stage fields, which fall back to their
 // pipeline-wide defaults when omitted. Every other parameter -- including
 // every run gate and the single params.random_seed -- is pipeline-wide.
-//
-// Both global stages run once per named channel in params.global_channels
-// (default null = none run), scoped to only the experiments whose
-// `global_channel` key names that channel. See docs/configuration.md.
 
 include { INPUT                  } from '../modules/local/input'
 include { QC_FILTER              } from '../modules/local/qc_filter'
 include { NORMALIZE              } from '../modules/local/normalize'
 include { OVWT_BATCHWISE         } from '../modules/local/ovwt_batchwise'
-include { GLOBAL_OVWT            } from '../modules/local/global_ovwt'
 include { AGGREGATE_FEATURE_TYPE  as AGGREGATE_FEATURE_TYPE_BATCHWISE  } from '../modules/local/aggregate_feature_type'
 include { AGGREGATE_FEATURE_TYPE  as AGGREGATE_FEATURE_TYPE_PASSTHROUGH } from '../modules/local/aggregate_feature_type'
 include { GENERATE_SPLIT          as GENERATE_SPLIT_BATCHWISE          } from '../modules/local/generate_split'
@@ -41,7 +33,6 @@ include { CORRELATE_FEATURES      as CORRELATE_FEATURES_BATCHWISE      } from '.
 include { BLOCKLIST               as BLOCKLIST_BATCHWISE               } from '../modules/local/blocklist'
 include { COMBINE_BLOCKLISTS      as COMBINE_BLOCKLISTS_BATCHWISE      } from '../modules/local/combine_blocklists'
 include { FINALIZE_FEATURE_SELECT as FINALIZE_FEATURE_SELECT_BATCHWISE } from '../modules/local/finalize_feature_select'
-include { GLOBAL_FEATURE_SELECT   } from '../modules/local/global_feature_select'
 
 // The only keys an `experiments:` entry may carry. Anything else is a typo
 // or an attempt to set a pipeline-wide param per experiment -- both are
@@ -51,7 +42,6 @@ def experimentKeys() {
     [
         'batch_stem',
         'input_paths',
-        'global_channel',
         'feature_allowlist_file',
         'feature_blocklist_file',
         'csv_schema_scan_rows',
@@ -202,20 +192,8 @@ workflow FisseqPipeline {
             error "ERROR: params.experiments[${i}] ('${entry.batch_stem}') is missing a required, " +
                   "non-empty 'input_paths' list."
         }
-        // global_channel accepts a bare String or a list of Strings; both
-        // normalize to a list so membership tests below are uniform.
-        def chans = entry.global_channel == null
-            ? []
-            : (entry.global_channel instanceof List ? entry.global_channel : [entry.global_channel])
-        chans.each { c ->
-            if (!(c instanceof String)) {
-                error "ERROR: params.experiments[${i}] ('${entry.batch_stem}') global_channel entries " +
-                      "must be strings, got ${c?.getClass()?.simpleName}."
-            }
-        }
         resolvedExperiments[entry.batch_stem] = [
             input_paths           : entry.input_paths,
-            global_channel        : chans,
             feature_allowlist_file: entry.containsKey('feature_allowlist_file') ? entry.feature_allowlist_file : params.feature_allowlist_file,
             feature_blocklist_file: entry.containsKey('feature_blocklist_file') ? entry.feature_blocklist_file : params.feature_blocklist_file,
             csv_schema_scan_rows  : entry.containsKey('csv_schema_scan_rows') ? entry.csv_schema_scan_rows : params.csv_schema_scan_rows,
@@ -227,24 +205,6 @@ workflow FisseqPipeline {
         error "ERROR: params.experiments has duplicate batch_stem value(s): ${duplicate_stems.join(', ')}. " +
               "Every experiment's batch_stem must be unique."
     }
-
-    // Resolve pipeline_dir to an absolute path so global process scripts can
-    // glob published outputs. Relative paths (e.g. ".") break inside Nextflow
-    // work directories.
-    def pipeline_dir_abs = file(params.pipeline_dir).toAbsolutePath().toString()
-
-    // Per-channel fan-out. params.global_channels lists which named channels
-    // actually run the two global stages. If it is null/[] (the default),
-    // channels_ch is empty and both stages simply run zero tasks -- no `if`
-    // gate needed ("filter channels, don't if").
-    //
-    // NOTE: the per-channel identifier is bound as "chan" in every closure
-    // below, never "channel" -- "channel" is a reserved Nextflow binding
-    // (lowercase alias for the Channel class) and silently resolves to
-    // `nextflow.Channel` itself if reused as a variable name, rather than
-    // failing loudly. See AGENTS.md.
-    def activeChannels = (params.global_channels ?: []) as List<String>
-    channels_ch = channel.fromList(activeChannels)
 
     // Step 0: INPUT -- one input/<batch_stem>.parquet per experiment.
     config_ch = channel.fromList(resolvedExperiments.keySet() as List).map { batch_stem ->
@@ -268,21 +228,6 @@ workflow FisseqPipeline {
     // gets a pooled AUROC and a median-of-per-barcode AUROC.
     if (asBool(params.run_ovwt)) {
         OVWT_BATCHWISE(norm_ch)
-        ovwt_ch = OVWT_BATCHWISE.out.ovwt  // (batch_stem, results, cell_scores, models)
-
-        // Step 3b: GLOBAL_OVWT -- once per active global channel. Collects
-        // real path objects (not a glob string) so -resume invalidates
-        // correctly when an upstream results.parquet changes; groupTuple
-        // keeps batch_stems and results in matching order, which is the
-        // contract reconstruct_staged_paths relies on.
-        global_ovwt_input_ch = ovwt_ch
-            .map { batch_stem, results, _scores, _models -> tuple(batch_stem, results) }
-            .combine(channels_ch)
-            .filter { batch_stem, _results, chan -> chan in resolvedExperiments[batch_stem].global_channel }
-            .map { batch_stem, results, chan -> tuple(chan, batch_stem, results) }
-            .groupTuple(by: 0)
-            .map { chan, stems, results -> tuple(chan, results, stems) }
-        GLOBAL_OVWT(global_ovwt_input_ch)
     }
 
     // Step 4: feature selection -- decomposed bootstrap + per-feature-type
@@ -301,12 +246,13 @@ workflow FisseqPipeline {
         bootstrap_ch = channel.of(1..(params.feature_select_bootstrap_reps as int))
 
         // Stage 1: full per-feature-type aggregation, one task per
-        // (experiment, feature_type).
+        // (experiment, feature_type). The published aggregates are z-scored
+        // against the experiment's synonymous variants.
         agg_input_ch = norm_ch
             .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
             .combine(feature_types_ch)
             .map { batch_stem, cells_glob, feature_type ->
-                tuple(batch_stem, cells_glob, feature_type,
+                tuple(batch_stem, cells_glob, feature_type, true,
                       "feature_select_batchwise/${batch_stem}/aggregates")
             }
         AGGREGATE_FEATURE_TYPE_BATCHWISE(agg_input_ch)
@@ -315,15 +261,15 @@ workflow FisseqPipeline {
         // Stage 1b: passthrough aggregation. Same process, and deliberately
         // nothing downstream of it but the stage-4 join -- passthrough types
         // never reach the bootstrap halves, the correlation, or the
-        // blocklist, which is the whole point of the second list. They also
-        // publish to their own directory, out of GLOBAL_FEATURE_SELECT's
-        // aggregates/ glob.
+        // blocklist, which is the whole point of the second list. They are
+        // not z-scored (p-values must keep their own scale) and publish to
+        // their own directory, so no aggregates/ glob ever mixes the two.
         passthrough_types_ch = channel.fromList(params.feature_select_passthrough_types)
         pt_agg_input_ch = norm_ch
             .map { batch_stem, normalized_parquet -> tuple(batch_stem, normalized_parquet.toString()) }
             .combine(passthrough_types_ch)
             .map { batch_stem, cells_glob, feature_type ->
-                tuple(batch_stem, cells_glob, feature_type,
+                tuple(batch_stem, cells_glob, feature_type, false,
                       "feature_select_batchwise/${batch_stem}/passthrough_aggregates")
             }
         AGGREGATE_FEATURE_TYPE_PASSTHROUGH(pt_agg_input_ch)
@@ -428,35 +374,5 @@ workflow FisseqPipeline {
                       combined_bl_file, "feature_select_batchwise/${batch_stem}")
             }
         FINALIZE_FEATURE_SELECT_BATCHWISE(finalize_input_ch)
-
-        // GLOBAL_FEATURE_SELECT -- once per active global channel. It reuses
-        // each member experiment's already-published BATCHWISE artifacts
-        // (feature_select_batchwise/<stem>/{aggregates,blocklist.parquet})
-        // directly off pipeline_dir, looping over batch_stems in Python, so
-        // it needs no cell-level recompute and no staged cells.
-        def batchesByChannel = activeChannels.collectEntries { chan ->
-            [chan, resolvedExperiments.findAll { _batch_stem, cfg ->
-                cfg.global_channel.contains(chan)
-            }.keySet() as List]
-        }
-        batchesByChannel.each { chan, stems ->
-            if (stems.isEmpty()) {
-                log.warn "Global channel '${chan}' has no member experiments -- " +
-                    "GLOBAL_FEATURE_SELECT will have nothing to read for this channel."
-            }
-        }
-
-        // Single-element signal that fires once every experiment's BATCHWISE
-        // feature selection has been published -- gated on combined_bl_ch,
-        // the last batchwise feature-select artifact.
-        feature_select_ready_signal = combined_bl_ch.map { batch_stem, _bl -> batch_stem }.collect()
-            .map { _stems -> pipeline_dir_abs }
-
-        global_fs_input_ch = channels_ch
-            .combine(feature_select_ready_signal)
-            .map { chan, d ->
-                tuple(chan, batchesByChannel[chan], d, "global/${chan}/feature_select")
-            }
-        GLOBAL_FEATURE_SELECT(global_fs_input_ch)
     }
 }

@@ -49,17 +49,18 @@ This chains every stage described in [Architecture](architecture.md):
 4. `OVWT_BATCHWISE` — k-fold cross-validated one-vs-wildtype scoring, per
    experiment (`params.run_ovwt`). Each variant gets a pooled AUROC and a
    median-of-per-barcode AUROC, and every cell gets one out-of-fold score.
-5. `GLOBAL_OVWT` — per-experiment synonymous z-score of those AUROCs, then the
-   cross-experiment median (once per active global channel).
-6. Bootstrap feature selection (`params.run_feature_selection`) — see
-   [Nextflow Workflow](nextflow.md#processes) for the stage breakdown.
-7. `GLOBAL_FEATURE_SELECT` — cross-experiment feature selection reusing the
-   batchwise artifacts (once per active global channel).
+5. Bootstrap feature selection (`params.run_feature_selection`) — see
+   [Nextflow Workflow](nextflow.md#processes) for the stage breakdown. The
+   per-feature-type aggregates are z-scored against the experiment's synonymous
+   variants, so each experiment needs at least two of them.
+
+Every stage runs per experiment. Combining experiments (cross-experiment
+medians, AUROC re-centering against synonymous variants) is done downstream by
+[fisseqborn](https://github.com/FowlerLab/fisseqborn) — see
+[Architecture: Cross-experiment aggregation](architecture.md#cross-experiment-aggregation).
 
 Override any [parameter](configuration.md#parameter-reference) on the command
-line. The two global stages don't run at all unless you tag experiments into a
-channel and activate it — see
-[Configuration: Global channels](configuration.md#global-channels):
+line:
 
 ```bash
 nextflow run . \
@@ -87,16 +88,15 @@ All outputs land under `<pipeline_dir>` — see
 [Architecture: Output layout](architecture.md#output-layout) for the full tree.
 The results most analyses care about:
 
-- `<pipeline_dir>/feature_select_batchwise/<batch_stem>/output.parquet` (and, if
-  a global channel is active, `global/<channel>/feature_select/aggregate.parquet`)
-  — final per-variant, feature-selected profiles.
+- `<pipeline_dir>/feature_select_batchwise/<batch_stem>/output.parquet` — final
+  per-variant, feature-selected profiles (plus any raw passthrough columns).
+- `<pipeline_dir>/feature_select_batchwise/<batch_stem>/{aggregates,passthrough_aggregates,blocklists}/<feature_type>.parquet`
+  — the per-feature-type inputs fisseqborn reads for cross-experiment
+  aggregation (`aggregates/` synonymous-z-scored, `passthrough_aggregates/` raw).
 - `<pipeline_dir>/ovwt_batchwise/<batch_stem>/results.parquet` — per-variant
   `auroc_pooled`, `auroc_median_barcode`, per-fold `auroc_folds` and
-  `auroc_median_fold`.
-- `<pipeline_dir>/global/<channel>/ovwt_distinguishability/global_scores.parquet`
-  (only if a global channel is active) — synonymous-corrected, cross-experiment
-  median distinguishability per variant. This is the headline result for a
-  multi-experiment run.
+  `auroc_median_fold`. Synonymous correction and the cross-experiment median of
+  these happen downstream in fisseqborn.
 
 ## 5. Running individual steps
 

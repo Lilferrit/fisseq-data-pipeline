@@ -29,12 +29,12 @@ params.yaml (experiments: [...])
    NORMALIZE        (per experiment)   ← z-score fit on WT control cells
       │
       ├──► OVWT_BATCHWISE  (per experiment; params.run_ovwt)
-      │         └──► GLOBAL_OVWT  (once per active global channel)
-      │              (OVWT_BATCHWISE fold scheme: params.ovwt_cv_mode,
+      │              (fold scheme: params.ovwt_cv_mode,
       │               fold count/cap: params.ovwt_n_folds)
       │
       └──► Feature selection, batchwise (params.run_feature_selection):
-             AGGREGATE_FEATURE_TYPE      (per feature type)          ─┐
+             AGGREGATE_FEATURE_TYPE      (per feature type;           ─┐
+                                          synonymous z-score)         │
              GENERATE_SPLIT              (per bootstrap replicate)    │
                └─► AGGREGATE_HALF        (per bootstrap × type × half)│
                      └─► CORRELATE_FEATURES (per bootstrap × type)    │
@@ -42,11 +42,15 @@ params.yaml (experiments: [...])
                                            the one sync point)        │
                                  └─► COMBINE_BLOCKLISTS (all types) ──┘
                                        └─► FINALIZE_FEATURE_SELECT
-                                             └──► GLOBAL_FEATURE_SELECT
-                                                  (per active global channel)
 ```
 
 There is a single pipeline mode — `main.nf` includes one workflow and runs it.
+Every output is per experiment. Cross-experiment aggregation (combining
+blocklists, per-variant medians across experiments, re-centering OvWT AUROCs
+against synonymous variants) is done downstream by
+[fisseqborn](https://github.com/FowlerLab/fisseqborn), which reads
+`feature_select_batchwise/<batch>/{aggregates,passthrough_aggregates,blocklists}/<type>.parquet`
+and `ovwt_batchwise/<batch>/results.parquet`.
 
 **Main components:**
 - `src/fisseq_data_pipeline/` — Python package, one module per pipeline step
@@ -133,8 +137,7 @@ fisseq-data-pipeline/
 │   │   ├── splits.py              # row-index / index-file helpers
 │   │   ├── featuretypes.py        # join_feature_type_files
 │   │   ├── vectors.py             # impact score
-│   │   ├── dimreduction.py        # compute_pca, compute_umap
-│   │   └── nextflow_staging.py    # reconstruct_staged_paths
+│   │   └── dimreduction.py        # compute_pca, compute_umap
 │   ├── input.py                   # INPUT
 │   ├── qcfilter.py                # QC_FILTER
 │   ├── normalize.py               # NORMALIZE (Normalizer class + entry point)
@@ -145,9 +148,7 @@ fisseq-data-pipeline/
 │   ├── blocklist.py               # BLOCKLIST
 │   ├── combineblocklists.py       # COMBINE_BLOCKLISTS
 │   ├── featureselect.py           # FINALIZE_FEATURE_SELECT
-│   ├── globalfeatureselect.py     # GLOBAL_FEATURE_SELECT
-│   ├── ovwt.py                    # OVWT_BATCHWISE
-│   └── globalovwt.py              # GLOBAL_OVWT
+│   └── ovwt.py                    # OVWT_BATCHWISE
 ├── modules/local/*.nf             # one per process
 ├── workflows/fisseq.nf
 ├── main.nf
@@ -173,14 +174,18 @@ Every entry point uses `@hydra.main(...)` with its config registered in the
 **`Normalizer`** (`normalize.py`) — fits per-feature z-score stats on a
 LazyFrame and applies them. Stats persist to Parquet (not pickle) and reload via
 `Normalizer.load`. Zero-variance features produce `null`. Also reused by
-`globalovwt.py` to z-score AUROCs against synonymous variants.
+`aggregatefeaturetype.py` (`normalize_to_synonymous`) and `featureselect.py` to
+z-score per-variant aggregates against synonymous variants.
 
 **`BaseAggregator`** (`aggregate.py`) — abstract base for the concrete
 aggregation strategies. Combining feature types happens in Nextflow:
 `aggregatefeaturetype` runs once per `params.feature_select_types` entry — and
 once per `params.feature_select_passthrough_types` entry, publishing to
 `passthrough_aggregates/` instead — and `featureselect` joins the per-type
-outputs on the label column.
+outputs on the label column. `aggregates/` are z-scored against the synonymous
+variants (`normalize_to_synonymous=true`); `passthrough_aggregates/` stay raw
+(p-values must keep their own scale), and so do `AGGREGATE_HALF`'s bootstrap
+halves.
 
 **`utils/xgbparams.py`** — shared XGBoost infrastructure: `XGBoostParams` /
 `XGBoostConfig`, `get_feature_cols`, `get_dmatrix`, `split_indices_stratified`,
@@ -289,18 +294,25 @@ Lowercase verb, optional scope, PR number in parentheses:
 6. **OvWT trains on WT-normalized features, not synonymous-normalized ones.**
    The sibling `fisseq-embeddings-pipeline` (which this implementation was
    ported from) z-scores against synonymous variants before training. Here that
-   re-centering happens downstream on the AUROCs, in `globalovwt.py`. This is
-   deliberate — do not "fix" it by adding a second normalizer fit in `ovwt.py`.
+   re-centering happens on the AUROCs, downstream of this pipeline in
+   fisseqborn. This is deliberate — do not "fix" it by adding a second
+   normalizer fit in `ovwt.py`.
 
 7. **Two different control baselines.** `normalize.py` uses **WT** cells (SQL
    `control_sample_query`). `aggregate.py:variant_classification` flags
    **synonymous** variants as `meta_is_control`, which is what
-   `featureselect.py`, `globalfeatureselect.py` and `globalovwt.py` use. Not
-   interchangeable.
+   `aggregatefeaturetype.py` (`normalize_to_synonymous`) and `featureselect.py`
+   normalize against. (The aggregators' own reference group in
+   `aggregatefeaturetype.py` is still the WT `meta_is_control` from
+   `normalize.py`; the synonymous flag is computed on the aggregated output.)
+   Not interchangeable.
 
-8. **`GLOBAL_OVWT` needs ≥2 synonymous variants per experiment.** Its
-   per-experiment normalizer fits on synonymous rows; a single one makes std
-   (ddof=1) undefined and nulls every score.
+8. **Per-experiment synonymous normalization needs ≥2 synonymous variants.**
+   `AGGREGATE_FEATURE_TYPE`'s `normalize_to_synonymous` and
+   `FINALIZE_FEATURE_SELECT` both fit a normalizer on the experiment's
+   synonymous rows; a single one makes std (ddof=1) undefined and nulls every
+   feature. Test fixtures must include ≥2 synonymous labels (the integration
+   fixture uses `A1A`/`A2A`/`A3A`).
 
 9. **Never bind a Nextflow variable named `channel`.** It is a reserved
    lowercase alias for the `Channel` class and silently resolves to
@@ -319,24 +331,20 @@ Lowercase verb, optional scope, PR number in parentheses:
     `val` glob hashes only the glob text, so `-resume` fails to invalidate when
     the underlying files change.
 
-13. **`stageAs` with one file has no index.** Nextflow substitutes the `*` with
-    an empty string for a single staged file (`res_input_.parquet`) and
-    1-indexes only from two up. `utils/nextflow_staging.py` encodes this.
-
-14. **`output_root` takes priority over `output_dir`** in `aggregate.py` and
+13. **`output_root` takes priority over `output_dir`** in `aggregate.py` and
     `featureselect.py` — the output lands at `{output_root}.{stem}.parquet`
     regardless of `output_dir`. Several `.nf` scripts therefore use
     `output_dir=.` plus a glob `mv`. If you change output naming there, update
     those.
 
-15. **`errorStrategy 'ignore'` is on every process.** A failed stage drops that
+14. **`errorStrategy 'ignore'` is on every process.** A failed stage drops that
     experiment rather than aborting the run, so a missing output may mean its
     task failed. Check the run log.
 
-16. **`pandas` is a runtime dep but barely used directly.** The codebase uses
+15. **`pandas` is a runtime dep but barely used directly.** The codebase uses
     Polars; pandas comes in via `pycytominer`.
 
-17. **OvWT has two cross-validation schemes**, `OvwtConfig.cv_mode`
+16. **OvWT has two cross-validation schemes**, `OvwtConfig.cv_mode`
     (`params.ovwt_cv_mode`). `"kfold"` cuts `n_folds` folds stratified on
     `(meta_barcode, is_wt)`, so every fold's model has seen every barcode.
     `"barcode_holdout"` holds whole barcodes out of training a fold at a time
@@ -346,17 +354,18 @@ Lowercase verb, optional scope, PR number in parentheses:
     cell-count-balanced groups, and a value above the barcode count degrades
     back to one per barcode — so fold counts differ per variant, and
     `len(models[variant])` is not `n_folds`. Both modes emit the same columns,
-    so `globalovwt.py` is mode-blind — but `auroc_median_barcode` means
+    so downstream consumers are mode-blind — but `auroc_median_barcode` means
     *in-sample separability* under the first and *generalization to an unseen
     barcode* under the second. Never compare the two modes' numbers.
     `auroc_folds` (a `List(Float64)`, per-fold test AUROC) and
     `auroc_median_fold` score each fold under its own model only. Unlike
     `auroc_pooled`/`auroc_median_barcode`, they never mix scores from different
-    fold models into a single ROC curve. `globalovwt.py` must drop the list column
-    before normalizing, because the `Normalizer` would otherwise treat it as a
-    feature.
+    fold models into a single ROC curve. `auroc_folds` is a non-`meta_` list
+    column, so any downstream consumer (fisseqborn) must drop or handle it
+    before normalizing `results.parquet` as features — the `Normalizer` would
+    otherwise treat it as a feature.
 
-18. **`workflows/fisseq.nf` duplicates two Python allowlists on purpose.**
+17. **`workflows/fisseq.nf` duplicates two Python allowlists on purpose.**
     `aggregatorKeys()` mirrors `aggregate.py:_AGGREGATORS` and `ovwtCvModes()`
     mirrors `ovwt.py:CV_MODES`, because both values are interpolated straight
     into a process's shell script — a malformed entry breaks the generated
@@ -367,25 +376,27 @@ Lowercase verb, optional scope, PR number in parentheses:
     both `feature_select_types` and `feature_select_passthrough_types`, and the
     two lists must be disjoint.
 
-19. **A `.join()` that may have an empty right side needs `remainder: true`.**
+18. **A `.join()` that may have an empty right side needs `remainder: true`.**
     `workflows/fisseq.nf`'s stage-4 `finalize_input_ch` joins the passthrough
     aggregates, and `params.feature_select_passthrough_types` defaults to `[]`
     — an empty channel. Without `remainder: true` that join emits nothing and
     `FINALIZE_FEATURE_SELECT` never runs for any batch, silently (see gotcha
-    15). This is the complement of gotcha 11: `.join()` drops on the many side
+    14). This is the complement of gotcha 11: `.join()` drops on the many side
     and starves on the empty side.
 
-20. **`output.parquet` is not "the selected features" any more.**
+19. **`output.parquet` is not "the selected features" any more.**
     `params.feature_select_passthrough_types` puts non-`meta_` columns into
     `feature_select_batchwise/<batch>/output.parquet` that were never
     blocklisted, variance-filtered, correlation-filtered or normalized — that
     is the entire point of the second list. Nothing in-pipeline reads that file
     (it is terminal), but any new stage that does must not assume
-    `FEATURE_SELECTOR` over it yields selected features. The `aggregates/` vs
-    `passthrough_aggregates/` publish split is what keeps the same confusion
-    out of `GLOBAL_FEATURE_SELECT`.
+    `FEATURE_SELECTOR` over it yields selected features: its passthrough columns
+    are raw and un-normalized, while the selected ones are synonymous-z-scored.
+    The `aggregates/` vs `passthrough_aggregates/` publish split keeps
+    normalized and raw-scale values apart for downstream readers (fisseqborn
+    globs `aggregates/`) — never publish both into one directory.
 
-21. **`.python-version` must be copied into the image before the first
+20. **`.python-version` must be copied into the image before the first
     `uv sync`.** Without it uv resolves the newest `>=3.13` interpreter, and
     Hydra 1.3.x crashes on Python 3.14's argparse, breaking every stage's CLI.
 

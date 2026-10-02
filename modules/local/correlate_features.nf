@@ -3,7 +3,7 @@ nextflow.enable.dsl = 2
 // CORRELATE_FEATURES: wraps python -m fisseq_data_pipeline.correlatefeatures. Feature-selection
 // stage 2c — computes per-feature pseudo-replicate Pearson correlation
 // between one bootstrap replicate's two AGGREGATE_HALF outputs, for one
-// (batch or global, feature type). Feeds into BLOCKLIST.
+// (batch, feature type). Feeds into BLOCKLIST.
 process CORRELATE_FEATURES {
     errorStrategy 'ignore'
     label 'process_low'

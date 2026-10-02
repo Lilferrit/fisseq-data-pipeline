@@ -35,14 +35,11 @@ experiments:
     input_paths:
       - /data/plate1/cellprofiler_features.csv
       - /data/plate1/barcode_calls.parquet
-    global_channel: cohort_a
   - batch_stem: plate2
     input_paths: [/data/plate2/cellprofiler_features.csv]
-    global_channel: [cohort_a, cohort_b]   # may belong to several
     csv_schema_scan_rows: null             # per-experiment override
   - batch_stem: plate3
     input_paths: [/data/plate3/features.parquet]
-    # no global_channel -- processed batchwise only
 ```
 
 An entry may set **only** these keys:
@@ -51,7 +48,6 @@ An entry may set **only** these keys:
 | --- | -------- | ------- |
 | `batch_stem` | yes | Unique experiment id. Names every output subdirectory. Must be unique across the list. |
 | `input_paths` | yes | Raw CSV/parquet source files that INPUT merges. No pipeline-wide default exists — a list of raw files is inherently per-experiment. |
-| `global_channel` | no | String or list of strings naming the channel(s) this experiment belongs to. |
 | `feature_allowlist_file` | no | INPUT-stage; falls back to the pipeline-wide default. |
 | `feature_blocklist_file` | no | Likewise. |
 | `csv_schema_scan_rows` | no | Likewise. |
@@ -66,30 +62,14 @@ The workflow also fails fast on an empty `experiments:` list, a non-map entry, a
 missing or blank `batch_stem`, a missing or empty `input_paths`, and duplicate
 `batch_stem` values.
 
-## Global channels
+## Cross-experiment aggregation
 
-An experiment joins a channel via its `global_channel` key;
-`params.global_channels` lists which channels actually run.
-
-```yaml
-global_channels: [cohort_a, cohort_b]
-```
-
-Each active channel gets its own `GLOBAL_OVWT` and `GLOBAL_FEATURE_SELECT` run,
-scoped to that channel's member experiments and published under
-`global/<channel>/`.
-
-- `global_channels: null` or `[]` (the default) — no global stage runs at all.
-- An experiment naming no channel is still processed batchwise, just excluded
-  from both global stages.
-- An experiment in several active channels contributes to each independently.
-- A channel named in `global_channels` with no member experiments logs a
-  warning.
-
-!!! note "GLOBAL_OVWT needs at least two synonymous variants per experiment"
-    It fits a per-experiment normalizer on that experiment's synonymous rows. A
-    single synonymous variant makes the standard deviation (ddof=1) undefined,
-    nulling every score for that experiment.
+Every stage runs per experiment, and nothing in the pipeline combines
+experiments. Cross-experiment aggregation — merging blocklists, per-variant
+medians across experiments, AUROC re-centering against synonymous variants — is
+done downstream by [fisseqborn](https://github.com/FowlerLab/fisseqborn), which
+reads the published per-experiment outputs (see
+[Architecture](architecture.md#cross-experiment-aggregation)).
 
 ## The one random seed
 
@@ -116,8 +96,8 @@ All pipeline-wide.
 
 | Parameter | Default | Effect when `false` |
 | --------- | ------- | ------------------- |
-| `run_ovwt` | `true` | Skips `OVWT_BATCHWISE` and, with it, `GLOBAL_OVWT`. |
-| `run_feature_selection` | `true` | Skips the whole batchwise feature-selection chain and `GLOBAL_FEATURE_SELECT`. |
+| `run_ovwt` | `true` | Skips `OVWT_BATCHWISE`. |
+| `run_feature_selection` | `true` | Skips the whole batchwise feature-selection chain. |
 | `run_pca` | `false` | (Enable to add PCA to the feature-selection outputs.) |
 | `run_umap` | `false` | (Enable to add UMAP.) |
 
@@ -136,7 +116,6 @@ All pipeline-wide.
 | Parameter | Default | Meaning |
 | --------- | ------- | ------- |
 | `random_seed` | `0` | The one seed. |
-| `global_channels` | `null` | Which channels run the global stages. |
 | `filter_label_column` | `"meta_aa_changes"` | Variant label column, threaded to every stage that reads one. |
 
 ### INPUT
@@ -177,13 +156,19 @@ See [One-vs-WT](cli/ovwt.md) for what these actually do.
 
 | Parameter | Default | Meaning |
 | --------- | ------- | ------- |
-| `feature_select_types` | `["mean","median","MAD","std","KS","QQ","AUROC"]` | Aggregators to compute and correlate. |
-| `feature_select_passthrough_types` | `[]` | Aggregators computed and joined onto the final per-variant table but excluded from every selection step — no bootstrap, no blocklist, no pycytominer filters, no normalization. Intended for the p-value statistics (`KSnegLogP`, `AUROCnegLogP`). Must not overlap `feature_select_types`. |
+| `feature_select_types` | `["mean","median","MAD","std","KS","QQ","AUROC"]` | Aggregators to compute and correlate. Their published aggregates (`feature_select_batchwise/<batch>/aggregates/`) are z-scored against the experiment's synonymous variants. |
+| `feature_select_passthrough_types` | `[]` | Aggregators computed and joined onto the final per-variant table but excluded from every selection step — no bootstrap, no blocklist, no pycytominer filters, no normalization; published raw to `passthrough_aggregates/`. Intended for the p-value statistics (`KSnegLogP`, `AUROCnegLogP`). Must not overlap `feature_select_types`. |
 | `feature_select_bootstrap_reps` | `10` | Bootstrap replicates per feature type. |
 | `feature_select_downsample_wt` | `null` | Optional wildtype downsampling during aggregation. |
 | `feature_select_min_correlation` | `0.5` | Median-`r` threshold for a feature to pass. |
 | `aggregate_feature_chunk_size` | `32` | Feature columns `AGGREGATE_FEATURE_TYPE` / `AGGREGATE_HALF` evaluate per Polars query. A memory dial: peak memory scales with `chunk_size × n_variant_labels` (× the control pool, for the reference-based aggregators), while runtime is essentially flat in it. Halve it if a task is OOM-killed (exit 137); raise it for runs using only `mean`/`median`/`std`/`MAD`. `null` disables chunking entirely (every feature in one query) — the pre-chunking shape, for small inputs only. See [Feature chunking](cli/aggregate.md#feature-chunking). |
-| `global_feature_select_min_batches_ok` | `null` | Minimum member experiments that must mark a feature ok. `null` = all that report on it. |
+
+!!! note "Each experiment needs at least two synonymous variants"
+    The `feature_select_types` aggregates and `FINALIZE_FEATURE_SELECT`'s
+    output are z-scored against the experiment's synonymous variants (mean and
+    `ddof=1` std). A single synonymous variant leaves the std undefined and
+    nulls every feature for that experiment; zero-variance features are null
+    too.
 
 ### Dimensionality reduction
 
@@ -207,6 +192,6 @@ selected/normalized feature matrix — UMAP does **not** run on PCA output.
 ## Passing list values on the CLI
 
 List-valued parameters cannot be expressed as a bare CLI flag:
-`--global_channels foo,bar` arrives as the single string `"foo,bar"`, and
-Groovy's `as List<String>` then splits it into individual characters. Set list
-parameters in `params.yaml` (or a copy of it) instead.
+`--feature_select_types mean,median` arrives as the single string
+`"mean,median"`, not a two-element list. Set list parameters in `params.yaml`
+(or a copy of it) instead.

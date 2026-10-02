@@ -41,7 +41,7 @@ def _stage_config_classes() -> list[type]:
 def test_discovery_finds_the_stage_configs():
     """Guards the guard: an import failure must not silently empty the sweep."""
     names = {c.__name__ for c in _stage_config_classes()}
-    assert {"OvwtConfig", "QcFilterConfig", "GlobalOvwtConfig"} <= names
+    assert {"OvwtConfig", "QcFilterConfig", "FeatureTypeAggregateConfig"} <= names
 
 
 @pytest.mark.parametrize(

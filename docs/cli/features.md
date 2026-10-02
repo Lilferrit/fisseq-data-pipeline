@@ -11,9 +11,16 @@ the median correlation across all bootstrap replicates. The final stage joins th
 per-feature-type aggregates, applies the blocklist, and runs pycytominer feature
 selection.
 
-A separate, much simpler GLOBAL entry point (§6 below) runs once per active
-global group, reusing this BATCHWISE pipeline's already-computed per-batch
-outputs rather than recomputing anything from cells.
+Everything here is per batch. Combining batches across experiments is done
+downstream by [fisseqborn](https://github.com/FowlerLab/fisseqborn) from the
+published outputs (see
+[Architecture](../architecture.md#cross-experiment-aggregation)).
+
+The full per-feature-type aggregates for `params.feature_select_types` are
+published to `feature_select_batchwise/<batch>/aggregates/` z-scored against
+the batch's synonymous variants (`normalize_to_synonymous=true`; see
+[Aggregate: Synonymous normalization](aggregate.md#synonymous-normalization)).
+The bootstrap half-aggregates stay raw.
 
 All configs extend the [common config fields](qcfilter.md#common-config-fields).
 
@@ -28,9 +35,10 @@ and joined onto the final per-variant table but take no part in any of that.
 They skip stages 1b→4 of the bootstrap chain entirely (no splits, no
 correlation, no blocklist), are excluded from `pycytominer.feature_select`, and
 are joined *after* the synonymous-baseline normalization — so they are also
-outside the impact score, PCA and UMAP. They are published separately, under
-`feature_select_batchwise/<batch>/passthrough_aggregates/` rather than
-`aggregates/`.
+outside the impact score, PCA and UMAP. They are published separately and raw
+(not z-scored), under `feature_select_batchwise/<batch>/passthrough_aggregates/`
+rather than `aggregates/`, so a glob over `aggregates/` never mixes normalized
+and raw-scale values.
 
 This exists for the p-value aggregators (`KSnegLogP`, `AUROCnegLogP`). They are
 wanted in the output, but they are not reproducibility statistics: a median-`r`
@@ -56,7 +64,7 @@ Generates one stratified 50/50 pseudo-replicate split.
 | ----- | ------- | ----------- |
 | `input_file` | **required** | Glob pattern or path to cell-level data. |
 | `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
-| `random_state` | **required** | Seed for the stratified split — set to the bootstrap-loop index in Nextflow, so each replicate is distinct and reproducible. |
+| `random_seed` | `0` | Seed for the stratified split (the common config field). Nextflow passes `params.random_seed + bootstrap_idx`, so each replicate is distinct and reproducible. |
 
 **Output**: `half1.parquet`, `half2.parquet` (single-column row-index files).
 
@@ -64,7 +72,7 @@ Generates one stratified 50/50 pseudo-replicate split.
 uv run python -m fisseq_data_pipeline.generatesplit \
     output_dir=./out \
     input_file=data/normalized.parquet \
-    random_state=3
+    random_seed=3
 ```
 
 ## 2. `python -m fisseq_data_pipeline.correlatefeatures` (`CORRELATE_FEATURES`)
@@ -130,7 +138,13 @@ uv run python -m fisseq_data_pipeline.combineblocklists \
 The final stage: joins every feature type's full aggregate (from
 [`python -m fisseq_data_pipeline.aggregatefeaturetype`](aggregate.md)) on `label_column`, drops blocked
 feature columns, and runs `pycytominer.feature_select` (variance threshold,
-built-in blocklist, correlation threshold).
+built-in blocklist, correlation threshold). The selected table is then z-scored
+against the synonymous variants (a `Normalizer` fit on
+`variant_classification()`'s synonymous rows). In the pipeline its inputs are
+already synonymous-z-scored by `AGGREGATE_FEATURE_TYPE`, so this second pass is
+effectively a no-op; it keeps the stage correct when run standalone on raw
+aggregates. Like the upstream normalization, it needs at least two synonymous
+variants.
 
 | Field | Default | Description |
 | ----- | ------- | ----------- |
@@ -146,7 +160,6 @@ built-in blocklist, correlation threshold).
 | `umap_n_neighbors` | `10` | `umap.UMAP`'s local neighborhood size. |
 | `umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
 | `umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
-| `umap_random_state` | `42` | Seed for UMAP's fit; `null` disables seeding (faster, multithreaded, nondeterministic). |
 | `passthrough_feature_type_files` | `null` | Glob matching per-feature-type aggregates to join onto the output *without* feature selection or normalization (see [Two lists of aggregate types](#two-lists-of-aggregate-types)). Unlike `feature_type_files`, a glob matching nothing warns rather than raising — an empty passthrough list is the default. |
 
 **Output**: glob input → `{output_root}.output.parquet` or `{output_dir}/output.parquet`;
@@ -163,60 +176,6 @@ uv run python -m fisseq_data_pipeline.featureselect \
     input_file=out/normalized.parquet \
     'feature_type_files=out/aggregates/*.parquet' \
     block_list_file=out/blocklist.parquet
-```
-
-## 6. `python -m fisseq_data_pipeline.globalfeatureselect` (`GLOBAL_FEATURE_SELECT`)
-
-Runs once per active global group (see
-[Configuration: Global groups](../configuration.md#global-channels)). Reuses the
-group's member batches' already-published BATCHWISE feature-selection
-artifacts directly — no cell-level recomputation:
-
-1. For each member batch, joins that batch's own per-feature-type aggregate
-   files (`feature_select_batchwise/<batch>/aggregates/*.parquet`) and
-   normalizes the joined table to that batch's own synonymous baseline (this
-   serves as both batch correction and normalization).
-2. Concatenates every member batch's normalized table and takes the
-   per-feature median, grouped by `label_column` (a variant can appear in
-   more than one batch).
-3. Combines each member batch's own combined blocklist
-   (`feature_select_batchwise/<batch>/blocklist.parquet`) using an agreement
-   threshold across batches.
-4. Drops columns blocked by step 3 and runs `pyc_feature_select` (the same
-   function `FINALIZE_FEATURE_SELECT` uses).
-
-Passthrough types do not reach this stage: step 1's glob is filtered by
-`feature_select_types`, and passthrough aggregates are published to a sibling
-directory in any case. The global output carries selected features only.
-
-| Field | Default | Description |
-| ----- | ------- | ----------- |
-| `pipeline_dir` | **required** | Absolute path to the pipeline's root output directory. |
-| `batch_stems` | **required** | List of the active group's member batch stems (only those with `run_feature_selection` enabled). |
-| `label_column` | `"meta_aa_changes"` | Column identifying variant labels. |
-| `min_batches_ok` | `null` | Minimum number of member batches that must mark a feature ok for it to be globally ok. `null` requires unanimity across batches that report on it. |
-| `run_pca` | `false` | Compute PCA on the final selected/normalized feature matrix, appending `meta_pc_1..meta_pc_{pca_n_components}` and writing a separate PCA-components output file. Always uses the plain pipeline-wide value (not per-batch overridable here — see [Configuration](../configuration.md#declaring-experiments)). |
-| `pca_n_components` | `10` | Number of principal components to compute and retain. |
-| `run_umap` | `false` | Compute UMAP on the final selected/normalized feature matrix, appending `meta_umap_1..meta_umap_{umap_n_components}`. PCA and UMAP are computed independently, both on the same feature matrix. |
-| `umap_n_components` | `2` | Dimensionality of the UMAP embedding. |
-| `umap_n_neighbors` | `10` | `umap.UMAP`'s local neighborhood size. |
-| `umap_metric` | `"cosine"` | `umap.UMAP`'s distance metric. |
-| `umap_min_dist` | `0.1` | `umap.UMAP`'s minimum embedded distance between points. |
-| `umap_random_state` | `42` | Seed for UMAP's fit; `null` disables seeding (faster, multithreaded, nondeterministic). |
-
-**Output**: `aggregate.parquet` (the selected, cross-batch median aggregate
-table) and `blocklist.parquet` (the combined global blocklist, columns
-`feature`, `n_batches`, `n_ok`, `feature_ok`). When `run_pca=true`, also
-writes `pca_components.parquet` — one row per principal component, with one
-column per feature used in the fit (named by that feature's actual column
-name, holding its loading), plus `meta_variance_explained`,
-`meta_cumulative_variance_explained`, and `meta_component_idx`.
-
-```bash
-uv run python -m fisseq_data_pipeline.globalfeatureselect \
-    output_dir=./out \
-    pipeline_dir=/path/to/experiment \
-    'batch_stems=[batch1,batch2]'
 ```
 
 See [API Reference: features](../api/features.md) for full function

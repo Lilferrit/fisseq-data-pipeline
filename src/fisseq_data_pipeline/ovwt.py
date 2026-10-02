@@ -25,8 +25,8 @@ instead of one:
 features fed to the classifier are z-scored against the experiment's own
 *synonymous* variants. Here they are ``NORMALIZE``'s output, z-scored against
 *wildtype* cells -- this pipeline's cell-level normalization is unchanged. The
-synonymous re-centering still happens, downstream and on the AUROCs rather than
-on the features, in :mod:`fisseq_data_pipeline.globalovwt`. Do not "fix" this
+synonymous re-centering happens outside this pipeline, on the AUROCs rather than
+on the features, in the downstream ``fisseqborn`` package. Do not "fix" this
 by adding a second normalizer fit here.
 
 **Two cross-validation schemes**, selected by ``OvwtConfig.cv_mode``:
@@ -808,9 +808,8 @@ def ovwt_batchwise(
                     int((~is_wt & mask).sum()),
                     _format_auroc(barcode_auroc),
                 )
-            # None, not float("nan"), so the cross-experiment median in
-            # globalovwt.py excludes this cleanly instead of being poisoned by
-            # a NaN. Defensive only -- a variant only enters this loop with at
+            # None, not float("nan"), so a downstream cross-experiment median
+            # excludes this cleanly instead of being poisoned by a NaN. Defensive only -- a variant only enters this loop with at
             # least one barcode of its own.
             auroc_median_barcode = (
                 float(np.median(barcode_aurocs)) if barcode_aurocs else None
